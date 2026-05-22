@@ -6,6 +6,12 @@ from typing import Any
 import torch
 from torch import nn
 
+from benchrep.assembly.config_utils import (
+    get_optional_section,
+    get_required_value,
+    normalize_name,
+    require_mapping,
+)
 from benchrep.assembly.registry import OPTIMIZERS
 
 
@@ -41,23 +47,14 @@ def build_optimizer_factory(
     Callable[[Iterable[nn.Parameter]], torch.optim.Optimizer]
         A callable that takes model parameters and returns an instantiated optimizer.
     """
-    if not isinstance(optimizer_config, dict):
-        raise TypeError(
-            "optimizer_config must be a dictionary, "
-            f"got {type(optimizer_config).__name__}."
-        )
+    optimizer_config = require_mapping(optimizer_config, "optimizer_config")
 
-    if "name" not in optimizer_config:
-        raise KeyError("optimizer_config must contain key 'name'.")
+    optimizer_name = normalize_name(
+        get_required_value(optimizer_config, "name"),
+        field_name="optimizer_config['name']",
+    )
 
-    optimizer_name = optimizer_config["name"]
-    optimizer_params = optimizer_config.get("params", {})
-
-    if not isinstance(optimizer_params, dict):
-        raise TypeError(
-            "optimizer_config['params'] must be a dictionary if provided, "
-            f"got {type(optimizer_params).__name__}."
-        )
+    optimizer_params = get_optional_section(optimizer_config, "params")
 
     optimizer_class = OPTIMIZERS.get(optimizer_name)
 
