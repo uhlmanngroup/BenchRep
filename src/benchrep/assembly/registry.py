@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import torch
+from torchvision import transforms
 
 from benchrep.architecture.data import MNISTDataset
 from benchrep.architecture.decoders import MLPDecoder
@@ -72,6 +73,7 @@ class Registry:
 
 # Instantiate the registries
 DATASETS = Registry("dataset")
+TRANSFORMS = Registry("transform")
 ENCODERS = Registry("encoder")
 DECODERS = Registry("decoder")
 MODELS = Registry("model")
@@ -80,6 +82,8 @@ OPTIMIZERS = Registry("optimizer")
 
 # Register currently supported components
 DATASETS.register("mnist", MNISTDataset)
+
+TRANSFORMS.register("to_tensor", transforms.ToTensor)
 
 ENCODERS.register("mlp", MLPEncoder)
 
