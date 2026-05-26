@@ -38,7 +38,7 @@ def main() -> None:
     datamodule = build_datamodule(config.data)
     model = build_model(config)
 
-    trainer = build_trainer(trainer_config=config.trainer, run_context=run_context)
+    trainer = build_trainer(config=config, run_context=run_context)
     trainer.fit(model, datamodule=datamodule)
 
     export_reconstructions(

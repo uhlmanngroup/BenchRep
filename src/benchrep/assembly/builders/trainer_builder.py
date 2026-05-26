@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import lightning as L
 
-from benchrep.assembly.schemas import TrainerConfig
+from benchrep.assembly.schemas import BenchRepConfig
 from benchrep.runtime import RunContext
 
 
-def build_trainer(trainer_config: TrainerConfig, run_context: RunContext) -> L.Trainer:
-    trainer_params = trainer_config.model_dump()
+def build_trainer(config: BenchRepConfig, run_context: RunContext) -> L.Trainer:
+    trainer_params = config.trainer.model_dump()
 
     if "default_root_dir" in trainer_params:
         raise ValueError(
