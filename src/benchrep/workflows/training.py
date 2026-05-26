@@ -8,6 +8,7 @@ import lightning as L
 import torch
 from torchvision.utils import save_image
 
+from benchrep.runtime import RunContext
 from benchrep.assembly import load_config
 from benchrep.assembly.builders import build_datamodule, build_model
 
@@ -18,22 +19,27 @@ def main() -> None:
     config_path = Path(args.config).resolve()
     config = load_config(config_path)
 
+    run_context = RunContext.create(
+        output_root=config["run"]["output_root"],
+        project_name=config["run"].get("project_name"),
+        model_name=f'{config["model"]["name"]}_{config["encoder"]["name"]}',
+    )
+
+    print(f"Run outputs will be saved to: {run_context.output_dir}")
+
     seed = config.get("seed", 137)
     L.seed_everything(seed, workers=True)
-
-    output_dir = Path(config["outputs"]["root_dir"])
-    output_dir.mkdir(parents=True, exist_ok=True)
 
     datamodule = build_datamodule(config["data"])
     model = build_model(config)
 
-    trainer = build_trainer(config=config, output_dir=output_dir)
+    trainer = build_trainer(config=config, run_context=run_context)
     trainer.fit(model, datamodule=datamodule)
 
     export_reconstructions(
         model=model,
         datamodule=datamodule,
-        output_path=output_dir / "reconstructions.png",
+        output_path=run_context.artifact_dir / "reconstructions.png",
     )
 
 
@@ -50,11 +56,11 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def build_trainer(config: dict[str, Any], output_dir: Path) -> L.Trainer:
+def build_trainer(config: dict[str, Any], run_context: RunContext) -> L.Trainer:
     trainer_config = dict(config.get("trainer", {}))
 
     return L.Trainer(
-        default_root_dir=str(output_dir),
+        default_root_dir=str(run_context.output_dir),
         **trainer_config,
     )
 

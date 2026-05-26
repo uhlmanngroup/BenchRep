@@ -1,5 +1,9 @@
 seed: 137
 
+run:
+  output_root: outputs
+  project_name: test
+
 data:
   dataset:
     name: mnist
