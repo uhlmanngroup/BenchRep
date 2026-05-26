@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 # -------------------------
@@ -49,6 +49,13 @@ class OptimizerConfig(NamedConfig):
 
 
 # -------------------------
+# Training/runtime configuration
+# -------------------------
+class TrainerConfig(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+
+# -------------------------
 # Data configuration
 # -------------------------
 class TransformConfig(NamedConfig):
@@ -87,7 +94,7 @@ class BenchRepConfig(BaseModel):
     losses: dict[str, LossConfig] = Field(default_factory=dict)
     optimizer: OptimizerConfig
     data: DataConfig
-    trainer: dict[str, Any] = Field(default_factory=dict)
+    trainer: TrainerConfig = Field(default_factory=TrainerConfig)
     seed: int = 137
 
     @model_validator(mode="after")

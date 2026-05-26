@@ -8,9 +8,9 @@ import torch
 from torchvision.utils import save_image
 
 from benchrep.runtime import RunContext
-from benchrep.assembly.schemas import BenchRepConfig, parse_config
 from benchrep.assembly import load_config
-from benchrep.assembly.builders import build_datamodule, build_model
+from benchrep.assembly.schemas import parse_config
+from benchrep.assembly.builders import build_datamodule, build_model, build_trainer
 
 
 def main() -> None:
@@ -38,7 +38,7 @@ def main() -> None:
     datamodule = build_datamodule(config.data)
     model = build_model(config)
 
-    trainer = build_trainer(config=config, run_context=run_context)
+    trainer = build_trainer(trainer_config=config.trainer, run_context=run_context)
     trainer.fit(model, datamodule=datamodule)
 
     export_reconstructions(
@@ -59,15 +59,6 @@ def parse_args() -> argparse.Namespace:
         help="Path to YAML config file.",
     )
     return parser.parse_args()
-
-
-def build_trainer(config: BenchRepConfig, run_context: RunContext) -> L.Trainer:
-    trainer_config = dict(config.trainer)
-
-    return L.Trainer(
-        default_root_dir=str(run_context.output_dir),
-        **trainer_config,
-    )
 
 
 def export_reconstructions(
