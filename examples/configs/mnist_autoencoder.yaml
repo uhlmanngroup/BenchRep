@@ -40,9 +40,10 @@ decoder:
     normalization: null
     dropout: 0.0
 
-loss:
+losses:
   reconstruction:
     name: mse
+    weight: 1.0
     params:
       reduction: mean
 
@@ -56,6 +57,3 @@ trainer:
   accelerator: auto
   devices: auto
   log_every_n_steps: 20
-
-outputs:
-  root_dir: outputs/smoke_mnist

@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Any
 
 import lightning as L
 import torch
 from torchvision.utils import save_image
 
 from benchrep.runtime import RunContext
+from benchrep.assembly.schemas import BenchRepConfig, parse_config
 from benchrep.assembly import load_config
 from benchrep.assembly.builders import build_datamodule, build_model
 
@@ -17,20 +17,25 @@ def main() -> None:
     args = parse_args()
 
     config_path = Path(args.config).resolve()
-    config = load_config(config_path)
+    raw_config = load_config(config_path)
+    config = parse_config(raw_config)
+
+    model_name = f"{config.model.name}_{config.encoder.name}"
+    if config.decoder is not None:
+        model_name = f"{model_name}_{config.decoder.name}"
 
     run_context = RunContext.create(
-        output_root=config["run"]["output_root"],
-        project_name=config["run"].get("project_name"),
-        model_name=f'{config["model"]["name"]}_{config["encoder"]["name"]}',
+        output_root=config.run.output_root,
+        project_name=config.run.project_name,
+        model_name=model_name,
     )
 
     print(f"Run outputs will be saved to: {run_context.output_dir}")
 
-    seed = config.get("seed", 137)
+    seed = config.seed
     L.seed_everything(seed, workers=True)
 
-    datamodule = build_datamodule(config["data"])
+    datamodule = build_datamodule(config.data)
     model = build_model(config)
 
     trainer = build_trainer(config=config, run_context=run_context)
@@ -56,8 +61,8 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def build_trainer(config: dict[str, Any], run_context: RunContext) -> L.Trainer:
-    trainer_config = dict(config.get("trainer", {}))
+def build_trainer(config: BenchRepConfig, run_context: RunContext) -> L.Trainer:
+    trainer_config = dict(config.trainer)
 
     return L.Trainer(
         default_root_dir=str(run_context.output_dir),

@@ -5,18 +5,18 @@ from typing import Any
 import torch
 
 from benchrep.architecture.data import DataModule
-from benchrep.assembly.config_utils import (
-    get_optional_section,
-    get_required_section,
-    get_required_value,
-    normalize_name,
-    require_mapping,
+from benchrep.assembly.schemas import (
+    DataConfig,
+    DataModuleConfig,
+    DatasetConfig,
+    TransformConfig
 )
+from benchrep.assembly.config_utils import normalize_name
 from benchrep.assembly.registry import DATASETS, TRANSFORMS
 
 
-def build_datamodule(data_config: dict[str, Any]) -> DataModule:
-    """Build a DataModule from data config.
+def build_datamodule(data_config: DataConfig) -> DataModule:
+    """Build a DataModule from the validated DataConfig object.
 
     This is the public data builder. It translates the ``data`` section of a loaded
     config into concrete dataset objects and a BenchRep ``DataModule``.
@@ -30,22 +30,19 @@ def build_datamodule(data_config: dict[str, Any]) -> DataModule:
     Parameters
     ----------
     data_config:
-        Data config dictionary. Expected to contain required ``"dataset"`` and
-        ``"datamodule"`` sections.
+        Validated data config object containing dataset and datamodule sections.
 
     Returns
     -------
     DataModule
         Instantiated DataModule containing the datasets requested by the builder.
     """
-    data_config = require_mapping(data_config, "data_config")
-
-    dataset_config = get_required_section(data_config, "dataset")
-    datamodule_config = get_required_section(data_config, "datamodule")
+    dataset_config = data_config.dataset
+    datamodule_config = data_config.datamodule
 
     dataset_name = normalize_name(
-        get_required_value(dataset_config, "name"),
-        field_name="data_config['dataset']['name']",
+        dataset_config.name,
+        field_name="config.data.dataset.name",
     )
 
     if dataset_name == "mnist":
@@ -62,14 +59,17 @@ def build_datamodule(data_config: dict[str, Any]) -> DataModule:
     )
 
 
-def _build_mnist_datasets(dataset_config: dict[str, Any]) -> tuple[Any, Any]:
+def _build_mnist_datasets(dataset_config: DatasetConfig) -> tuple[Any, Any]:
     # MNIST has a known train/test split, so the builder creates both datasets
     # from the same dataset config.
+    if dataset_config.root is None:
+        raise ValueError("MNIST dataset requires `data.dataset.root`.")
+
     dataset_class = DATASETS.get("mnist")
 
-    root = get_required_value(dataset_config, "root")
-    download = dataset_config.get("download", False)
-    transform = _build_transform(dataset_config.get("transform"))
+    root = dataset_config.root
+    download = bool(dataset_config.download)
+    transform = _build_transform(dataset_config.transform)
 
     train_dataset = dataset_class(
         root=root,
@@ -89,13 +89,13 @@ def _build_mnist_datasets(dataset_config: dict[str, Any]) -> tuple[Any, Any]:
 
 
 def _instantiate_datamodule(
-    datamodule_config: dict[str, Any],
+    datamodule_config: DataModuleConfig,
     train_dataset: Any | None = None,
     val_dataset: Any | None = None,
     test_dataset: Any | None = None,
     predict_dataset: Any | None = None,
 ) -> DataModule:
-    datamodule_params = dict(datamodule_config)
+    datamodule_params = datamodule_config.model_dump()
 
     # Resolve "auto" to pin CPU memory only when CUDA is available.
     if datamodule_params.get("pin_memory") == "auto":
@@ -110,18 +110,16 @@ def _instantiate_datamodule(
     )
 
 
-def _build_transform(transform_config: dict[str, Any] | None) -> Any:
+def _build_transform(transform_config: TransformConfig | None) -> Any:
     if transform_config is None:
         return None
 
-    transform_config = require_mapping(transform_config, "transform config")
-
     transform_name = normalize_name(
-        get_required_value(transform_config, "name"),
-        field_name="transform config['name']",
+        transform_config.name,
+        field_name="config.data.dataset.transform.name",
     )
 
     transform_class = TRANSFORMS.get(transform_name)
-    transform_params = get_optional_section(transform_config, "params")
+    transform_params = dict(transform_config.params)
 
     return transform_class(**transform_params)

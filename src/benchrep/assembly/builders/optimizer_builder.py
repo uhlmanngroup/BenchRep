@@ -1,22 +1,17 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from typing import Any
 
 import torch
 from torch import nn
 
-from benchrep.assembly.config_utils import (
-    get_optional_section,
-    get_required_value,
-    normalize_name,
-    require_mapping,
-)
+from benchrep.assembly.config_utils import normalize_name
+from benchrep.assembly.schemas import OptimizerConfig
 from benchrep.assembly.registry import OPTIMIZERS
 
 
 def build_optimizer_factory(
-    optimizer_config: dict[str, Any],
+    optimizer_config: OptimizerConfig,
 ) -> Callable[[Iterable[nn.Parameter]], torch.optim.Optimizer]:
     """Build a delayed optimizer factory from config.
 
@@ -32,29 +27,25 @@ def build_optimizer_factory(
     Expected config format
     ----------------------
     optimizer_config:
-        Dictionary with optimizer name and keyword arguments, for example::
+    Validated optimizer config object parsed from a config block such as::
 
-            {
-                "name": "adam",
-                "params": {
-                    "lr": 0.001,
-                    "weight_decay": 0.0,
-                },
-            }
+        optimizer:
+            name: adam
+            params:
+                lr: 0.001
+                weight_decay: 0.0
 
     Returns
     -------
     Callable[[Iterable[nn.Parameter]], torch.optim.Optimizer]
         A callable that takes model parameters and returns an instantiated optimizer.
     """
-    optimizer_config = require_mapping(optimizer_config, "optimizer_config")
-
     optimizer_name = normalize_name(
-        get_required_value(optimizer_config, "name"),
-        field_name="optimizer_config['name']",
+        optimizer_config.name,
+        field_name="config.optimizer.name",
     )
 
-    optimizer_params = get_optional_section(optimizer_config, "params")
+    optimizer_params = dict(optimizer_config.params)
 
     optimizer_class = OPTIMIZERS.get(optimizer_name)
 
