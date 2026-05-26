@@ -15,7 +15,7 @@ from benchrep.assembly.config_utils import normalize_name
 from benchrep.assembly.registry import DATASETS, TRANSFORMS
 
 
-def build_datamodule(data_config: DataConfig) -> DataModule:
+def build_datamodule(data_config: DataConfig, seed: int | None = None) -> DataModule:
     """Build a DataModule from the validated DataConfig object.
 
     This is the public data builder. It translates the ``data`` section of a loaded
@@ -31,6 +31,9 @@ def build_datamodule(data_config: DataConfig) -> DataModule:
     ----------
     data_config:
         Validated data config object containing dataset and datamodule sections.
+    seed:
+        Optional random seed passed to the DataModule for reproducible
+        train/validation splitting.
 
     Returns
     -------
@@ -51,6 +54,7 @@ def build_datamodule(data_config: DataConfig) -> DataModule:
             datamodule_config=datamodule_config,
             train_dataset=train_dataset,
             test_dataset=test_dataset,
+            seed=seed,
         )
 
     raise ValueError(
@@ -94,6 +98,7 @@ def _instantiate_datamodule(
     val_dataset: Any | None = None,
     test_dataset: Any | None = None,
     predict_dataset: Any | None = None,
+    seed: int | None = None,
 ) -> DataModule:
     datamodule_params = datamodule_config.model_dump()
 
@@ -106,6 +111,7 @@ def _instantiate_datamodule(
         val_dataset=val_dataset,
         test_dataset=test_dataset,
         predict_dataset=predict_dataset,
+        seed=seed,
         **datamodule_params,
     )
 

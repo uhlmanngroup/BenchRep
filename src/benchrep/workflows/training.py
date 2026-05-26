@@ -32,10 +32,17 @@ def main() -> None:
 
     print(f"Run outputs will be saved to: {run_context.output_dir}")
 
-    seed = config.seed
-    L.seed_everything(seed, workers=True)
+    L.seed_everything(
+        config.reproducibility.seed,
+        workers=config.reproducibility.seed_workers,
+    )
 
-    datamodule = build_datamodule(config.data)
+    if config.reproducibility.float32_matmul_precision is not None:
+        torch.set_float32_matmul_precision(
+            config.reproducibility.float32_matmul_precision
+        )
+
+    datamodule = build_datamodule(config.data, seed=config.reproducibility.seed)
     model = build_model(config)
 
     trainer = build_trainer(config=config, run_context=run_context)

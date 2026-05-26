@@ -51,6 +51,12 @@ class OptimizerConfig(NamedConfig):
 # -------------------------
 # Training/runtime configuration
 # -------------------------
+class ReproducibilityConfig(BaseModel):
+    seed: int | None = 137
+    seed_workers: bool = True
+    float32_matmul_precision: Literal["medium", "high", "highest"] | None = "highest"
+
+
 class TrainerConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -88,6 +94,7 @@ class DataConfig(BaseModel):
 # -------------------------
 class BenchRepConfig(BaseModel):
     run: RunConfig = Field(default_factory=RunConfig)
+    reproducibility: ReproducibilityConfig = Field(default_factory=ReproducibilityConfig)
     model: ModelConfig
     encoder: EncoderConfig
     decoder: DecoderConfig | None = None
@@ -95,7 +102,6 @@ class BenchRepConfig(BaseModel):
     optimizer: OptimizerConfig
     data: DataConfig
     trainer: TrainerConfig = Field(default_factory=TrainerConfig)
-    seed: int = 137
 
     @model_validator(mode="after")
     def validate_model_requirements(self) -> "BenchRepConfig":

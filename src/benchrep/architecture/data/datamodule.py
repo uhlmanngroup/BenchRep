@@ -59,7 +59,7 @@ class DataModule(L.LightningDataModule):
         pin_memory: bool = False,
         persistent_workers: bool = False,
         drop_last: bool = False,
-        seed: int = 137,
+        seed: int | None = None,
     ) -> None:
         super().__init__()
 
@@ -139,7 +139,10 @@ class DataModule(L.LightningDataModule):
                     f"for dataset of size {dataset_size}."
                 )
 
-            generator = Generator().manual_seed(self.seed)
+            generator = None
+            if self.seed is not None:
+                generator = Generator().manual_seed(self.seed)
+
             self.train_dataset, self.val_dataset = random_split(
                 self._original_train_dataset,
                 [train_size, val_size],
