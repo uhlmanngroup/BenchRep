@@ -42,10 +42,14 @@ def main() -> None:
             config.reproducibility.float32_matmul_precision
         )
 
-    datamodule = build_datamodule(config.data, seed=config.reproducibility.seed)
-    model = build_model(config)
+    datamodule = build_datamodule(
+        dataset_config=config.dataset,
+        datamodule_config=config.datamodule,
+        seed=config.reproducibility.seed)
 
-    trainer = build_trainer(config=config, run_context=run_context)
+    model = build_model(config=config)
+
+    trainer = build_trainer(trainer_config=config.trainer, logger_config=config.logger, run_context=run_context)
     trainer.fit(model, datamodule=datamodule)
 
     export_reconstructions(

@@ -6,7 +6,6 @@ import torch
 
 from benchrep.architecture.data import DataModule
 from benchrep.assembly.schemas import (
-    DataConfig,
     DataModuleConfig,
     DatasetConfig,
     TransformConfig
@@ -15,7 +14,10 @@ from benchrep.assembly.config_utils import normalize_name
 from benchrep.assembly.registry import DATASETS, TRANSFORMS
 
 
-def build_datamodule(data_config: DataConfig, seed: int | None = None) -> DataModule:
+def build_datamodule(
+        dataset_config: DatasetConfig,
+        datamodule_config: DataModuleConfig,
+        seed: int | None = None) -> DataModule:
     """Build a DataModule from the validated DataConfig object.
 
     This is the public data builder. It translates the ``data`` section of a loaded
@@ -29,8 +31,10 @@ def build_datamodule(data_config: DataConfig, seed: int | None = None) -> DataMo
 
     Parameters
     ----------
-    data_config:
-        Validated data config object containing dataset and datamodule sections.
+    dataset_config:
+        Validated dataset config object containing dataset section.
+    datamodule_config:
+        Validated datamodule config object containing datamodule section.
     seed:
         Optional random seed passed to the DataModule for reproducible
         train/validation splitting.
@@ -40,9 +44,6 @@ def build_datamodule(data_config: DataConfig, seed: int | None = None) -> DataMo
     DataModule
         Instantiated DataModule containing the datasets requested by the builder.
     """
-    dataset_config = data_config.dataset
-    datamodule_config = data_config.datamodule
-
     dataset_name = normalize_name(
         dataset_config.name,
         field_name="config.data.dataset.name",
