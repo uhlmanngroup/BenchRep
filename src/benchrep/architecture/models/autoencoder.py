@@ -9,6 +9,7 @@ from torch import nn
 
 from benchrep.architecture.decoders.base import BaseDecoder
 from benchrep.architecture.encoders.base import BaseEncoder
+from benchrep.architecture.losses.base import LossTerm
 
 
 class Autoencoder(L.LightningModule):
@@ -16,7 +17,7 @@ class Autoencoder(L.LightningModule):
         self,
         encoder: BaseEncoder,
         decoder: BaseDecoder,
-        reconstruction_loss: nn.Module,
+        reconstruction_losses: dict[str, LossTerm],
         optimizer_factory: Callable[[Iterable[nn.Parameter]], torch.optim.Optimizer],
     ) -> None:
         super().__init__()
@@ -38,14 +39,25 @@ class Autoencoder(L.LightningModule):
 
         self.encoder = encoder
         self.decoder = decoder
-        self.reconstruction_loss = reconstruction_loss
         self.optimizer_factory = optimizer_factory
+
+        if not reconstruction_losses: # fail fast
+            raise ValueError("Autoencoder requires at least one reconstruction loss.")
+
+        for loss_name, weighted_loss in reconstruction_losses.items():
+            if weighted_loss.weight < 0:
+                raise ValueError(
+                    f"Reconstruction loss {loss_name!r} has negative weight "
+                    f"{weighted_loss.weight}."
+                )
+
+        self.reconstruction_losses = reconstruction_losses
 
         self.save_hyperparameters(
             ignore=[
                 "encoder",
                 "decoder",
-                "reconstruction_loss",
+                "reconstruction_losses",
                 "optimizer_factory",
             ]
         )
@@ -76,17 +88,38 @@ class Autoencoder(L.LightningModule):
     def _run_reconstruction_step(self, batch: Any, stage: str) -> torch.Tensor:
         x = self._get_input_from_batch(batch)
         reconstruction = self(x)
-        loss = self.reconstruction_loss(reconstruction, x)
+        total_loss = torch.zeros((), device=x.device, dtype=x.dtype)
+
+        for loss_name, loss_term in self.reconstruction_losses.items():
+            raw_loss = loss_term.loss(reconstruction, x)
+            weighted_loss_value = loss_term.weight * raw_loss
+            total_loss = total_loss + weighted_loss_value
+
+            self.log(
+                f"{stage}/reconstruction/{loss_name}",
+                raw_loss,
+                on_step=stage == "train",
+                on_epoch=True,
+                prog_bar=False,
+            )
+
+            self.log(
+                f"{stage}/reconstruction/{loss_name}_weighted",
+                weighted_loss_value,
+                on_step=stage == "train",
+                on_epoch=True,
+                prog_bar=False,
+            )
 
         self.log(
-            f"{stage}/reconstruction_loss",
-            loss,
+            f"{stage}/loss",
+            total_loss,
             on_step=stage == "train",
             on_epoch=True,
             prog_bar=True,
         )
 
-        return loss
+        return total_loss
 
     @staticmethod
     def _get_input_from_batch(batch: Any) -> torch.Tensor:

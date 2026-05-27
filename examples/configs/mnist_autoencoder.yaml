@@ -7,21 +7,21 @@ run:
   output_root: outputs
   project_name: test
 
-data:
-  dataset:
-    name: mnist
-    root: examples/data/mnist
-    download: true
-    transform:
-      name: to_tensor # necessary for mnist
 
-  datamodule:
-    batch_size: 128
-    val_fraction: 0.1
-    num_workers: 4
-    pin_memory: auto # resolve to true if cuda available
-    persistent_workers: true
-    drop_last: false
+dataset:
+  name: mnist
+  root: examples/data/mnist
+  download: true
+  transform:
+    name: to_tensor # necessary for mnist
+
+datamodule:
+  batch_size: 128
+  val_fraction: 0.1
+  num_workers: 4
+  pin_memory: auto # resolve to true if cuda available
+  persistent_workers: true
+  drop_last: false
 
 model:
   name: autoencoder
@@ -45,10 +45,10 @@ decoder:
 
 losses:
   reconstruction:
-    name: mse
-    weight: 1.0
-    params:
-      reduction: mean
+    mse:
+      weight: 1.0
+      params:
+        reduction: mean
 
 optimizer:
   name: adam
@@ -70,6 +70,6 @@ logger:
   params: # backend-specific kwargs passed to the lightning logger
     project: benchrep
     name: test
-    id: test-01
+    id: null
     resume: never
     log_model: False

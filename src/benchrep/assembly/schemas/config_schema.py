@@ -40,8 +40,9 @@ class DecoderConfig(NamedConfig):
 # -------------------------
 # Optimization/loss configuration
 # -------------------------
-class LossConfig(NamedConfig):
+class LossesConfig(BaseModel):
     weight: float = 1.0
+    params: dict[str, Any] = Field(default_factory=dict)
 
 
 class OptimizerConfig(NamedConfig):
@@ -103,9 +104,10 @@ class BenchRepConfig(BaseModel):
     model: ModelConfig
     encoder: EncoderConfig
     decoder: DecoderConfig | None = None
-    losses: dict[str, LossConfig] = Field(default_factory=dict)
+    losses: dict[str, dict[str, LossesConfig]] = Field(default_factory=dict)
     optimizer: OptimizerConfig
-    data: DataConfig
+    dataset: DatasetConfig
+    datamodule: DataModuleConfig = Field(default_factory=DataModuleConfig)
     trainer: TrainerConfig = Field(default_factory=TrainerConfig)
     logger: LoggerConfig | None = None
 
@@ -117,9 +119,9 @@ class BenchRepConfig(BaseModel):
             if self.decoder is None:
                 raise ValueError("Autoencoder requires a decoder config section.")
 
-            if "reconstruction" not in self.losses:
+            if "reconstruction" not in self.losses or not self.losses["reconstruction"]:
                 raise ValueError(
-                    "Autoencoder requires a reconstruction loss under "
+                    "Autoencoder requires at least one reconstruction loss under "
                     "`losses.reconstruction`."
                 )
 

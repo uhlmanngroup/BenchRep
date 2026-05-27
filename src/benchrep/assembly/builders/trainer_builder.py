@@ -15,12 +15,15 @@ from lightning.pytorch.loggers import (
 )
 
 from benchrep.assembly.registry import LOGGERS
-from benchrep.assembly.schemas import BenchRepConfig, LoggerConfig
+from benchrep.assembly.schemas import TrainerConfig, LoggerConfig
 from benchrep.runtime import RunContext
 
 
-def build_trainer(config: BenchRepConfig, run_context: RunContext) -> L.Trainer:
-    trainer_params = config.trainer.model_dump()
+def build_trainer(
+        trainer_config: TrainerConfig,
+        logger_config: LoggerConfig,
+        run_context: RunContext) -> L.Trainer:
+    trainer_params = trainer_config.model_dump()
 
     if "default_root_dir" in trainer_params:
         raise ValueError(
@@ -34,7 +37,7 @@ def build_trainer(config: BenchRepConfig, run_context: RunContext) -> L.Trainer:
             "Use the top-level `logger` config section instead."
         )
 
-    logger = _build_logger(config.logger)
+    logger = _build_logger(logger_config)
 
     return L.Trainer(
         default_root_dir=str(run_context.output_dir),
