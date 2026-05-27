@@ -53,3 +53,18 @@ class MSEReconstructionLoss(BaseReconstructionLoss):
             )
 
         return self.loss(reconstruction, target)
+
+
+class MAEReconstructionLoss(BaseReconstructionLoss):
+    """Mean absolute error (L1) reconstruction loss."""
+
+    def __init__(self, reduction: str = "mean") -> None:
+        super().__init__()
+        self.loss = nn.L1Loss(reduction=reduction)
+
+    def forward(
+        self,
+        reconstruction: torch.Tensor,
+        target: torch.Tensor,
+    ) -> torch.Tensor:
+        return self.loss(reconstruction, target)

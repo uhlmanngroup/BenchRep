@@ -15,7 +15,10 @@ from lightning.pytorch.loggers import (
 from benchrep.architecture.data import MNISTDataset
 from benchrep.architecture.decoders import MLPDecoder
 from benchrep.architecture.encoders import MLPEncoder
-from benchrep.architecture.losses import MSEReconstructionLoss
+from benchrep.architecture.losses import (
+    MSEReconstructionLoss,
+    MAEReconstructionLoss,
+)
 from benchrep.architecture.models import Autoencoder
 
 
@@ -105,6 +108,7 @@ DECODERS.register("mlp", MLPDecoder)
 MODELS.register("autoencoder", Autoencoder)
 
 RECONSTRUCTION_LOSSES.register("mse", MSEReconstructionLoss, "l2")
+RECONSTRUCTION_LOSSES.register("mae", MAEReconstructionLoss, "l1")
 
 OPTIMIZERS.register("adam", torch.optim.Adam)
 OPTIMIZERS.register("adamw", torch.optim.AdamW)
