@@ -15,6 +15,7 @@ venv/
 outputs/
 lightning_logs/
 *.ckpt
+wandb/
 
 # Data
 examples/data/

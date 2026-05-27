@@ -1,7 +1,7 @@
 reproducibility:
-  seed: 137
+  seed: 137 # global seed given both to seed_everything and to the datamodule
   seed_workers: true
-  float32_matmul_precision: highest
+  float32_matmul_precision: highest # defaults to highest
 
 run:
   output_root: outputs
@@ -13,13 +13,13 @@ data:
     root: examples/data/mnist
     download: true
     transform:
-      name: to_tensor
+      name: to_tensor # necessary for mnist
 
   datamodule:
     batch_size: 128
     val_fraction: 0.1
     num_workers: 4
-    pin_memory: auto
+    pin_memory: auto # resolve to true if cuda available
     persistent_workers: true
     drop_last: false
 
@@ -60,6 +60,16 @@ trainer:
   accelerator: auto
   devices: auto
   log_every_n_steps: 20
-  deterministic: false
-  benchmark: false
+  deterministic: false # reproducibility param in lightning's trainer
+  benchmark: false # reproducibility param in lightning's trainer
   precision: 32-true
+
+logger:
+  name: wandb # logger backend: wandb, tensorboard, csv, mlflow
+  credential_path: /home/qptero/gen_credentials/keys/wandb_benchrep_api_key # null = assume user logged in / env var set, otherwise path to api_key txt file
+  params: # backend-specific kwargs passed to the lightning logger
+    project: benchrep
+    name: test
+    id: test-01
+    resume: never
+    log_model: False

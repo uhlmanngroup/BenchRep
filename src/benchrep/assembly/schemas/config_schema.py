@@ -61,6 +61,11 @@ class TrainerConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
+class LoggerConfig(NamedConfig):
+    credential_path: Path | None = None
+    model_config = ConfigDict(extra="allow")
+
+
 # -------------------------
 # Data configuration
 # -------------------------
@@ -102,6 +107,7 @@ class BenchRepConfig(BaseModel):
     optimizer: OptimizerConfig
     data: DataConfig
     trainer: TrainerConfig = Field(default_factory=TrainerConfig)
+    logger: LoggerConfig | None = None
 
     @model_validator(mode="after")
     def validate_model_requirements(self) -> "BenchRepConfig":
