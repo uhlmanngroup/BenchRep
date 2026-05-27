@@ -5,6 +5,13 @@ from typing import Any
 import torch
 from torchvision import transforms
 
+from lightning.pytorch.loggers import (
+    CSVLogger,
+    MLFlowLogger,
+    TensorBoardLogger,
+    WandbLogger,
+)
+
 from benchrep.architecture.data import MNISTDataset
 from benchrep.architecture.decoders import MLPDecoder
 from benchrep.architecture.encoders import MLPEncoder
@@ -23,17 +30,22 @@ class Registry:
         self.name = name
         self._items: dict[str, Any] = {}
 
-    def register(self, key: str, item: Any) -> None:
-        # Add a new name-to-object mapping, refusing accidental overwrites.
-        key = self._normalize_key(key)
+    def register(self, key: str, item: Any, *aliases: str) -> None:
+        # Silently collapse duplicates
+        names = tuple(
+            dict.fromkeys(self._normalize_key(name) for name in (key, *aliases))
+        )
 
-        if key in self._items:
-            raise KeyError(
-                f"{self.name} registry already contains key {key!r}. "
-                "Choose a different name or remove the existing registration."
-            )
+        # Refuse overwrites
+        for name in names:
+            if name in self._items:
+                raise KeyError(
+                    f"{self.name} registry already contains key {name!r}. "
+                    "Choose a different name or remove the existing registration."
+                )
 
-        self._items[key] = item
+        for name in names:
+            self._items[name] = item
 
     def get(self, key: str) -> Any:
         # Retrieve a registered object by name, with a debuggable error for unknown keys.
@@ -79,6 +91,7 @@ DECODERS = Registry("decoder")
 MODELS = Registry("model")
 RECONSTRUCTION_LOSSES = Registry("reconstruction loss")
 OPTIMIZERS = Registry("optimizer")
+LOGGERS = Registry("logger")
 
 # Register currently supported components
 DATASETS.register("mnist", MNISTDataset)
@@ -91,9 +104,19 @@ DECODERS.register("mlp", MLPDecoder)
 
 MODELS.register("autoencoder", Autoencoder)
 
-RECONSTRUCTION_LOSSES.register("mse", MSEReconstructionLoss)
-RECONSTRUCTION_LOSSES.register("l2", MSEReconstructionLoss)
+RECONSTRUCTION_LOSSES.register("mse", MSEReconstructionLoss, "l2")
 
 OPTIMIZERS.register("adam", torch.optim.Adam)
 OPTIMIZERS.register("adamw", torch.optim.AdamW)
 OPTIMIZERS.register("sgd", torch.optim.SGD)
+
+LOGGERS.register("csv", CSVLogger, "csvlogger")
+LOGGERS.register("wandb", WandbLogger, "wandblogger")
+LOGGERS.register(
+    "tensorboard",
+    TensorBoardLogger,
+    "tensorboardlogger",
+    "tb",
+    "tblogger",
+)
+LOGGERS.register("mlflow", MLFlowLogger, "mlflowlogger")
