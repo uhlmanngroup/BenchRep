@@ -12,12 +12,14 @@ explicit output directory can also be provided.
 from pathlib import Path
 from shutil import copy2
 from typing import Any
+import logging
 
 import yaml
 from pydantic import BaseModel
 
-from benchrep.assembly.schemas import BenchRepConfig
+from benchrep.records.logs import get_run_logger
 from benchrep.runtime import RunContext
+from benchrep.assembly.schemas import BenchRepConfig
 
 
 def save_config_records(
@@ -38,11 +40,14 @@ def save_config_records(
         Optional path to the original user-provided YAML config file.
         This may be absent when BenchRep is used without a config file.
     """
+    run_log = get_run_logger()
+
     if isinstance(config_out_dir, RunContext):
         config_out_dir = config_out_dir.config_dir
     else:
         config_out_dir = Path(config_out_dir).expanduser().resolve()
 
+    saved_original = False
     if original_config_path is not None:
         original_config_path = Path(original_config_path).expanduser().resolve()
 
@@ -51,10 +56,17 @@ def save_config_records(
             out_dir=config_out_dir,
         )
 
+        saved_original = True
+
     save_resolved_config(
         resolved_config=resolved_config,
         out_dir=config_out_dir,
     )
+
+    if saved_original:
+        run_log.info("Saved original and resolved config files to '%s'", config_out_dir)
+    else:
+        run_log.info("Saved resolved config file to '%s'", config_out_dir)
 
 
 def save_original_config(

@@ -14,6 +14,7 @@ from lightning.pytorch.loggers import (
     WandbLogger,
 )
 
+from benchrep.records import get_run_logger
 from benchrep.assembly.registry import LOGGERS
 from benchrep.assembly.schemas import TrainerConfig, LoggerConfig
 from benchrep.runtime import RunContext
@@ -23,6 +24,8 @@ def build_trainer(
         trainer_config: TrainerConfig,
         logger_config: LoggerConfig,
         run_context: RunContext) -> L.Trainer:
+    run_log = get_run_logger()
+
     trainer_params = trainer_config.model_dump()
 
     if "default_root_dir" in trainer_params:
@@ -37,13 +40,21 @@ def build_trainer(
             "Use the top-level `logger` config section instead."
         )
 
+    logger_name = logger_config.name
+    logger_cls = LOGGERS.get(logger_name)
     logger = _build_logger(logger_config)
 
-    return L.Trainer(
+    trainer = L.Trainer(
         default_root_dir=str(run_context.output_dir),
         logger=logger,
         **trainer_params,
     )
+    run_log.info("Built Lightning trainer: (max_epochs=%s, logger= %s -> %s)",
+                 trainer_config.max_epochs,
+                 logger_name,
+                 logger_cls.__name__)
+
+    return trainer
 
 
 def _build_logger(logger_config: LoggerConfig | None) -> Logger | bool:

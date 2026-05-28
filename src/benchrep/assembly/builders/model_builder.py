@@ -7,6 +7,7 @@ from torch import nn
 
 import lightning as L
 
+from benchrep.records import get_run_logger
 from benchrep.architecture.encoders import BaseEncoder
 from benchrep.architecture.decoders import BaseDecoder
 from benchrep.architecture.models import Autoencoder
@@ -24,6 +25,7 @@ from benchrep.assembly.registry import (
     DECODERS,
     ENCODERS,
     MODELS,
+    OPTIMIZERS,
     RECONSTRUCTION_LOSSES,
 )
 
@@ -50,21 +52,29 @@ def build_model(config: BenchRepConfig) -> L.LightningModule:
     L.LightningModule
         Instantiated Lightning model ready to be passed to a Lightning Trainer.
     """
+    run_log = get_run_logger()
+
     model_name = normalize_name(
         config.model.name,
         field_name="config.model.name",
     )
 
+    run_log.info("Building model components...")
+
     if model_name == "autoencoder":
         if config.decoder is None:
             raise ValueError("Autoencoder requires a decoder config section.")
 
-        return build_autoencoder(
+        model = build_autoencoder(
             encoder=config.encoder,
             decoder=config.decoder,
             optimizer=config.optimizer,
             reconstruction_losses=config.losses["reconstruction"],
         )
+
+        run_log.info("Assembled model: %s", type(model).__name__)
+
+        return model
 
     raise ValueError(
         f"Unsupported model name {model_name!r}. "
@@ -81,19 +91,50 @@ def build_autoencoder(
     ),
     reconstruction_losses: dict[str, LossesConfig | LossTerm],
 ) -> Autoencoder:
+    run_log = get_run_logger()
+
     # Resolve configs objs into instantiated components where needed
     if isinstance(encoder, EncoderConfig):
+        encoder_name = encoder.name
         encoder = _build_encoder(encoder)
+        run_log.info("Built encoder from config: %s -> %s",
+                     encoder_name,
+                     type(encoder).__name__)
 
     if isinstance(decoder, DecoderConfig):
+        decoder_name = decoder.name
         decoder = _build_decoder(decoder, latent_dim=encoder.latent_dim)
+        run_log.info("Built decoder from config: %s -> %s",
+                     decoder_name,
+                     type(decoder).__name__)
 
     if isinstance(optimizer, OptimizerConfig):
+        optimizer_name = optimizer.name
+        optimizer_cls = OPTIMIZERS.get(optimizer_name) # Use registry as optimizer is built as a factory
         optimizer_factory = build_optimizer_factory(optimizer)
+        run_log.info("Built optimizer factory from config: %s -> %s",
+                     optimizer_name,
+                     optimizer_cls.__name__)
     else:
         optimizer_factory = optimizer
 
+    loss_sources = {
+        loss_name: "pre-built" if isinstance(loss_spec, LossTerm) else "config"
+        for loss_name, loss_spec in reconstruction_losses.items()
+    }
+
     reconstruction_losses = _build_reconstruction_losses(reconstruction_losses)
+    run_log.info(
+        "Resolved reconstruction losses: %s",
+        ", ".join(
+            (
+                f"{loss_name} ({loss_sources[loss_name]})"
+                f" -> {type(loss_term.loss).__name__}"
+                f" (weight={loss_term.weight})"
+            )
+            for loss_name, loss_term in reconstruction_losses.items()
+        ),
+    )
 
     model_class = MODELS.get("autoencoder")
 

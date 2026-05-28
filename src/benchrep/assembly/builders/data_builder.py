@@ -4,6 +4,7 @@ from typing import Any
 
 import torch
 
+from benchrep.records import get_run_logger
 from benchrep.architecture.data import DataModule
 from benchrep.assembly.schemas import (
     DataModuleConfig,
@@ -44,19 +45,31 @@ def build_datamodule(
     DataModule
         Instantiated DataModule containing the datasets requested by the builder.
     """
+    run_log = get_run_logger()
+
     dataset_name = normalize_name(
         dataset_config.name,
         field_name="config.data.dataset.name",
     )
 
+    run_log.info("Building dataset...: %s", dataset_name)
+
     if dataset_name == "mnist":
         train_dataset, test_dataset = _build_mnist_datasets(dataset_config)
-        return _instantiate_datamodule(
+        dm = _instantiate_datamodule(
             datamodule_config=datamodule_config,
             train_dataset=train_dataset,
             test_dataset=test_dataset,
             seed=seed,
         )
+
+        run_log.info(
+            "Built datamodule: dataset=%s, datamodule=%s",
+            dataset_name,
+            type(dm).__name__,
+        )
+
+        return dm
 
     raise ValueError(
         f"Unsupported dataset name {dataset_name!r}. "

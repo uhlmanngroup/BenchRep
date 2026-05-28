@@ -8,7 +8,7 @@ import torch
 from torchvision.utils import save_image
 
 from benchrep.runtime import RunContext
-from benchrep.records import save_config_records
+from benchrep.records import save_config_records, capture_console_streams, setup_run_logger
 from benchrep.assembly import load_config
 from benchrep.assembly.schemas import parse_config
 from benchrep.assembly.builders import build_datamodule, build_model, build_trainer
@@ -33,9 +33,13 @@ def main() -> None:
         model_name=model_name,
     )
 
-    print(f"Run outputs will be saved to: {run_context.output_dir}")
+    # Initiate local run logger
+    run_log = setup_run_logger(log_out_dir=run_context.log_dir)
 
-    # Bookkeeping
+    run_log.info("Run initialized with config from: '%s'", raw_config_path)
+    run_log.info("Run outputs will be saved to: '%s'", run_context.output_dir)
+
+    # Bookkeeping --- config
     save_config_records(
         original_config_path=raw_config_path,
         resolved_config=config,
@@ -47,6 +51,7 @@ def main() -> None:
         config.reproducibility.seed,
         workers=config.reproducibility.seed_workers,
     )
+    run_log.info("Global seed set to %s", config.reproducibility.seed)
 
     if config.reproducibility.float32_matmul_precision is not None:
         torch.set_float32_matmul_precision(
@@ -62,7 +67,13 @@ def main() -> None:
     model = build_model(config=config)
 
     trainer = build_trainer(trainer_config=config.trainer, logger_config=config.logger, run_context=run_context)
-    trainer.fit(model, datamodule=datamodule)
+
+    run_log.info("Starting training...")
+
+    with capture_console_streams(log_out_dir=run_context.log_dir, capture_stdout=False):
+        trainer.fit(model, datamodule=datamodule)
+
+    run_log.info("Finished training")
 
     # Export
     export_reconstructions(
