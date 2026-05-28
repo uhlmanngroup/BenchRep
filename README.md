@@ -202,8 +202,15 @@ The final training call then looks like:
 trainer.fit(model, datamodule)
 ```
 
-Note: Trainer would also be used for prediction or testing (not yet implemented)
+Note: Trainer would also be used for prediction or testing (not yet implemented).
 
+---
+
+## Miscellaneous
+
+- In addition to the Lightning logger, which is used for training metrics and monitoring, BenchRep writes local run records under `outputs/<run_id>/records/logs/`:
+  1. Console stream logs: `stderr.log` is saved by default; `stdout.log` is optional because progress-bar output can be very noisy.
+  2. Run log: `benchrep_run.log` is written by the `benchrep.run` logger and contains BenchRep-controlled status messages, such as config export, component construction, training start/end, and basic sanity checks (e.g. actual instantiated object types).
 ---
 
 ## Usage Modes
@@ -274,5 +281,4 @@ For example, a user may directly use:
 ```
 
 Useful for expert users who want BenchRep components (e.g. embedding evaluation) but do not want the full config or builder system. It would also be possible to add the components to the registry to enable later config-driven usage.
-
 
