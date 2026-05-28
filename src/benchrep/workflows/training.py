@@ -8,6 +8,7 @@ import torch
 from torchvision.utils import save_image
 
 from benchrep.runtime import RunContext
+from benchrep.records import save_config_records
 from benchrep.assembly import load_config
 from benchrep.assembly.schemas import parse_config
 from benchrep.assembly.builders import build_datamodule, build_model, build_trainer
@@ -17,8 +18,8 @@ def main() -> None:
     args = parse_args()
 
     # Parse config
-    config_path = Path(args.config).resolve()
-    raw_config = load_config(config_path)
+    raw_config_path = Path(args.config).resolve()
+    raw_config = load_config(raw_config_path)
     config = parse_config(raw_config)
 
     # Setup paths
@@ -33,6 +34,13 @@ def main() -> None:
     )
 
     print(f"Run outputs will be saved to: {run_context.output_dir}")
+
+    # Bookkeeping
+    save_config_records(
+        original_config_path=raw_config_path,
+        resolved_config=config,
+        config_out_dir=run_context.config_dir,
+    )
 
     # Enforce reproducibility
     L.seed_everything(

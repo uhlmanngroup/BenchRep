@@ -45,11 +45,12 @@ class RunContext:
     """
     run_name: str
     output_dir: Path
+    records_dir: Path
     config_dir: Path
     log_dir: Path
+    metadata_dir: Path
     checkpoint_dir: Path
     architecture_dir: Path
-    metadata_dir: Path
     artifact_dir: Path
 
     @classmethod
@@ -76,14 +77,18 @@ class RunContext:
             run_name = f"{base_run_name}_{suffix}"
             output_dir = output_root / run_name
 
-        config_dir = output_dir / "config"
-        log_dir = output_dir / "logs"
+        records_dir = output_dir / "records"
+
+        config_dir = records_dir / "config"
+        log_dir = records_dir / "logs"
+        metadata_dir = records_dir / "metadata"
+
         checkpoint_dir = output_dir / "checkpoints"
         architecture_dir = output_dir / "architecture"
-        metadata_dir = output_dir / "metadata"
         artifact_dir = output_dir / "artifacts"
 
         for path in [
+            records_dir,
             config_dir,
             log_dir,
             checkpoint_dir,
@@ -96,10 +101,11 @@ class RunContext:
         return cls(
             run_name=run_name,
             output_dir=output_dir,
+            records_dir=records_dir,
             config_dir=config_dir,
             log_dir=log_dir,
+            metadata_dir=metadata_dir,
             checkpoint_dir=checkpoint_dir,
             architecture_dir=architecture_dir,
-            metadata_dir=metadata_dir,
             artifact_dir=artifact_dir,
         )
