@@ -16,10 +16,12 @@ from benchrep.assembly.builders import build_datamodule, build_model, build_trai
 def main() -> None:
     args = parse_args()
 
+    # Parse config
     config_path = Path(args.config).resolve()
     raw_config = load_config(config_path)
     config = parse_config(raw_config)
 
+    # Setup paths
     model_name = f"{config.model.name}_{config.encoder.name}"
     if config.decoder is not None:
         model_name = f"{model_name}_{config.decoder.name}"
@@ -32,6 +34,7 @@ def main() -> None:
 
     print(f"Run outputs will be saved to: {run_context.output_dir}")
 
+    # Enforce reproducibility
     L.seed_everything(
         config.reproducibility.seed,
         workers=config.reproducibility.seed_workers,
@@ -42,6 +45,7 @@ def main() -> None:
             config.reproducibility.float32_matmul_precision
         )
 
+    # Build model and train
     datamodule = build_datamodule(
         dataset_config=config.dataset,
         datamodule_config=config.datamodule,
@@ -52,6 +56,7 @@ def main() -> None:
     trainer = build_trainer(trainer_config=config.trainer, logger_config=config.logger, run_context=run_context)
     trainer.fit(model, datamodule=datamodule)
 
+    # Export
     export_reconstructions(
         model=model,
         datamodule=datamodule,

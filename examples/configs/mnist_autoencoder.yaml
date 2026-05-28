@@ -7,7 +7,6 @@ run:
   output_root: outputs
   project_name: test
 
-
 dataset:
   name: mnist
   root: examples/data/mnist
