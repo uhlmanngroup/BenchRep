@@ -211,6 +211,25 @@ Note: Trainer would also be used for prediction or testing (not yet implemented)
 - In addition to the Lightning logger, which is used for training metrics and monitoring, BenchRep writes local run records under `outputs/<run_id>/records/logs/`:
   1. Console stream logs: `stderr.log` is saved by default; `stdout.log` is optional because progress-bar output can be very noisy.
   2. Run log: `benchrep_run.log` is written by the `benchrep.run` logger and contains BenchRep-controlled status messages, such as config export, component construction, training start/end, and basic sanity checks (e.g. actual instantiated object types).
+
+Example run log:
+```text
+2026-05-28 16:04:51 | INFO | Run initialized with config from: 'examples/configs/mnist_autoencoder.yaml'
+2026-05-28 16:04:51 | INFO | Run outputs will be saved to: 'outputs/test_autoencoder_mlp_mlp_20260528-160451'
+2026-05-28 16:04:51 | INFO | Saved original and resolved config files to 'outputs/test_autoencoder_mlp_mlp_20260528-160451/records/config'
+2026-05-28 16:04:51 | INFO | Global seed set to 137
+2026-05-28 16:04:51 | INFO | Building dataset...: mnist
+2026-05-28 16:04:51 | INFO | Built datamodule: dataset=mnist, datamodule=DataModule
+2026-05-28 16:04:51 | INFO | Building model components...
+2026-05-28 16:04:51 | INFO | Built encoder from config: mlp -> MLPEncoder
+2026-05-28 16:04:51 | INFO | Built decoder from config: mlp -> MLPDecoder
+2026-05-28 16:04:51 | INFO | Built optimizer factory from config: adam -> Adam
+2026-05-28 16:04:51 | INFO | Resolved reconstruction losses: mse (config) -> MSEReconstructionLoss (weight=0.8), mae (config) -> MAEReconstructionLoss (weight=0.2)
+2026-05-28 16:04:51 | INFO | Assembled model: Autoencoder
+2026-05-28 16:04:51 | INFO | Built Lightning trainer: (max_epochs=3, logger= wandb -> WandbLogger)
+2026-05-28 16:04:51 | INFO | Starting training...
+2026-05-28 16:05:02 | INFO | Finished training
+```
 ---
 
 ## Usage Modes
