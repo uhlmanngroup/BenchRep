@@ -29,7 +29,7 @@ encoder:
   name: mlp
   params:
     input_shape: [1, 28, 28]
-    latent_dim: 32
+    output_dim: 32
     hidden_dims: [512, 256]
     normalization: null
     dropout: 0.0

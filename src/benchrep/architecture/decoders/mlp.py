@@ -15,7 +15,7 @@ class MLPDecoder(BaseDecoder):
 
     Parameters
     ----------
-    latent_dim:
+    input_dim:
         Dimensionality of the latent input representation.
     output_shape:
         Shape of one reconstructed output sample, excluding the batch dimension.
@@ -36,7 +36,7 @@ class MLPDecoder(BaseDecoder):
 
     def __init__(
         self,
-        latent_dim: int,
+        input_dim: int,
         output_shape: tuple[int, ...],
         hidden_dims: Sequence[int] = (256, 512),
         activation: type[nn.Module] = nn.ReLU,
@@ -46,8 +46,8 @@ class MLPDecoder(BaseDecoder):
     ) -> None:
         super().__init__()
 
-        if latent_dim <= 0:
-            raise ValueError(f"latent_dim must be positive, got {latent_dim}.")
+        if input_dim <= 0:
+            raise ValueError(f"input_dim must be positive, got {input_dim}.")
         if len(output_shape) == 0:
             raise ValueError("output_shape must contain at least one dimension.")
         if any(dim <= 0 for dim in output_shape):
@@ -68,7 +68,7 @@ class MLPDecoder(BaseDecoder):
                 f"normalization must be one of {valid_normalizations}, got {normalization!r}."
             )
 
-        self._input_dim = latent_dim
+        self._input_dim = input_dim
         self._output_shape = tuple(output_shape)
         self.output_dim = math.prod(self._output_shape)
         self.hidden_dims = tuple(hidden_dims)
@@ -78,7 +78,7 @@ class MLPDecoder(BaseDecoder):
         self.output_activation = output_activation
 
         layers: list[nn.Module] = []
-        prev_dim = latent_dim
+        prev_dim = input_dim
 
         for hidden_dim in self.hidden_dims:
             layers.append(nn.Linear(prev_dim, hidden_dim))
@@ -113,7 +113,7 @@ class MLPDecoder(BaseDecoder):
     def forward(self, z: torch.Tensor) -> torch.Tensor:
         if z.shape[-1] != self.input_dim:
             raise ValueError(
-                f"Expected latent feature dimension {self.input_dim}, "
+                f"Expected decoder input feature dimension {self.input_dim}, "
                 f"got {z.shape[-1]}."
             )
 

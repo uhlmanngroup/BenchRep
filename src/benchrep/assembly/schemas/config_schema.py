@@ -5,6 +5,12 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from benchrep.assembly.registry import MODELS
+from benchrep.assembly.config_utils import normalize_name
+from benchrep.architecture.models import (
+    Autoencoder,
+    VAE,
+)
 
 # -------------------------
 # Generic reusable blocks
@@ -113,9 +119,14 @@ class BenchRepConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_model_requirements(self) -> "BenchRepConfig":
-        model_name = self.model.name.strip().lower().replace("-", "_")
+        model_name = normalize_name(
+            self.model.name,
+            field_name="model.name",
+        )
 
-        if model_name == "autoencoder":
+        model_cls = MODELS.get(model_name)
+
+        if model_cls is Autoencoder:
             if self.decoder is None:
                 raise ValueError("Autoencoder requires a decoder config section.")
 
@@ -123,6 +134,28 @@ class BenchRepConfig(BaseModel):
                 raise ValueError(
                     "Autoencoder requires at least one reconstruction loss under "
                     "`losses.reconstruction`."
+                )
+        elif model_cls is VAE:
+            if self.decoder is None:
+                raise ValueError("VAE requires a decoder config section.")
+
+            if "latent_dim" not in self.model.params:
+                raise ValueError("VAE requires `model.params.latent_dim`.")
+
+            latent_dim = self.model.params.get("latent_dim")
+            if not isinstance(latent_dim, int) or latent_dim <= 0:
+                raise ValueError("VAE requires `model.params.latent_dim` to be a positive integer.")
+
+            if "reconstruction" not in self.losses or not self.losses["reconstruction"]:
+                raise ValueError(
+                    "VAE requires at least one reconstruction loss under "
+                    "`losses.reconstruction`."
+                )
+
+            if "regularization" not in self.losses or not self.losses["regularization"]:
+                raise ValueError(
+                    "VAE requires at least one regularization loss under "
+                    "`losses.regularization`."
                 )
 
         return self

@@ -48,10 +48,10 @@ class Autoencoder(L.LightningModule):
     ) -> None:
         super().__init__()
 
-        if encoder.latent_dim != decoder.input_dim:
+        if encoder.output_dim != decoder.input_dim:
             raise ValueError(
-                f"encoder.latent_dim must match decoder.input_dim, got "
-                f"encoder.latent_dim={encoder.latent_dim} and "
+                f"encoder.output_dim must match decoder.input_dim, got "
+                f"encoder.output_dim={encoder.output_dim} and "
                 f"decoder.input_dim={decoder.input_dim}."
             )
 

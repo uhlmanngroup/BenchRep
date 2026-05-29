@@ -19,7 +19,7 @@ class MLPEncoder(BaseEncoder):
         Shape of one input sample, excluding the batch dimension. Inputs with more
         than two dimensions are flattened across all non-batch dimensions, e.g.
         ``[B, C, H, W] -> [B, C*H*W]``.
-    latent_dim:
+    output_dim:
         Dimensionality of the final latent representation.
     hidden_dims:
         Sizes of the hidden fully connected layers.
@@ -35,7 +35,7 @@ class MLPEncoder(BaseEncoder):
     def __init__(
         self,
         input_shape: tuple[int, ...],
-        latent_dim: int,
+        output_dim: int,
         hidden_dims: Sequence[int] = (512, 256),
         activation: type[nn.Module] = nn.ReLU,
         dropout: float = 0.0,
@@ -49,8 +49,8 @@ class MLPEncoder(BaseEncoder):
             raise ValueError(
                 f"All input_shape dimensions must be positive, got {input_shape}."
             )
-        if latent_dim <= 0:
-            raise ValueError(f"latent_dim must be positive, got {latent_dim}.")
+        if output_dim <= 0:
+            raise ValueError(f"output_dim must be positive, got {output_dim}.")
         if any(dim <= 0 for dim in hidden_dims):
             raise ValueError(f"All hidden_dims must be positive, got {hidden_dims}.")
         if not 0.0 <= dropout < 1.0:
@@ -67,7 +67,7 @@ class MLPEncoder(BaseEncoder):
 
         self._input_shape = tuple(input_shape)
         self.input_dim = math.prod(self._input_shape)
-        self._latent_dim = latent_dim
+        self._output_dim = output_dim
         self.hidden_dims = tuple(hidden_dims)
         self.normalization = normalization
         self.dropout = dropout
@@ -91,7 +91,7 @@ class MLPEncoder(BaseEncoder):
 
             prev_dim = hidden_dim
 
-        layers.append(nn.Linear(prev_dim, latent_dim))
+        layers.append(nn.Linear(prev_dim, output_dim))
 
         self.net = nn.Sequential(*layers)
 
@@ -100,8 +100,8 @@ class MLPEncoder(BaseEncoder):
         return self._input_shape
 
     @property
-    def latent_dim(self) -> int:
-        return self._latent_dim
+    def output_dim(self) -> int:
+        return self._output_dim
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if x.ndim > 2:

@@ -1,5 +1,3 @@
-#TODO: add head builder and edit config to include heads
-
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
@@ -12,6 +10,7 @@ import lightning as L
 from benchrep.records import get_run_logger
 from benchrep.architecture.encoders import BaseEncoder
 from benchrep.architecture.decoders import BaseDecoder
+from benchrep.architecture.heads import GaussianVariationalHead
 from benchrep.architecture.models import (
     Autoencoder,
     VAE,
@@ -92,6 +91,7 @@ def build_model(config: BenchRepConfig) -> L.LightningModule:
             encoder=config.encoder,
             decoder=config.decoder,
             optimizer=config.optimizer,
+            latent_dim=config.model.params["latent_dim"],
             reconstruction_losses=config.losses["reconstruction"],
             regularization_losses=config.losses["regularization"],
         )
@@ -127,7 +127,7 @@ def build_autoencoder(
 
     if isinstance(decoder, DecoderConfig):
         decoder_name = decoder.name
-        decoder = _build_decoder(decoder, latent_dim=encoder.latent_dim)
+        decoder = _build_decoder(decoder, input_dim=encoder.output_dim)
         run_log.info("Built decoder from config: %s -> %s",
                      decoder_name,
                      type(decoder).__name__)
@@ -175,6 +175,7 @@ def build_vae(
             OptimizerConfig |
             Callable[[Iterable[nn.Parameter]], torch.optim.Optimizer]
     ),
+    latent_dim: int,
     reconstruction_losses: dict[str, LossTermConfig | LossTerm],
     regularization_losses: dict[str, LossTermConfig | LossTerm],
 ) -> VAE:
@@ -190,7 +191,7 @@ def build_vae(
 
     if isinstance(decoder, DecoderConfig):
         decoder_name = decoder.name
-        decoder = _build_decoder(decoder, latent_dim=encoder.latent_dim)
+        decoder = _build_decoder(decoder, input_dim=latent_dim)
         run_log.info("Built decoder from config: %s -> %s",
                      decoder_name,
                      type(decoder).__name__)
@@ -209,6 +210,11 @@ def build_vae(
         loss_name: "pre-built" if isinstance(loss_spec, LossTerm) else "config"
         for loss_name, loss_spec in reconstruction_losses.items()
     }
+
+    variational_head = GaussianVariationalHead(
+        in_features=encoder.output_dim,
+        latent_dim=latent_dim,
+    )
 
     reconstruction_losses = _build_reconstruction_losses(reconstruction_losses)
     run_log.info(
@@ -244,6 +250,7 @@ def build_vae(
     return VAE(
         encoder=encoder,
         decoder=decoder,
+        variational_head=variational_head,
         reconstruction_losses=reconstruction_losses,
         regularization_losses=regularization_losses,
         optimizer_factory=optimizer_factory,
@@ -259,16 +266,16 @@ def _build_encoder(encoder_config: EncoderConfig) -> BaseEncoder:
     return ENCODERS.create(encoder_name, **encoder_config.params)
 
 
-def _build_decoder(decoder_config: DecoderConfig, latent_dim: int) -> BaseDecoder:
-    """Build a decoder and wire its latent input dimension from the encoder."""
+def _build_decoder(decoder_config: DecoderConfig, input_dim: int) -> BaseDecoder:
+    """Build a decoder and set its expected input dimensionality."""
     decoder_name = normalize_name(
         decoder_config.name,
         field_name="config.decoder.name",
     )
     decoder_params = dict(decoder_config.params)
 
-    # Wire decoder input dimensionality from the encoder latent representation.
-    decoder_params["latent_dim"] = latent_dim
+    # Wire decoder input dimensionality from the supplied input dimension.
+    decoder_params["input_dim"] = input_dim
 
     return DECODERS.create(decoder_name, **decoder_params)
 

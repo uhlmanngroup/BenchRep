@@ -78,11 +78,10 @@ class Registry:
 
     @staticmethod
     def _normalize_key(key: str) -> str:
-        # Standardize registry keys so config names are case- and whitespace-tolerant.
         if not isinstance(key, str):
             raise TypeError(f"Registry keys must be strings, got {type(key).__name__}.")
 
-        key = key.lower().strip()
+        key = key.lower().strip().replace("-", "_")
 
         if not key:
             raise ValueError("Registry key must be a non-empty string.")

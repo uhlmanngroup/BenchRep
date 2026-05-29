@@ -19,8 +19,8 @@ class BaseEncoder(nn.Module, ABC):
 
     @property
     @abstractmethod
-    def latent_dim(self) -> int:
-        """Dimensionality of the latent representation."""
+    def output_dim(self) -> int:
+        """Size of the encoder's final output vector after any flattening or pooling."""
         raise NotImplementedError
 
     @property

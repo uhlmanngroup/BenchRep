@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from typing import Any
 from typing_extensions import TypedDict
 
 import lightning as L
@@ -28,7 +27,8 @@ class VAEOutput(TypedDict):
 class VAE(L.LightningModule):
     """Standard Gaussian variational autoencoder.
 
-    The model follows the standard VAE structure:
+    The model follows the standard VAE structure and uses the Autoencoder
+    batch contract, ``AutoencoderBatch``:
 
         encoder -> GaussianVariationalHead -> decoder
 
@@ -44,6 +44,7 @@ class VAE(L.LightningModule):
         self,
         encoder: BaseEncoder,
         decoder: BaseDecoder,
+        variational_head: GaussianVariationalHead,
         reconstruction_losses: dict[str, LossTerm],
         regularization_losses: dict[str, LossTerm],
         optimizer_factory: Callable[[Iterable[nn.Parameter]], torch.optim.Optimizer],
@@ -58,14 +59,18 @@ class VAE(L.LightningModule):
                     f"decoder.output_shape={decoder.output_shape}."
                 )
 
+        if decoder.input_dim != variational_head.latent_dim:
+            raise ValueError(
+                f"decoder.input_dim must match variational_head.latent_dim, got "
+                f"decoder.input_dim={decoder.input_dim} and "
+                f"variational_head.latent_dim={variational_head.latent_dim}."
+            )
+
         self.encoder = encoder
         self.decoder = decoder
         self.optimizer_factory = optimizer_factory
 
-        self.variational_head = GaussianVariationalHead(
-            in_features=encoder.latent_dim,
-            latent_dim=decoder.input_dim,
-        )
+        self.variational_head = variational_head
 
         if not reconstruction_losses:  # fail fast
             raise ValueError("VAE requires at least one reconstruction loss.")
@@ -94,6 +99,7 @@ class VAE(L.LightningModule):
             ignore=[
                 "encoder",
                 "decoder",
+                "variational_head",
                 "reconstruction_losses",
                 "regularization_losses",
                 "optimizer_factory",
