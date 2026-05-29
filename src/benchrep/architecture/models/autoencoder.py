@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from typing import Any
-from typing_extensions import TypedDict
+from typing_extensions import TypedDict, NotRequired
 
 import lightning as L
 import torch
@@ -13,10 +12,28 @@ from benchrep.architecture.encoders.base import BaseEncoder
 from benchrep.architecture.losses.base import LossTerm
 
 
+class AutoencoderBatch(TypedDict):
+    """Batch contract for autoencoder-style reconstruction models.
+
+    Required:
+        x:
+            Input tensor to reconstruct.
+
+    Optional:
+        sample_id:
+            Per-sample identifiers used to track outputs during inference or
+            downstream evaluation.
+        group:
+            Per-sample group/batch/condition labels used for annotation or
+            evaluation.
+    """
+    x: torch.Tensor
+    sample_id: NotRequired[torch.Tensor | list[int] | list[str]]
+    group: NotRequired[torch.Tensor | list[int] | list[str]]
+
+
 class AutoencoderOutput(TypedDict):
-    """
-    Forward output returned by ``Autoencoder``.
-    """
+    """Forward output returned by ``Autoencoder``."""
     embedding: torch.Tensor
     reconstruction: torch.Tensor
 
@@ -85,19 +102,19 @@ class Autoencoder(L.LightningModule):
     def decode(self, z: torch.Tensor) -> torch.Tensor:
         return self.decoder(z)
 
-    def training_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
+    def training_step(self, batch: AutoencoderBatch, batch_idx: int) -> torch.Tensor:
         return self._compute_loss_step(batch, stage="train")
 
-    def validation_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
+    def validation_step(self, batch: AutoencoderBatch, batch_idx: int) -> torch.Tensor:
         return self._compute_loss_step(batch, stage="val")
 
-    def test_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
+    def test_step(self, batch: AutoencoderBatch, batch_idx: int) -> torch.Tensor:
         return self._compute_loss_step(batch, stage="test")
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
         return self.optimizer_factory(self.parameters())
 
-    def _compute_loss_step(self, batch: Any, stage: str) -> torch.Tensor:
+    def _compute_loss_step(self, batch: AutoencoderBatch, stage: str) -> torch.Tensor:
         x = self._get_input_from_batch(batch)
         output = self(x)
         reconstruction = output["reconstruction"]
@@ -108,7 +125,7 @@ class Autoencoder(L.LightningModule):
         for loss_name, loss_term in self.reconstruction_losses.items():
             raw_loss = loss_term.loss(
                 reconstruction=reconstruction,
-                target=x
+                target=x,
             )
             weighted_loss_value = loss_term.weight * raw_loss
             total_loss = total_loss + weighted_loss_value
@@ -140,7 +157,7 @@ class Autoencoder(L.LightningModule):
         return total_loss
 
     @staticmethod
-    def _get_input_from_batch(batch: Any) -> torch.Tensor:
+    def _get_input_from_batch(batch: AutoencoderBatch) -> torch.Tensor:
         # BenchRep datamodules/datasets should adapt external data sources into this
         # internal batch contract. For autoencoders, the reconstruction target is
         # the input itself, provided under key 'x'.

@@ -1,3 +1,11 @@
-from benchrep.architecture.models.autoencoder import Autoencoder
+from benchrep.architecture.models.autoencoder import (
+    AutoencoderBatch,
+    AutoencoderOutput,
+    Autoencoder,
+)
 
-__all__ = ["Autoencoder"]
+__all__ = [
+    "AutoencoderBatch",
+    "AutoencoderOutput",
+    "Autoencoder",
+]
