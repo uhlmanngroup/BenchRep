@@ -5,7 +5,7 @@ reproducibility:
 
 run:
   output_root: outputs
-  project_name: test
+  project_name: testing_vae
 
 dataset:
   name: mnist
@@ -23,7 +23,7 @@ datamodule:
   drop_last: false
 
 model:
-  name: autoencoder
+  name: vae
 
 encoder:
   name: mlp
@@ -50,6 +50,12 @@ losses:
         reduction: mean
     mae:
       weight: 0.2
+      params:
+        reduction: mean
+
+  regularization:
+    gaussian_kld:
+      weight: 0.0001
       params:
         reduction: mean
 
