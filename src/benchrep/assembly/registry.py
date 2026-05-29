@@ -20,7 +20,10 @@ from benchrep.architecture.losses import (
     MAEReconstructionLoss,
     GaussianKLDivergenceLoss,
 )
-from benchrep.architecture.models import Autoencoder
+from benchrep.architecture.models import (
+    Autoencoder,
+    VAE,
+)
 
 
 class Registry:
@@ -107,7 +110,14 @@ ENCODERS.register("mlp", MLPEncoder)
 
 DECODERS.register("mlp", MLPDecoder)
 
-MODELS.register("autoencoder", Autoencoder)
+MODELS.register("autoencoder", Autoencoder, "ae")
+MODELS.register(
+    "vae",
+    VAE,
+    "variational_autoencoder",
+    "variational_ae",
+    "gaussian_vae",
+)
 
 RECONSTRUCTION_LOSSES.register("mse", MSEReconstructionLoss, "l2")
 RECONSTRUCTION_LOSSES.register("mae", MAEReconstructionLoss, "l1")
