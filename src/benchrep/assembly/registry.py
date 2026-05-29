@@ -18,6 +18,7 @@ from benchrep.architecture.encoders import MLPEncoder
 from benchrep.architecture.losses import (
     MSEReconstructionLoss,
     MAEReconstructionLoss,
+    GaussianKLDivergenceLoss,
 )
 from benchrep.architecture.models import Autoencoder
 
@@ -93,6 +94,7 @@ ENCODERS = Registry("encoder")
 DECODERS = Registry("decoder")
 MODELS = Registry("model")
 RECONSTRUCTION_LOSSES = Registry("reconstruction loss")
+REGULARIZATION_LOSSES = Registry("regularization loss")
 OPTIMIZERS = Registry("optimizer")
 LOGGERS = Registry("logger")
 
@@ -109,6 +111,18 @@ MODELS.register("autoencoder", Autoencoder)
 
 RECONSTRUCTION_LOSSES.register("mse", MSEReconstructionLoss, "l2")
 RECONSTRUCTION_LOSSES.register("mae", MAEReconstructionLoss, "l1")
+
+REGULARIZATION_LOSSES.register(
+    "gaussian_kl",
+    GaussianKLDivergenceLoss,
+    "kl",
+    "kld",
+    "kldiv",
+    "kl_div",
+    "gaussian_kld",
+    "gaussian_kldiv",
+    "gaussian_kl_div",
+)
 
 OPTIMIZERS.register("adam", torch.optim.Adam)
 OPTIMIZERS.register("adamw", torch.optim.AdamW)

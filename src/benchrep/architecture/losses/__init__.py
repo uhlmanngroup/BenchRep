@@ -4,10 +4,12 @@ from benchrep.architecture.losses.reconstruction import (
     MSEReconstructionLoss,
     MAEReconstructionLoss,
 )
+from benchrep.architecture.losses.regularization import GaussianKLDivergenceLoss
 
 __all__ = [
     "LossTerm",
     "BaseReconstructionLoss",
     "MSEReconstructionLoss",
     "MAEReconstructionLoss",
+    "GaussianKLDivergenceLoss",
 ]
