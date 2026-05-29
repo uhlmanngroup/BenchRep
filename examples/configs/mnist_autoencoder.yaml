@@ -69,7 +69,7 @@ trainer:
 
 logger:
   name: wandb # logger backend: wandb, tensorboard, csv, mlflow
-  credential_path: /home/qptero/gen_credentials/keys/wandb_benchrep_api_key # null = assume user logged in / env var set, otherwise path to api_key txt file
+  credential_path: # null = assume user logged in / env var set, otherwise path to api_key txt file
   params: # backend-specific kwargs passed to the lightning logger
     project: benchrep
     name: test
