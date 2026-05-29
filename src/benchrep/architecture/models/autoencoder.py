@@ -74,24 +74,29 @@ class Autoencoder(L.LightningModule):
         return self.decoder(z)
 
     def training_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
-        return self._run_reconstruction_step(batch, stage="train")
+        return self._compute_loss_step(batch, stage="train")
 
     def validation_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
-        return self._run_reconstruction_step(batch, stage="val")
+        return self._compute_loss_step(batch, stage="val")
 
     def test_step(self, batch: Any, batch_idx: int) -> torch.Tensor:
-        return self._run_reconstruction_step(batch, stage="test")
+        return self._compute_loss_step(batch, stage="test")
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
         return self.optimizer_factory(self.parameters())
 
-    def _run_reconstruction_step(self, batch: Any, stage: str) -> torch.Tensor:
+    def _compute_loss_step(self, batch: Any, stage: str) -> torch.Tensor:
         x = self._get_input_from_batch(batch)
         reconstruction = self(x)
         total_loss = torch.zeros((), device=x.device, dtype=x.dtype)
 
+        # Custom reconstruction losses should inherit from BaseReconstructionLoss,
+        # or at least implement forward(reconstruction, target).
         for loss_name, loss_term in self.reconstruction_losses.items():
-            raw_loss = loss_term.loss(reconstruction, x)
+            raw_loss = loss_term.loss(
+                reconstruction=reconstruction,
+                target=x
+            )
             weighted_loss_value = loss_term.weight * raw_loss
             total_loss = total_loss + weighted_loss_value
 
