@@ -1,3 +1,5 @@
+#TODO: add head builder and edit config to include heads
+
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable

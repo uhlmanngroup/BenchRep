@@ -18,7 +18,7 @@ dataset / datamodule / model / loss / optimizer / trainer
 Lightning training run
 ```
 
-Currently, vertical slice is nearly complete for MLP autoencoder runs on MNIST with two reconstruction losses. The same structure is intended to generalize to VAEs, contrastive models, supervised models, more complex encoder/decoder archs, additional dataset types (individual samples, and OME-Zarr), other losses, and thorough downstream evaluation.
+Currently, vertical slice is nearly complete for MNIST runs with `Autoencoder` and `VAE` with two reconstruction losses and KL-divergence. The same structure is intended to generalize to contrastive models, supervised models, more complex encoder/decoder archs, additional dataset types (individual samples, and OME-Zarr), other losses, and thorough downstream evaluation.
 
 ---
 
@@ -78,7 +78,7 @@ trainer: ...
 logger: ...
 ```
 
-The validated config objects are then passed into the builder layer.
+Everything, including model names, is resolved through the registry and the validated config objects are then passed into the builder layer.
 
 ---
 
@@ -127,22 +127,23 @@ The model receives this optimizer factory and uses it during Lightning’s optim
 
 ### Model builder
 
-The model builder is in the top level of the hierarchy. Based on the model name from the config, it calls a model-specific builder (currently only the autoencoder is supported).
+The model builder is in the top level of the hierarchy. Based on the model name (aliases allowed) from the config, it calls a model-specific builder (currently only `Autoencoder` and `VAE` are supported).
 
 ```text
 BenchRepConfig
     ↓
 build_model(...)
     ↓
+resolve model name / alias through registry
 dispatch by config.model.name
 pass encoder / decoder / optimizer / loss configs, or any pre-built components
     ↓
-build_autoencoder(...): calls Encoder, Decoder, Optimizer, Losses builders and/or assembles if pre-built
+build_autoencoder(...) / build_vae(...): calls Encoder, Decoder, Optimizer, Losses builders and/or assembles if pre-built
     ↓
-Autoencoder model instance
+model-specific LightningModule instance
 ```
 
-The model-specific builder is responsible for assembling the full model from its components.
+The model-specific builder is responsible for assembling the full model from its components. Builders are intended to support mixed usage: using validated config objects, already-instantiated Python objects, or any combination thereof.
 
 ---
 
@@ -162,23 +163,24 @@ Full Autoencoder LightningModule
 
 The encoder and decoder are selected and constructed based on the config and registry.
 
-The loss system supports multiple weighted loss terms. Loss terms are looked up through the registry, and packed into a higher-level loss object that the model can call during training.
+The loss system supports multiple weighted loss terms, even under a given loss role (e.g. MSE + MAE for reconstruction, and KLD for regularization with global weight coefficients). Loss modules are looked up through the respective registry, instantiated, wrapped in lightweight `LossTerm` dataclasses with their weights, packed in role-specific dictionaries of `LossTerm` objects, and passed to the model. 
 
-Loss building as an example:
+Loss building as an example (VAE):
 
 ```text
-LossesConfig
+LossTermConfig
     ↓
-loss registry: RECONSTRUCTION_LOSSES.create(loss_name, ...)
+loss registry: 
+    RECONSTRUCTION_LOSSES.create(loss_name, ...)
+    REGULARIZATION_LOSSES.create(loss_name, ...)
     ↓
-indiv. loss functions/modules
+indiv. instantiated loss modules
     ↓
-LossTerm objects: LossTerm(loss, weight)
+LossTerm(loss, weight), LossTerm(loss, weight)
     ↓
-combined weighted loss object
+dict[str, LossTerm] passed to the model as reconstruction_losses
+dict[str, LossTerm] passed to the model as regularization_losses
 ```
-
-Note: it's possible to have more than one loss under the same model role (e.g. reconstruction), each with its own weight.
 
 ---
 
@@ -214,21 +216,22 @@ Note: Trainer would also be used for prediction or testing (not yet implemented)
 
 Example run log:
 ```text
-2026-05-28 16:04:51 | INFO | Run initialized with config from: 'examples/configs/mnist_autoencoder.yaml'
-2026-05-28 16:04:51 | INFO | Run outputs will be saved to: 'outputs/test_autoencoder_mlp_mlp_20260528-160451'
-2026-05-28 16:04:51 | INFO | Saved original and resolved config files to 'outputs/test_autoencoder_mlp_mlp_20260528-160451/records/config'
-2026-05-28 16:04:51 | INFO | Global seed set to 137
-2026-05-28 16:04:51 | INFO | Building dataset...: mnist
-2026-05-28 16:04:51 | INFO | Built datamodule: dataset=mnist, datamodule=DataModule
-2026-05-28 16:04:51 | INFO | Building model components...
-2026-05-28 16:04:51 | INFO | Built encoder from config: mlp -> MLPEncoder
-2026-05-28 16:04:51 | INFO | Built decoder from config: mlp -> MLPDecoder
-2026-05-28 16:04:51 | INFO | Built optimizer factory from config: adam -> Adam
-2026-05-28 16:04:51 | INFO | Resolved reconstruction losses: mse (config) -> MSEReconstructionLoss (weight=0.8), mae (config) -> MAEReconstructionLoss (weight=0.2)
-2026-05-28 16:04:51 | INFO | Assembled model: Autoencoder
-2026-05-28 16:04:51 | INFO | Built Lightning trainer: (max_epochs=3, logger= wandb -> WandbLogger)
-2026-05-28 16:04:51 | INFO | Starting training...
-2026-05-28 16:05:02 | INFO | Finished training
+2026-05-29 15:27:46 | INFO | Run initialized with config from: 'examples/configs/mnist_vae.yaml'
+2026-05-29 15:27:46 | INFO | Run outputs will be saved to: 'outputs/testing_vae_mlp_mlp_20260529-152746'
+2026-05-29 15:27:46 | INFO | Saved original and resolved config files to 'outputs/testing_vae_vae_mlp_mlp_20260529-152746/records/config'
+2026-05-29 15:27:46 | INFO | Global seed set to 137
+2026-05-29 15:27:46 | INFO | Building dataset...: mnist
+2026-05-29 15:27:46 | INFO | Built datamodule: dataset=mnist, datamodule=DataModule
+2026-05-29 15:27:46 | INFO | Building model components...
+2026-05-29 15:27:46 | INFO | Built encoder from config: mlp -> MLPEncoder
+2026-05-29 15:27:46 | INFO | Built decoder from config: mlp -> MLPDecoder
+2026-05-29 15:27:46 | INFO | Built optimizer factory from config: adam -> Adam
+2026-05-29 15:27:46 | INFO | Resolved reconstruction losses: mse (config) -> MSEReconstructionLoss (weight=0.8), mae (config) -> MAEReconstructionLoss (weight=0.2)
+2026-05-29 15:27:46 | INFO | Resolved regularization losses: gaussian_kld (config) -> GaussianKLDivergenceLoss (weight=0.0001)
+2026-05-29 15:27:46 | INFO | Assembled model: VAE
+2026-05-29 15:27:46 | INFO | Built Lightning trainer: (max_epochs=3, logger= wandb -> WandbLogger)
+2026-05-29 15:27:46 | INFO | Starting training...
+2026-05-29 15:27:56 | INFO | Finished training
 ```
 ---
 
@@ -253,11 +256,12 @@ Automated underlying workflow:
 4. Build the datamodule
 5. Build the optimizer factory
 6. Build the model
+    - resolve the model name or alias through the registry
     - dispatch to the autoencoder builder
     - build encoder
     - build decoder
-    - build weighted loss object
-    - instantiate the full autoencoder model
+    - build role-specific loss dicts
+    - instantiate the full model
 7. Build the trainer and logger
 8. Run trainer.fit(model, datamodule)
 ```
