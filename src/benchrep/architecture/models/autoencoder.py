@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from typing import Any
+from typing_extensions import TypedDict
 
 import lightning as L
 import torch
@@ -10,6 +11,14 @@ from torch import nn
 from benchrep.architecture.decoders.base import BaseDecoder
 from benchrep.architecture.encoders.base import BaseEncoder
 from benchrep.architecture.losses.base import LossTerm
+
+
+class AutoencoderOutput(TypedDict):
+    """
+    Forward output returned by ``Autoencoder``.
+    """
+    embedding: torch.Tensor
+    reconstruction: torch.Tensor
 
 
 class Autoencoder(L.LightningModule):
@@ -62,10 +71,13 @@ class Autoencoder(L.LightningModule):
             ]
         )
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor) -> AutoencoderOutput:
         z = self.encode(x)
         reconstruction = self.decode(z)
-        return reconstruction
+        return {
+            "embedding": z,
+            "reconstruction": reconstruction,
+        }
 
     def encode(self, x: torch.Tensor) -> torch.Tensor:
         return self.encoder(x)
@@ -87,7 +99,8 @@ class Autoencoder(L.LightningModule):
 
     def _compute_loss_step(self, batch: Any, stage: str) -> torch.Tensor:
         x = self._get_input_from_batch(batch)
-        reconstruction = self(x)
+        output = self(x)
+        reconstruction = output["reconstruction"]
         total_loss = torch.zeros((), device=x.device, dtype=x.dtype)
 
         # Custom reconstruction losses should inherit from BaseReconstructionLoss,

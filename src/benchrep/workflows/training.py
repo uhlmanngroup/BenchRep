@@ -115,7 +115,8 @@ def export_reconstructions(
 
     model.eval()
     with torch.no_grad():
-        reconstruction = model(x)
+        output = model(x)
+        reconstruction = output["reconstruction"]
 
     comparison = torch.cat(
         [
