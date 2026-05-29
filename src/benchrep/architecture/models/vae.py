@@ -1,0 +1,228 @@
+from __future__ import annotations
+
+from collections.abc import Callable, Iterable
+from typing import Any
+from typing_extensions import TypedDict
+
+import lightning as L
+import torch
+from torch import nn
+
+from benchrep.architecture.models.autoencoder import AutoencoderBatch
+from benchrep.architecture.decoders.base import BaseDecoder
+from benchrep.architecture.encoders.base import BaseEncoder
+from benchrep.architecture.heads.variational import GaussianVariationalHead
+from benchrep.architecture.losses.base import LossTerm
+
+
+class VAEOutput(TypedDict):
+    """Forward output returned by ``VAE``."""
+
+    embedding: torch.Tensor
+    reconstruction: torch.Tensor
+    z: torch.Tensor
+    z_mu: torch.Tensor
+    z_logvar: torch.Tensor
+
+
+class VAE(L.LightningModule):
+    """Standard Gaussian variational autoencoder.
+
+    The model follows the standard VAE structure:
+
+        encoder -> GaussianVariationalHead -> decoder
+
+    The encoder produces deterministic features. The variational head maps those
+    features to a diagonal Gaussian posterior, samples a latent vector with the
+    reparameterization trick, and the decoder reconstructs the input from the
+    sampled latent vector.
+
+    The deterministic embedding exposed for downstream evaluation is ``z_mu``.
+    """
+
+    def __init__(
+        self,
+        encoder: BaseEncoder,
+        decoder: BaseDecoder,
+        reconstruction_losses: dict[str, LossTerm],
+        regularization_losses: dict[str, LossTerm],
+        optimizer_factory: Callable[[Iterable[nn.Parameter]], torch.optim.Optimizer],
+    ) -> None:
+        super().__init__()
+
+        if encoder.input_shape is not None and decoder.output_shape is not None:
+            if encoder.input_shape != decoder.output_shape:
+                raise ValueError(
+                    f"encoder.input_shape must match decoder.output_shape, got "
+                    f"encoder.input_shape={encoder.input_shape} and "
+                    f"decoder.output_shape={decoder.output_shape}."
+                )
+
+        self.encoder = encoder
+        self.decoder = decoder
+        self.optimizer_factory = optimizer_factory
+
+        self.variational_head = GaussianVariationalHead(
+            in_features=encoder.latent_dim,
+            latent_dim=decoder.input_dim,
+        )
+
+        if not reconstruction_losses:  # fail fast
+            raise ValueError("VAE requires at least one reconstruction loss.")
+
+        if not regularization_losses:  # fail fast
+            raise ValueError("VAE requires at least one regularization loss.")
+
+        for loss_name, loss_term in reconstruction_losses.items():
+            if loss_term.weight < 0:
+                raise ValueError(
+                    f"Reconstruction loss {loss_name!r} has negative weight "
+                    f"{loss_term.weight}."
+                )
+
+        for loss_name, loss_term in regularization_losses.items():
+            if loss_term.weight < 0:
+                raise ValueError(
+                    f"Regularization loss {loss_name!r} has negative weight "
+                    f"{loss_term.weight}."
+                )
+
+        self.reconstruction_losses = reconstruction_losses
+        self.regularization_losses = regularization_losses
+
+        self.save_hyperparameters(
+            ignore=[
+                "encoder",
+                "decoder",
+                "reconstruction_losses",
+                "regularization_losses",
+                "optimizer_factory",
+            ]
+        )
+
+    def forward(self, x: torch.Tensor) -> VAEOutput:
+        encoder_features = self.encode(x)
+        latent = self.variational_head(encoder_features)
+        reconstruction = self.decode(latent.z)
+
+        return {
+            "embedding": latent.z_mu,
+            "reconstruction": reconstruction,
+            "z": latent.z,
+            "z_mu": latent.z_mu,
+            "z_logvar": latent.z_logvar,
+        }
+
+    def encode(self, x: torch.Tensor) -> torch.Tensor:
+        return self.encoder(x)
+
+    def decode(self, z: torch.Tensor) -> torch.Tensor:
+        return self.decoder(z)
+
+    def training_step(self, batch: AutoencoderBatch, batch_idx: int) -> torch.Tensor:
+        return self._compute_loss_step(batch, stage="train")
+
+    def validation_step(self, batch: AutoencoderBatch, batch_idx: int) -> torch.Tensor:
+        return self._compute_loss_step(batch, stage="val")
+
+    def test_step(self, batch: AutoencoderBatch, batch_idx: int) -> torch.Tensor:
+        return self._compute_loss_step(batch, stage="test")
+
+    def configure_optimizers(self) -> torch.optim.Optimizer:
+        return self.optimizer_factory(self.parameters())
+
+    def _compute_loss_step(self, batch: AutoencoderBatch, stage: str) -> torch.Tensor:
+        x = self._get_input_from_batch(batch)
+        output = self(x)
+
+        total_loss = torch.zeros((), device=x.device, dtype=x.dtype)
+
+        # The VAE owns tensor routing for reconstruction losses. Anything
+        # registered under losses.reconstruction must follow the
+        # BaseReconstructionLoss interface: forward(reconstruction, target).
+        for loss_name, loss_term in self.reconstruction_losses.items():
+            raw_loss = loss_term.loss(
+                reconstruction=output["reconstruction"],
+                target=x,
+            )
+            weighted_loss_value = loss_term.weight * raw_loss
+            total_loss = total_loss + weighted_loss_value
+
+            self.log(
+                f"{stage}/reconstruction/{loss_name}",
+                raw_loss,
+                on_step=stage == "train",
+                on_epoch=True,
+                prog_bar=False,
+            )
+
+            self.log(
+                f"{stage}/reconstruction/{loss_name}_weighted",
+                weighted_loss_value,
+                on_step=stage == "train",
+                on_epoch=True,
+                prog_bar=False,
+            )
+
+        # Standard Gaussian VAE regularization losses should follow the
+        # GaussianKLDivergenceLoss interface: forward(z_mu, z_logvar).
+        for loss_name, loss_term in self.regularization_losses.items():
+            raw_loss = loss_term.loss(
+                z_mu=output["z_mu"],
+                z_logvar=output["z_logvar"],
+            )
+            weighted_loss_value = loss_term.weight * raw_loss
+            total_loss = total_loss + weighted_loss_value
+
+            self.log(
+                f"{stage}/regularization/{loss_name}",
+                raw_loss,
+                on_step=stage == "train",
+                on_epoch=True,
+                prog_bar=False,
+            )
+
+            self.log(
+                f"{stage}/regularization/{loss_name}_weighted",
+                weighted_loss_value,
+                on_step=stage == "train",
+                on_epoch=True,
+                prog_bar=False,
+            )
+
+        self.log(
+            f"{stage}/loss",
+            total_loss,
+            on_step=stage == "train",
+            on_epoch=True,
+            prog_bar=True,
+        )
+
+        return total_loss
+
+    @staticmethod
+    def _get_input_from_batch(batch: AutoencoderBatch) -> torch.Tensor:
+        # BenchRep datamodules/datasets should adapt external data sources into
+        # this internal batch contract. For VAEs, the reconstruction target is
+        # the input itself, provided under key 'x'.
+        if not isinstance(batch, dict):
+            raise TypeError(
+                "VAE expects batches to be dictionaries with an 'x' key. "
+                f"Got batch type {type(batch).__name__}."
+            )
+
+        if "x" not in batch:
+            raise KeyError(
+                "VAE expected batch to contain key 'x'. "
+                f"Available keys: {tuple(batch.keys())}."
+            )
+
+        x = batch["x"]
+
+        if not isinstance(x, torch.Tensor):
+            raise TypeError(
+                "batch['x'] must be a torch.Tensor, "
+                f"got {type(x).__name__}."
+            )
+
+        return x
