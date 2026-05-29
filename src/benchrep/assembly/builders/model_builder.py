@@ -18,7 +18,7 @@ from benchrep.assembly.schemas import (
     BenchRepConfig,
     DecoderConfig,
     EncoderConfig,
-    LossesConfig,
+    LossTermConfig,
     OptimizerConfig,
 )
 from benchrep.assembly.registry import (
@@ -89,7 +89,7 @@ def build_autoencoder(
             OptimizerConfig |
             Callable[[Iterable[nn.Parameter]], torch.optim.Optimizer]
     ),
-    reconstruction_losses: dict[str, LossesConfig | LossTerm],
+    reconstruction_losses: dict[str, LossTermConfig | LossTerm],
 ) -> Autoencoder:
     run_log = get_run_logger()
 
@@ -170,7 +170,7 @@ def _build_decoder(decoder_config: DecoderConfig, latent_dim: int) -> BaseDecode
 
 
 def _build_reconstruction_losses(
-    reconstruction_losses: dict[str, LossesConfig | LossTerm],
+    reconstruction_losses: dict[str, LossTermConfig | LossTerm],
 ) -> dict[str, LossTerm]:
     loss_terms: dict[str, LossTerm] = {}
 

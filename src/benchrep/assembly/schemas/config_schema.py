@@ -40,7 +40,7 @@ class DecoderConfig(NamedConfig):
 # -------------------------
 # Optimization/loss configuration
 # -------------------------
-class LossesConfig(BaseModel):
+class LossTermConfig(BaseModel):
     weight: float = 1.0
     params: dict[str, Any] = Field(default_factory=dict)
 
@@ -104,7 +104,7 @@ class BenchRepConfig(BaseModel):
     model: ModelConfig
     encoder: EncoderConfig
     decoder: DecoderConfig | None = None
-    losses: dict[str, dict[str, LossesConfig]] = Field(default_factory=dict)
+    losses: dict[str, dict[str, LossTermConfig]] = Field(default_factory=dict)
     optimizer: OptimizerConfig
     dataset: DatasetConfig
     datamodule: DataModuleConfig = Field(default_factory=DataModuleConfig)
