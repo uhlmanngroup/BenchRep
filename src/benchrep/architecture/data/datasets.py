@@ -99,7 +99,7 @@ class MNISTDataset(BaseDataset):
 
         sample = {
             "x": x,
-            "group": y,
+            "label": y,
         }
 
         return self.validate_sample(sample)

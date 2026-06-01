@@ -23,13 +23,17 @@ class AutoencoderBatch(TypedDict):
         sample_id:
             Per-sample identifiers used to track outputs during inference or
             downstream evaluation.
-        group:
-            Per-sample group/batch/condition labels used for annotation or
-            evaluation.
+        label:
+            Per-sample labels used for annotation or
+            evaluation (e.g. cell type).
+        metadata:
+            Additional per-sample metadata, e.g. patient_id, batch,
+            treatment_group, or timepoint.
     """
     x: torch.Tensor
     sample_id: NotRequired[torch.Tensor | list[int] | list[str]]
-    group: NotRequired[torch.Tensor | list[int] | list[str]]
+    label: NotRequired[torch.Tensor | list[int] | list[str]]
+    metadata: NotRequired[dict[str, torch.Tensor | list[int] | list[str]]]
 
 
 class AutoencoderOutput(TypedDict):
