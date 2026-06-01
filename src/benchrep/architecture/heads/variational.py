@@ -26,7 +26,7 @@ class GaussianVariationalHeadOutput:
     """Output container for a variational latent head.
 
     Attributes:
-        z:
+        z_sample:
             Sampled latent vector produced by the reparameterization trick.
         z_mu:
             Mean of the approximate posterior distribution.
@@ -34,7 +34,7 @@ class GaussianVariationalHeadOutput:
             Log-variance of the approximate posterior distribution.
     """
 
-    z: torch.Tensor
+    z_sample: torch.Tensor
     z_mu: torch.Tensor
     z_logvar: torch.Tensor
 
@@ -79,10 +79,10 @@ class GaussianVariationalHead(nn.Module):
 
         z_mu = self.mu_layer(x)
         z_logvar = self.logvar_layer(x)
-        z = self.reparameterize(z_mu=z_mu, z_logvar=z_logvar)
+        z_sample = self.reparameterize(z_mu=z_mu, z_logvar=z_logvar)
 
         return GaussianVariationalHeadOutput(
-            z=z,
+            z_sample=z_sample,
             z_mu=z_mu,
             z_logvar=z_logvar,
         )
