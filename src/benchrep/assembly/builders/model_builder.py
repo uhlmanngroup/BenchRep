@@ -124,12 +124,18 @@ def build_autoencoder(
         run_log.info("Built encoder from config: %s -> %s",
                      encoder_name,
                      type(encoder).__name__)
+    else:
+        run_log.info("Using provided encoder: %s",
+                     type(encoder).__name__)
 
     if isinstance(decoder, DecoderConfig):
         decoder_name = decoder.name
         decoder = _build_decoder(decoder, input_dim=encoder.output_dim)
         run_log.info("Built decoder from config: %s -> %s",
                      decoder_name,
+                     type(decoder).__name__)
+    else:
+        run_log.info("Using provided decoder: %s",
                      type(decoder).__name__)
 
     if isinstance(optimizer, OptimizerConfig):
@@ -141,9 +147,11 @@ def build_autoencoder(
                      optimizer_cls.__name__)
     else:
         optimizer_factory = optimizer
+        run_log.info("Using provided optimizer factory: %s",
+                     getattr(optimizer, "__name__", type(optimizer).__name__))
 
     loss_sources = {
-        loss_name: "pre-built" if isinstance(loss_spec, LossTerm) else "config"
+        loss_name: "provided" if isinstance(loss_spec, LossTerm) else "config"
         for loss_name, loss_spec in reconstruction_losses.items()
     }
 
