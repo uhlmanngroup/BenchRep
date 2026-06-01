@@ -15,11 +15,20 @@ from benchrep.architecture.losses.base import LossTerm
 
 
 class VAEOutput(TypedDict):
-    """Forward output returned by ``VAE``."""
+    """
+    Forward output returned by ``VAE``.
+
+    `embedding` is the model-agnostic representation used by generic BenchRep
+    inference/evaluation code. For VAEs, it is intentionally set to `z_mu`
+    (i.e. redundant by design).
+
+    `z_mu` and `z_logvar` are the approximate posterior parameters used for
+    KL divergence. `z_sample` is the stochastic latent sample used by the decoder.
+    """
 
     embedding: torch.Tensor
     reconstruction: torch.Tensor
-    z: torch.Tensor
+    z_sample: torch.Tensor
     z_mu: torch.Tensor
     z_logvar: torch.Tensor
 
@@ -109,12 +118,12 @@ class VAE(L.LightningModule):
     def forward(self, x: torch.Tensor) -> VAEOutput:
         encoder_features = self.encode(x)
         latent = self.variational_head(encoder_features)
-        reconstruction = self.decode(latent.z)
+        reconstruction = self.decode(latent.z_sample)
 
         return {
             "embedding": latent.z_mu,
             "reconstruction": reconstruction,
-            "z": latent.z,
+            "z_sample": latent.z_sample,
             "z_mu": latent.z_mu,
             "z_logvar": latent.z_logvar,
         }
@@ -122,8 +131,8 @@ class VAE(L.LightningModule):
     def encode(self, x: torch.Tensor) -> torch.Tensor:
         return self.encoder(x)
 
-    def decode(self, z: torch.Tensor) -> torch.Tensor:
-        return self.decoder(z)
+    def decode(self, z_sample: torch.Tensor) -> torch.Tensor:
+        return self.decoder(z_sample)
 
     def training_step(self, batch: AutoencoderBatch, batch_idx: int) -> torch.Tensor:
         return self._compute_loss_step(batch, stage="train")
