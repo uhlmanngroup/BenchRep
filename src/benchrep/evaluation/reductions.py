@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import anndata as ad
 import scanpy as sc
 from sklearn.decomposition import PCA
+
+from benchrep.evaluation.utils import validate_adata_x
 
 
 def run_pca(
@@ -13,6 +17,7 @@ def run_pca(
     key_added: str = "X_pca",
     random_state: int = 137,
     overwrite: bool = False,
+    **pca_kwargs: Any,
 ) -> ad.AnnData:
     """
     Run PCA on ``adata.X`` and store the coordinates in ``adata.obsm``.
@@ -36,13 +41,15 @@ def run_pca(
     overwrite:
         If ``False``, raise an error when ``key_added`` already exists.
         If ``True``, replace existing entries.
+    **pca_kwargs:
+        Additional keyword arguments passed to ``sklearn.decomposition.PCA``.
 
     Returns
     -------
     AnnData
        The input AnnData object, modified in place and returned for convenience.
     """
-    _validate_adata_x(adata)
+    validate_adata_x(adata)
 
     if key_added in adata.obsm and not overwrite:
         raise KeyError(
@@ -63,6 +70,7 @@ def run_pca(
     pca = PCA(
         n_components=n_components,
         random_state=random_state,
+        **pca_kwargs,
     )
 
     adata.obsm[key_added] = pca.fit_transform(adata.X)
@@ -92,6 +100,8 @@ def run_umap(
     neighbors_key: str = "neighbors",
     random_state: int = 137,
     overwrite: bool = False,
+    neighbors_kwargs: dict[str, Any] | None = None,
+    umap_kwargs: dict[str, Any] | None = None,
 ) -> ad.AnnData:
     """
     Run Scanpy neighbors followed by UMAP on ``adata.X``.
@@ -125,13 +135,17 @@ def run_umap(
     overwrite:
         If ``False``, raise an error when ``key_added`` or ``neighbors_key``
         already exists. If ``True``, replace existing entries.
+    neighbors_kwargs:
+        Additional keyword arguments passed to ``scanpy.pp.neighbors``.
+    umap_kwargs:
+        Additional keyword arguments passed to ``scanpy.tl.umap``.
 
     Returns
     -------
     AnnData
         The input AnnData object, modified in place and returned for convenience.
     """
-    _validate_adata_x(adata)
+    validate_adata_x(adata)
 
     if key_added in adata.obsm and not overwrite:
         raise KeyError(
@@ -145,12 +159,16 @@ def run_umap(
             "Pass overwrite=True to replace it."
         )
 
+    neighbors_kwargs = {} if neighbors_kwargs is None else neighbors_kwargs
+    umap_kwargs = {} if umap_kwargs is None else umap_kwargs
+
     sc.pp.neighbors(
         adata,
         n_neighbors=n_neighbors,
         n_pcs=n_pcs,
         metric=metric,
         key_added=neighbors_key,
+        **neighbors_kwargs,
     )
 
     sc.tl.umap(
@@ -158,6 +176,7 @@ def run_umap(
         neighbors_key=neighbors_key,
         random_state=random_state,
         key_added=key_added,
+        **umap_kwargs,
     )
 
     adata.uns[key_added] = {
@@ -180,6 +199,7 @@ def run_tsne(
     key_added: str = "X_tsne",
     random_state: int = 137,
     overwrite: bool = False,
+    **tsne_kwargs: Any,
 ) -> ad.AnnData:
     """
     Run t-SNE on ``adata.X`` and store the coordinates in ``adata.obsm``.
@@ -206,13 +226,15 @@ def run_tsne(
     overwrite:
         If ``False``, raise an error when ``key_added`` already exists. If
         ``True``, replace existing entries.
+    **tsne_kwargs:
+        Additional keyword arguments passed to ``scanpy.tl.tsne``.
 
     Returns
     -------
     AnnData
         The input AnnData object, modified in place and returned for convenience.
     """
-    _validate_adata_x(adata)
+    validate_adata_x(adata)
 
     if key_added in adata.obsm and not overwrite:
         raise KeyError(
@@ -235,6 +257,7 @@ def run_tsne(
         perplexity=perplexity,
         random_state=random_state,
         key_added=key_added,
+        **tsne_kwargs,
     )
 
     adata.uns[key_added] = {
@@ -245,13 +268,3 @@ def run_tsne(
     }
 
     return adata
-
-
-def _validate_adata_x(adata: ad.AnnData) -> None:
-    """Validate that adata.X is present and 2D."""
-
-    if adata.X is None:
-        raise ValueError("adata.X is required for dimensionality reduction.")
-
-    if adata.X.ndim != 2:
-        raise ValueError(f"adata.X must be 2D, got shape {adata.X.shape}.")
