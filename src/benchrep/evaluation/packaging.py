@@ -8,29 +8,14 @@ import numpy as np
 import pandas as pd
 import torch
 
-
-ArrayLike = np.ndarray | torch.Tensor
-
-
-def to_numpy(array: ArrayLike) -> np.ndarray:
-    """Convert a tensor/array to a CPU NumPy array without modifying shape."""
-    if isinstance(array, torch.Tensor):
-        return array.detach().cpu().numpy()
-
-    if isinstance(array, np.ndarray):
-        return array
-
-    raise TypeError(
-        "Expected a NumPy array or torch.Tensor, "
-        f"got {type(array).__name__}."
-    )
+from benchrep.evaluation.utils import ArrayLike, to_numpy
 
 
 def package_matrix_as_anndata(
-    embeddings: ArrayLike,
+    matrix: ArrayLike,
     *,
     sample_ids: Sequence[str] | None = None,
-    labels: Sequence[Any] | np.ndarray | torch.Tensor | None = None,
+    labels: Sequence[Any] | ArrayLike | None = None,
     label_key: str = "label",
     metadata: pd.DataFrame | Mapping[str, Sequence[Any]] | None = None,
 ) -> ad.AnnData:
@@ -39,26 +24,26 @@ def package_matrix_as_anndata(
     an AnnData object.
 
     BenchRep evaluation uses AnnData as its internal contract:
-    `adata.X` stores embeddings, and `adata.obs` stores sample metadata.
+    `adata.X` stores the matrix, and `adata.obs` stores sample metadata.
     """
 
-    embedding_array = to_numpy(embeddings)
+    matrix_array = to_numpy(matrix)
 
-    if embedding_array.ndim != 2:
+    if matrix_array.ndim != 2:
         raise ValueError(
-            "embeddings must be a 2D array with shape "
-            f"(n_samples, n_features), got shape {embedding_array.shape}."
+            "matrix must be a 2D array with shape "
+            f"(n_samples, n_features), got shape {matrix_array.shape}."
         )
 
-    n_samples = embedding_array.shape[0]
+    n_samples = matrix_array.shape[0]
 
     if sample_ids is None:
         obs_index = [f"sample_{i}" for i in range(n_samples)]
     else:
         if len(sample_ids) != n_samples:
             raise ValueError(
-                "sample_ids length must match embeddings.shape[0], got "
-                f"{len(sample_ids)} sample IDs for {n_samples} embeddings."
+                "sample_ids length must match matrix.shape[0], got "
+                f"{len(sample_ids)} sample IDs for {n_samples} rows."
             )
         obs_index = list(map(str, sample_ids))
 
@@ -81,13 +66,13 @@ def package_matrix_as_anndata(
 
         if len(label_array) != n_samples:
             raise ValueError(
-                "labels length must match embeddings.shape[0], got "
-                f"{len(label_array)} labels for {n_samples} embeddings."
+                "labels length must match matrix.shape[0], got "
+                f"{len(label_array)} labels for {n_samples} rows."
             )
 
         obs[label_key] = label_array
 
-    return ad.AnnData(X=embedding_array, obs=obs)
+    return ad.AnnData(X=matrix_array, obs=obs)
 
 
 def _metadata_to_obs(
@@ -113,8 +98,8 @@ def _metadata_to_obs(
 
     if len(obs) != n_samples:
         raise ValueError(
-            "metadata length must match embeddings.shape[0], got "
-            f"{len(obs)} metadata rows for {n_samples} embeddings."
+            "metadata length must match matrix.shape[0], got "
+            f"{len(obs)} metadata rows for {n_samples} rows."
         )
 
     return obs.reset_index(drop=True)
