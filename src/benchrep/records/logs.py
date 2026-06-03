@@ -9,6 +9,9 @@ from typing import Iterator, TextIO
 from benchrep.runtime import RunContext
 
 RUN_LOGGER_NAME = "benchrep.run"
+RUN_LOG_FILENAME = "benchrep.run.log"
+STDOUT_LOG_FILENAME = "stdout.log"
+STDERR_LOG_FILENAME = "stderr.log"
 
 class TeeStream:
     """Write stream output to multiple streams."""
@@ -32,8 +35,6 @@ def capture_console_streams(
     *,
     log_out_dir: RunContext | Path | str,
     capture_stdout: bool = False,
-    stdout_filename: str = "stdout.log",
-    stderr_filename: str = "stderr.log",
 ) -> Iterator[None]:
     """
     Tee stderr, and optionally stdout, into the run log directory.
@@ -52,8 +53,8 @@ def capture_console_streams(
     else:
         log_out_dir = Path(log_out_dir).expanduser().resolve()
 
-    stderr_path = log_out_dir / stderr_filename
-    stdout_path = log_out_dir / stdout_filename
+    stderr_path = log_out_dir / STDERR_LOG_FILENAME
+    stdout_path = log_out_dir / STDOUT_LOG_FILENAME
 
     original_stdout = sys.stdout
     original_stderr = sys.stderr
@@ -85,7 +86,6 @@ def capture_console_streams(
 def setup_run_logger(
     *,
     log_out_dir: RunContext | Path | str,
-    filename: str = "benchrep_run.log",
     level: int = logging.INFO,
 ) -> logging.Logger:
     """
@@ -125,7 +125,7 @@ def setup_run_logger(
     else:
         log_out_dir = Path(log_out_dir).expanduser().resolve()
 
-    log_path = log_out_dir / filename
+    log_path = log_out_dir / RUN_LOG_FILENAME
 
     run_logger = get_run_logger()
     run_logger.setLevel(level)
