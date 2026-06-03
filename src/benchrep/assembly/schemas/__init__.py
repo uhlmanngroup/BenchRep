@@ -10,6 +10,7 @@ from benchrep.assembly.schemas.config_schema import (
     OptimizerConfig,
     TrainerConfig,
     LoggerConfig,
+    CheckpointConfig,
     RunConfig,
     TransformConfig,
 )
@@ -28,6 +29,7 @@ __all__ = [
     "OptimizerConfig",
     "TrainerConfig",
     "LoggerConfig",
+    "CheckpointConfig",
     "RunConfig",
     "TransformConfig",
     "parse_config",

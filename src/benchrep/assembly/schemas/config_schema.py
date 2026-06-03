@@ -73,6 +73,14 @@ class LoggerConfig(NamedConfig):
     model_config = ConfigDict(extra="allow")
 
 
+class CheckpointConfig(BaseModel):
+    monitor: str | None = "val/loss"
+    mode: Literal["min", "max"] = "min"
+    save_top_k: int = 1
+    save_last: bool = True
+    filename: str = "{epoch:03d}-{step}"
+
+
 # -------------------------
 # Data configuration
 # -------------------------
@@ -116,6 +124,7 @@ class BenchRepConfig(BaseModel):
     datamodule: DataModuleConfig = Field(default_factory=DataModuleConfig)
     trainer: TrainerConfig = Field(default_factory=TrainerConfig)
     logger: LoggerConfig | None = None
+    checkpointing: CheckpointConfig = Field(default_factory=CheckpointConfig)
 
     @model_validator(mode="after")
     def validate_model_requirements(self) -> "BenchRepConfig":
@@ -157,5 +166,15 @@ class BenchRepConfig(BaseModel):
                     "VAE requires at least one regularization loss under "
                     "`losses.regularization`."
                 )
+
+        return self
+
+    @model_validator(mode="after")
+    def validate_checkpointing(self) -> "BenchRepConfig":
+        if self.checkpointing.monitor is None and not self.checkpointing.save_last:
+            raise ValueError(
+                "checkpointing.monitor=None requires checkpointing.save_last=True, "
+                "otherwise no checkpoint would be saved."
+            )
 
         return self

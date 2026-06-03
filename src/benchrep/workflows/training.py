@@ -66,7 +66,12 @@ def main() -> None:
 
     model = build_model(config=config)
 
-    trainer = build_trainer(trainer_config=config.trainer, logger_config=config.logger, run_context=run_context)
+    trainer = build_trainer(
+        trainer_config=config.trainer,
+        logger_config=config.logger,
+        checkpoint_config=config.checkpointing,
+        run_context=run_context,
+    )
 
     run_log.info("Starting training...")
 

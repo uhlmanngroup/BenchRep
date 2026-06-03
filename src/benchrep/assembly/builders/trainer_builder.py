@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import os
 
+from pathlib import Path
+
 import warnings
 
 import lightning as L
@@ -14,16 +16,20 @@ from lightning.pytorch.loggers import (
     WandbLogger,
 )
 
+from lightning.pytorch.callbacks import ModelCheckpoint
+
 from benchrep.records import get_run_logger
 from benchrep.assembly.registry import LOGGERS
-from benchrep.assembly.schemas import TrainerConfig, LoggerConfig
+from benchrep.assembly.schemas import TrainerConfig, LoggerConfig, CheckpointConfig
 from benchrep.runtime import RunContext
 
 
 def build_trainer(
         trainer_config: TrainerConfig,
-        logger_config: LoggerConfig,
-        run_context: RunContext) -> L.Trainer:
+        logger_config: LoggerConfig | None,
+        checkpoint_config: CheckpointConfig,
+        run_context: RunContext,
+) -> L.Trainer:
     run_log = get_run_logger()
 
     trainer_params = trainer_config.model_dump()
@@ -40,19 +46,45 @@ def build_trainer(
             "Use the top-level `logger` config section instead."
         )
 
-    logger_name = logger_config.name
-    logger_cls = LOGGERS.get(logger_name)
+    if "callbacks" in trainer_params:
+        raise ValueError(
+            "`trainer.callbacks` should not be set in the trainer config yet. "
+            "BenchRep currently manages required callbacks internally."
+        )
+
     logger = _build_logger(logger_config)
+
+    if logger_config is None:
+        logger_name = None
+        logger_cls_name = "False"
+    else:
+        logger_name = logger_config.name
+        logger_cls = LOGGERS.get(logger_name)
+        logger_cls_name = logger_cls.__name__
+
+    checkpoint_callback = _build_checkpoint_callback(
+        checkpoint_config=checkpoint_config,
+        checkpoint_dir=run_context.checkpoint_dir,
+
+    )
 
     trainer = L.Trainer(
         default_root_dir=str(run_context.output_dir),
         logger=logger,
+        callbacks=[checkpoint_callback],
         **trainer_params,
     )
-    run_log.info("Built Lightning trainer: (max_epochs=%s, logger= %s -> %s)",
-                 trainer_config.max_epochs,
-                 logger_name,
-                 logger_cls.__name__)
+
+    run_log.info(
+        "Built Lightning trainer: (max_epochs=%s, logger=%s -> %s, "
+        "checkpoint_monitor=%s, save_top_k=%s, save_last=%s)",
+        trainer_config.max_epochs,
+        logger_name,
+        logger_cls_name,
+        checkpoint_config.monitor,
+        checkpoint_config.save_top_k,
+        checkpoint_config.save_last,
+    )
 
     return trainer
 
@@ -131,3 +163,24 @@ def _prepare_logger_credentials(
             "Pass MLflow auth/tracking settings through environment variables "
             "or `logger.params` instead."
         )
+
+
+def _build_checkpoint_callback(
+    checkpoint_config: CheckpointConfig,
+    checkpoint_dir: Path,
+) -> ModelCheckpoint:
+    if checkpoint_config.monitor is None:
+        return ModelCheckpoint(
+            dirpath=checkpoint_dir,
+            monitor=None,
+            save_top_k=0,
+            save_last=checkpoint_config.save_last,
+        )
+    return ModelCheckpoint(
+        dirpath=checkpoint_dir,
+        filename=checkpoint_config.filename,
+        monitor=checkpoint_config.monitor,
+        mode=checkpoint_config.mode,
+        save_top_k=checkpoint_config.save_top_k,
+        save_last=checkpoint_config.save_last,
+    )

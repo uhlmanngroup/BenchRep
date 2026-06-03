@@ -84,3 +84,9 @@ logger:
     id: null
     resume: never
     log_model: False
+
+checkpointing:
+  monitor: val/loss
+  mode: min
+  save_top_k: 3
+  save_last: True
