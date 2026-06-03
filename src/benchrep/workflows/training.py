@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 from pathlib import Path
 
 import lightning as L
 import torch
-from torchvision.utils import save_image
 
 from benchrep.runtime import RunContext
 from benchrep.records import (
@@ -37,6 +37,7 @@ def main() -> None:
         project_name=config.run.project_name,
         model_name=model_name,
     )
+    created_at = datetime.now().isoformat(timespec="seconds")
 
     # Initiate local run logger
     run_log = setup_run_logger(log_out_dir=run_context.log_dir)
@@ -84,32 +85,22 @@ def main() -> None:
         trainer.fit(model, datamodule=datamodule)
 
     run_log.info("Finished training")
-
-    # Export
-    export_reconstructions(
-        model=model,
-        datamodule=datamodule,
-        output_path=run_context.artifact_dir / "reconstructions.png",
-    )
+    completed_at = datetime.now().isoformat(timespec="seconds")
 
     manifest_path = run_context.metadata_dir / "training_manifest.yaml"
     write_training_manifest(
         output_path=manifest_path,
-        stage=config.stage,
-        run_name=run_context.run_name,
-        output_dir=run_context.output_dir,
-        resolved_config_path=run_context.config_dir / "resolved_config.yaml",
-        checkpoint_dir=run_context.checkpoint_dir,
-        best_checkpoint_path=checkpoint_callback.best_model_path or None,
-        best_checkpoint_score=(
-            float(checkpoint_callback.best_model_score)
-            if checkpoint_callback.best_model_score is not None
-            else None
-        ),
-        last_checkpoint_path=checkpoint_callback.last_model_path or None,
+        config=config,
+        run_context=run_context,
+        input_config_path=raw_config_path,
+        checkpoint_callback=checkpoint_callback,
+        created_at=created_at,
+        completed_at=completed_at,
+        status="completed",
     )
 
     run_log.info("Exported training manifest to: '%s'", manifest_path)
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -122,45 +113,6 @@ def parse_args() -> argparse.Namespace:
         help="Path to YAML config file.",
     )
     return parser.parse_args()
-
-
-def export_reconstructions(
-    model: L.LightningModule,
-    datamodule: L.LightningDataModule,
-    output_path: Path,
-    n_images: int = 16,
-) -> None:
-    datamodule.setup("fit")
-
-    val_loader = datamodule.val_dataloader()
-    if val_loader is None:
-        raise RuntimeError(
-            "Could not export reconstructions because no validation dataloader is available."
-        )
-
-    batch = next(iter(val_loader))
-    x = batch["x"].to(model.device)
-
-    model.eval()
-    with torch.no_grad():
-        output = model(x)
-        reconstruction = output["reconstruction"]
-
-    comparison = torch.cat(
-        [
-            x[:n_images].cpu(),
-            reconstruction[:n_images].cpu(),
-        ],
-        dim=0,
-    )
-
-    save_image(
-        comparison,
-        output_path,
-        nrow=n_images,
-    )
-
-    print(f"Saved reconstruction grid to: {output_path}")
 
 
 if __name__ == "__main__":
