@@ -1,3 +1,5 @@
+stage: training
+
 reproducibility:
   seed: 137 # global seed given both to seed_everything and to the datamodule
   seed_workers: true

@@ -8,9 +8,14 @@ import torch
 from torchvision.utils import save_image
 
 from benchrep.runtime import RunContext
-from benchrep.records import save_config_records, capture_console_streams, setup_run_logger
+from benchrep.records import (
+    save_config_records,
+    capture_console_streams,
+    setup_run_logger,
+    write_training_manifest,
+)
 from benchrep.assembly import load_config
-from benchrep.assembly.schemas import parse_config
+from benchrep.assembly.schemas import parse_training_config
 from benchrep.assembly.builders import build_datamodule, build_model, build_trainer
 
 
@@ -20,7 +25,7 @@ def main() -> None:
     # Parse config
     raw_config_path = Path(args.config).resolve()
     raw_config = load_config(raw_config_path)
-    config = parse_config(raw_config)
+    config = parse_training_config(raw_config)
 
     # Setup paths
     model_name = f"{config.model.name}_{config.encoder.name}"
@@ -66,7 +71,7 @@ def main() -> None:
 
     model = build_model(config=config)
 
-    trainer = build_trainer(
+    trainer, checkpoint_callback = build_trainer(
         trainer_config=config.trainer,
         logger_config=config.logger,
         checkpoint_config=config.checkpointing,
@@ -87,6 +92,24 @@ def main() -> None:
         output_path=run_context.artifact_dir / "reconstructions.png",
     )
 
+    manifest_path = run_context.metadata_dir / "training_manifest.yaml"
+    write_training_manifest(
+        output_path=manifest_path,
+        stage=config.stage,
+        run_name=run_context.run_name,
+        output_dir=run_context.output_dir,
+        resolved_config_path=run_context.config_dir / "resolved_config.yaml",
+        checkpoint_dir=run_context.checkpoint_dir,
+        best_checkpoint_path=checkpoint_callback.best_model_path or None,
+        best_checkpoint_score=(
+            float(checkpoint_callback.best_model_score)
+            if checkpoint_callback.best_model_score is not None
+            else None
+        ),
+        last_checkpoint_path=checkpoint_callback.last_model_path or None,
+    )
+
+    run_log.info("Exported training manifest to: '%s'", manifest_path)
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(

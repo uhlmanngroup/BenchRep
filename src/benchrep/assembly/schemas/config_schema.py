@@ -112,7 +112,8 @@ class DataConfig(BaseModel):
 # -------------------------
 # Full experiment configuration
 # -------------------------
-class BenchRepConfig(BaseModel):
+class TrainingConfig(BaseModel):
+    stage: Literal["training"] = "training"
     run: RunConfig = Field(default_factory=RunConfig)
     reproducibility: ReproducibilityConfig = Field(default_factory=ReproducibilityConfig)
     model: ModelConfig
@@ -127,7 +128,7 @@ class BenchRepConfig(BaseModel):
     checkpointing: CheckpointConfig = Field(default_factory=CheckpointConfig)
 
     @model_validator(mode="after")
-    def validate_model_requirements(self) -> "BenchRepConfig":
+    def validate_model_requirements(self) -> "TrainingConfig":
         model_name = normalize_name(
             self.model.name,
             field_name="model.name",
@@ -170,7 +171,7 @@ class BenchRepConfig(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def validate_checkpointing(self) -> "BenchRepConfig":
+    def validate_checkpointing(self) -> "TrainingConfig":
         if self.checkpointing.monitor is None and not self.checkpointing.save_last:
             raise ValueError(
                 "checkpointing.monitor=None requires checkpointing.save_last=True, "

@@ -29,7 +29,7 @@ def build_trainer(
         logger_config: LoggerConfig | None,
         checkpoint_config: CheckpointConfig,
         run_context: RunContext,
-) -> L.Trainer:
+) -> tuple[L.Trainer, ModelCheckpoint]:
     run_log = get_run_logger()
 
     trainer_params = trainer_config.model_dump()
@@ -65,7 +65,6 @@ def build_trainer(
     checkpoint_callback = _build_checkpoint_callback(
         checkpoint_config=checkpoint_config,
         checkpoint_dir=run_context.checkpoint_dir,
-
     )
 
     trainer = L.Trainer(
@@ -86,7 +85,7 @@ def build_trainer(
         checkpoint_config.save_last,
     )
 
-    return trainer
+    return trainer, checkpoint_callback
 
 
 def _build_logger(logger_config: LoggerConfig | None) -> Logger | bool:

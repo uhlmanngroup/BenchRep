@@ -19,13 +19,13 @@ from pydantic import BaseModel
 
 from benchrep.records.logs import get_run_logger
 from benchrep.runtime import RunContext
-from benchrep.assembly.schemas import BenchRepConfig
+from benchrep.assembly.schemas import TrainingConfig
 
 
 def save_config_records(
     *,
     config_out_dir: RunContext | Path | str,
-    resolved_config: BenchRepConfig | dict[str, Any],
+    resolved_config: TrainingConfig | dict[str, Any],
     original_config_path: Path | str | None = None,
 ) -> None:
     """Save config records for a run.

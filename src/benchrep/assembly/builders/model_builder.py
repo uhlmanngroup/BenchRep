@@ -19,7 +19,7 @@ from benchrep.architecture.losses.base import LossTerm
 from benchrep.assembly.builders.optimizer_builder import build_optimizer_factory
 from benchrep.assembly.config_utils import normalize_name
 from benchrep.assembly.schemas import (
-    BenchRepConfig,
+    TrainingConfig,
     DecoderConfig,
     EncoderConfig,
     LossTermConfig,
@@ -35,7 +35,7 @@ from benchrep.assembly.registry import (
 )
 
 
-def build_model(config: BenchRepConfig) -> L.LightningModule:
+def build_model(config: TrainingConfig) -> L.LightningModule:
     """Build a model from config.
 
     This is the public model-builder entry point. It reads ``config.model.name``

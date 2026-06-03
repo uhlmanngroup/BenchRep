@@ -1,5 +1,5 @@
 from benchrep.assembly.schemas.config_schema import (
-    BenchRepConfig,
+    TrainingConfig,
     ReproducibilityConfig,
     DataModuleConfig,
     DatasetConfig,
@@ -15,10 +15,10 @@ from benchrep.assembly.schemas.config_schema import (
     TransformConfig,
 )
 
-from benchrep.assembly.schemas.validation import parse_config
+from benchrep.assembly.schemas.validation import parse_training_config
 
 __all__ = [
-    "BenchRepConfig",
+    "TrainingConfig",
     "ReproducibilityConfig",
     "DataModuleConfig",
     "DatasetConfig",
@@ -32,5 +32,5 @@ __all__ = [
     "CheckpointConfig",
     "RunConfig",
     "TransformConfig",
-    "parse_config",
+    "parse_training_config",
 ]
