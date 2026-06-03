@@ -13,6 +13,8 @@ from benchrep.records import (
     capture_console_streams,
     setup_run_logger,
     write_training_manifest,
+    export_torchview_graph,
+    infer_dummy_input_size,
 )
 from benchrep.assembly import load_config
 from benchrep.assembly.schemas import parse_training_config
@@ -87,6 +89,19 @@ def main() -> None:
     run_log.info("Finished training")
     completed_at = datetime.now().isoformat(timespec="seconds")
 
+    # Export torchview graph if possible
+    dummy_input_size = infer_dummy_input_size(datamodule)
+    torchview_graph_path = export_torchview_graph(
+        model=model,
+        input_size=dummy_input_size,
+        output_path=run_context.architecture_dir / "model_graph.png",
+    )
+    if torchview_graph_path is not None:
+        run_log.info("Exported torchview graph to: '%s'", torchview_graph_path)
+    else:
+        run_log.warning("Torchview graph export was skipped or failed.")
+
+    # Export training manifest
     manifest_path = run_context.metadata_dir / "training_manifest.yaml"
     write_training_manifest(
         output_path=manifest_path,
@@ -94,6 +109,7 @@ def main() -> None:
         run_context=run_context,
         input_config_path=raw_config_path,
         checkpoint_callback=checkpoint_callback,
+        torchview_graph_path=torchview_graph_path,
         created_at=created_at,
         completed_at=completed_at,
         status="completed",

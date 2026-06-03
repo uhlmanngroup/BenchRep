@@ -31,6 +31,10 @@ scverse = [
 logging = [
     "wandb>=0.17,<1",
 ]
+model_graph = [
+    "torchview",
+    "graphviz",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

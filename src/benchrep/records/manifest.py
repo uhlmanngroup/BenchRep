@@ -30,6 +30,7 @@ def write_training_manifest(
     run_context: RunContext,
     input_config_path: Path,
     checkpoint_callback: ModelCheckpoint,
+    torchview_graph_path: Path | None = None,
     created_at: str,
     completed_at: str,
     status: str = "completed",
@@ -81,6 +82,11 @@ def write_training_manifest(
                 f"{run_context.log_dir / STDOUT_LOG_FILENAME} "
                 "[optional; only written when stdout capture is enabled]"
             ),
+            "architecture": {
+                "torchview_graph_path": (
+                    str(torchview_graph_path) if torchview_graph_path is not None else None
+                ),
+            },
         },
         "checkpoints": {
             "checkpoint_dir": str(run_context.checkpoint_dir),
