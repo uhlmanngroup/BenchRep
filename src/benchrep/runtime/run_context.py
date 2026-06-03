@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 from uuid import uuid4
 
 
@@ -57,11 +58,12 @@ class RunContext:
     def create(
         cls,
         output_root: str | Path,
+        stage: Literal["training", "prediction", "evaluation"],
         model_name: str,
         project_name: str | None = None,
         timestamp: str | None = None,
     ) -> "RunContext":
-        output_root = Path(output_root).expanduser().resolve()
+        output_root = Path(output_root).expanduser().resolve() / stage
         timestamp = timestamp or datetime.now().strftime("%Y%m%d-%H%M%S")
 
         if project_name:

@@ -36,6 +36,7 @@ def main() -> None:
 
     run_context = RunContext.create(
         output_root=config.run.output_root,
+        stage=config.stage,
         project_name=config.run.project_name,
         model_name=model_name,
     )
