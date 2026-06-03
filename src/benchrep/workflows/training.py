@@ -91,16 +91,21 @@ def main() -> None:
     completed_at = datetime.now().isoformat(timespec="seconds")
 
     # Export torchview graph if possible
-    dummy_input_size = infer_dummy_input_size(datamodule)
-    torchview_graph_path = export_torchview_graph(
-        model=model,
-        input_size=dummy_input_size,
-        output_path=run_context.architecture_dir / "model_graph.png",
-    )
-    if torchview_graph_path is not None:
-        run_log.info("Exported torchview graph to: '%s'", torchview_graph_path)
+    if config.inspection.torchview.enabled:
+        dummy_input_size = infer_dummy_input_size(datamodule)
+        torchview_graph_path = export_torchview_graph(
+            model=model,
+            input_size=dummy_input_size,
+            output_path=run_context.architecture_dir / "model_graph.png",
+            expand_nested=config.inspection.torchview.expand_nested,
+            depth=config.inspection.torchview.depth,
+        )
+        if torchview_graph_path is not None:
+            run_log.info("Exported torchview graph to: '%s'", torchview_graph_path)
+        else:
+            run_log.warning("Torchview graph export was skipped or failed.")
     else:
-        run_log.warning("Torchview graph export was skipped or failed.")
+        torchview_graph_path = None
 
     # Export training manifest
     manifest_path = run_context.metadata_dir / "training_manifest.yaml"

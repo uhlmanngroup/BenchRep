@@ -82,6 +82,19 @@ class CheckpointConfig(BaseModel):
 
 
 # -------------------------
+# Inspection configuration
+# -------------------------
+class TorchviewConfig(BaseModel):
+    enabled: bool = False
+    expand_nested: bool = True
+    depth: int = Field(default=10, ge=0)
+
+
+class InspectionConfig(BaseModel):
+    torchview: TorchviewConfig = Field(default_factory=TorchviewConfig)
+
+
+# -------------------------
 # Data configuration
 # -------------------------
 class TransformConfig(NamedConfig):
@@ -126,6 +139,7 @@ class TrainingConfig(BaseModel):
     trainer: TrainerConfig = Field(default_factory=TrainerConfig)
     logger: LoggerConfig | None = None
     checkpointing: CheckpointConfig = Field(default_factory=CheckpointConfig)
+    inspection: InspectionConfig = Field(default_factory=InspectionConfig)
 
     @model_validator(mode="after")
     def validate_model_requirements(self) -> "TrainingConfig":

@@ -84,3 +84,9 @@ checkpointing:
   mode: min
   save_top_k: 1
   save_last: True
+
+inspection:
+  torchview:
+    enabled: true
+    expand_nested: true
+    depth: 10

@@ -12,6 +12,8 @@ def export_torchview_graph(
     model: L.LightningModule,
     input_size: Sequence[int],
     output_path: Path,
+    expand_nested: bool,
+    depth: int,
 ) -> Path | None:
     try:
         import torchview
@@ -31,6 +33,8 @@ def export_torchview_graph(
         model_graph = torchview.draw_graph(
             model,
             input_size=tuple(input_size),
+            expand_nested=expand_nested,
+            depth=depth,
         )
 
         graph_base_path = output_path.with_suffix("")
