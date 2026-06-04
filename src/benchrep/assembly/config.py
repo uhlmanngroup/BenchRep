@@ -6,37 +6,37 @@ from typing import Any
 import yaml
 
 
-def load_config(config_path: str | Path) -> dict[str, Any]:
-    """Load a YAML config file as a dictionary.
+def load_yaml(yaml_path: str | Path) -> dict[str, Any]:
+    """Load a YAML config or manifest file as a dictionary.
 
     Parameters
     ----------
-    config_path:
-        Path to the YAML config file.
+    yaml_path:
+        Path to the YAML file.
 
     Returns
     -------
     dict[str, Any]
-        Parsed config dictionary.
+        Parsed dictionary.
     """
-    config_path = Path(config_path)
+    yaml_path = Path(yaml_path)
 
-    if not config_path.exists():
-        raise FileNotFoundError(f"Config file does not exist: {config_path}")
+    if not yaml_path.exists():
+        raise FileNotFoundError(f"YAML file does not exist: {yaml_path}")
 
-    if not config_path.is_file():
-        raise ValueError(f"Config path must point to a file, got: {config_path}")
+    if not yaml_path.is_file():
+        raise ValueError(f"YAML path must point to a file, got: {yaml_path}")
 
-    with config_path.open("r", encoding="utf-8") as file:
-        config = yaml.safe_load(file)
+    with yaml_path.open("r", encoding="utf-8") as file:
+        yaml_file = yaml.safe_load(file)
 
-    if config is None:
-        raise ValueError(f"Config file is empty: {config_path}")
+    if yaml_file is None:
+        raise ValueError(f"YAML file is empty: {yaml_path}")
 
-    if not isinstance(config, dict):
+    if not isinstance(yaml_file, dict):
         raise TypeError(
-            f"Config file must define a YAML mapping/dictionary at the top level, "
-            f"got {type(config).__name__}."
+            f"YAML file must define a YAML mapping/dictionary at the top level, "
+            f"got {type(yaml_file).__name__}."
         )
 
-    return config
+    return yaml_file

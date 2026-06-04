@@ -11,7 +11,7 @@ from benchrep.assembly.schemas import (
     DatasetConfig,
     TransformConfig
 )
-from benchrep.assembly.config_utils import normalize_name
+from benchrep.assembly.registry_utils import normalize_name
 from benchrep.assembly.registry import DATASETS, TRANSFORMS
 
 

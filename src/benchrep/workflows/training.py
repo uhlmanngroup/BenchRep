@@ -16,7 +16,7 @@ from benchrep.records import (
     export_torchview_graph,
     infer_dummy_input_size,
 )
-from benchrep.assembly import load_config
+from benchrep.assembly import load_yaml
 from benchrep.assembly.schemas import parse_training_config
 from benchrep.assembly.builders import build_datamodule, build_model, build_trainer
 
@@ -26,7 +26,7 @@ def main() -> None:
 
     # Parse config
     raw_config_path = Path(args.config).resolve()
-    raw_config = load_config(raw_config_path)
+    raw_config = load_yaml(raw_config_path)
     config = parse_training_config(raw_config)
 
     # Setup paths

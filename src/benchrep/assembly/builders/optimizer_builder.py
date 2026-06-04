@@ -5,7 +5,7 @@ from collections.abc import Callable, Iterable
 import torch
 from torch import nn
 
-from benchrep.assembly.config_utils import normalize_name
+from benchrep.assembly.registry_utils import normalize_name
 from benchrep.assembly.schemas import OptimizerConfig
 from benchrep.assembly.registry import OPTIMIZERS
 
