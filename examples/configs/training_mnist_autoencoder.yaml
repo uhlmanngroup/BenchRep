@@ -79,13 +79,13 @@ logger:
     resume: never
     log_model: False
 
-checkpointing:
+checkpointing: # optional
   monitor: val/loss
   mode: min
   save_top_k: 1
   save_last: True
 
-inspection:
+inspection: # optional
   torchview:
     enabled: true
     expand_nested: true

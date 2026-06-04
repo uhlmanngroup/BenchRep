@@ -1,0 +1,32 @@
+stage: prediction
+
+source:
+  training_manifest_path: /path/to/training_manifest.yaml
+  checkpoint: best              # best | last | checkpoint filename in training checkpoint dir
+
+data:
+  split: predict                # predict | train | val | test | all
+  num_workers: null             # null = reuse training setting
+  max_batches: null             # null = all batches; int = diagnostic subset
+
+inference:
+  seed: null                    # null = reuse training seed
+  seed_workers: null            # null = reuse training setting
+  deterministic: true           # deterministic algs (Trainer param)
+  float32_matmul_precision: null # null = reuse training setting
+
+exports:
+  mode: standard                # standard | all | custom
+
+  embeddings:
+    enabled: true
+    keys: auto                  # auto or list of output fields
+    primary_key: auto           # auto or one output field
+
+  reconstructions:
+    enabled: true
+    n_examples: 32              # int | all
+    selection: first            # first | random
+    seed: null                  # null = reuse inference seed
+    include_input: true
+    include_prediction: true

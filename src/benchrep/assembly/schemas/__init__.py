@@ -1,4 +1,4 @@
-from benchrep.assembly.schemas.config_schema import (
+from benchrep.assembly.schemas.training_config_schema import (
     TrainingConfig,
     ReproducibilityConfig,
     DataModuleConfig,
@@ -15,6 +15,15 @@ from benchrep.assembly.schemas.config_schema import (
     TorchviewConfig,
     RunConfig,
     TransformConfig,
+)
+from benchrep.assembly.schemas.prediction_config_schema import (
+    PredictionSourceConfig,
+    PredictionDataConfig,
+    PredictionInferenceConfig,
+    PredictionEmbeddingsExportConfig,
+    PredictionReconstructionsExportConfig,
+    PredictionExportConfig,
+    PredictionConfig,
 )
 
 from benchrep.assembly.schemas.validation import parse_training_config
@@ -37,4 +46,11 @@ __all__ = [
     "RunConfig",
     "TransformConfig",
     "parse_training_config",
+    "PredictionSourceConfig",
+    "PredictionDataConfig",
+    "PredictionInferenceConfig",
+    "PredictionEmbeddingsExportConfig",
+    "PredictionReconstructionsExportConfig",
+    "PredictionExportConfig",
+    "PredictionConfig",
 ]

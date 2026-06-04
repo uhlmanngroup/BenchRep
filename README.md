@@ -244,7 +244,7 @@ BenchRep is intended to support more than one level of usage.
 This is the simplest path: User defines an experiment in YAML and runs it through the main entrypoint (CLI).
 
 ```bash
-python -m benchrep.workflows.training --config examples/configs/mnist_autoencoder.yaml
+python -m benchrep.workflows.training --config examples/configs/training_mnist_autoencoder.yaml
 ```
 
 Automated underlying workflow:

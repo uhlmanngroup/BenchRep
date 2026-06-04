@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from benchrep.assembly.schemas.config_schema import TrainingConfig
+from benchrep.assembly.schemas.training_config_schema import TrainingConfig
 
 
 def parse_training_config(raw_config: dict[str, Any]) -> TrainingConfig:
