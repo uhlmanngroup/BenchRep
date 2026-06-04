@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, PositiveInt, model_validator
+from pydantic import BaseModel, Field, PositiveInt, NonNegativeInt, model_validator
 
 
 # -------------------------
@@ -23,7 +23,7 @@ class PredictionSourceConfig(BaseModel):
 
 class PredictionDataConfig(BaseModel):
     split: Literal["predict", "train", "val", "test", "all"] = "predict"
-    num_workers: PositiveInt | None = None
+    num_workers: NonNegativeInt | None = None
     batch_size: PositiveInt | None = None
     max_batches: PositiveInt | None = None
 
@@ -31,7 +31,7 @@ class PredictionDataConfig(BaseModel):
 class PredictionInferenceConfig(BaseModel):
     seed: int | None = None
     seed_workers: bool | None = None
-    deterministic: bool | None = None
+    deterministic: bool | Literal["warn"] | None = None
     float32_matmul_precision: Literal["medium", "high", "highest"] | None = None
 
 

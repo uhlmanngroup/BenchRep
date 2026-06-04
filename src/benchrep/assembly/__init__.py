@@ -1,17 +1,9 @@
-from benchrep.assembly.config import load_config
-from benchrep.assembly.config_utils import (
-    get_optional_section,
-    get_required_section,
-    get_required_value,
+from benchrep.assembly.config import load_yaml
+from benchrep.assembly.registry_utils import (
     normalize_name,
-    require_mapping,
 )
 
 __all__ = [
-    "load_config",
-    "require_mapping",
-    "get_required_section",
-    "get_optional_section",
-    "get_required_value",
+    "load_yaml",
     "normalize_name",
 ]
