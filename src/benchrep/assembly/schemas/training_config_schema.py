@@ -3,10 +3,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    PositiveInt,
+    NonNegativeInt,
+    model_validator,
+)
 
 from benchrep.assembly.registry import MODELS
-from benchrep.assembly.config_utils import normalize_name
+from benchrep.assembly.registry_utils import normalize_name
 from benchrep.architecture.models import (
     Autoencoder,
     VAE,
@@ -65,6 +72,14 @@ class ReproducibilityConfig(BaseModel):
 
 
 class TrainerConfig(BaseModel):
+    max_epochs: PositiveInt | None = None
+    accelerator: str | None = "auto"
+    devices: str | int | list[int] | None = "auto"
+    log_every_n_steps: PositiveInt | None = None
+    deterministic: bool | Literal["warn"] | None = None
+    benchmark: bool | None = None
+    precision: str | int | None = None
+
     model_config = ConfigDict(extra="allow")
 
 
@@ -111,7 +126,7 @@ class DatasetConfig(BaseModel):
 class DataModuleConfig(BaseModel):
     batch_size: int = 32
     val_fraction: float = 0.1
-    num_workers: int = 4
+    num_workers: NonNegativeInt = 4
     pin_memory: bool | Literal["auto"] = "auto"
     persistent_workers: bool = False
     drop_last: bool = False
