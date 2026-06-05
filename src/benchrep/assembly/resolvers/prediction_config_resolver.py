@@ -9,6 +9,8 @@ from benchrep.assembly.schemas import (
     PredictionConfig,
     TrainingConfig,
     parse_training_config,
+    DatasetConfig,
+    DataModuleConfig,
 )
 from benchrep.assembly.resolvers.utils import (
     resolve_optional,
@@ -30,6 +32,8 @@ class PredictionRuntimePlan:
     training_run_name: str
     training_output_dir: Path
 
+    dataset_config: DatasetConfig
+    datamodule_config: DataModuleConfig
     split: str
     batch_size: int
     num_workers: int
@@ -89,6 +93,17 @@ def resolve_prediction_config(
         field_name="data.num_workers",
     )
 
+    dataset_config = training_config.dataset
+
+    # Override DataModule config params from prediction config
+    datamodule_config = training_config.datamodule.model_copy(
+        update={
+            "batch_size": batch_size,
+            "num_workers": num_workers,
+            "drop_last": False, # never drop_last in prediction
+        }
+    )
+
     seed = resolve_optional(
         prediction_config.inference.seed,
         training_config.reproducibility.seed,
@@ -122,6 +137,8 @@ def resolve_prediction_config(
         checkpoint_path=checkpoint_path,
         training_run_name=training_run_name,
         training_output_dir=training_output_dir,
+        dataset_config=dataset_config,
+        datamodule_config=datamodule_config,
         split=prediction_config.data.split,
         batch_size=batch_size,
         num_workers=num_workers,
