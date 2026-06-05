@@ -19,6 +19,7 @@ from benchrep.records import (
     save_config_records,
     setup_run_logger,
     capture_console_streams,
+    export_prediction_outputs
 )
 from benchrep.runtime import RunContext
 
@@ -50,6 +51,19 @@ def main() -> None:
     run_log.info("Resolved training manifest: '%s'", run_spec.training_manifest_path)
     run_log.info("Resolved training config: '%s'", run_spec.resolved_training_config_path)
     run_log.info("Resolved checkpoint: '%s'", run_spec.checkpoint_path)
+    run_log.info(
+        "Resolved prediction exports: mode=%s, embeddings_enabled=%s, "
+        "embedding_keys=%s, primary_key=%s, reconstructions_enabled=%s, "
+        "n_examples=%s, selection=%s, reconstruction_seed=%s",
+        run_spec.export_spec.mode,
+        run_spec.export_spec.embeddings.enabled,
+        run_spec.export_spec.embeddings.keys,
+        run_spec.export_spec.embeddings.primary_key,
+        run_spec.export_spec.reconstructions.enabled,
+        run_spec.export_spec.reconstructions.n_examples,
+        run_spec.export_spec.reconstructions.selection,
+        run_spec.export_spec.reconstructions.seed,
+    )
 
     # Bookkeeping --- config
     save_config_records(
@@ -106,6 +120,47 @@ def main() -> None:
         )
 
     run_log.info("Finished prediction")
+    run_log.info("Prediction returned %s batches.", len(predictions))
+
+    if predictions:
+        first_prediction = predictions[0]
+        if isinstance(first_prediction, dict):
+            run_log.info(
+                "First prediction batch keys: %s",
+                tuple(first_prediction.keys()),
+            )
+        else:
+            run_log.info(
+                "First prediction batch type: %s",
+                type(first_prediction).__name__,
+            )
+
+    run_log.info("Exporting prediction outputs...")
+
+    export_paths = export_prediction_outputs(
+        predictions=predictions,
+        export_spec=run_spec.export_spec,
+        embedding_dir=run_context.embedding_dir,
+        reconstruction_dir=run_context.reconstruction_dir,
+    )
+
+    if export_paths.embeddings_h5ad_path is not None:
+        run_log.info(
+            "Exported embedding artifact to: '%s'",
+            export_paths.embeddings_h5ad_path,
+        )
+
+    if export_paths.reconstruction_paths is not None:
+        run_log.info(
+            "Exported reconstruction artifacts: input=%s, reconstruction=%s, obs=%s, metadata=%s",
+            export_paths.reconstruction_paths.input_path,
+            export_paths.reconstruction_paths.reconstruction_path,
+            export_paths.reconstruction_paths.obs_path,
+            export_paths.reconstruction_paths.metadata_path,
+        )
+
+    run_log.info("Finished exporting prediction outputs")
+
     completed_at = datetime.now().isoformat(timespec="seconds")
 
 

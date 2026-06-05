@@ -1,7 +1,7 @@
 stage: prediction
 
 source:
-  training_manifest_path: /home/qptero/github/BenchRep/outputs/training/test_vae_mlp_mlp_20260604-154545/records/metadata/training_manifest.yaml
+  training_manifest_path: /home/qptero/github/BenchRep/outputs/training/test_vae_mlp_mlp_20260605-114623/records/metadata/training_manifest.yaml
   checkpoint: best              # best | last | checkpoint filename in training checkpoint dir
 
 data:
@@ -17,7 +17,7 @@ inference:
   float32_matmul_precision: null # null = reuse training setting
 
 exports:
-  mode: standard                # standard | all | custom
+  mode: all                # standard | all | custom
 
   embeddings:
     enabled: true
