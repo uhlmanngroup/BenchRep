@@ -85,9 +85,10 @@ def main() -> None:
 
     trainer, checkpoint_callback = build_trainer(
         trainer_config=config.trainer,
+        stage=config.stage,
+        run_context=run_context,
         logger_config=config.logger,
         checkpoint_config=config.checkpointing,
-        run_context=run_context,
     )
 
     run_log.info("Starting training...")

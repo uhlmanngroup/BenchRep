@@ -6,6 +6,8 @@ from pathlib import Path
 
 import warnings
 
+from typing import Literal
+
 import lightning as L
 
 from lightning.pytorch.loggers import (
@@ -25,11 +27,69 @@ from benchrep.runtime import RunContext
 
 
 def build_trainer(
+        *,
         trainer_config: TrainerConfig,
-        logger_config: LoggerConfig | None,
-        checkpoint_config: CheckpointConfig,
+        stage: Literal["training", "prediction"],
         run_context: RunContext,
-) -> tuple[L.Trainer, ModelCheckpoint]:
+        logger_config: LoggerConfig | None = None,
+        checkpoint_config: CheckpointConfig | None = None,
+        max_batches: int | None = None,
+) -> tuple[L.Trainer, ModelCheckpoint | None]:
+    """Build a Lightning Trainer for a BenchRep workflow stage.
+
+    This is the public Trainer builder for BenchRep workflows. It translates a
+    validated ``TrainerConfig`` into a Lightning ``Trainer`` while enforcing the
+    Trainer arguments that BenchRep owns internally.
+
+    The ``stage`` argument controls stage-specific Trainer behavior. During
+    training, this builder attaches the configured Lightning logger and creates a
+    BenchRep-managed ``ModelCheckpoint`` callback from the top-level
+    ``checkpointing`` config. During prediction, this builder disables Lightning
+    logging and checkpointing, ignores any provided training logger/checkpoint
+    config with a warning, and optionally maps ``max_batches`` to Lightning's
+    ``limit_predict_batches``.
+
+    The following Lightning Trainer arguments are intentionally not allowed in
+    ``trainer_config`` because BenchRep manages them directly:
+    ``default_root_dir``, ``logger``, ``callbacks``, and
+    ``enable_checkpointing``.
+
+    Parameters
+    ----------
+    trainer_config:
+        Validated Trainer config. Its fields and extra allowed values are passed
+        through to ``lightning.Trainer`` after BenchRep-owned arguments are
+        checked and stage-specific overrides are applied.
+    stage:
+        Workflow stage for which the Trainer is being built. Supported values are
+        ``"training"`` and ``"prediction"``.
+    run_context:
+        Run context providing BenchRep-managed output paths. Its output directory
+        is used as Lightning's ``default_root_dir``.
+    logger_config:
+        Optional top-level logger config. Used during training. Ignored with a
+        warning during prediction.
+    checkpoint_config:
+        Optional top-level checkpoint config. Required during training. Ignored
+        with a warning during prediction.
+    max_batches:
+        Optional prediction diagnostic limit. During prediction, this is mapped
+        to Lightning's ``limit_predict_batches``. Ignored during training.
+
+    Returns
+    -------
+    tuple[lightning.Trainer, ModelCheckpoint | None]
+        The instantiated Lightning Trainer and, for training runs, the
+        ModelCheckpoint callback. Prediction runs return ``None`` for the
+        checkpoint callback.
+
+    Raises
+    ------
+    ValueError
+        If BenchRep-owned Trainer arguments are provided through
+        ``trainer_config``, if training is requested without a checkpoint config,
+        or if an unsupported workflow stage is requested.
+    """
     run_log = get_run_logger()
 
     trainer_params = trainer_config.model_dump()
@@ -52,38 +112,97 @@ def build_trainer(
             "BenchRep currently manages required callbacks internally."
         )
 
-    logger = _build_logger(logger_config)
+    if "enable_checkpointing" in trainer_params:
+        raise ValueError(
+            "`trainer.enable_checkpointing` should not be set in the trainer config. "
+            "BenchRep manages checkpointing through the top-level `checkpointing` config "
+            "during training and disables checkpointing during prediction."
+        )
 
-    if logger_config is None:
-        logger_name = None
-        logger_cls_name = "False"
+    if stage == "training":
+        if checkpoint_config is None:
+            raise ValueError("Training requires checkpoint_config.")
+
+        logger = _build_logger(logger_config)
+
+        if logger_config is None:
+            logger_name = None
+            logger_cls_name = "False"
+        else:
+            logger_name = logger_config.name
+            logger_cls = LOGGERS.get(logger_name)
+            logger_cls_name = logger_cls.__name__
+
+        checkpoint_callback = _build_checkpoint_callback(
+            checkpoint_config=checkpoint_config,
+            checkpoint_dir=run_context.checkpoint_dir,
+        )
+
+        trainer = L.Trainer(
+            default_root_dir=str(run_context.output_dir),
+            logger=logger,
+            callbacks=[checkpoint_callback],
+            **trainer_params,
+        )
+
+        run_log.info(
+            "Built Lightning trainer for training: "
+            "(max_epochs=%s, accelerator=%s, devices=%s, precision=%s, "
+            "deterministic=%s, logger=%s -> %s, checkpoint_monitor=%s, "
+            "save_top_k=%s, save_last=%s)",
+            trainer_params.get("max_epochs"),
+            trainer_params.get("accelerator"),
+            trainer_params.get("devices"),
+            trainer_params.get("precision"),
+            trainer_params.get("deterministic"),
+            logger_name,
+            logger_cls_name,
+            checkpoint_config.monitor,
+            checkpoint_config.save_top_k,
+            checkpoint_config.save_last,
+        )
+    elif stage == "prediction":
+        if logger_config is not None:
+            run_log.warning(
+                "Prediction received logger_config, but prediction logging is currently "
+                "disabled by BenchRep. Ignoring logger_config."
+            )
+
+        if checkpoint_config is not None:
+            run_log.warning(
+                "Prediction received checkpoint_config, but prediction does not create "
+                "training checkpoints. Ignoring checkpoint_config."
+            )
+
+        logger = False
+        checkpoint_callback = None
+        trainer_params["enable_checkpointing"] = False
+
+        if max_batches is not None:
+            trainer_params["limit_predict_batches"] = max_batches
+
+        trainer = L.Trainer(
+            default_root_dir=str(run_context.output_dir),
+            logger=logger,
+            **trainer_params,
+        )
+
+        run_log.info(
+            "Built Lightning trainer for prediction: "
+            "(accelerator=%s, devices=%s, precision=%s, deterministic=%s, "
+            "limit_predict_batches=%s, logger=False, enable_checkpointing=False)",
+            trainer_params.get("accelerator"),
+            trainer_params.get("devices"),
+            trainer_params.get("precision"),
+            trainer_params.get("deterministic"),
+            trainer_params.get("limit_predict_batches"),
+        )
+
     else:
-        logger_name = logger_config.name
-        logger_cls = LOGGERS.get(logger_name)
-        logger_cls_name = logger_cls.__name__
-
-    checkpoint_callback = _build_checkpoint_callback(
-        checkpoint_config=checkpoint_config,
-        checkpoint_dir=run_context.checkpoint_dir,
-    )
-
-    trainer = L.Trainer(
-        default_root_dir=str(run_context.output_dir),
-        logger=logger,
-        callbacks=[checkpoint_callback],
-        **trainer_params,
-    )
-
-    run_log.info(
-        "Built Lightning trainer: (max_epochs=%s, logger=%s -> %s, "
-        "checkpoint_monitor=%s, save_top_k=%s, save_last=%s)",
-        trainer_config.max_epochs,
-        logger_name,
-        logger_cls_name,
-        checkpoint_config.monitor,
-        checkpoint_config.save_top_k,
-        checkpoint_config.save_last,
-    )
+        raise ValueError(
+            f"Unsupported stage {stage!r}. "
+            "Available options: 'training', 'prediction'."
+        )
 
     return trainer, checkpoint_callback
 
