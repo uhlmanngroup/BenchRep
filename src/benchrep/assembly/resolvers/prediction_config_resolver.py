@@ -11,6 +11,7 @@ from benchrep.assembly.schemas import (
     parse_training_config,
     DatasetConfig,
     DataModuleConfig,
+    TrainerConfig,
 )
 from benchrep.assembly.resolvers.utils import (
     resolve_optional,
@@ -20,7 +21,7 @@ from benchrep.assembly.resolvers.utils import (
 
 
 @dataclass(frozen=True)
-class PredictionRuntimePlan:
+class PredictionRunSpec:
     stage: Literal["prediction"]
     prediction_config: PredictionConfig
     training_config: TrainingConfig
@@ -38,17 +39,17 @@ class PredictionRuntimePlan:
     split: str
     batch_size: int
     num_workers: int
+    trainer_config: TrainerConfig
     max_batches: int | None
 
     seed: int | None
     seed_workers: bool | None
-    deterministic: bool | Literal["warn"]  | None
     float32_matmul_precision: str | None
 
 
 def resolve_prediction_config(
     prediction_config: PredictionConfig,
-) -> PredictionRuntimePlan:
+) -> PredictionRunSpec:
     """Resolve prediction config values that depend on the training run."""
     training_manifest_path = prediction_config.source.training_manifest_path.resolve()
     training_manifest = load_yaml(training_manifest_path)
@@ -117,10 +118,16 @@ def resolve_prediction_config(
         field_name="inference.seed_workers",
     )
 
-    deterministic = (
-        prediction_config.inference.deterministic
-        if prediction_config.inference.deterministic is not None
-        else training_config.trainer.deterministic
+    deterministic = resolve_optional(
+        prediction_config.inference.deterministic,
+        training_config.trainer.deterministic,
+        field_name="inference.deterministic",
+    )
+
+    trainer_config = training_config.trainer.model_copy(
+        update={
+            "deterministic": deterministic,
+        }
     )
 
     float32_matmul_precision = resolve_optional(
@@ -129,7 +136,7 @@ def resolve_prediction_config(
         field_name="inference.float32_matmul_precision",
     )
 
-    return PredictionRuntimePlan(
+    return PredictionRunSpec(
         stage=prediction_config.stage,
         prediction_config=prediction_config,
         training_config=training_config,
@@ -144,10 +151,10 @@ def resolve_prediction_config(
         split=prediction_config.data.split,
         batch_size=batch_size,
         num_workers=num_workers,
+        trainer_config=trainer_config,
         max_batches=prediction_config.data.max_batches,
         seed=seed,
         seed_workers=seed_workers,
-        deterministic=deterministic,
         float32_matmul_precision=float32_matmul_precision,
     )
 

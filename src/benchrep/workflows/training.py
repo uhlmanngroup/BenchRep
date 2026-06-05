@@ -72,7 +72,7 @@ def main() -> None:
         )
 
 
-    # Build model and train
+    # Build model trainer, and train
     datamodule = build_datamodule(
         dataset_config=config.dataset,
         datamodule_config=config.datamodule,

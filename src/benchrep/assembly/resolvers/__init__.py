@@ -1,10 +1,10 @@
 from benchrep.assembly.resolvers.prediction_config_resolver import (
-    PredictionRuntimePlan,
+    PredictionRunSpec,
     resolve_prediction_config,
 )
 
 __all__ = [
-    "PredictionRuntimePlan",
+    "PredictionRunSpec",
     "resolve_prediction_config",
 ]
 
