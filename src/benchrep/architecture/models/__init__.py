@@ -1,17 +1,17 @@
 from benchrep.architecture.models.autoencoder import (
     AutoencoderBatch,
-    AutoencoderOutput,
+    AutoencoderForwardOutput,
     Autoencoder,
 )
 from benchrep.architecture.models.vae import (
-    VAEOutput,
+    VAEForwardOutput,
     VAE
 )
 
 __all__ = [
     "AutoencoderBatch",
-    "AutoencoderOutput",
+    "AutoencoderForwardOutput",
     "Autoencoder",
-    "VAEOutput",
+    "VAEForwardOutput",
     "VAE",
 ]

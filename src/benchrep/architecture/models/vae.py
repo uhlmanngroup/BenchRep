@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from typing_extensions import TypedDict
+
+from typing_extensions import TypedDict, NotRequired
 
 import lightning as L
 import torch
@@ -14,7 +15,7 @@ from benchrep.architecture.heads.variational import GaussianVariationalHead
 from benchrep.architecture.losses.base import LossTerm
 
 
-class VAEOutput(TypedDict):
+class VAEForwardOutput(TypedDict):
     """
     Forward output returned by ``VAE``.
 
@@ -31,6 +32,19 @@ class VAEOutput(TypedDict):
     z_sample: torch.Tensor
     z_mu: torch.Tensor
     z_logvar: torch.Tensor
+
+
+class VAEPredictionOutput(TypedDict):
+    """Prediction output returned by ``VAE``."""
+    input: torch.Tensor
+    embedding: torch.Tensor
+    z_sample: torch.Tensor
+    z_mu: torch.Tensor
+    z_logvar: torch.Tensor
+    reconstruction: torch.Tensor
+    sample_id: NotRequired[torch.Tensor | list[int] | list[str]]
+    label: NotRequired[torch.Tensor | list[int] | list[str]]
+    metadata: NotRequired[dict[str, torch.Tensor | list[int] | list[str]]]
 
 
 class VAE(L.LightningModule):
@@ -115,7 +129,7 @@ class VAE(L.LightningModule):
             ]
         )
 
-    def forward(self, x: torch.Tensor) -> VAEOutput:
+    def forward(self, x: torch.Tensor) -> VAEForwardOutput:
         encoder_features = self.encode(x)
         latent = self.variational_head(encoder_features)
         reconstruction = self.decode(latent.z_sample)
@@ -142,6 +156,30 @@ class VAE(L.LightningModule):
 
     def test_step(self, batch: AutoencoderBatch, batch_idx: int) -> torch.Tensor:
         return self._compute_loss_step(batch, stage="test")
+
+    def predict_step(self, batch: AutoencoderBatch, batch_idx: int) -> VAEPredictionOutput:
+        x = self._get_input_from_batch(batch)
+        output = self(x)
+
+        prediction: VAEPredictionOutput = {
+            "input": x,
+            "embedding": output["embedding"],
+            "z_sample": output["z_sample"],
+            "z_mu": output["z_mu"],
+            "z_logvar": output["z_logvar"],
+            "reconstruction": output["reconstruction"],
+        }
+
+        if "sample_id" in batch:
+            prediction["sample_id"] = batch["sample_id"]
+
+        if "label" in batch:
+            prediction["label"] = batch["label"]
+
+        if "metadata" in batch:
+            prediction["metadata"] = batch["metadata"]
+
+        return prediction
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
         return self.optimizer_factory(self.parameters())

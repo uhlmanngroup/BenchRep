@@ -36,10 +36,20 @@ class AutoencoderBatch(TypedDict):
     metadata: NotRequired[dict[str, torch.Tensor | list[int] | list[str]]]
 
 
-class AutoencoderOutput(TypedDict):
+class AutoencoderForwardOutput(TypedDict):
     """Forward output returned by ``Autoencoder``."""
     embedding: torch.Tensor
     reconstruction: torch.Tensor
+
+
+class AutoencoderPredictionOutput(TypedDict):
+    """Prediction output returned by ``Autoencoder``."""
+    input: torch.Tensor
+    embedding: torch.Tensor
+    reconstruction: torch.Tensor
+    sample_id: NotRequired[torch.Tensor | list[int] | list[str]]
+    label: NotRequired[torch.Tensor | list[int] | list[str]]
+    metadata: NotRequired[dict[str, torch.Tensor | list[int] | list[str]]]
 
 
 class Autoencoder(L.LightningModule):
@@ -92,7 +102,7 @@ class Autoencoder(L.LightningModule):
             ]
         )
 
-    def forward(self, x: torch.Tensor) -> AutoencoderOutput:
+    def forward(self, x: torch.Tensor) -> AutoencoderForwardOutput:
         z = self.encode(x)
         reconstruction = self.decode(z)
         return {
@@ -114,6 +124,27 @@ class Autoencoder(L.LightningModule):
 
     def test_step(self, batch: AutoencoderBatch, batch_idx: int) -> torch.Tensor:
         return self._compute_loss_step(batch, stage="test")
+
+    def predict_step(self, batch: AutoencoderBatch, batch_idx: int) -> AutoencoderPredictionOutput:
+        x = self._get_input_from_batch(batch)
+        output = self(x)
+
+        prediction: AutoencoderPredictionOutput = {
+            "input": x,
+            "embedding": output["embedding"],
+            "reconstruction": output["reconstruction"],
+        }
+
+        if "sample_id" in batch:
+            prediction["sample_id"] = batch["sample_id"]
+
+        if "label" in batch:
+            prediction["label"] = batch["label"]
+
+        if "metadata" in batch:
+            prediction["metadata"] = batch["metadata"]
+
+        return prediction
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
         return self.optimizer_factory(self.parameters())
