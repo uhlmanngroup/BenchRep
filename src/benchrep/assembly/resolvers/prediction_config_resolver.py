@@ -21,6 +21,7 @@ from benchrep.assembly.resolvers.utils import (
 
 @dataclass(frozen=True)
 class PredictionRuntimePlan:
+    stage: Literal["prediction"]
     prediction_config: PredictionConfig
     training_config: TrainingConfig
     training_manifest: dict[str, Any]
@@ -129,6 +130,7 @@ def resolve_prediction_config(
     )
 
     return PredictionRuntimePlan(
+        stage=prediction_config.stage,
         prediction_config=prediction_config,
         training_config=training_config,
         training_manifest=training_manifest,
