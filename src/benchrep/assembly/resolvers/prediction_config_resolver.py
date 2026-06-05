@@ -8,6 +8,7 @@ from benchrep.assembly.config import load_yaml
 from benchrep.assembly.schemas import (
     PredictionConfig,
     TrainingConfig,
+    PredictionExportConfig,
     parse_training_config,
     DatasetConfig,
     DataModuleConfig,
@@ -18,6 +19,30 @@ from benchrep.assembly.resolvers.utils import (
     get_required_nested_path,
     get_required_nested_str,
 )
+
+
+@dataclass(frozen=True)
+class PredictionEmbeddingsExportSpec:
+    enabled: bool
+    keys: list[str] | Literal["auto", "all"]
+    primary_key: str
+
+
+@dataclass(frozen=True)
+class PredictionReconstructionsExportSpec:
+    enabled: bool
+    n_examples: int | Literal["all"]
+    selection: Literal["first", "random"]
+    seed: int | None
+    include_input: bool
+    include_prediction: bool
+
+
+@dataclass(frozen=True)
+class PredictionExportSpec:
+    mode: Literal["standard", "all", "custom"]
+    embeddings: PredictionEmbeddingsExportSpec
+    reconstructions: PredictionReconstructionsExportSpec
 
 
 @dataclass(frozen=True)
@@ -45,6 +70,8 @@ class PredictionRunSpec:
     seed: int | None
     seed_workers: bool | None
     float32_matmul_precision: str | None
+
+    export_spec: PredictionExportSpec
 
 
 def resolve_prediction_config(
@@ -102,7 +129,7 @@ def resolve_prediction_config(
         update={
             "batch_size": batch_size,
             "num_workers": num_workers,
-            "drop_last": False, # never drop_last in prediction
+            "drop_last": False,  # never drop_last in prediction
         }
     )
 
@@ -136,6 +163,11 @@ def resolve_prediction_config(
         field_name="inference.float32_matmul_precision",
     )
 
+    export_spec = resolve_prediction_exports(
+        export_config=prediction_config.exports,
+        seed=seed,
+    )
+
     return PredictionRunSpec(
         stage=prediction_config.stage,
         prediction_config=prediction_config,
@@ -156,6 +188,7 @@ def resolve_prediction_config(
         seed=seed,
         seed_workers=seed_workers,
         float32_matmul_precision=float32_matmul_precision,
+        export_spec=export_spec,
     )
 
 
@@ -207,3 +240,72 @@ def _resolve_checkpoint_path(
         raise ValueError(f"Checkpoint file must end with '.ckpt', got: {checkpoint_path}")
 
     return checkpoint_path
+
+
+def resolve_prediction_exports(
+    *,
+    export_config: PredictionExportConfig,
+    seed: int | None,
+) -> PredictionExportSpec:
+    """Resolve prediction export settings into a runtime export spec.
+
+    This resolves config-level export intent only. Actual output-key validation
+    is done later by the exporter after ``trainer.predict()`` has produced model
+    outputs.
+
+    ``seed`` is the already-resolved prediction/inference seed. It should already
+    reflect the prediction config seed if provided, otherwise the training run seed.
+    """
+    mode = export_config.mode
+
+    if mode == "standard":
+        embedding_keys: list[str] | Literal["auto", "all"] = "auto"
+        primary_key = "auto"
+
+    elif mode == "all":
+        embedding_keys = "all"
+        primary_key = "auto"
+
+    elif mode == "custom":
+        embedding_keys = export_config.embeddings.keys
+        primary_key = export_config.embeddings.primary_key
+
+    else:
+        raise ValueError(
+            f"Unsupported prediction export mode {mode!r}. "
+            "Available options: 'standard', 'all', 'custom'."
+        )
+
+    reconstruction_seed = (
+        export_config.reconstructions.seed
+        if export_config.reconstructions.seed is not None
+        else seed
+    )
+
+    if (
+        export_config.reconstructions.enabled
+        and export_config.reconstructions.selection == "random"
+        and reconstruction_seed is None
+    ):
+        raise ValueError(
+            "Random reconstruction export requires a seed. Set "
+            "`exports.reconstructions.seed`, `inference.seed`, or use a training "
+            "run with a reproducibility seed."
+        )
+
+    return PredictionExportSpec(
+        mode=mode,
+        embeddings=PredictionEmbeddingsExportSpec(
+            enabled=export_config.embeddings.enabled,
+            keys=embedding_keys,
+            primary_key=primary_key,
+        ),
+        reconstructions=PredictionReconstructionsExportSpec(
+            enabled=export_config.reconstructions.enabled,
+            n_examples=export_config.reconstructions.n_examples,
+            selection=export_config.reconstructions.selection,
+            seed=reconstruction_seed,
+            include_input=export_config.reconstructions.include_input,
+            include_prediction=export_config.reconstructions.include_prediction,
+        ),
+    )
