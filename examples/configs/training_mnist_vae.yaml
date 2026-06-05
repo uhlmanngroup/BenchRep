@@ -9,6 +9,9 @@ run:
   output_root: outputs
   project_name: test
 
+data:
+  split: train
+
 dataset:
   name: mnist
   root: examples/data/mnist

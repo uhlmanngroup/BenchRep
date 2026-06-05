@@ -66,12 +66,20 @@ def main() -> None:
         torch.set_float32_matmul_precision(
             config.reproducibility.float32_matmul_precision
         )
+        run_log.info(
+            "float32 matmul precision set to '%s'",
+            config.reproducibility.float32_matmul_precision,
+        )
+
 
     # Build model and train
     datamodule = build_datamodule(
         dataset_config=config.dataset,
         datamodule_config=config.datamodule,
-        seed=config.reproducibility.seed)
+        seed=config.reproducibility.seed,
+        stage=config.stage,
+        split=config.data.split,
+    )
 
     model = build_model(config=config)
 

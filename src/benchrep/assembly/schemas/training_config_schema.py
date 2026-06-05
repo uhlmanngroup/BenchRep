@@ -112,6 +112,10 @@ class InspectionConfig(BaseModel):
 # -------------------------
 # Data configuration
 # -------------------------
+class DataSelectionConfig(BaseModel):
+    split: Literal["train"] = "train"
+
+
 class TransformConfig(NamedConfig):
     pass
 
@@ -132,11 +136,6 @@ class DataModuleConfig(BaseModel):
     drop_last: bool = False
 
 
-class DataConfig(BaseModel):
-    dataset: DatasetConfig
-    datamodule: DataModuleConfig
-
-
 # -------------------------
 # Full experiment configuration
 # -------------------------
@@ -149,6 +148,7 @@ class TrainingConfig(BaseModel):
     decoder: DecoderConfig | None = None
     losses: dict[str, dict[str, LossTermConfig]] = Field(default_factory=dict)
     optimizer: OptimizerConfig
+    data: DataSelectionConfig = Field(default_factory=DataSelectionConfig)
     dataset: DatasetConfig
     datamodule: DataModuleConfig = Field(default_factory=DataModuleConfig)
     trainer: TrainerConfig = Field(default_factory=TrainerConfig)
