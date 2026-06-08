@@ -1,0 +1,76 @@
+stage: evaluation
+
+source:
+  prediction_manifest_path: null
+  embeddings_path: null # null = infer from manifest. Error if no manifest provided
+  reconstructions_path: null # null = infer from manifest. Skip if reconstructions not available or known
+
+run:
+  output_root: null # null = in outputs/evaluation/
+  run_name: null # null = derive from manifest if provided, else generate as evaluation_<timestamp>
+
+reductions:
+  pca:
+    enabled: true # default to true
+    params:
+      n_components: null # default value of backend
+
+  umap:
+    enabled: true
+    params:
+      n_neighbors: 15 # null = default value of backend
+      min_dist: 0.1 # null = default value of backend
+
+  tsne:
+    enabled: true
+    params:
+      perplexity: 30 # null = default value of backend
+
+clustering:
+  kmeans:
+    enabled: true # null defaults to false
+    params:
+      n_clusters: 10 # required if enabled
+
+  leiden:
+    enabled: true # null defaults to true
+    params:
+      resolution: 1.0 # default value of backend
+      n_neighbors: 15 # default value of backend
+
+metrics:
+  clustering:
+    internal:
+      enabled: true # null defaults to true
+      selected: null # null defaults to all supported metrics
+      params: null # null = backend defaults
+
+    external:
+      enabled: null # null = true if label_key exists in adata.obs, else false
+      label_key: label # required if enabled
+      selected: null # null defaults to all supported metrics
+      params: null # null = backend defaults
+
+
+  embedding:
+    enabled: true # null defaults to false
+    selected: null # null defaults to all supported metrics
+    params: null # null = backend defaults
+
+  reconstruction:
+    enabled: true # null defaults to true if reconstruction path provided (by manifest or manually), else false
+    selected: null # null defaults to all supported metrics
+    params: null # null = backend defaults
+
+reconstruction:
+  error_maps:
+    enabled: true # null defaults to false
+    params:
+      kind: absolute # null defaults to absolute
+      n_examples: null # null defaults to min(n_examples in manifest if provided or n_files detected if not, 32)
+
+plots:
+  enabled: true # null defaults to true
+  params:
+    color_by:
+      - label # null = no coloring, i.e. false

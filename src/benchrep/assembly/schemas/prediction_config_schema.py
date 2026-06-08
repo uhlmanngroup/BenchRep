@@ -76,6 +76,9 @@ class PredictionConfig(BaseModel):
     def validate_prediction_config(self) -> PredictionConfig:
         checkpoint = self.source.checkpoint
 
+        if not self.source.training_manifest_path.suffix.lower() in {".yaml", ".yml"}:
+                raise ValueError("source.training_manifest_path must point to a YAML file.")
+
         if checkpoint not in {"best", "last"} and not checkpoint.endswith(".ckpt"):
             raise ValueError(
                 'source.checkpoint must be "best", "last", or a checkpoint '
