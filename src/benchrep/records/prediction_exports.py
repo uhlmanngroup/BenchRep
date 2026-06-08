@@ -15,8 +15,15 @@ from benchrep.records.anndata_io import (
 
 @dataclass(frozen=True)
 class PredictionExportPaths:
-    embeddings_h5ad_path: Path | None = None
+    embedding_export: EmbeddingExportPathAndKeys | None = None
     reconstruction_paths: ReconstructionExportPaths | None = None
+
+
+@dataclass(frozen=True)
+class EmbeddingExportPathAndKeys:
+    embeddings_h5ad_path: Path | None = None
+    resolved_keys: list[str] | None = None
+    resolved_primary_key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -53,13 +60,13 @@ def export_prediction_outputs(
     """
     _validate_prediction_batches(predictions)
 
-    exported_embeddings_path = None
+    exported_embeddings_path_and_keys = None
     exported_reconstruction_paths = None
 
     if export_spec.embeddings.enabled:
         embedding_dir.mkdir(parents=True, exist_ok=True)
 
-        exported_embeddings_path = _export_embeddings(
+        exported_embeddings_path_and_keys = _export_embeddings(
             predictions=predictions,
             export_spec=export_spec,
             output_dir=embedding_dir,
@@ -75,7 +82,7 @@ def export_prediction_outputs(
         )
 
     return PredictionExportPaths(
-        embeddings_h5ad_path=exported_embeddings_path,
+        embedding_export=exported_embeddings_path_and_keys,
         reconstruction_paths=exported_reconstruction_paths,
     )
 
@@ -99,7 +106,7 @@ def _export_embeddings(
     predictions: list[dict[str, Any]],
     export_spec: PredictionExportSpec,
     output_dir: Path,
-) -> Path:
+) -> EmbeddingExportPathAndKeys:
     """Export embedding-like prediction outputs as a single AnnData artifact.
 
     The resolved primary embedding is stored in ``adata.X``. Any additional
@@ -196,7 +203,11 @@ def _export_embeddings(
         overwrite=True,
     )
 
-    return embeddings_h5ad_path
+    return EmbeddingExportPathAndKeys(
+        embeddings_h5ad_path=embeddings_h5ad_path,
+        resolved_keys=embedding_keys,
+        resolved_primary_key=primary_key,
+    )
 
 
 def _resolve_embedding_keys(

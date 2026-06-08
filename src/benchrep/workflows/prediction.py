@@ -19,7 +19,8 @@ from benchrep.records import (
     save_config_records,
     setup_run_logger,
     capture_console_streams,
-    export_prediction_outputs
+    export_prediction_outputs,
+    write_prediction_manifest,
 )
 from benchrep.runtime import RunContext
 
@@ -144,10 +145,10 @@ def main() -> None:
         reconstruction_dir=run_context.reconstruction_dir,
     )
 
-    if export_paths.embeddings_h5ad_path is not None:
+    if export_paths.embedding_export is not None:
         run_log.info(
             "Exported embedding artifact to: '%s'",
-            export_paths.embeddings_h5ad_path,
+            export_paths.embedding_export,
         )
 
     if export_paths.reconstruction_paths is not None:
@@ -163,9 +164,20 @@ def main() -> None:
 
     completed_at = datetime.now().isoformat(timespec="seconds")
 
+    # Export prediction manifest
+    manifest_path = run_context.metadata_dir / "prediction_manifest.yaml"
+    write_prediction_manifest(
+        output_path=manifest_path,
+        run_spec=run_spec,
+        run_context=run_context,
+        input_config_path=raw_pred_config_path,
+        export_paths=export_paths,
+        created_at=created_at,
+        completed_at=completed_at,
+        status="completed",
+    )
 
-
-
+    run_log.info("Exported prediction manifest to: '%s'", manifest_path)
 
 
 def parse_args() -> argparse.Namespace:
