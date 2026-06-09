@@ -99,17 +99,25 @@ class RunContext:
         cls,
         output_root: str | Path,
         stage: RunStage,
-        model_name: str,
+        run_name_stem: str | None = None,
+        model_name: str | None = None,
         project_name: str | None = None,
         timestamp: str | None = None,
     ) -> "RunContext":
         output_root = Path(output_root).expanduser().resolve() / stage
         timestamp = timestamp or datetime.now().strftime("%Y%m%d-%H%M%S")
 
-        if project_name:
-            base_run_name = f"{project_name}_{model_name}_{timestamp}"
+        if run_name_stem is not None:
+            stem = run_name_stem
+        elif model_name is not None:
+            stem = model_name
         else:
-            base_run_name = f"{model_name}_{timestamp}"
+            stem = stage
+
+        if project_name is not None:
+            base_run_name = f"{project_name}_{stem}_{timestamp}"
+        else:
+            base_run_name = f"{stem}_{timestamp}"
 
         run_name = base_run_name
         output_dir = output_root / run_name
