@@ -32,6 +32,7 @@ class ReconstructionExportPaths:
     reconstruction_path: Path | None = None
     obs_path: Path | None = None
     metadata_path: Path | None = None
+    n_examples_exported: int | None = None
 
 
 def export_prediction_outputs(
@@ -557,6 +558,7 @@ def _export_reconstructions(
         reconstruction_path=reconstruction_path,
         obs_path=obs_path,
         metadata_path=metadata_path,
+        n_examples_exported=len(selected_indices),
     )
 
 

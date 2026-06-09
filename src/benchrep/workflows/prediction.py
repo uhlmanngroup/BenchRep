@@ -35,7 +35,7 @@ def main() -> None:
     run_spec = resolve_prediction_config(pred_config)
 
     # Setup paths
-    model_name = f"{run_spec.training_config.model.name}_prediction"
+    model_name = f"{run_spec.training_config.model.name}"
 
     run_context = RunContext.create(
         output_root=run_spec.training_config.run.output_root,
@@ -153,11 +153,13 @@ def main() -> None:
 
     if export_paths.reconstruction_paths is not None:
         run_log.info(
-            "Exported reconstruction artifacts: input=%s, reconstruction=%s, obs=%s, metadata=%s",
+            "Exported reconstruction artifacts: input=%s, reconstruction=%s, obs=%s, "
+            "metadata=%s, n_examples_exported=%s",
             export_paths.reconstruction_paths.input_path,
             export_paths.reconstruction_paths.reconstruction_path,
             export_paths.reconstruction_paths.obs_path,
             export_paths.reconstruction_paths.metadata_path,
+            export_paths.reconstruction_paths.n_examples_exported,
         )
 
     run_log.info("Finished exporting prediction outputs")

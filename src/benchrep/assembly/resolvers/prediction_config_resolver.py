@@ -21,6 +21,9 @@ from benchrep.assembly.resolvers.utils import (
 )
 
 
+# -------------------------
+# Resolved specs
+# -------------------------
 @dataclass(frozen=True)
 class PredictionEmbeddingsExportSpec:
     enabled: bool

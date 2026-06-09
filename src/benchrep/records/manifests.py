@@ -135,6 +135,7 @@ def write_prediction_manifest(
     reconstruction_paths = export_paths.reconstruction_paths
 
     summary = {
+        "project_name": run_spec.training_config.run.project_name,
         "model": training_summary.get("model"),
         "encoder": training_summary.get("encoder"),
         "decoder": training_summary.get("decoder"),
@@ -196,7 +197,12 @@ def write_prediction_manifest(
             },
             "reconstructions": {
                 "enabled": reconstruction_spec.enabled,
-                "n_examples": reconstruction_spec.n_examples,
+                "n_examples_requested": reconstruction_spec.n_examples,
+                "n_examples_exported": (
+                    reconstruction_paths.n_examples_exported
+                    if reconstruction_paths is not None
+                    else None
+                ),
                 "selection": reconstruction_spec.selection,
                 "seed": reconstruction_spec.seed,
                 "include_input": reconstruction_spec.include_input,
