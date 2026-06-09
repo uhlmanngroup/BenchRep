@@ -92,7 +92,7 @@ def build_trainer(
     """
     run_log = get_run_logger()
 
-    trainer_params = trainer_config.model_dump()
+    trainer_params = trainer_config.model_dump(exclude_none=True)
 
     if "default_root_dir" in trainer_params:
         raise ValueError(
