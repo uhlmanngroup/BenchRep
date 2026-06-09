@@ -27,12 +27,14 @@ def get_required_nested_str(
     data: dict[str, Any],
     section: str,
     key: str,
+    *extra_keys: str,
 ) -> str:
-    value = get_required_nested_value(data, section, key)
+    value = get_required_nested_value(data, section, key, *extra_keys)
+    dotted_path = ".".join((section, key, *extra_keys))
 
     if not isinstance(value, str):
         raise TypeError(
-            f"Manifest field '{section}.{key}' must be a string, "
+            f"Manifest field '{dotted_path}' must be a string, "
             f"got {type(value).__name__}."
         )
 
@@ -43,14 +45,15 @@ def get_required_nested_path(
     data: dict[str, Any],
     section: str,
     key: str,
-    *,
+    *extra_keys: str,
     base_dir: Path,
 ) -> Path:
-    value = get_required_nested_value(data, section, key)
+    value = get_required_nested_value(data, section, key, *extra_keys)
+    dotted_path = ".".join((section, key, *extra_keys))
 
     if not isinstance(value, str | Path):
         raise TypeError(
-            f"Manifest field '{section}.{key}' must be a path-like string, "
+            f"Manifest field '{dotted_path}' must be a path-like string, "
             f"got {type(value).__name__}."
         )
 
@@ -66,24 +69,101 @@ def get_required_nested_value(
     data: dict[str, Any],
     section: str,
     key: str,
+    *extra_keys: str,
 ) -> Any:
-    if section not in data:
-        raise KeyError(f"Required manifest section is missing: '{section}'")
+    keys = (section, key, *extra_keys)
+    current: Any = data
 
-    section_data = data[section]
+    for depth, current_key in enumerate(keys):
+        dotted_path = ".".join(keys[: depth + 1])
 
-    if not isinstance(section_data, dict):
+        if not isinstance(current, dict):
+            parent_path = ".".join(keys[:depth])
+            raise TypeError(
+                f"Manifest field '{parent_path}' must be a mapping/dictionary, "
+                f"got {type(current).__name__}."
+            )
+
+        if current_key not in current:
+            if depth == 0:
+                raise KeyError(f"Required manifest section is missing: '{current_key}'")
+
+            raise KeyError(f"Required manifest field is missing: '{dotted_path}'")
+
+        current = current[current_key]
+
+    if current is None:
+        raise ValueError(f"Required manifest field is null: '{'.'.join(keys)}'")
+
+    return current
+
+
+def get_optional_nested_path(
+    data: dict[str, Any],
+    section: str,
+    key: str,
+    *extra_keys: str,
+    base_dir: Path,
+) -> Path | None:
+    keys = (section, key, *extra_keys)
+    dotted_path = ".".join(keys)
+
+    try:
+        value = get_required_nested_value(data, section, key, *extra_keys)
+    except (KeyError, ValueError):
+        return None
+
+    if not isinstance(value, str | Path):
         raise TypeError(
-            f"Manifest section '{section}' must be a mapping/dictionary, "
-            f"got {type(section_data).__name__}."
+            f"Manifest field '{dotted_path}' must be a path-like string or null, "
+            f"got {type(value).__name__}."
         )
 
-    if key not in section_data:
-        raise KeyError(f"Required manifest field is missing: '{section}.{key}'")
+    path = Path(value)
 
-    value = section_data[key]
+    if not path.is_absolute():
+        path = base_dir / path
 
-    if value is None:
-        raise ValueError(f"Required manifest field is null: '{section}.{key}'")
+    return path.resolve()
 
-    return value
+
+def get_optional_nested_value(
+    data: dict[str, Any],
+    section: str,
+    key: str,
+    *extra_keys: str,
+) -> Any:
+    keys = (section, key, *extra_keys)
+    current: Any = data
+
+    for depth, current_key in enumerate(keys):
+        dotted_path = ".".join(keys[: depth + 1])
+
+        if not isinstance(current, dict):
+            parent_path = ".".join(keys[:depth])
+            raise TypeError(
+                f"Manifest field '{parent_path}' must be a mapping/dictionary, "
+                f"got {type(current).__name__}."
+            )
+
+        if current_key not in current:
+            return None
+
+        current = current[current_key]
+
+    return current
+
+
+def params_to_dict(params: Any) -> dict[str, Any]:
+    if params is None:
+        return {}
+
+    if hasattr(params, "model_dump"):
+        return params.model_dump(exclude_none=True)
+
+    if isinstance(params, dict):
+        return params
+
+    raise TypeError(
+        f"Expected params to be a mapping or Pydantic model, got {type(params).__name__}."
+    )
