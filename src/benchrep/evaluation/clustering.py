@@ -63,14 +63,21 @@ def run_kmeans(
     adata.obs[key_added] = labels.astype(str)
     adata.obs[key_added] = adata.obs[key_added].astype("category")
 
-    adata.uns[key_added] = {
-        "method": "kmeans",
-        "n_clusters": n_clusters,
-        "random_state": random_state,
-        "n_init": n_init,
-        "input_shape": tuple(adata.X.shape),
-        "inertia": float(kmeans.inertia_),
-    }
+    _store_clustering_metadata(
+        adata,
+        key_added=key_added,
+        metadata={
+            "method": "kmeans",
+            "cluster_key": key_added,
+            "n_clusters": int(adata.obs[key_added].nunique()),
+            "requested_n_clusters": n_clusters,
+            "random_state": random_state,
+            "n_init": n_init,
+            "input_shape": tuple(adata.X.shape),
+            "inertia": float(kmeans.inertia_),
+            "params": dict(kmeans_kwargs),
+        },
+    )
 
     return adata
 
@@ -163,17 +170,24 @@ def run_leiden(
         **leiden_kwargs,
     )
 
-    adata.uns[key_added] = {
-        "method": "leiden",
-        "resolution": resolution,
-        "n_neighbors": n_neighbors,
-        "n_pcs": n_pcs,
-        "metric": metric,
-        "neighbors_key": neighbors_key,
-        "random_state": random_state,
-        "input_shape": tuple(adata.X.shape),
-        "n_clusters": int(adata.obs[key_added].nunique()),
-    }
+    _store_clustering_metadata(
+        adata,
+        key_added=key_added,
+        metadata={
+            "method": "leiden",
+            "cluster_key": key_added,
+            "resolution": resolution,
+            "n_neighbors": n_neighbors,
+            "n_pcs": n_pcs,
+            "metric": metric,
+            "neighbors_key": neighbors_key,
+            "random_state": random_state,
+            "input_shape": tuple(adata.X.shape),
+            "n_clusters": int(adata.obs[key_added].nunique()),
+            "neighbors_params": dict(neighbors_kwargs),
+            "leiden_params": dict(leiden_kwargs),
+        },
+    )
 
     return adata
 
@@ -191,3 +205,25 @@ def _check_obs_key_available(
             f"adata.obs already contains {key_added!r}. "
             "Pass overwrite=True to replace it."
         )
+
+
+def _store_clustering_metadata(
+    adata: ad.AnnData,
+    *,
+    key_added: str,
+    metadata: dict[str, Any],
+) -> None:
+    """Store clustering metadata under the BenchRep namespace.
+
+    Metadata are written to:
+
+        adata.uns["benchrep"]["clustering"][key_added]
+
+    where ``key_added`` is the ``adata.obs`` column containing the cluster labels,
+    such as ``"leiden"`` or ``"kmeans"``.
+    """
+
+    benchrep_uns = adata.uns.setdefault("benchrep", {})
+    clustering_uns = benchrep_uns.setdefault("clustering", {})
+
+    clustering_uns[key_added] = metadata

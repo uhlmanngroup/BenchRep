@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from typing import Any
+import inspect
 
 import anndata as ad
-from sklearn.metrics import (
-    adjusted_mutual_info_score,
-    adjusted_rand_score,
-    homogeneity_score,
-    silhouette_score,
-)
 
+from benchrep.assembly.registry import (
+    EVAL_EXTERNAL_CLUSTERING_METRICS,
+    EVAL_INTERNAL_CLUSTERING_METRICS,
+)
+from benchrep.assembly.registry_utils import (
+    resolve_registry_keys,
+    resolve_registry_param_keys,
+)
 from benchrep.evaluation.utils import validate_adata_x
 
 
@@ -18,43 +22,37 @@ def compute_external_clustering_metrics(
     *,
     label_key: str = "label",
     cluster_key: str,
-    key_added: str = "external_clustering_metrics",
-    ami_average_method: str = "arithmetic",
+    selected: Sequence[str] | None = None,
+    metric_params: Mapping[str, Mapping[str, Any]] | None = None,
     overwrite: bool = False,
 ) -> ad.AnnData:
-    """
-    Compute external clustering metrics against known labels in ``adata.obs``.
+    """Compute external clustering metrics against labels in ``adata.obs``.
 
-    External metrics compare cluster assignments to an existing annotation,
-    such as class labels, cell types, or transferred labels. Results are stored
-    in ``adata.uns[key_added][cluster_key]``.
+    External clustering metrics compare cluster assignments to a reference
+    annotation, such as class labels, cell types, or transferred labels.
 
-    Parameters
-    ----------
-    adata:
-        AnnData object containing labels and cluster assignments in ``adata.obs``.
-    label_key:
-        Column in ``adata.obs`` containing known labels.
-    cluster_key:
-        Column in ``adata.obs`` containing cluster assignments.
-    key_added:
-        Key under which metrics are stored in ``adata.uns``.
-    ami_average_method:
-        Averaging method passed to ``adjusted_mutual_info_score``.
-    overwrite:
-        If ``False``, raise an error when metrics for ``cluster_key`` already
-        exist under ``adata.uns[key_added]``. If ``True``, replace them.
+    Registered external metric callables must follow the BenchRep external
+    clustering metric contract:
 
-    Returns
-    -------
-    AnnData
-        The input AnnData object, modified in place and returned for convenience.
+        metric_fn(labels_true, labels_pred, **params) -> scalar
+
+    where ``labels_true`` comes from ``adata.obs[label_key]`` and
+    ``labels_pred`` comes from ``adata.obs[cluster_key]``. Custom metrics with a
+    different native signature should be wrapped before registration.
+
+    ``selected`` should contain canonical metric names or aliases registered in
+    ``EVAL_EXTERNAL_CLUSTERING_METRICS``. If ``selected`` is ``None``, all
+    canonical registered external clustering metrics are computed.
+
+    Results are stored under:
+
+        adata.uns["benchrep"]["metrics"]["clustering"]["external"][cluster_key]
     """
     _validate_obs_key(adata, label_key)
     _validate_obs_key(adata, cluster_key)
-    _check_metric_key_available(
+    _check_metric_result_available(
         adata,
-        key_added=key_added,
+        metric_group="external",
         cluster_key=cluster_key,
         overwrite=overwrite,
     )
@@ -62,25 +60,73 @@ def compute_external_clustering_metrics(
     labels = adata.obs[label_key]
     clusters = adata.obs[cluster_key]
 
-    metrics = {
-        "adjusted_rand_index": adjusted_rand_score(labels, clusters),
-        "adjusted_mutual_info": adjusted_mutual_info_score(
-            labels,
-            clusters,
-            average_method=ami_average_method,
-        ),
-        "homogeneity": homogeneity_score(labels, clusters),
-        "label_key": label_key,
-        "cluster_key": cluster_key,
-        "average_method": ami_average_method,
-        "n_labels": int(labels.nunique()),
-        "n_clusters": int(clusters.nunique()),
-    }
+    metric_names = resolve_registry_keys(
+        selected=selected,
+        registry=EVAL_EXTERNAL_CLUSTERING_METRICS,
+        none_policy="all",
+    )
+    metric_params = resolve_registry_param_keys(
+        params=metric_params,
+        registry=EVAL_EXTERNAL_CLUSTERING_METRICS,
+    )
 
-    if key_added not in adata.uns:
-        adata.uns[key_added] = {}
+    results: dict[str, Any] = {}
 
-    adata.uns[key_added][cluster_key] = metrics
+    for metric_name in metric_names:
+        metric_fn = EVAL_EXTERNAL_CLUSTERING_METRICS.get(metric_name)
+        params = metric_params.get(metric_name, {})
+
+        try:
+            signature = inspect.signature(metric_fn)
+        except (TypeError, ValueError):
+            # Some custom/builtin callables may not expose an inspectable signature
+            signature = None
+
+        if signature is not None:
+            parameters = signature.parameters
+            accepts_var_kwargs = any(
+                parameter.kind is inspect.Parameter.VAR_KEYWORD
+                for parameter in parameters.values()
+            )
+
+            if not accepts_var_kwargs:
+                unsupported_params = [
+                    param_name
+                    for param_name in params
+                    if param_name not in parameters
+                ]
+
+                if unsupported_params:
+                    raise ValueError(
+                        f"Unsupported parameters for external clustering metric "
+                        f"{metric_name!r}: {unsupported_params}. "
+                        f"Accepted parameters are: {tuple(parameters)}."
+                    )
+
+        try:
+            value = metric_fn(labels, clusters, **params)
+        except Exception as error:
+            raise RuntimeError(
+                f"Failed to compute external clustering metric {metric_name!r}. "
+                "The metric callable was found, but execution failed."
+            ) from error
+
+        results[metric_name] = _to_python_scalar(value)
+
+    _store_clustering_metric_result(
+        adata,
+        metric_group="external",
+        cluster_key=cluster_key,
+        result={
+            "metrics": results,
+            "params": metric_params,
+            "label_key": label_key,
+            "cluster_key": cluster_key,
+            "n_labels": int(labels.nunique()),
+            "n_clusters": int(clusters.nunique()),
+            "n_obs": int(adata.n_obs),
+        },
+    )
 
     return adata
 
@@ -89,78 +135,121 @@ def compute_internal_clustering_metrics(
     adata: ad.AnnData,
     *,
     cluster_key: str,
-    key_added: str = "internal_clustering_metrics",
-    metric: str = "euclidean",
+    selected: Sequence[str] | None = None,
+    metric_params: Mapping[str, Mapping[str, Any]] | None = None,
     overwrite: bool = False,
-    **silhouette_kwargs: Any,
 ) -> ad.AnnData:
-    """
-    Compute internal clustering metrics from ``adata.X`` and cluster assignments.
+    """Compute internal clustering metrics from ``adata.X`` and cluster labels.
 
-    Internal metrics evaluate cluster structure using the feature space itself,
-    without requiring known labels. For now, this computes silhouette score.
-    Results are stored in ``adata.uns[key_added][cluster_key]``.
+    Internal clustering metrics evaluate cluster structure in the representation
+    space without requiring ground-truth labels.
 
-    Parameters
-    ----------
-    adata:
-        AnnData object whose ``X`` matrix contains the clustered representation.
-    cluster_key:
-        Column in ``adata.obs`` containing cluster assignments.
-    key_added:
-        Key under which metrics are stored in ``adata.uns``.
-    metric:
-        Distance metric passed to ``sklearn.metrics.silhouette_score``.
-    overwrite:
-        If ``False``, raise an error when metrics for ``cluster_key`` already
-        exist under ``adata.uns[key_added]``. If ``True``, replace them.
-    **silhouette_kwargs:
-        Additional keyword arguments passed to ``silhouette_score``.
+    Registered internal metric callables must follow the BenchRep internal
+    clustering metric contract:
 
-    Returns
-    -------
-    AnnData
-        The input AnnData object, modified in place and returned for convenience.
+        metric_fn(X, labels, **params) -> scalar
+
+    where ``X`` is ``adata.X`` and ``labels`` comes from
+    ``adata.obs[cluster_key]``. Custom metrics with a different native signature
+    should be wrapped before registration.
+
+    ``selected`` should contain canonical metric names or aliases registered in
+    ``EVAL_INTERNAL_CLUSTERING_METRICS``. If ``selected`` is ``None``, all
+    canonical registered internal clustering metrics are computed.
+
+    Results are stored under:
+
+        adata.uns["benchrep"]["metrics"]["clustering"]["internal"][cluster_key]
     """
     validate_adata_x(adata)
     _validate_obs_key(adata, cluster_key)
-    _check_metric_key_available(
+    _check_metric_result_available(
         adata,
-        key_added=key_added,
+        metric_group="internal",
         cluster_key=cluster_key,
         overwrite=overwrite,
     )
 
     clusters = adata.obs[cluster_key]
+    n_clusters = int(clusters.nunique())
 
-    if clusters.nunique() < 2:
+    if n_clusters < 2:
         raise ValueError(
-            "Silhouette score requires at least 2 clusters, got "
-            f"{clusters.nunique()}."
+            "Internal clustering metrics require at least 2 clusters, got "
+            f"{n_clusters}."
         )
 
-    if clusters.nunique() >= adata.n_obs:
+    if n_clusters >= adata.n_obs:
         raise ValueError(
-            "Silhouette score requires fewer clusters than observations, got "
-            f"{clusters.nunique()} clusters for {adata.n_obs} observations."
+            "Internal clustering metrics require fewer clusters than observations, "
+            f"got {n_clusters} clusters for {adata.n_obs} observations."
         )
 
-    metrics = {
-        "silhouette": silhouette_score(
-            adata.X,
-            clusters,
-            metric=metric,
-            **silhouette_kwargs,
-        ),
-        "cluster_key": cluster_key,
-        "metric": metric,
-        "n_clusters": int(clusters.nunique()),
-    }
+    metric_names = resolve_registry_keys(
+        selected=selected,
+        registry=EVAL_INTERNAL_CLUSTERING_METRICS,
+        none_policy="all",
+    )
+    metric_params = resolve_registry_param_keys(
+        params=metric_params,
+        registry=EVAL_INTERNAL_CLUSTERING_METRICS,
+    )
 
-    if key_added not in adata.uns:
-        adata.uns[key_added] = {}
+    results: dict[str, Any] = {}
 
-    adata.uns[key_added][cluster_key] = metrics
+    for metric_name in metric_names:
+        metric_fn = EVAL_INTERNAL_CLUSTERING_METRICS.get(metric_name)
+        params = metric_params.get(metric_name, {})
+
+        try:
+            signature = inspect.signature(metric_fn)
+        except (TypeError, ValueError):
+            # Some custom/builtin callables may not expose an inspectable signature.
+            signature = None
+
+        if signature is not None:
+            parameters = signature.parameters
+            accepts_var_kwargs = any(
+                parameter.kind is inspect.Parameter.VAR_KEYWORD
+                for parameter in parameters.values()
+            )
+
+            if not accepts_var_kwargs:
+                unsupported_params = [
+                    param_name
+                    for param_name in params
+                    if param_name not in parameters
+                ]
+
+                if unsupported_params:
+                    raise ValueError(
+                        f"Unsupported parameters for internal clustering metric "
+                        f"{metric_name!r}: {unsupported_params}. "
+                        f"Accepted parameters are: {tuple(parameters)}."
+                    )
+
+        try:
+            value = metric_fn(adata.X, clusters, **params)
+        except Exception as error:
+            raise RuntimeError(
+                f"Failed to compute internal clustering metric {metric_name!r}. "
+                "The metric callable was found, but execution failed."
+            ) from error
+
+        results[metric_name] = _to_python_scalar(value)
+
+    _store_clustering_metric_result(
+        adata,
+        metric_group="internal",
+        cluster_key=cluster_key,
+        result={
+            "metrics": results,
+            "params": metric_params,
+            "cluster_key": cluster_key,
+            "n_clusters": n_clusters,
+            "n_obs": int(adata.n_obs),
+        },
+    )
 
     return adata
 
@@ -175,21 +264,80 @@ def _validate_obs_key(adata: ad.AnnData, key: str) -> None:
         )
 
 
-def _check_metric_key_available(
+def _check_metric_result_available(
     adata: ad.AnnData,
     *,
-    key_added: str,
+    metric_group: str,
     cluster_key: str,
     overwrite: bool,
 ) -> None:
-    """Check whether a metric entry can be written."""
+    """Check whether a clustering metric result can be written."""
 
-    if (
-        key_added in adata.uns
-        and cluster_key in adata.uns[key_added]
-        and not overwrite
-    ):
+    group_results = (
+        adata.uns
+        .get("benchrep", {})
+        .get("metrics", {})
+        .get("clustering", {})
+        .get(metric_group, {})
+    )
+
+    if cluster_key in group_results and not overwrite:
         raise KeyError(
-            f"adata.uns[{key_added!r}] already contains metrics for "
-            f"{cluster_key!r}. Pass overwrite=True to replace them."
+            f"BenchRep {metric_group} clustering metrics already contain results "
+            f"for {cluster_key!r}. Pass overwrite=True to replace them."
         )
+
+
+def _store_clustering_metric_result(
+    adata: ad.AnnData,
+    *,
+    metric_group: str,
+    cluster_key: str,
+    result: Mapping[str, Any],
+) -> None:
+    """Store clustering metric results under the BenchRep namespace.
+
+    Results are written to:
+
+        adata.uns["benchrep"]["metrics"]["clustering"][metric_group][cluster_key]
+
+    where ``metric_group`` should usually be ``"internal"`` or ``"external"``,
+    and ``cluster_key`` is the ``adata.obs`` column containing the cluster labels,
+    such as ``"leiden"`` or ``"kmeans"``.
+
+    The resulting structure is:
+
+        adata.uns["benchrep"] = {
+            "metrics": {
+                "clustering": {
+                    metric_group: {
+                        cluster_key: result,
+                    },
+                },
+            },
+        }
+
+    For example, internal Leiden metrics are stored at:
+
+        adata.uns["benchrep"]["metrics"]["clustering"]["internal"]["leiden"]
+
+    and external KMeans metrics are stored at:
+
+        adata.uns["benchrep"]["metrics"]["clustering"]["external"]["kmeans"].
+    """
+
+    benchrep_uns = adata.uns.setdefault("benchrep", {})
+    metrics_uns = benchrep_uns.setdefault("metrics", {})
+    clustering_uns = metrics_uns.setdefault("clustering", {})
+    group_uns = clustering_uns.setdefault(metric_group, {})
+
+    group_uns[cluster_key] = dict(result)
+
+
+def _to_python_scalar(value: Any) -> Any:
+    """Convert scalar-like values to plain Python scalars when possible."""
+
+    if hasattr(value, "item"):
+        return value.item()
+
+    return value
