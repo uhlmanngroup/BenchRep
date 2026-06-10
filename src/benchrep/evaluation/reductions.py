@@ -26,7 +26,7 @@ def run_pca(
     such as a learned embedding, baseline feature matrix, or other
     representation. PCA coordinates are written to ``adata.obsm[key_added]``.
     Basic PCA provenance and explained-variance summaries are written to
-    ``adata.uns[key_added]``.
+    ``adata.uns["benchrep"]["reductions"][key_added]``.
 
     Parameters
     ----------
@@ -75,17 +75,22 @@ def run_pca(
 
     adata.obsm[key_added] = pca.fit_transform(adata.X)
 
-    adata.uns[key_added] = {
-        "method": "pca",
-        "n_components": n_components,
-        "random_state": random_state,
-        "input_shape": tuple(adata.X.shape),
-        "explained_variance": pca.explained_variance_.tolist(),
-        "explained_variance_ratio": pca.explained_variance_ratio_.tolist(),
-        "cumulative_explained_variance_ratio": np.cumsum(
-            pca.explained_variance_ratio_
-        ).tolist(),
-    }
+    _store_reduction_metadata(
+        adata,
+        key_added=key_added,
+        metadata={
+            "method": "pca",
+            "n_components": n_components,
+            "random_state": random_state,
+            "input_shape": tuple(adata.X.shape),
+            "explained_variance": pca.explained_variance_.tolist(),
+            "explained_variance_ratio": pca.explained_variance_ratio_.tolist(),
+            "cumulative_explained_variance_ratio": np.cumsum(
+                pca.explained_variance_ratio_
+            ).tolist(),
+            "params": dict(pca_kwargs),
+        },
+    )
 
     return adata
 
@@ -95,6 +100,7 @@ def run_umap(
     *,
     n_neighbors: int = 15,
     n_pcs: int | None = None,
+    min_dist: float = 0.1,
     metric: str = "euclidean",
     key_added: str = "X_umap",
     neighbors_key: str = "neighbors",
@@ -111,7 +117,8 @@ def run_umap(
     ``scanpy.tl.umap``. The UMAP coordinates are stored in
     ``adata.obsm[key_added]``. Neighbor-graph information is stored under
     ``neighbors_key`` using Scanpy's standard AnnData fields, and UMAP
-    parameters are recorded in ``adata.uns[key_added]``.
+    parameters are written to
+    ``adata.uns["benchrep"]["reductions"][key_added]``.
 
     Parameters
     ----------
@@ -122,6 +129,8 @@ def run_umap(
     n_pcs:
         Number of PCs passed to Scanpy neighbors. If ``None``, Scanpy decides
         based on the input.
+    min_dist:
+        Effective minimum distance between embedded points passed to Scanpy UMAP.
     metric:
         Distance metric passed to Scanpy neighbors. Common useful options
         include ``"euclidean"``, ``"cosine"``, ``"correlation"``,
@@ -159,8 +168,8 @@ def run_umap(
             "Pass overwrite=True to replace it."
         )
 
-    neighbors_kwargs = {} if neighbors_kwargs is None else neighbors_kwargs
-    umap_kwargs = {} if umap_kwargs is None else umap_kwargs
+    neighbors_kwargs = {} if neighbors_kwargs is None else dict(neighbors_kwargs)
+    umap_kwargs = {} if umap_kwargs is None else dict(umap_kwargs)
 
     sc.pp.neighbors(
         adata,
@@ -176,17 +185,26 @@ def run_umap(
         neighbors_key=neighbors_key,
         random_state=random_state,
         key_added=key_added,
+        min_dist=min_dist,
         **umap_kwargs,
     )
 
-    adata.uns[key_added] = {
-        "method": "umap",
-        "n_neighbors": n_neighbors,
-        "n_pcs": n_pcs,
-        "metric": metric,
-        "neighbors_key": neighbors_key,
-        "random_state": random_state,
-    }
+    _store_reduction_metadata(
+        adata,
+        key_added=key_added,
+        metadata={
+            "method": "umap",
+            "n_neighbors": n_neighbors,
+            "n_pcs": n_pcs,
+            "metric": metric,
+            "neighbors_key": neighbors_key,
+            "random_state": random_state,
+            "min_dist": min_dist,
+            "input_shape": tuple(adata.X.shape),
+            "neighbors_params": neighbors_kwargs,
+            "umap_params": umap_kwargs,
+        },
+    )
 
     return adata
 
@@ -206,8 +224,8 @@ def run_tsne(
 
     This function uses Scanpy's t-SNE implementation and treats ``adata.X`` as
     the representation being evaluated. Coordinates are written to
-    ``adata.obsm[key_added]`` and basic run parameters are recorded in
-    ``adata.uns[key_added]``.
+    ``adata.obsm[key_added]`` and basic run parameters are written to
+    ``adata.uns["benchrep"]["reductions"][key_added]``.
 
     Parameters
     ----------
@@ -260,11 +278,39 @@ def run_tsne(
         **tsne_kwargs,
     )
 
-    adata.uns[key_added] = {
-        "method": "tsne",
-        "n_pcs": n_pcs,
-        "perplexity": perplexity,
-        "random_state": random_state,
-    }
+    _store_reduction_metadata(
+        adata,
+        key_added=key_added,
+        metadata={
+            "method": "tsne",
+            "n_pcs": n_pcs,
+            "perplexity": perplexity,
+            "random_state": random_state,
+            "input_shape": tuple(adata.X.shape),
+            "params": dict(tsne_kwargs),
+        },
+    )
 
     return adata
+
+
+def _store_reduction_metadata(
+    adata: ad.AnnData,
+    *,
+    key_added: str,
+    metadata: dict[str, Any],
+) -> None:
+    """Store reduction metadata under the BenchRep namespace.
+
+    Metadata are written to:
+
+        adata.uns["benchrep"]["reductions"][key_added]
+
+    where ``key_added`` is the ``adata.obsm`` key containing the reduced
+    coordinates, such as ``"X_pca"``, ``"X_umap"``, or ``"X_tsne"``.
+    """
+
+    benchrep_uns = adata.uns.setdefault("benchrep", {})
+    reductions_uns = benchrep_uns.setdefault("reductions", {})
+
+    reductions_uns[key_added] = metadata

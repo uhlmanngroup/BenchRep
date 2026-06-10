@@ -51,19 +51,34 @@ class PCAParams(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     n_components: PositiveInt | None = None
+    key_added: str | None = "X_pca"
+    random_state: int | None = 137
+    overwrite: bool | None = False
 
 
 class UMAPParams(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     n_neighbors: PositiveInt | None = 15
+    n_pcs: PositiveInt | None = None
     min_dist: NonNegativeFloat | None = 0.1
+    metric: str | None = "euclidean"
+    key_added: str | None = "X_umap"
+    neighbors_key: str | None = "neighbors"
+    random_state: int | None = 137
+    overwrite: bool | None = False
+    neighbors_kwargs: dict[str, Any] | None = None
+    umap_kwargs: dict[str, Any] | None = None
 
 
 class TSNEParams(BaseModel):
     model_config = ConfigDict(extra="allow")
 
+    n_pcs: PositiveInt | None = None
     perplexity: PositiveFloat | None = 30.0
+    key_added: str | None = "X_tsne"
+    random_state: int | None = 137
+    overwrite: bool | None = False
 
 
 class PCAConfig(EvalStepConfig):
