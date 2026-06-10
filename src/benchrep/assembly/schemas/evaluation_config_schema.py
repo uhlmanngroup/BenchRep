@@ -91,6 +91,10 @@ class KMeansParams(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     n_clusters: PositiveInt | None = None
+    key_added: str | None = "kmeans"
+    random_state: int | None = 137
+    n_init: str | int | None = "auto"
+    overwrite: bool | None = False
 
 
 class LeidenParams(BaseModel):
@@ -98,6 +102,14 @@ class LeidenParams(BaseModel):
 
     resolution: PositiveFloat | None = 1.0
     n_neighbors: PositiveInt | None = 15
+    n_pcs: PositiveInt | None = None
+    metric: str | None = "euclidean"
+    key_added: str | None = "leiden"
+    neighbors_key: str | None = "neighbors"
+    random_state: int | None = 137
+    overwrite: bool | None = False
+    neighbors_kwargs: dict[str, Any] | None = None
+    leiden_kwargs: dict[str, Any] | None = None
 
 
 class KMeansConfig(EvalStepConfig):

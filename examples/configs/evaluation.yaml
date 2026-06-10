@@ -31,12 +31,30 @@ clustering:
     enabled: true # true = force on; false = off; null = off
     params:
       n_clusters: 10 # required if kmeans is explicitly enabled
+      n_init: auto # explicit run_kmeans arg; extra unknown params are passed to sklearn.cluster.KMeans
 
   leiden:
     enabled: true # true = force on; false = off; null = on
     params:
-      resolution: 1.0 # null = omit param and use backend/default behavior
-      n_neighbors: 15 # null = omit param and use backend/default behavior
+      # common explicit run_leiden params
+      resolution: 1.0 # explicit run_leiden arg; null = omit param and use function/default behavior
+      n_neighbors: 15 # explicit run_leiden arg; null = omit param and use function/default behavior
+      n_pcs: null # explicit run_leiden arg; null = omit param and let Scanpy decide
+      metric: euclidean # explicit run_leiden arg passed to scanpy.pp.neighbors
+      key_added: leiden # explicit run_leiden arg; obs column used for cluster labels
+      neighbors_key: neighbors # explicit run_leiden arg; key used for Scanpy neighbor graph
+      random_state: 137 # explicit run_leiden arg
+      overwrite: false # explicit run_leiden arg; true = replace existing cluster/neighbor keys
+
+      # extra kwargs passed directly to scanpy.pp.neighbors
+      # do not repeat explicit args here, e.g. n_neighbors, n_pcs, metric, or key_added
+      neighbors_kwargs:
+        method: umap
+
+      # extra kwargs passed directly to scanpy.tl.leiden
+      # do not repeat explicit args here, e.g. resolution, random_state, key_added, or neighbors_key
+      leiden_kwargs:
+        directed: false
 
 metrics:
   clustering:
