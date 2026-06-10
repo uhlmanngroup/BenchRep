@@ -12,6 +12,15 @@ from lightning.pytorch.loggers import (
     WandbLogger,
 )
 
+from sklearn.metrics import (
+    silhouette_score,
+    calinski_harabasz_score,
+    davies_bouldin_score,
+    adjusted_mutual_info_score,
+    adjusted_rand_score,
+    homogeneity_score,
+)
+
 from benchrep.architecture.data import MNISTDataset
 from benchrep.architecture.decoders import MLPDecoder
 from benchrep.architecture.encoders import MLPEncoder
@@ -24,6 +33,8 @@ from benchrep.architecture.models import (
     Autoencoder,
     VAE,
 )
+from benchrep.evaluation.clustering import run_kmeans, run_leiden
+from benchrep.evaluation.reductions import run_pca, run_tsne, run_umap
 
 
 class Registry:
@@ -89,9 +100,13 @@ class Registry:
         return key
 
 
-# Instantiate the registries
+# -------------------------
+# INSTANTIATION
+# -------------------------
+# Data
 DATASETS = Registry("dataset")
 TRANSFORMS = Registry("transform")
+# Architecture and training
 ENCODERS = Registry("encoder")
 DECODERS = Registry("decoder")
 MODELS = Registry("model")
@@ -99,12 +114,25 @@ RECONSTRUCTION_LOSSES = Registry("reconstruction loss")
 REGULARIZATION_LOSSES = Registry("regularization loss")
 OPTIMIZERS = Registry("optimizer")
 LOGGERS = Registry("logger")
+# Evaluation
+EVAL_REDUCTIONS = Registry("reduction")
+EVAL_CLUSTERING_METHODS = Registry("clustering method")
+EVAL_INTERNAL_CLUSTERING_METRICS = Registry("internal clustering metrics")
+EVAL_EXTERNAL_CLUSTERING_METRICS = Registry("external clustering metrics")
+EVAL_EMBEDDING_METRICS = Registry("embedding metrics")
+EVAL_RECONSTRUCTION_METRICS = Registry("reconstruction metrics")
 
-# Register currently supported components
+
+# -------------------------
+# REGISTRATION
+# -------------------------
+
+# --- Data ---
 DATASETS.register("mnist", MNISTDataset)
 
 TRANSFORMS.register("to_tensor", transforms.ToTensor)
 
+# --- Architecture and training ---
 ENCODERS.register("mlp", MLPEncoder)
 
 DECODERS.register("mlp", MLPDecoder)
@@ -147,3 +175,64 @@ LOGGERS.register(
     "tblogger",
 )
 LOGGERS.register("mlflow", MLFlowLogger, "mlflowlogger")
+
+# --- Evaluation ---
+# Reductions
+EVAL_REDUCTIONS.register(
+    "pca",
+    run_pca,
+    "principal_component_analysis",
+    "principal_components"
+)
+EVAL_REDUCTIONS.register("umap", run_umap)
+EVAL_REDUCTIONS.register("tsne", run_tsne, "t_sne")
+# Clustering
+EVAL_CLUSTERING_METHODS.register("kmeans", run_kmeans, "k_means")
+EVAL_CLUSTERING_METHODS.register("leiden", run_leiden)
+# Internal clustering metrics
+EVAL_INTERNAL_CLUSTERING_METRICS.register(
+    "silhouette",
+    silhouette_score,
+    "silhouette_score",
+)
+EVAL_INTERNAL_CLUSTERING_METRICS.register(
+    "calinski_harabasz",
+    calinski_harabasz_score,
+    "calinski_harabasz_score",
+    "ch",
+    "ch_score",
+)
+EVAL_INTERNAL_CLUSTERING_METRICS.register(
+    "davies_bouldin",
+    davies_bouldin_score,
+    "davies_bouldin_score",
+    "db",
+    "db_score",
+)
+# External clustering metrics
+EVAL_EXTERNAL_CLUSTERING_METRICS.register(
+    "adjusted_mutual_info",
+    adjusted_mutual_info_score,
+    "adjusted_mutual_info_score",
+    "adjusted_mutual_information",
+    "adjusted_mutual_information_score",
+    "adj_mutual_info",
+    "adj_mutual_info_score",
+    "ami",
+    "ami_score",
+)
+EVAL_EXTERNAL_CLUSTERING_METRICS.register(
+    "adjusted_rand_index",
+    adjusted_rand_score,
+    "adjusted_rand_score",
+    "adjusted_rand",
+    "adj_rand_index",
+    "adj_rand_score",
+    "ari",
+    "ari_score",
+)
+EVAL_EXTERNAL_CLUSTERING_METRICS.register(
+    "homogeneity",
+    homogeneity_score,
+    "homogeneity_score",
+)
