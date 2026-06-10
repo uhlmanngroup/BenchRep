@@ -18,11 +18,13 @@ from pydantic import (
 # Generic reusable blocks
 # -------------------------
 class EvalStepConfig(BaseModel):
+    # None means "auto"; the resolver decides based on available inputs.
     enabled: bool | None = None
     params: dict[str, Any] | None = None
 
 
 class EvalMetricGroupConfig(BaseModel):
+    # None means "auto"; the resolver decides based on available inputs.
     enabled: bool | None = None
     selected: list[str] | None = None
     params: dict[str, dict[str, Any]] | None = None
@@ -201,7 +203,7 @@ class EvaluationConfig(BaseModel):
             raise ValueError("source.embeddings_path must point to an AnnData .h5ad file.")
 
         if self.source.prediction_manifest_path is not None:
-            if not self.source.prediction_manifest_path.suffix.lower() in {".yaml", ".yml"}:
+            if self.source.prediction_manifest_path.suffix.lower() not in {".yaml", ".yml"}:
                 raise ValueError("source.prediction_manifest_path must point to a YAML file.")
 
         return self

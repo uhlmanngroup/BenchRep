@@ -1,76 +1,75 @@
 stage: evaluation
 
 source:
-  prediction_manifest_path: null
-  embeddings_path: null # null = infer from manifest. Error if no manifest provided
-  reconstructions_path: null # null = infer from manifest. Skip if reconstructions not available or known
+  prediction_manifest_path: null # null = no manifest; embeddings_path must then be provided
+  embeddings_path: null # null = infer from manifest; error if no manifest provided
+  reconstructions_path: null # null = infer from manifest if available; skip reconstruction eval if unavailable
 
 run:
-  output_root: null # null = in outputs/evaluation/
-  run_name: null # null = derive from manifest if provided, else generate as evaluation_<timestamp>
+  output_root: null # null = infer from manifest output dir if possible, else outputs/evaluation/
+  run_name: null # null = let RunContext derive/generate the final run name
 
 reductions:
   pca:
-    enabled: true # default to true
+    enabled: true # true = force on; false = off; null = on
     params:
-      n_components: null # default value of backend
+      n_components: null # null = omit param and use backend/default behavior
 
   umap:
-    enabled: true
+    enabled: true # true = force on; false = off; null = on
     params:
-      n_neighbors: 15 # null = default value of backend
-      min_dist: 0.1 # null = default value of backend
+      n_neighbors: 15 # null = omit param and use backend/default behavior
+      min_dist: 0.1 # null = omit param and use backend/default behavior
 
   tsne:
-    enabled: true
+    enabled: true # true = force on; false = off; null = off
     params:
-      perplexity: 30 # null = default value of backend
+      perplexity: 30 # null = omit param and use backend/default behavior
 
 clustering:
   kmeans:
-    enabled: true # null defaults to false
+    enabled: true # true = force on; false = off; null = off
     params:
-      n_clusters: 10 # required if enabled
+      n_clusters: 10 # required if kmeans is explicitly enabled
 
   leiden:
-    enabled: true # null defaults to true
+    enabled: true # true = force on; false = off; null = on
     params:
-      resolution: 1.0 # default value of backend
-      n_neighbors: 15 # default value of backend
+      resolution: 1.0 # null = omit param and use backend/default behavior
+      n_neighbors: 15 # null = omit param and use backend/default behavior
 
 metrics:
   clustering:
     internal:
-      enabled: true # null defaults to true
-      selected: null # null defaults to all supported metrics
-      params: null # null = backend defaults
+      enabled: true # true = force on; false = off; null = on
+      selected: null # null = all supported internal clustering metrics
+      params: null # null = metric/backend defaults
 
     external:
-      enabled: null # null = true if label_key exists in adata.obs, else false
-      label_key: label # required if enabled
-      selected: null # null defaults to all supported metrics
-      params: null # null = backend defaults
-
+      enabled: null # true = force on; false = off; null = auto after checking adata.obs
+      label_key: label # obs column used for labels; default is "label"
+      selected: null # null = all supported external clustering metrics
+      params: null # null = metric/backend defaults
 
   embedding:
-    enabled: true # null defaults to false
-    selected: null # null defaults to all supported metrics
-    params: null # null = backend defaults
+    enabled: true # true = force on; false = off; null = off
+    selected: null # null = all supported embedding metrics
+    params: null # null = metric/backend defaults
 
   reconstruction:
-    enabled: true # null defaults to true if reconstruction path provided (by manifest or manually), else false
-    selected: null # null defaults to all supported metrics
-    params: null # null = backend defaults
+    enabled: true # true = force on if reconstructions exist; false = off; null = on only if reconstructions exist
+    selected: null # null = all supported reconstruction metrics
+    params: null # null = metric/backend defaults
 
 reconstruction:
   error_maps:
-    enabled: true # null defaults to false
+    enabled: true # true = force on if reconstructions exist; false = off; null = off
     params:
-      kind: absolute # null defaults to absolute
-      n_examples: null # null defaults to min(n_examples in manifest if provided or n_files detected if not, 32)
+      kind: absolute # omit field = absolute; null = omit kwarg downstream
+      n_examples: null # null = omit kwarg; resolve later after loading reconstruction tensors
 
 plots:
-  enabled: true # null defaults to true
+  enabled: true # true = force on; false = off; null = on
   params:
     color_by:
-      - label # null = no coloring, i.e. false
+      - label # null = do not color plots by obs columns
