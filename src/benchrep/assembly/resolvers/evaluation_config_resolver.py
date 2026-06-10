@@ -13,6 +13,10 @@ from benchrep.assembly.registry import (
     EVAL_EMBEDDING_METRICS,
     EVAL_RECONSTRUCTION_METRICS,
 )
+from benchrep.assembly.registry_utils import (
+    resolve_registry_keys,
+    resolve_registry_param_keys,
+)
 from benchrep.assembly.resolvers.utils import (
     get_optional_nested_path,
     get_required_nested_path,
@@ -494,9 +498,10 @@ def resolve_step_spec(
 
         # None = True
         internal_clustering_metrics_enabled=enabled_by_default(evaluation_config.metrics.clustering.internal.enabled),
-        internal_clustering_metrics=resolve_selected_registry_keys(
+        internal_clustering_metrics=resolve_registry_keys(
             selected=evaluation_config.metrics.clustering.internal.selected,
             registry=EVAL_INTERNAL_CLUSTERING_METRICS,
+            none_policy="preserve",
         ),
         internal_clustering_metric_params=resolve_registry_param_keys(
             params=evaluation_config.metrics.clustering.internal.params,
@@ -506,9 +511,10 @@ def resolve_step_spec(
         # None is resolved later after loading AnnData and checking adata.obs
         external_clustering_metrics_enabled=evaluation_config.metrics.clustering.external.enabled,
         external_clustering_label_key=evaluation_config.metrics.clustering.external.label_key,
-        external_clustering_metrics=resolve_selected_registry_keys(
+        external_clustering_metrics=resolve_registry_keys(
             selected=evaluation_config.metrics.clustering.external.selected,
             registry=EVAL_EXTERNAL_CLUSTERING_METRICS,
+            none_policy="preserve",
         ),
         external_clustering_metric_params=resolve_registry_param_keys(
             params=evaluation_config.metrics.clustering.external.params,
@@ -517,9 +523,10 @@ def resolve_step_spec(
 
         # None = False
         embedding_metrics_enabled=disabled_by_default(evaluation_config.metrics.embedding.enabled),
-        embedding_metrics=resolve_selected_registry_keys(
+        embedding_metrics=resolve_registry_keys(
             selected=evaluation_config.metrics.embedding.selected,
             registry=EVAL_EMBEDDING_METRICS,
+            none_policy="preserve",
         ),
         embedding_metric_params=resolve_registry_param_keys(
             params=evaluation_config.metrics.embedding.params,
@@ -532,9 +539,10 @@ def resolve_step_spec(
             available=has_reconstructions,
             name="Reconstruction metrics",
         ),
-        reconstruction_metrics=resolve_selected_registry_keys(
+        reconstruction_metrics=resolve_registry_keys(
             selected=evaluation_config.metrics.reconstruction.selected,
             registry=EVAL_RECONSTRUCTION_METRICS,
+            none_policy="preserve",
         ),
         reconstruction_metric_params=resolve_registry_param_keys(
             params=evaluation_config.metrics.reconstruction.params,
@@ -553,60 +561,6 @@ def resolve_step_spec(
         plots_enabled=enabled_by_default(evaluation_config.plots.enabled),
         plot_params=params_to_dict(evaluation_config.plots.params),
     )
-
-
-# Resolving helpers
-def resolve_selected_registry_keys(
-        selected: Sequence[str] | None,
-        registry: Any,
-) -> list[str] | None:
-    """Validate selected registry keys and resolve aliases to canonical names.
-
-    ``None`` is preserved because it means "use all defaults" for the relevant
-    metric group. Explicit metric names are validated against the supplied
-    registry and stored as canonical registry keys.
-    """
-    if selected is None:
-        return None
-
-    resolved: list[str] = []
-    seen: set[str] = set()
-
-    for key in selected:
-        canonical_key = registry.resolve_key(key)
-
-        if canonical_key in seen:
-            continue
-
-        resolved.append(canonical_key)
-        seen.add(canonical_key)
-
-    return resolved
-
-
-def resolve_registry_param_keys(
-        params: dict[str, dict[str, Any]] | None,
-        registry: Any,
-) -> dict[str, dict[str, Any]]:
-    """Validate metric-param keys and resolve aliases to canonical names."""
-
-    if params is None:
-        return {}
-
-    resolved: dict[str, dict[str, Any]] = {}
-
-    for key, value in params.items():
-        canonical_key = registry.resolve_key(key)
-
-        if canonical_key in resolved:
-            raise ValueError(
-                f"Duplicate parameter entries resolve to the same canonical "
-                f"{registry.name} key {canonical_key!r}."
-            )
-
-        resolved[canonical_key] = dict(value)
-
-    return resolved
 
 
 # Logical helpers
