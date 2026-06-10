@@ -47,8 +47,10 @@ class Registry:
     def __init__(self, name: str) -> None:
         self.name = name
         self._items: dict[str, Any] = {}
+        self._canonical_keys: dict[str, str] = {}
 
     def register(self, key: str, item: Any, *aliases: str) -> None:
+        canonical_key = self._normalize_key(key)
         # Silently collapse duplicates
         names = tuple(
             dict.fromkeys(self._normalize_key(name) for name in (key, *aliases))
@@ -64,6 +66,7 @@ class Registry:
 
         for name in names:
             self._items[name] = item
+            self._canonical_keys[name] = canonical_key
 
     def get(self, key: str) -> Any:
         # Retrieve a registered object by name, with a debuggable error for unknown keys.
@@ -78,6 +81,20 @@ class Registry:
 
         return self._items[key]
 
+    def resolve_key(self, key: str) -> str:
+        """Resolve a registered key or alias to its canonical registry key."""
+
+        key = self._normalize_key(key)
+
+        if key not in self._canonical_keys:
+            available = tuple(sorted(self._items))
+            raise KeyError(
+                f"Unknown {self.name} key {key!r}. "
+                f"Available options: {available}."
+            )
+
+        return self._canonical_keys[key]
+
     def create(self, key: str, **kwargs: Any) -> Any:
         # Retrieve a registered class/callable and instantiate it with keyword arguments.
         item = self.get(key)
@@ -86,6 +103,10 @@ class Registry:
     def keys(self) -> tuple[str, ...]:
         # Return registered keys in deterministic order for errors, debugging, and validation.
         return tuple(sorted(self._items))
+
+    def canonical_keys(self) -> tuple[str, ...]:
+        # Return canonical registered keys in deterministic order.
+        return tuple(sorted(set(self._canonical_keys.values())))
 
     @staticmethod
     def _normalize_key(key: str) -> str:
@@ -182,7 +203,7 @@ EVAL_REDUCTIONS.register(
     "pca",
     run_pca,
     "principal_component_analysis",
-    "principal_components"
+    "principal_components",
 )
 EVAL_REDUCTIONS.register("umap", run_umap)
 EVAL_REDUCTIONS.register("tsne", run_tsne, "t_sne")
