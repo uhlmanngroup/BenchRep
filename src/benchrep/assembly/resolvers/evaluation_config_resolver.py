@@ -469,12 +469,24 @@ def resolve_step_spec(
     on the loaded AnnData object: ``None`` is preserved so the workflow can later
     decide based on whether ``label_key`` exists in ``adata.obs``.
 
+    Clustering metrics also require at least one clustering method to be enabled.
+    If all clustering methods are disabled, both internal and external clustering
+    metrics are forced off during resolution. The availability check currently
+    reflects the explicitly modeled clustering methods in the config schema
+    (``kmeans`` and ``leiden``); if additional clustering methods are added to the
+    schema, they should be included in this check as well.
+
     Selected metric names are validated against the evaluation registries and
     resolved to canonical names. Parameter objects are converted to dictionaries for
     downstream/backend use.
     ``None`` parameters are omitted by ``params_to_dict`` so backend defaults can
     apply.
     """
+    # Prep for guard to prevent clustering metric computation if no clustering is enabled.
+    kmeans_enabled = disabled_by_default(evaluation_config.clustering.kmeans.enabled)
+    leiden_enabled = enabled_by_default(evaluation_config.clustering.leiden.enabled)
+    clustering_enabled = kmeans_enabled or leiden_enabled
+
     return EvaluationStepSpec(
         # None = True
         pca_enabled=enabled_by_default(evaluation_config.reductions.pca.enabled),
@@ -489,15 +501,20 @@ def resolve_step_spec(
         tsne_params=params_to_dict(evaluation_config.reductions.tsne.params),
 
         # None = False
-        kmeans_enabled=disabled_by_default(evaluation_config.clustering.kmeans.enabled),
+        kmeans_enabled=kmeans_enabled,
         kmeans_params=params_to_dict(evaluation_config.clustering.kmeans.params),
 
         # None = True
-        leiden_enabled=enabled_by_default(evaluation_config.clustering.leiden.enabled),
+        leiden_enabled=leiden_enabled,
         leiden_params=params_to_dict(evaluation_config.clustering.leiden.params),
 
         # None = True
-        internal_clustering_metrics_enabled=enabled_by_default(evaluation_config.metrics.clustering.internal.enabled),
+        # Force disable if not clustering_enabled
+        internal_clustering_metrics_enabled=(
+            enabled_by_default(evaluation_config.metrics.clustering.internal.enabled)
+            if clustering_enabled
+            else False
+        ),
         internal_clustering_metrics=resolve_registry_keys(
             selected=evaluation_config.metrics.clustering.internal.selected,
             registry=EVAL_INTERNAL_CLUSTERING_METRICS,
@@ -509,7 +526,12 @@ def resolve_step_spec(
         ),
 
         # None is resolved later after loading AnnData and checking adata.obs
-        external_clustering_metrics_enabled=evaluation_config.metrics.clustering.external.enabled,
+        # Force disable if not clustering_enabled
+        external_clustering_metrics_enabled=(
+            evaluation_config.metrics.clustering.external.enabled
+            if clustering_enabled
+            else False
+        ),
         external_clustering_label_key=evaluation_config.metrics.clustering.external.label_key,
         external_clustering_metrics=resolve_registry_keys(
             selected=evaluation_config.metrics.clustering.external.selected,
