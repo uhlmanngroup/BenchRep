@@ -42,6 +42,12 @@ def plot_2d_projection(
             f"got {coords.shape}."
         )
 
+    if coords.shape[0] != adata.n_obs:
+        raise ValueError(
+            f"adata.obsm[{basis!r}] must have one row per observation, "
+            f"got {coords.shape[0]} rows for {adata.n_obs} observations."
+        )
+
     output_path = Path(output_path)
 
     if output_path.exists() and not overwrite:
@@ -70,7 +76,7 @@ def plot_2d_projection(
     ax.set_title(title or f"{basis} colored by {color}")
 
     handles, _ = scatter.legend_elements()
-    labels = list(values.cat.categories)
+    labels = [str(label) for label in values.cat.categories]
 
     if len(labels) <= 20:
         ax.legend(
