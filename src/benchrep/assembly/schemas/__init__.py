@@ -29,6 +29,7 @@ from benchrep.assembly.schemas.prediction_config_schema import (
 from benchrep.assembly.schemas.validation import (
     parse_training_config,
     parse_prediction_config,
+    parse_evaluation_config,
 )
 
 __all__ = [
@@ -57,4 +58,5 @@ __all__ = [
     "PredictionConfig",
     "parse_training_config",
     "parse_prediction_config",
+    "parse_evaluation_config",
 ]
