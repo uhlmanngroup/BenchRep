@@ -1,7 +1,8 @@
 stage: evaluation
 
 source:
-  prediction_manifest_path: null # null = no manifest; embeddings_path must then be provided
+  prediction_manifest_path: /home/qptero/github/BenchRep/outputs/prediction/test_vae_20260609-150453/records/metadata/prediction_manifest.yaml
+ # null = no manifest; embeddings_path must then be provided
   embeddings_path: null # null = infer from manifest; error if no manifest provided
   reconstructions_path: null # null = infer from manifest if available; skip reconstruction eval if unavailable
 
@@ -28,7 +29,7 @@ reductions:
       min_dist: 0.1 # explicit run_umap arg passed to scanpy.tl.umap
       metric: euclidean # explicit run_umap arg passed to scanpy.pp.neighbors
       key_added: X_umap # explicit run_umap arg; obsm key for UMAP coordinates
-      neighbors_key: neighbors # explicit run_umap arg; key used for Scanpy neighbor graph
+      neighbors_key: umap_neighbors # explicit run_umap arg; key used for Scanpy neighbor graph
       random_state: 137 # explicit run_umap arg
       overwrite: false # explicit run_umap arg; true = replace existing UMAP/neighbor keys
 
@@ -71,7 +72,7 @@ clustering:
       n_pcs: null # explicit run_leiden arg; null = omit param and let Scanpy decide
       metric: euclidean # explicit run_leiden arg passed to scanpy.pp.neighbors
       key_added: leiden # explicit run_leiden arg; obs column used for cluster labels
-      neighbors_key: neighbors # explicit run_leiden arg; key used for Scanpy neighbor graph
+      neighbors_key: leiden_neighbors # explicit run_leiden arg; key used for Scanpy neighbor graph
       random_state: 137 # explicit run_leiden arg
       overwrite: false # explicit run_leiden arg; true = replace existing cluster/neighbor keys
 
@@ -104,13 +105,13 @@ metrics:
     params: null # null = metric/backend defaults
 
   reconstruction:
-    enabled: true # true = force on if reconstructions exist; false = off; null = on only if reconstructions exist
+    enabled: false # true = force on if reconstructions exist; false = off; null = on only if reconstructions exist
     selected: null # null = all supported reconstruction metrics
     params: null # null = metric/backend defaults
 
 reconstruction:
   error_maps:
-    enabled: true # true = force on if reconstructions exist; false = off; null = off
+    enabled: false # true = force on if reconstructions exist; false = off; null = off
     params:
       kind: absolute # omit field = absolute; null = omit kwarg downstream
       n_examples: null # null = omit kwarg; resolve later after loading reconstruction tensors
