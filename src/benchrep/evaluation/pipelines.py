@@ -2,9 +2,24 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 import anndata as ad
+
+from benchrep.assembly.registry import (
+    EVAL_CLUSTERING_METHODS,
+    EVAL_REDUCTIONS,
+)
+from benchrep.evaluation.clustering_metrics import (
+    compute_external_clustering_metrics,
+    compute_internal_clustering_metrics,
+)
+
+
+if TYPE_CHECKING:
+    from benchrep.assembly.resolvers.evaluation_config_resolver import (
+        EvaluationRunSpec,
+    )
 
 
 # -------------------------
@@ -138,3 +153,144 @@ class ReconstructionEvaluationPipeline:
             outputs[step.name] = step_output
 
         return outputs
+
+
+# -------------------------
+# Pipeline creation
+# -------------------------
+def create_anndata_evaluation_pipeline(
+    run_spec: "EvaluationRunSpec",
+) -> AnnDataEvaluationPipeline:
+    """Create the AnnData evaluation pipeline from a resolved run spec.
+
+    This function translates the resolved evaluation step spec into ordered
+    ``AnnDataEvaluationStep`` objects. It owns only workflow wiring: step order,
+    registry lookup for reduction/clustering callables, and metric-runner setup.
+    Actual computation remains in the low-level evaluation functions.
+    """
+
+    step_spec = run_spec.step_spec
+
+    steps: list[AnnDataEvaluationStep] = [
+        AnnDataEvaluationStep(
+            name="pca",
+            fn=EVAL_REDUCTIONS.get("pca"),
+            params=step_spec.pca_params,
+            enabled=step_spec.pca_enabled,
+        ),
+        AnnDataEvaluationStep(
+            name="umap",
+            fn=EVAL_REDUCTIONS.get("umap"),
+            params=step_spec.umap_params,
+            enabled=step_spec.umap_enabled,
+        ),
+        AnnDataEvaluationStep(
+            name="tsne",
+            fn=EVAL_REDUCTIONS.get("tsne"),
+            params=step_spec.tsne_params,
+            enabled=step_spec.tsne_enabled,
+        ),
+        AnnDataEvaluationStep(
+            name="kmeans",
+            fn=EVAL_CLUSTERING_METHODS.get("kmeans"),
+            params=step_spec.kmeans_params,
+            enabled=step_spec.kmeans_enabled,
+        ),
+        AnnDataEvaluationStep(
+            name="leiden",
+            fn=EVAL_CLUSTERING_METHODS.get("leiden"),
+            params=step_spec.leiden_params,
+            enabled=step_spec.leiden_enabled,
+        ),
+    ]
+
+    cluster_keys = _resolve_enabled_cluster_keys(run_spec)
+
+    for cluster_key in cluster_keys:
+        steps.append(
+            AnnDataEvaluationStep(
+                name=f"internal_clustering_metrics_{cluster_key}",
+                fn=compute_internal_clustering_metrics,
+                params={
+                    "cluster_key": cluster_key,
+                    "selected": step_spec.internal_clustering_metrics,
+                    "metric_params": step_spec.internal_clustering_metric_params,
+                },
+                enabled=step_spec.internal_clustering_metrics_enabled,
+            )
+        )
+
+        steps.append(
+            AnnDataEvaluationStep(
+                name=f"external_clustering_metrics_{cluster_key}",
+                fn=_compute_external_clustering_metrics_if_possible,
+                params={
+                    "label_key": step_spec.external_clustering_label_key,
+                    "cluster_key": cluster_key,
+                    "selected": step_spec.external_clustering_metrics,
+                    "metric_params": step_spec.external_clustering_metric_params,
+                    "external_metrics_enabled": (
+                        step_spec.external_clustering_metrics_enabled
+                    ),
+                },
+                enabled=step_spec.external_clustering_metrics_enabled is not False,
+            )
+        )
+
+    return AnnDataEvaluationPipeline(steps=steps)
+
+
+def _resolve_enabled_cluster_keys(
+    run_spec: "EvaluationRunSpec",
+) -> list[str]:
+    """Return cluster-label obs keys for enabled clustering steps."""
+
+    step_spec = run_spec.step_spec
+    cluster_keys: list[str] = []
+
+    if step_spec.kmeans_enabled:
+        cluster_keys.append(step_spec.kmeans_params.get("key_added", "kmeans"))
+
+    if step_spec.leiden_enabled:
+        cluster_keys.append(step_spec.leiden_params.get("key_added", "leiden"))
+
+    return cluster_keys
+
+
+def _compute_external_clustering_metrics_if_possible(
+    adata: ad.AnnData,
+    *,
+    label_key: str,
+    cluster_key: str,
+    selected: Sequence[str] | None,
+    metric_params: Mapping[str, Mapping[str, Any]] | None,
+    external_metrics_enabled: bool | None,
+) -> ad.AnnData:
+    """Compute external clustering metrics when labels are available.
+
+    This is a small runtime wrapper around ``compute_external_clustering_metrics``.
+    The resolver cannot fully decide whether external metrics should run because
+    ``enabled=None`` means auto-detect labels, and label availability is only known
+    after the evaluation AnnData object has been loaded.
+
+    ``external_metrics_enabled=None`` means auto mode: run only if ``label_key``
+    exists in ``adata.obs``. ``external_metrics_enabled=True`` means the user
+    explicitly requested external metrics, so missing labels should fail loudly.
+    """
+
+    if label_key not in adata.obs.columns:
+        if external_metrics_enabled is True:
+            raise KeyError(
+                f"External clustering metrics were explicitly enabled, but "
+                f"adata.obs does not contain label_key={label_key!r}."
+            )
+
+        return adata
+
+    return compute_external_clustering_metrics(
+        adata,
+        label_key=label_key,
+        cluster_key=cluster_key,
+        selected=selected,
+        metric_params=metric_params,
+    )
