@@ -43,7 +43,7 @@ def main() -> None:
         project_name=run_spec.training_config.run.project_name,
         model_name=model_name,
     )
-    created_at = datetime.now().isoformat(timespec="seconds") #TODO use when writing manifest
+    created_at = datetime.now().isoformat(timespec="seconds")
 
     run_log = setup_run_logger(log_out_dir=run_context.log_dir)
 

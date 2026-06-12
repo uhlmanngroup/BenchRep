@@ -11,7 +11,7 @@ from benchrep.assembly import load_yaml
 from benchrep.assembly.resolvers import resolve_evaluation_config
 from benchrep.assembly.schemas import parse_evaluation_config
 from benchrep.evaluation.pipelines import create_anndata_evaluation_pipeline
-from benchrep.evaluation.plotting import plot_2d_projection
+from benchrep.evaluation.embeddings.plotting import plot_2d_projection
 from benchrep.records import (
     capture_console_streams,
     save_config_records,

@@ -10,7 +10,7 @@ from benchrep.assembly.registry import (
     EVAL_CLUSTERING_METHODS,
     EVAL_REDUCTIONS,
 )
-from benchrep.evaluation.clustering_metrics import (
+from benchrep.evaluation.embeddings.clustering_metrics import (
     compute_external_clustering_metrics,
     compute_internal_clustering_metrics,
 )

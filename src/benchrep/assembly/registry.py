@@ -33,8 +33,8 @@ from benchrep.architecture.models import (
     Autoencoder,
     VAE,
 )
-from benchrep.evaluation.clustering import run_kmeans, run_leiden
-from benchrep.evaluation.reductions import run_pca, run_tsne, run_umap
+from benchrep.evaluation.embeddings.clustering import run_kmeans, run_leiden
+from benchrep.evaluation.embeddings.reductions import run_pca, run_tsne, run_umap
 
 
 class Registry:
