@@ -111,10 +111,13 @@ metrics:
 
 reconstruction:
   error_maps:
-    enabled: false # true = force on if reconstructions exist; false = off; null = off
+    enabled: true # true = force on if reconstructions exist; false = off; null = off
     params:
-      kind: absolute # omit field = absolute; null = omit kwarg downstream
-      n_examples: null # null = omit kwarg; resolve later after loading reconstruction tensors
+      # absolute | squared | signed | relative | normalized_absolute_global | normalized_absolute_per_channel;
+      # omit/null = absolute
+      kind: absolute
+      n_examples: null # omit/null = use all available reconstruction examples
+      denominator_floor: null # null/omit = default denominator floor for relative/normalized error maps
 
 plots:
   enabled: true # true = force on; false = off; null = on

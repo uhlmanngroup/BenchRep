@@ -154,8 +154,19 @@ class EvaluationClusteringConfig(BaseModel):
 # Reconstruction artifacts config
 # -------------------------
 class ErrorMapParams(BaseModel):
-    kind: Literal["absolute", "squared"] | None = "absolute"
+    kind: (
+        Literal[
+            "absolute",
+            "squared",
+            "signed",
+            "relative",
+            "normalized_absolute_global",
+            "normalized_absolute_per_channel",
+        ]
+        | None
+    ) = "absolute"
     n_examples: PositiveInt | None = None
+    denominator_floor: PositiveFloat | None = None
 
 
 class ErrorMapConfig(EvalStepConfig):
