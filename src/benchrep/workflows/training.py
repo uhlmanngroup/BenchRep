@@ -108,7 +108,7 @@ def main() -> None:
         torchview_graph_path = export_torchview_graph(
             model=model,
             input_size=dummy_input_size,
-            output_path=run_context.architecture_dir / "model_graph.png",
+            output_path=run_context.training_architecture_dir / "model_graph.png",
             expand_nested=config.inspection.torchview.expand_nested,
             depth=config.inspection.torchview.depth,
         )

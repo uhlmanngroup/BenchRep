@@ -144,8 +144,8 @@ def main() -> None:
     export_paths = export_prediction_outputs(
         predictions=predictions,
         export_spec=run_spec.export_spec,
-        embedding_dir=run_context.embedding_dir,
-        reconstruction_dir=run_context.reconstruction_dir,
+        embedding_dir=run_context.prediction_embeddings_dir,
+        reconstruction_dir=run_context.prediction_reconstructions_dir,
     )
 
     if export_paths.embedding_export is not None:

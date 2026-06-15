@@ -19,7 +19,8 @@ class RunContext:
     prediction, or evaluation run. It stores the resolved run name, the root
     output directory for that run, and the standard subdirectories where other
     parts of the workflow should write configs, logs, manifests, checkpoints,
-    embeddings, reconstruction tensors, and other generated records.
+    prediction exports, evaluation artifacts, figures, metrics, and other
+    generated records.
 
     Instances should be created through `RunContext.create()` rather than by
     direct construction. The factory method applies BenchRep's output
@@ -39,17 +40,23 @@ class RunContext:
         records/metadata/
 
     Stage-specific directories are created only for the stages that currently
-    use them. Training creates `checkpoints/` and `architecture/`; prediction
-    creates `embeddings/` and `reconstructions/`; evaluation creates
-    `embeddings/`, `reconstructions/`, and evaluation-specific subdirectories for
-    metrics, plots, reconstruction inputs, reconstruction predictions, and error
-    maps. Even when a stage-specific directory is not created, its conventional
-    path is still stored on the context object so downstream code has a single
-    source of truth for path names.
+    use them. Training creates `checkpoints/` and `architecture/`. Prediction
+    creates top-level `embeddings/` and `reconstructions/` directories for
+    prediction exports. Evaluation creates a centralized `records/metrics/`
+    directory for machine-readable metric records, an `artifacts/` tree for
+    exported evaluation data products, and a `figures/` tree for generated
+    evaluation plots and visual summaries. Evaluation reconstruction artifacts
+    are organized under `artifacts/reconstructions/inputs/`,
+    `artifacts/reconstructions/predictions/`, and
+    `artifacts/reconstructions/error_maps/`.
 
-    The context does not write model weights, configs, logs, embeddings, or
-    metrics itself. It only owns the directory layout and exposes immutable
-    paths for the rest of the pipeline.
+    Even when a stage-specific directory is not created, its conventional path
+    is still stored on the context object so downstream code has a single source
+    of truth for path names.
+
+    The context does not write model weights, configs, logs, embeddings,
+    reconstructions, metrics, or figures itself. It only owns the directory
+    layout and exposes immutable paths for the rest of the pipeline.
 
     Attributes
     ----------
@@ -69,29 +76,34 @@ class RunContext:
         Directory for console captures and local run logs.
     metadata_dir:
         Directory for manifests, environment records, and workflow metadata.
-    checkpoint_dir:
+    training_checkpoint_dir:
         Conventional directory for training checkpoints.
-    architecture_dir:
+    training_architecture_dir:
         Conventional directory for architecture inspection artifacts, such as
         torchview graphs or model summaries.
-    embedding_dir:
+    prediction_embeddings_dir:
         Conventional directory for prediction embedding exports.
-    reconstruction_dir:
-        Conventional directory for selected reconstruction tensor exports.
-    embedding_metrics_dir:
-        Directory for embedding-side evaluation metrics, such as clustering and
-        embedding-quality metric exports.
-    embedding_plots_dir:
-        Directory for embedding-side plots, such as PCA, UMAP, and t-SNE figures.
-    reconstruction_metrics_dir:
-        Directory for reconstruction evaluation metric exports.
-    reconstruction_plots_dir:
-        Directory for reconstruction-side summary plots.
-    reconstruction_inputs_dir:
+    prediction_reconstructions_dir:
+        Conventional directory for selected prediction reconstruction exports.
+    evaluation_artifacts_dir:
+        Parent directory for exported evaluation data products.
+    evaluation_figures_dir:
+        Parent directory for generated evaluation figures.
+    evaluation_metrics_dir:
+        Directory for machine-readable evaluation metric records.
+    evaluation_embeddings_dir:
+        Directory for embedding-side evaluation artifacts.
+    evaluation_reconstructions_dir:
+        Directory for reconstruction-side evaluation artifacts.
+    evaluation_embeddings_figures_dir:
+        Directory for embedding-side evaluation figures.
+    evaluation_reconstructions_figures_dir:
+        Directory for reconstruction-side evaluation figures.
+    evaluation_reconstruction_inputs_dir:
         Directory for exported reconstruction input examples.
-    reconstruction_predictions_dir:
+    evaluation_reconstruction_predictions_dir:
         Directory for exported reconstruction prediction examples.
-    reconstruction_error_maps_dir:
+    evaluation_reconstruction_error_maps_dir:
         Directory for exported reconstruction error maps.
     """
 
@@ -106,17 +118,20 @@ class RunContext:
     metadata_dir: Path
 
     # Stage-specific conventional directories
-    checkpoint_dir: Path
-    architecture_dir: Path
-    embedding_dir: Path
-    reconstruction_dir: Path
-    embedding_metrics_dir: Path
-    embedding_plots_dir: Path
-    reconstruction_metrics_dir: Path
-    reconstruction_plots_dir: Path
-    reconstruction_inputs_dir: Path
-    reconstruction_predictions_dir: Path
-    reconstruction_error_maps_dir: Path
+    training_checkpoint_dir: Path
+    training_architecture_dir: Path
+    prediction_embeddings_dir: Path
+    prediction_reconstructions_dir: Path
+    evaluation_artifacts_dir: Path
+    evaluation_figures_dir: Path
+    evaluation_metrics_dir: Path
+    evaluation_embeddings_dir: Path
+    evaluation_reconstructions_dir: Path
+    evaluation_embeddings_figures_dir: Path
+    evaluation_reconstructions_figures_dir: Path
+    evaluation_reconstruction_inputs_dir: Path
+    evaluation_reconstruction_predictions_dir: Path
+    evaluation_reconstruction_error_maps_dir: Path
 
     @classmethod
     def create(
@@ -158,17 +173,22 @@ class RunContext:
         metadata_dir = records_dir / "metadata"
 
         # Stage-specific dirs
-        checkpoint_dir = output_dir / "checkpoints"
-        architecture_dir = output_dir / "architecture"
-        embedding_dir = output_dir / "embeddings"
-        reconstruction_dir = output_dir / "reconstructions"
-        embedding_metrics_dir = embedding_dir / "metrics"
-        embedding_plots_dir = embedding_dir / "plots"
-        reconstruction_metrics_dir = reconstruction_dir / "metrics"
-        reconstruction_plots_dir = reconstruction_dir / "plots"
-        reconstruction_inputs_dir = reconstruction_dir / "inputs"
-        reconstruction_predictions_dir = reconstruction_dir / "predictions"
-        reconstruction_error_maps_dir = reconstruction_dir / "error_maps"
+        training_checkpoint_dir = output_dir / "checkpoints"
+        training_architecture_dir = output_dir / "architecture"
+        prediction_embeddings_dir = output_dir / "embeddings"
+        prediction_reconstructions_dir = output_dir / "reconstructions"
+        evaluation_artifacts_dir = output_dir / "artifacts"
+        evaluation_figures_dir = output_dir / "figures"
+
+        evaluation_metrics_dir = records_dir / "metrics"
+
+        evaluation_embeddings_dir = evaluation_artifacts_dir / "embeddings"
+        evaluation_reconstructions_dir = evaluation_artifacts_dir / "reconstructions"
+        evaluation_embeddings_figures_dir = evaluation_figures_dir / "embeddings"
+        evaluation_reconstructions_figures_dir = evaluation_figures_dir / "reconstructions"
+        evaluation_reconstruction_inputs_dir = evaluation_reconstructions_dir / "inputs"
+        evaluation_reconstruction_predictions_dir = evaluation_reconstructions_dir / "predictions"
+        evaluation_reconstruction_error_maps_dir = evaluation_reconstructions_dir / "error_maps"
 
         dirs_to_create = [
             records_dir,
@@ -178,20 +198,21 @@ class RunContext:
         ]
 
         if stage == "training":
-            dirs_to_create.extend([checkpoint_dir, architecture_dir])
+            dirs_to_create.extend([training_checkpoint_dir, training_architecture_dir])
         elif stage == "prediction":
-            dirs_to_create.extend([embedding_dir, reconstruction_dir])
+            dirs_to_create.extend([prediction_embeddings_dir, prediction_reconstructions_dir])
         elif stage == "evaluation":
             dirs_to_create.extend([
-                embedding_dir,
-                reconstruction_dir,
-                embedding_metrics_dir,
-                embedding_plots_dir,
-                reconstruction_metrics_dir,
-                reconstruction_plots_dir,
-                reconstruction_inputs_dir,
-                reconstruction_predictions_dir,
-                reconstruction_error_maps_dir,
+                evaluation_artifacts_dir,
+                evaluation_figures_dir,
+                evaluation_metrics_dir,
+                evaluation_embeddings_dir,
+                evaluation_reconstructions_dir,
+                evaluation_embeddings_figures_dir,
+                evaluation_reconstructions_figures_dir,
+                evaluation_reconstruction_inputs_dir,
+                evaluation_reconstruction_predictions_dir,
+                evaluation_reconstruction_error_maps_dir,
             ])
         else:
             raise ValueError(
@@ -210,15 +231,18 @@ class RunContext:
             config_dir=config_dir,
             log_dir=log_dir,
             metadata_dir=metadata_dir,
-            checkpoint_dir=checkpoint_dir,
-            architecture_dir=architecture_dir,
-            embedding_dir=embedding_dir,
-            reconstruction_dir=reconstruction_dir,
-            embedding_metrics_dir=embedding_metrics_dir,
-            embedding_plots_dir=embedding_plots_dir,
-            reconstruction_metrics_dir=reconstruction_metrics_dir,
-            reconstruction_plots_dir=reconstruction_plots_dir,
-            reconstruction_inputs_dir=reconstruction_inputs_dir,
-            reconstruction_predictions_dir=reconstruction_predictions_dir,
-            reconstruction_error_maps_dir=reconstruction_error_maps_dir,
+            training_checkpoint_dir=training_checkpoint_dir,
+            training_architecture_dir=training_architecture_dir,
+            prediction_embeddings_dir=prediction_embeddings_dir,
+            prediction_reconstructions_dir=prediction_reconstructions_dir,
+            evaluation_artifacts_dir=evaluation_artifacts_dir,
+            evaluation_figures_dir=evaluation_figures_dir,
+            evaluation_metrics_dir=evaluation_metrics_dir,
+            evaluation_embeddings_dir=evaluation_embeddings_dir,
+            evaluation_reconstructions_dir=evaluation_reconstructions_dir,
+            evaluation_embeddings_figures_dir=evaluation_embeddings_figures_dir,
+            evaluation_reconstructions_figures_dir=evaluation_reconstructions_figures_dir,
+            evaluation_reconstruction_inputs_dir=evaluation_reconstruction_inputs_dir,
+            evaluation_reconstruction_predictions_dir=evaluation_reconstruction_predictions_dir,
+            evaluation_reconstruction_error_maps_dir=evaluation_reconstruction_error_maps_dir,
         )

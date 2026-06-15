@@ -95,7 +95,7 @@ def write_training_manifest(
             },
         },
         "checkpoints": {
-            "checkpoint_dir": str(run_context.checkpoint_dir),
+            "checkpoint_dir": str(run_context.training_checkpoint_dir),
             "monitor": config.checkpointing.monitor,
             "mode": config.checkpointing.mode,
             "best_checkpoint_path": checkpoint_callback.best_model_path or None,

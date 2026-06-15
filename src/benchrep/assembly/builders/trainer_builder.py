@@ -135,7 +135,7 @@ def build_trainer(
 
         checkpoint_callback = _build_checkpoint_callback(
             checkpoint_config=checkpoint_config,
-            checkpoint_dir=run_context.checkpoint_dir,
+            checkpoint_dir=run_context.training_checkpoint_dir,
         )
 
         trainer = L.Trainer(
