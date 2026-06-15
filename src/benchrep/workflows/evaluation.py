@@ -18,6 +18,7 @@ from benchrep.records import (
     setup_run_logger,
 )
 from benchrep.runtime import RunContext
+from benchrep.assembly.register_builtins import register_builtins
 
 
 if TYPE_CHECKING:
@@ -27,6 +28,8 @@ if TYPE_CHECKING:
 
 
 def main() -> None:
+    register_builtins()
+
     args = parse_args()
 
     # Parse and resolve config

@@ -19,9 +19,12 @@ from benchrep.records import (
 from benchrep.assembly import load_yaml
 from benchrep.assembly.schemas import parse_training_config
 from benchrep.assembly.builders import build_datamodule, build_model, build_trainer
+from benchrep.assembly.register_builtins import register_builtins
 
 
 def main() -> None:
+    register_builtins()
+
     args = parse_args()
 
     # Parse config

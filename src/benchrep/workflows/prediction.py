@@ -23,9 +23,12 @@ from benchrep.records import (
     write_prediction_manifest,
 )
 from benchrep.runtime import RunContext
+from benchrep.assembly.register_builtins import register_builtins
 
 
 def main() -> None:
+    register_builtins()
+
     args = parse_args()
 
     # Parse and resolve config

@@ -1,7 +1,7 @@
 stage: evaluation
 
 source:
-  prediction_manifest_path: /home/qptero/github/BenchRep/outputs/prediction/test_vae_20260609-150453/records/metadata/prediction_manifest.yaml
+  prediction_manifest_path: /home/qptero/github/BenchRep/outputs/prediction/test_vae_20260615-110943/records/metadata/prediction_manifest.yaml
  # null = no manifest; embeddings_path must then be provided
   embeddings_path: null # null = infer from manifest; error if no manifest provided
   reconstructions_path: null # null = infer from manifest if available; skip reconstruction eval if unavailable
