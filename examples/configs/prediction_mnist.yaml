@@ -1,7 +1,7 @@
 stage: prediction
 
 source:
-  training_manifest_path: /home/qptero/github/BenchRep/outputs/training/test_vae_mlp_mlp_20260615-110842/records/metadata/training_manifest.yaml
+  training_manifest_path: /home/qptero/github/BenchRep/outputs/training/test_vae_mlp_mlp_20260615-132724/records/metadata/training_manifest.yaml
   checkpoint: best              # best | last | checkpoint filename in training checkpoint dir
 
 data:

@@ -81,6 +81,7 @@ class EvaluationStepSpec:
     reconstruction_metrics_enabled: bool
     reconstruction_metrics: list[str] | None
     reconstruction_metric_params: dict[str, dict[str, Any]]
+    reconstruction_metrics_reduction: str
 
     error_maps_enabled: bool
     error_map_params: dict[str, Any]
@@ -570,6 +571,7 @@ def resolve_step_spec(
             params=evaluation_config.metrics.reconstruction.params,
             registry=EVAL_RECONSTRUCTION_METRICS,
         ),
+        reconstruction_metrics_reduction=evaluation_config.metrics.reconstruction.reduction,
 
         # True only if explicitly enabled and reconstructions are available
         error_maps_enabled=resolve_enabled_if_explicit_and_available(

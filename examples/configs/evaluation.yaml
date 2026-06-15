@@ -1,7 +1,7 @@
 stage: evaluation
 
 source:
-  prediction_manifest_path: /home/qptero/github/BenchRep/outputs/prediction/test_vae_20260615-110943/records/metadata/prediction_manifest.yaml
+  prediction_manifest_path: /home/qptero/github/BenchRep/outputs/prediction/test_vae_20260615-132905/records/metadata/prediction_manifest.yaml
  # null = no manifest; embeddings_path must then be provided
   embeddings_path: null # null = infer from manifest; error if no manifest provided
   reconstructions_path: null # null = infer from manifest if available; skip reconstruction eval if unavailable
@@ -105,9 +105,10 @@ metrics:
     params: null # null = metric/backend defaults
 
   reconstruction:
-    enabled: false # true = force on if reconstructions exist; false = off; null = on only if reconstructions exist
+    enabled: true # true = force on if reconstructions exist; false = off; null = on only if reconstructions exist
     selected: null # null = all supported reconstruction metrics
     params: null # null = metric/backend defaults
+    reduction: per_channel # null = global # global | per_channel | both
 
 reconstruction:
   error_maps:

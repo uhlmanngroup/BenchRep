@@ -193,10 +193,13 @@ class EvaluationClusteringMetricsConfig(BaseModel):
     external: ExternalClusteringMetricConfig = Field(default_factory=ExternalClusteringMetricConfig)
 
 
+class ReconstructionMetricConfig(EvalMetricGroupConfig):
+    reduction: Literal["global", "per_channel", "both"] = "global"
+
 class EvaluationMetricsConfig(BaseModel):
     clustering: EvaluationClusteringMetricsConfig = Field(default_factory=EvaluationClusteringMetricsConfig)
     embedding: EvalMetricGroupConfig = Field(default_factory=EvalMetricGroupConfig)
-    reconstruction: EvalMetricGroupConfig = Field(default_factory=EvalMetricGroupConfig)
+    reconstruction: ReconstructionMetricConfig = Field(default_factory=ReconstructionMetricConfig)
 
 
 # -------------------------
