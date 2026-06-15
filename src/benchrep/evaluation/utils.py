@@ -115,6 +115,48 @@ def validate_reconstruction_arrays(
     )
 
 
+def ensure_reconstruction_channel_axis(array: np.ndarray) -> np.ndarray:
+    """Return reconstruction array with explicit channel axis.
+
+    Converts ``(B, H, W)`` to ``(B, 1, H, W)`` and leaves ``(B, C, H, W)``
+    unchanged.
+    """
+
+    if array.ndim == 3:
+        return array[:, None, :, :]
+
+    if array.ndim == 4:
+        return array
+
+    raise ValueError(
+        "Expected reconstruction array with shape (B, H, W) or (B, C, H, W), "
+        f"got {array.shape}."
+    )
+
+
+def resolve_reconstruction_channel_names(
+    *,
+    metadata: Mapping[str, Any] | None,
+    n_channels: int,
+) -> list[str]:
+    """Resolve reconstruction channel names from metadata or fallback names."""
+
+    metadata = metadata or {}
+    channel_names = metadata.get("channel_names")
+
+    if channel_names is None:
+        return [f"channel_{index}" for index in range(n_channels)]
+
+    channel_names = [str(channel_name) for channel_name in channel_names]
+
+    if len(channel_names) != n_channels:
+        raise ValueError(
+            f"Expected {n_channels} channel names, got {len(channel_names)}."
+        )
+
+    return channel_names
+
+
 def to_python_scalar(value: Any) -> Any:
     """Convert scalar-like values to plain Python scalars when possible."""
 
