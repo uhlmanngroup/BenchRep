@@ -8,7 +8,7 @@ from typing import Any
 import numpy as np
 import torch
 
-from benchrep.evaluation.utils import ArrayLike, to_numpy
+from benchrep.evaluation.utils import validate_reconstruction_arrays
 
 
 @dataclass(frozen=True)
@@ -36,8 +36,8 @@ def load_reconstruction_evaluation_input(
 ) -> ReconstructionEvaluationInput:
     """Load prediction-stage reconstruction artifacts for evaluation."""
 
-    inputs = to_numpy(_load_pt(input_path))
-    reconstructions = to_numpy(_load_pt(reconstruction_path))
+    inputs = _load_pt(input_path)
+    reconstructions = _load_pt(reconstruction_path)
 
     inputs, reconstructions = validate_reconstruction_arrays(
         inputs=inputs,
@@ -62,43 +62,6 @@ def load_reconstruction_evaluation_input(
         obs=obs,
         metadata=metadata,
         n_examples=n_examples,
-    )
-
-
-def validate_reconstruction_arrays(
-    *,
-    inputs: ArrayLike,
-    reconstructions: ArrayLike,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Validate reconstruction input/reconstruction array compatibility."""
-
-    input_array = np.asarray(to_numpy(inputs))
-    reconstruction_array = np.asarray(to_numpy(reconstructions))
-
-    if input_array.shape != reconstruction_array.shape:
-        raise ValueError(
-            "inputs and reconstructions must have matching shapes, got "
-            f"{input_array.shape} and {reconstruction_array.shape}."
-        )
-
-    if input_array.ndim not in {3, 4}:
-        raise ValueError(
-            "Expected arrays with shape (B, H, W) or (B, C, H, W), got "
-            f"{input_array.shape}."
-        )
-
-    if not np.issubdtype(input_array.dtype, np.number):
-        raise TypeError(f"inputs must be numeric, got dtype {input_array.dtype}.")
-
-    if not np.issubdtype(reconstruction_array.dtype, np.number):
-        raise TypeError(
-            "reconstructions must be numeric, got dtype "
-            f"{reconstruction_array.dtype}."
-        )
-
-    return (
-        input_array.astype(np.float32, copy=False),
-        reconstruction_array.astype(np.float32, copy=False),
     )
 
 

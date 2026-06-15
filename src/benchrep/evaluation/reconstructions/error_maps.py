@@ -5,10 +5,8 @@ from typing import Any
 
 import numpy as np
 
-from benchrep.evaluation.reconstructions.data import (
-    ReconstructionEvaluationInput,
-    validate_reconstruction_arrays,
-)
+from benchrep.evaluation.reconstructions.data import ReconstructionEvaluationInput
+from benchrep.evaluation.utils import validate_reconstruction_arrays
 
 
 SUPPORTED_ERROR_MAP_KINDS = {

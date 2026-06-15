@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from typing import Any
-import inspect
 
 import anndata as ad
 
@@ -14,7 +13,12 @@ from benchrep.assembly.registry_utils import (
     resolve_registry_keys,
     resolve_registry_param_keys,
 )
-from benchrep.evaluation.utils import validate_adata_x
+from benchrep.evaluation.utils import (
+    to_python_scalar,
+    validate_adata_x,
+    validate_metric_params,
+    validate_obs_key,
+)
 
 
 def compute_external_clustering_metrics(
@@ -48,8 +52,8 @@ def compute_external_clustering_metrics(
 
         adata.uns["benchrep"]["metrics"]["clustering"]["external"][cluster_key]
     """
-    _validate_obs_key(adata, label_key)
-    _validate_obs_key(adata, cluster_key)
+    validate_obs_key(adata, label_key)
+    validate_obs_key(adata, cluster_key)
     _check_metric_result_available(
         adata,
         metric_group="external",
@@ -76,32 +80,12 @@ def compute_external_clustering_metrics(
         metric_fn = EVAL_EXTERNAL_CLUSTERING_METRICS.get(metric_name)
         params = metric_params.get(metric_name, {})
 
-        try:
-            signature = inspect.signature(metric_fn)
-        except (TypeError, ValueError):
-            # Some custom/builtin callables may not expose an inspectable signature
-            signature = None
-
-        if signature is not None:
-            parameters = signature.parameters
-            accepts_var_kwargs = any(
-                parameter.kind is inspect.Parameter.VAR_KEYWORD
-                for parameter in parameters.values()
-            )
-
-            if not accepts_var_kwargs:
-                unsupported_params = [
-                    param_name
-                    for param_name in params
-                    if param_name not in parameters
-                ]
-
-                if unsupported_params:
-                    raise ValueError(
-                        f"Unsupported parameters for external clustering metric "
-                        f"{metric_name!r}: {unsupported_params}. "
-                        f"Accepted parameters are: {tuple(parameters)}."
-                    )
+        validate_metric_params(
+            metric_name=metric_name,
+            metric_fn=metric_fn,
+            params=params,
+            metric_kind="external clustering metric",
+        )
 
         try:
             value = metric_fn(labels, clusters, **params)
@@ -111,7 +95,7 @@ def compute_external_clustering_metrics(
                 "The metric callable was found, but execution failed."
             ) from error
 
-        results[metric_name] = _to_python_scalar(value)
+        results[metric_name] = to_python_scalar(value)
 
     _store_clustering_metric_result(
         adata,
@@ -162,7 +146,7 @@ def compute_internal_clustering_metrics(
         adata.uns["benchrep"]["metrics"]["clustering"]["internal"][cluster_key]
     """
     validate_adata_x(adata)
-    _validate_obs_key(adata, cluster_key)
+    validate_obs_key(adata, cluster_key)
     _check_metric_result_available(
         adata,
         metric_group="internal",
@@ -201,32 +185,12 @@ def compute_internal_clustering_metrics(
         metric_fn = EVAL_INTERNAL_CLUSTERING_METRICS.get(metric_name)
         params = metric_params.get(metric_name, {})
 
-        try:
-            signature = inspect.signature(metric_fn)
-        except (TypeError, ValueError):
-            # Some custom/builtin callables may not expose an inspectable signature.
-            signature = None
-
-        if signature is not None:
-            parameters = signature.parameters
-            accepts_var_kwargs = any(
-                parameter.kind is inspect.Parameter.VAR_KEYWORD
-                for parameter in parameters.values()
-            )
-
-            if not accepts_var_kwargs:
-                unsupported_params = [
-                    param_name
-                    for param_name in params
-                    if param_name not in parameters
-                ]
-
-                if unsupported_params:
-                    raise ValueError(
-                        f"Unsupported parameters for internal clustering metric "
-                        f"{metric_name!r}: {unsupported_params}. "
-                        f"Accepted parameters are: {tuple(parameters)}."
-                    )
+        validate_metric_params(
+            metric_name=metric_name,
+            metric_fn=metric_fn,
+            params=params,
+            metric_kind="internal clustering metric",
+        )
 
         try:
             value = metric_fn(adata.X, clusters, **params)
@@ -236,7 +200,7 @@ def compute_internal_clustering_metrics(
                 "The metric callable was found, but execution failed."
             ) from error
 
-        results[metric_name] = _to_python_scalar(value)
+        results[metric_name] = to_python_scalar(value)
 
     _store_clustering_metric_result(
         adata,
@@ -252,16 +216,6 @@ def compute_internal_clustering_metrics(
     )
 
     return adata
-
-
-def _validate_obs_key(adata: ad.AnnData, key: str) -> None:
-    """Validate that ``key`` exists in ``adata.obs``."""
-
-    if key not in adata.obs.columns:
-        raise KeyError(
-            f"adata.obs does not contain {key!r}. "
-            f"Available columns: {list(adata.obs.columns)}"
-        )
 
 
 def _check_metric_result_available(
@@ -332,12 +286,3 @@ def _store_clustering_metric_result(
     group_uns = clustering_uns.setdefault(metric_group, {})
 
     group_uns[cluster_key] = dict(result)
-
-
-def _to_python_scalar(value: Any) -> Any:
-    """Convert scalar-like values to plain Python scalars when possible."""
-
-    if hasattr(value, "item"):
-        return value.item()
-
-    return value
