@@ -35,6 +35,12 @@ from benchrep.architecture.models import (
 )
 from benchrep.evaluation.embeddings.clustering import run_kmeans, run_leiden
 from benchrep.evaluation.embeddings.reductions import run_pca, run_tsne, run_umap
+from benchrep.evaluation.reconstructions.reconstruction_metrics import (
+    mean_absolute_error,
+    mean_squared_error,
+    root_mean_squared_error,
+    max_absolute_error,
+)
 
 
 class Registry:
@@ -256,4 +262,28 @@ EVAL_EXTERNAL_CLUSTERING_METRICS.register(
     "homogeneity",
     homogeneity_score,
     "homogeneity_score",
+)
+# Reconstruction metrics
+EVAL_RECONSTRUCTION_METRICS.register(
+    "mae",
+    mean_absolute_error,
+    "mean_absolute_error",
+    "mean_abs_error"
+)
+EVAL_RECONSTRUCTION_METRICS.register(
+    "mse",
+    mean_squared_error,
+    "mean_squared_error",
+    "mean_sq_error",
+)
+EVAL_RECONSTRUCTION_METRICS.register(
+    "rmse",
+    root_mean_squared_error,
+    "root_mean_squared_error",
+    "root_mean_sq_error",
+)
+EVAL_RECONSTRUCTION_METRICS.register(
+    "max_absolute_error",
+    max_absolute_error,
+    "max_abs_error",
 )
