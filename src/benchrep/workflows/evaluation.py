@@ -10,12 +10,19 @@ import anndata as ad
 from benchrep.assembly import load_yaml
 from benchrep.assembly.resolvers import resolve_evaluation_config
 from benchrep.assembly.schemas import parse_evaluation_config
-from benchrep.evaluation.pipelines import create_anndata_evaluation_pipeline
+from benchrep.evaluation.pipelines import (
+    create_anndata_evaluation_pipeline,
+    create_reconstruction_evaluation_pipeline,
+)
 from benchrep.evaluation.embeddings.plotting import plot_2d_projection
 from benchrep.records import (
     capture_console_streams,
     save_config_records,
     setup_run_logger,
+    save_evaluation_metrics_json,
+)
+from benchrep.evaluation.reconstructions.data import (
+    load_reconstruction_evaluation_input,
 )
 from benchrep.runtime import RunContext
 from benchrep.assembly.register_builtins import register_builtins
@@ -71,12 +78,12 @@ def main() -> None:
     )
 
     # Create and run AnnData evaluation pipeline
-    pipeline = create_anndata_evaluation_pipeline(run_spec)
+    embeddings_pipeline = create_anndata_evaluation_pipeline(run_spec)
 
     run_log.info("Starting AnnData evaluation pipeline...")
 
     with capture_console_streams(log_out_dir=run_context.log_dir, capture_stdout=False):
-        adata = pipeline.run(adata)
+        adata = embeddings_pipeline.run(adata)
 
     run_log.info("Finished AnnData evaluation pipeline")
     run_log.info("Final obsm keys: %s", tuple(adata.obsm.keys()))
@@ -88,18 +95,44 @@ def main() -> None:
         write_smoke_test_plots(
             adata=adata,
             run_spec=run_spec,
-            plot_dir=run_context.embedding_plots_dir,
+            plot_dir=run_context.evaluation_embeddings_figures_dir,
             overwrite=True,
         )
         run_log.info("Finished generating smoke-test plots")
 
-    # Quick-and-dirty metric print/log
-    benchrep_results = adata.uns.get("benchrep", {})
-    benchrep_metrics = benchrep_results.get("metrics", {})
+    # Create and run reconstructions evaluation pipeline
+    reconstruction_outputs = None
+    if run_spec.input_spec.reconstructions is not None:
+        run_log.info("Loading reconstruction evaluation inputs...")
 
-    if benchrep_metrics:
-        run_log.info("BenchRep eval metrics: %s", benchrep_metrics)
-        print(benchrep_metrics)
+        recon_spec = run_spec.input_spec.reconstructions
+        reconstruction_input = load_reconstruction_evaluation_input(
+            input_path=recon_spec.input_path,
+            reconstruction_path=recon_spec.reconstruction_path,
+            obs_path=recon_spec.obs_path,
+            metadata_path=recon_spec.metadata_path,
+            n_examples=recon_spec.n_examples,
+        )
+
+        run_log.info("Starting reconstruction evaluation pipeline...")
+        reconstruction_pipeline = create_reconstruction_evaluation_pipeline(run_spec)
+        reconstruction_outputs = reconstruction_pipeline.run(reconstruction_input)
+
+        if reconstruction_outputs:
+            run_log.info(
+                "Finished reconstruction evaluation pipeline with outputs: %s",
+                tuple(reconstruction_outputs),
+            )
+            print(reconstruction_outputs.keys())
+
+    # Collect and export metrics
+    metrics_path = save_evaluation_metrics_json(
+        output_dir=run_context.evaluation_metrics_dir,
+        adata=adata,
+        reconstruction_outputs=reconstruction_outputs,
+    )
+    run_log.info("Saved evaluation metrics JSON to: '%s'", metrics_path)
+
 
     completed_at = datetime.now().isoformat(timespec="seconds")  # TODO use in eval manifest
     run_log.info("Evaluation completed at: %s", completed_at)

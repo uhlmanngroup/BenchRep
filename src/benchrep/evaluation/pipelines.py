@@ -14,7 +14,10 @@ from benchrep.evaluation.embeddings.clustering_metrics import (
     compute_external_clustering_metrics,
     compute_internal_clustering_metrics,
 )
-
+from benchrep.evaluation.reconstructions.error_maps import compute_error_maps
+from benchrep.evaluation.reconstructions.reconstruction_metrics import (
+    compute_reconstruction_metrics,
+)
 
 if TYPE_CHECKING:
     from benchrep.assembly.resolvers.evaluation_config_resolver import (
@@ -238,6 +241,41 @@ def create_anndata_evaluation_pipeline(
         )
 
     return AnnDataEvaluationPipeline(steps=steps)
+
+
+def create_reconstruction_evaluation_pipeline(
+    run_spec: "EvaluationRunSpec",
+) -> ReconstructionEvaluationPipeline:
+    """Create the reconstruction evaluation pipeline from a resolved run spec.
+
+    This function only wires reconstruction-side evaluation steps from the
+    resolved run spec. Actual metric computation and error-map generation remain
+    in ``reconstructions.reconstruction_metrics`` and
+    ``reconstructions.error_maps``.
+    """
+
+    step_spec = run_spec.step_spec
+
+    steps: list[ReconstructionEvaluationStep] = [
+        ReconstructionEvaluationStep(
+            name="reconstruction_metrics",
+            fn=compute_reconstruction_metrics,
+            params={
+                "selected": step_spec.reconstruction_metrics,
+                "metric_params": step_spec.reconstruction_metric_params,
+                "reduction": step_spec.reconstruction_metrics_reduction,
+            },
+            enabled=step_spec.reconstruction_metrics_enabled,
+        ),
+        ReconstructionEvaluationStep(
+            name="error_maps",
+            fn=compute_error_maps,
+            params=step_spec.error_map_params,
+            enabled=step_spec.error_maps_enabled,
+        ),
+    ]
+
+    return ReconstructionEvaluationPipeline(steps=steps)
 
 
 def _resolve_enabled_cluster_keys(
