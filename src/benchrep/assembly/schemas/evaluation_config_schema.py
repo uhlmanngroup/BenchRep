@@ -165,7 +165,6 @@ class ErrorMapParams(BaseModel):
         ]
         | None
     ) = "absolute"
-    n_examples: PositiveInt | None = None
     denominator_floor: PositiveFloat | None = None
 
 
@@ -174,6 +173,7 @@ class ErrorMapConfig(EvalStepConfig):
 
 
 class EvaluationReconstructionConfig(BaseModel):
+    n_examples: PositiveInt | None = None
     error_maps: ErrorMapConfig = Field(default_factory=ErrorMapConfig)
 
 

@@ -57,8 +57,7 @@ def compute_error_maps(
     )
 
     resolved_n_examples = _resolve_n_examples(
-        configured_n_examples=n_examples,
-        fallback_n_examples=reconstruction_input.n_examples,
+        n_examples=n_examples,
         n_available=inputs.shape[0],
     )
 
@@ -192,17 +191,10 @@ def _resolve_per_channel_data_range(
 
 def _resolve_n_examples(
     *,
-    configured_n_examples: int | None,
-    fallback_n_examples: int | None,
+    n_examples: int | None,
     n_available: int,
 ) -> int | None:
     """Resolve how many reconstruction examples to keep."""
-
-    n_examples = (
-        configured_n_examples
-        if configured_n_examples is not None
-        else fallback_n_examples
-    )
 
     if n_examples is None:
         return None

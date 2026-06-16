@@ -9,11 +9,12 @@ from benchrep.records.architecture import export_torchview_graph, infer_dummy_in
 from benchrep.records.prediction_exports import export_prediction_outputs
 from benchrep.records.evaluation_exports import (
     save_evaluation_metrics_json,
+    export_reconstruction_tiffs,
 )
 from benchrep.records.anndata_io import (
     read_h5ad,
     write_h5ad,
-    package_matrix_as_anndata
+    package_matrix_as_anndata,
 )
 
 __all__ = [
@@ -27,6 +28,7 @@ __all__ = [
     "infer_dummy_input_size",
     "export_prediction_outputs",
     "save_evaluation_metrics_json",
+    "export_reconstruction_tiffs",
     "read_h5ad",
     "write_h5ad",
     "package_matrix_as_anndata",

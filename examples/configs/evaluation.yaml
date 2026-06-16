@@ -111,13 +111,13 @@ metrics:
     reduction: per_channel # null = global # global | per_channel | both
 
 reconstruction:
+  n_examples: 3 # omit/null = use all available reconstruction examples for artifact generation
   error_maps:
     enabled: true # true = force on if reconstructions exist; false = off; null = off
     params:
       # absolute | squared | signed | relative | normalized_absolute_global | normalized_absolute_per_channel;
       # omit/null = absolute
       kind: absolute
-      n_examples: null # omit/null = use all available reconstruction examples
       denominator_floor: null # null/omit = default denominator floor for relative/normalized error maps
 
 plots:

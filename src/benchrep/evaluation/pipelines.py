@@ -270,7 +270,14 @@ def create_reconstruction_evaluation_pipeline(
         ReconstructionEvaluationStep(
             name="error_maps",
             fn=compute_error_maps,
-            params=step_spec.error_map_params,
+            params={
+                **step_spec.error_map_params,
+                "n_examples": (
+                    run_spec.input_spec.reconstructions.n_examples
+                    if run_spec.input_spec.reconstructions is not None
+                    else None
+                ),
+            },
             enabled=step_spec.error_maps_enabled,
         ),
     ]

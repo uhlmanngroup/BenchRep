@@ -56,12 +56,19 @@ def load_reconstruction_evaluation_input(
     if n_examples is not None and n_examples < 1:
         raise ValueError(f"n_examples must be >= 1, got {n_examples}.")
 
+    available_examples = int(inputs.shape[0])
+
+    if n_examples is None:
+        effective_n_examples = available_examples
+    else:
+        effective_n_examples = min(n_examples, available_examples)
+
     return ReconstructionEvaluationInput(
         inputs=inputs,
         reconstructions=reconstructions,
         obs=obs,
         metadata=metadata,
-        n_examples=n_examples,
+        n_examples=effective_n_examples,
     )
 
 

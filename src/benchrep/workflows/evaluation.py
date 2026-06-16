@@ -20,6 +20,7 @@ from benchrep.records import (
     save_config_records,
     setup_run_logger,
     save_evaluation_metrics_json,
+    export_reconstruction_tiffs,
 )
 from benchrep.evaluation.reconstructions.data import (
     load_reconstruction_evaluation_input,
@@ -123,7 +124,17 @@ def main() -> None:
                 "Finished reconstruction evaluation pipeline with outputs: %s",
                 tuple(reconstruction_outputs),
             )
-            print(reconstruction_outputs.keys())
+
+            reconstruction_tiff_paths = export_reconstruction_tiffs(
+                output_dir=run_context.evaluation_reconstructions_dir,
+                reconstruction_input=reconstruction_input,
+                reconstruction_outputs=reconstruction_outputs,
+                overwrite=True,
+            )
+            run_log.info(
+                "Saved reconstruction TIFF outputs: %s",
+                {key: len(paths) for key, paths in reconstruction_tiff_paths.items()},
+            )
 
     # Collect and export metrics
     metrics_path = save_evaluation_metrics_json(
@@ -132,7 +143,6 @@ def main() -> None:
         reconstruction_outputs=reconstruction_outputs,
     )
     run_log.info("Saved evaluation metrics JSON to: '%s'", metrics_path)
-
 
     completed_at = datetime.now().isoformat(timespec="seconds")  # TODO use in eval manifest
     run_log.info("Evaluation completed at: %s", completed_at)

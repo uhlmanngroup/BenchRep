@@ -15,8 +15,15 @@ import math
 
 import anndata as ad
 import numpy as np
+import re
+import tifffile
 
-from benchrep.evaluation.utils import to_python_scalar
+from benchrep.evaluation.reconstructions.data import ReconstructionEvaluationInput
+from benchrep.evaluation.utils import (
+    to_python_scalar,
+    ensure_reconstruction_channel_axis,
+    validate_reconstruction_arrays,
+)
 
 
 def save_evaluation_metrics_json(
@@ -136,3 +143,191 @@ def _to_json_safe(value: Any) -> Any:
         f"Object of type {type(value).__name__} is not JSON serializable "
         "as an evaluation metric value."
     )
+
+
+def export_reconstruction_tiffs(
+    *,
+    output_dir: str | Path,
+    reconstruction_input: ReconstructionEvaluationInput,
+    reconstruction_outputs: Mapping[str, Any] | None = None,
+    overwrite: bool = False,
+) -> dict[str, list[Path]]:
+    """Export reconstruction inputs, predictions, and error maps as TIFF files."""
+
+    output_dir = Path(output_dir)
+
+    input_array, reconstruction_array = validate_reconstruction_arrays(
+        inputs=reconstruction_input.inputs,
+        reconstructions=reconstruction_input.reconstructions,
+    )
+
+    available_examples = int(input_array.shape[0])
+
+    if reconstruction_input.n_examples is None:
+        n_examples = available_examples
+    else:
+        n_examples = min(reconstruction_input.n_examples, available_examples)
+
+    input_array = input_array[:n_examples]
+    reconstruction_array = reconstruction_array[:n_examples]
+
+    filename_stems = _resolve_reconstruction_filenames(
+        obs=reconstruction_input.obs,
+        n_examples=n_examples,
+    )
+
+    written_paths: dict[str, list[Path]] = {
+        "inputs": _write_reconstruction_tiffs(
+            arrays=input_array,
+            output_dir=output_dir / "inputs",
+            filename_prefix="input",
+            filename_stems=filename_stems,
+            overwrite=overwrite,
+        ),
+        "predictions": _write_reconstruction_tiffs(
+            arrays=reconstruction_array,
+            output_dir=output_dir / "predictions",
+            filename_prefix="prediction",
+            filename_stems=filename_stems,
+            overwrite=overwrite,
+        ),
+    }
+
+    if reconstruction_outputs is None:
+        return written_paths
+
+    error_map_output = reconstruction_outputs.get("error_maps")
+    if error_map_output is None:
+        return written_paths
+
+    if not isinstance(error_map_output, Mapping):
+        raise TypeError(
+            "Expected reconstruction_outputs['error_maps'] to be a mapping, "
+            f"got {type(error_map_output).__name__}."
+        )
+
+    error_maps = error_map_output.get("error_maps")
+    if error_maps is None:
+        return written_paths
+
+    error_map_array = ensure_reconstruction_channel_axis(np.asarray(error_maps))
+    input_array_with_channels = ensure_reconstruction_channel_axis(input_array)
+
+    if error_map_array.shape[0] < n_examples:
+        raise ValueError(
+            "Expected at least as many error maps as selected reconstruction "
+            f"examples. Got {error_map_array.shape[0]} error maps and "
+            f"{n_examples} selected examples."
+        )
+
+    error_map_array = error_map_array[:n_examples]
+
+    if error_map_array.shape != input_array_with_channels.shape:
+        raise ValueError(
+            "Expected selected error maps to have the same shape as selected "
+            "reconstruction inputs after adding any missing channel axis. "
+            f"Got error maps shape {error_map_array.shape} and input shape "
+            f"{input_array_with_channels.shape}."
+        )
+
+    written_paths["error_maps"] = _write_reconstruction_tiffs(
+        arrays=error_map_array,
+        output_dir=output_dir / "error_maps",
+        filename_prefix="error_map",
+        filename_stems=filename_stems,
+        overwrite=overwrite,
+    )
+
+    return written_paths
+
+
+def _resolve_reconstruction_filenames(
+    *,
+    obs: Any,
+    n_examples: int,
+) -> list[str]:
+    """Resolve safe per-example filename stems from sample IDs or indices."""
+
+    sample_ids = None
+
+    if isinstance(obs, Mapping):
+        sample_ids = obs.get("sample_id")
+    elif hasattr(obs, "columns") and "sample_id" in obs.columns:
+        sample_ids = obs["sample_id"]
+
+    filename_stems: list[str] = []
+
+    for example_index in range(n_examples):
+        fallback = f"example_{example_index:04d}"
+        sample_id = None
+
+        if sample_ids is not None:
+            try:
+                if hasattr(sample_ids, "iloc"):
+                    sample_id = sample_ids.iloc[example_index]
+                else:
+                    sample_id = sample_ids[example_index]
+            except (IndexError, KeyError, TypeError):
+                sample_id = None
+
+        if sample_id is None:
+            filename_stem = fallback
+        else:
+            filename_stem = f"{fallback}_{sample_id}"
+
+        filename_stem = str(filename_stem).strip()
+        filename_stem = re.sub(r"[^A-Za-z0-9_.-]+", "_", filename_stem)
+        filename_stem = filename_stem.strip("._-")
+
+        filename_stems.append(filename_stem or fallback)
+
+    return filename_stems
+
+
+def _write_reconstruction_tiffs(
+    *,
+    arrays: np.ndarray,
+    output_dir: str | Path,
+    filename_prefix: str,
+    filename_stems: list[str],
+    overwrite: bool,
+) -> list[Path]:
+    """Write one reconstruction-like array collection as per-example TIFFs."""
+
+    arrays = ensure_reconstruction_channel_axis(np.asarray(arrays))
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    if arrays.shape[0] != len(filename_stems):
+        raise ValueError(
+            "Expected the number of filename stems to match the number of "
+            f"examples. Got {len(filename_stems)} filename stems and "
+            f"{arrays.shape[0]} examples."
+        )
+
+    written_paths: list[Path] = []
+
+    for example_index, filename_stem in enumerate(filename_stems):
+        output_path = output_dir / f"{filename_prefix}_{filename_stem}.tif"
+
+        if output_path.exists() and not overwrite:
+            raise FileExistsError(f"TIFF output already exists: {output_path}")
+
+        image = arrays[example_index]
+
+        if image.shape[0] == 1:
+            output_array = image[0]
+            metadata = {"axes": "YX"}
+        else:
+            output_array = image
+            metadata = {"axes": "CYX"}
+
+        tifffile.imwrite(
+            output_path,
+            output_array.astype(np.float32, copy=False),
+            metadata=metadata,
+        )
+
+        written_paths.append(output_path)
+
+    return written_paths

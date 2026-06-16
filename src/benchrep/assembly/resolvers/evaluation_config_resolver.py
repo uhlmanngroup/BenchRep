@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
-from collections.abc import Sequence
 import warnings
 
 from benchrep.assembly.config import load_yaml
@@ -168,6 +167,7 @@ def resolve_evaluation_config(
         reconstructions_path=evaluation_config.source.reconstructions_path,
         prediction_manifest=prediction_manifest,
         manifest_base_dir=manifest_base_dir,
+        n_examples=evaluation_config.reconstruction.n_examples,
     )
 
     has_reconstructions = reconstructions is not None
@@ -205,6 +205,7 @@ def resolve_reconstructions(
         reconstructions_path: Path | None = None,
         prediction_manifest: dict[str, Any] | None = None,
         manifest_base_dir: Path | None = None,
+        n_examples: int | None = None,
 ) -> EvaluationReconstructionInputSpec | None:
     """Resolve reconstruction artifact inputs for evaluation.
 
@@ -224,6 +225,27 @@ def resolve_reconstructions(
         Resolved reconstruction artifact paths, or ``None`` if no usable
         reconstruction bundle is available.
     """
+    manifest_n_examples = None
+
+    if prediction_manifest is not None:
+        manifest_n_examples = get_optional_nested_value(
+            prediction_manifest,
+            "exports",
+            "reconstructions",
+            "n_examples_exported",
+        )
+
+        if manifest_n_examples is not None and not isinstance(manifest_n_examples, int):
+            warnings.warn(
+                "Prediction manifest field "
+                "'exports.reconstructions.n_examples_exported' is not an integer. "
+                "Ignoring it for reconstruction artifact count resolution.",
+                stacklevel=2,
+            )
+            manifest_n_examples = None
+
+    resolved_n_examples = n_examples if n_examples is not None else manifest_n_examples
+
     # Resolve reconstructions: manual path overrides manifest
     if reconstructions_path is not None:
         _recon_root = Path(reconstructions_path).resolve()
@@ -255,7 +277,7 @@ def resolve_reconstructions(
             reconstruction_path=_recon_path,
             obs_path=_recon_obs_path,
             metadata_path=_recon_metadata_path if _recon_metadata_path.is_file() else None,
-            n_examples=None,
+            n_examples=resolved_n_examples,
         )
 
     elif prediction_manifest is not None:
@@ -334,12 +356,7 @@ def resolve_reconstructions(
                            and _recon_metadata_path.is_file()
                         else None
                     ),
-                    n_examples=get_optional_nested_value(
-                        prediction_manifest,
-                        "exports",
-                        "reconstructions",
-                        "n_examples_exported",
-                    ),
+                    n_examples=resolved_n_examples,
                 )
     else:
         reconstructions = None
