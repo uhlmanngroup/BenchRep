@@ -505,14 +505,33 @@ def resolve_step_spec(
     leiden_enabled = enabled_by_default(evaluation_config.clustering.leiden.enabled)
     clustering_enabled = kmeans_enabled or leiden_enabled
 
+    # Guard against key collision for kNNs of UMAP and Leiden (as current implementation is independent kNN ownership)
+    umap_enabled = enabled_by_default(evaluation_config.reductions.umap.enabled)
+    umap_params = params_to_dict(evaluation_config.reductions.umap.params)
+    leiden_params = params_to_dict(evaluation_config.clustering.leiden.params)
+    if (
+            umap_enabled
+            and leiden_enabled
+            and umap_params["neighbors_key"] == leiden_params["neighbors_key"]
+            and not leiden_params.get("overwrite", False)
+    ):
+        raise ValueError(
+            "UMAP and Leiden are both enabled and both resolve to the same "
+            f"neighbors_key: {umap_params['neighbors_key']!r}. "
+            "BenchRep evaluation steps currently own their own kNN graphs. "
+            "Use distinct neighbors_key values, or set "
+            "clustering.leiden.params.overwrite=True if you intentionally want "
+            "Leiden to overwrite the existing graph."
+        )
+
     return EvaluationStepSpec(
         # None = True
         pca_enabled=enabled_by_default(evaluation_config.reductions.pca.enabled),
         pca_params=params_to_dict(evaluation_config.reductions.pca.params),
 
         # None = True
-        umap_enabled=enabled_by_default(evaluation_config.reductions.umap.enabled),
-        umap_params=params_to_dict(evaluation_config.reductions.umap.params),
+        umap_enabled=umap_enabled,
+        umap_params=umap_params,
 
         # None = False
         tsne_enabled=disabled_by_default(evaluation_config.reductions.tsne.enabled),
@@ -524,7 +543,7 @@ def resolve_step_spec(
 
         # None = True
         leiden_enabled=leiden_enabled,
-        leiden_params=params_to_dict(evaluation_config.clustering.leiden.params),
+        leiden_params=leiden_params,
 
         # None = True
         # Force disable if not clustering_enabled

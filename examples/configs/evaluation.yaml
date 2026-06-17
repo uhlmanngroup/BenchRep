@@ -34,7 +34,7 @@ reductions:
       overwrite: false # explicit run_umap arg; true = replace existing UMAP/neighbor keys
 
       # extra kwargs passed directly to scanpy.pp.neighbors
-      # do not repeat explicit args here, e.g. n_neighbors, n_pcs, metric, or key_added
+      # do not repeat explicit args here, e.g. n_neighbors, n_pcs, metric, key_added, or random_state
       neighbors_kwargs:
         method: umap
 
@@ -77,7 +77,7 @@ clustering:
       overwrite: false # explicit run_leiden arg; true = replace existing cluster/neighbor keys
 
       # extra kwargs passed directly to scanpy.pp.neighbors
-      # do not repeat explicit args here, e.g. n_neighbors, n_pcs, metric, or key_added
+      # do not repeat explicit args here, e.g. n_neighbors, n_pcs, metric, key_added, or random_state
       neighbors_kwargs:
         method: umap
 

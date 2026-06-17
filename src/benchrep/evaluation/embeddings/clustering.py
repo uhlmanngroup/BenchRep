@@ -158,6 +158,7 @@ def run_leiden(
         n_pcs=n_pcs,
         metric=metric,
         key_added=neighbors_key,
+        random_state=random_state,
         **neighbors_kwargs,
     )
 
