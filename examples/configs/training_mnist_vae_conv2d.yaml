@@ -1,0 +1,109 @@
+stage: training
+
+reproducibility:
+  seed: 137 # global seed given both to seed_everything and to the datamodule
+  seed_workers: true
+  float32_matmul_precision: highest # defaults to highest
+
+run:
+  output_root: outputs
+  project_name: test
+
+data:
+  split: train
+
+dataset:
+  name: mnist
+  root: examples/data/mnist
+  download: true
+  transform:
+    name: to_tensor # necessary for mnist
+
+datamodule:
+  batch_size: 128
+  val_fraction: 0.1
+  num_workers: 4
+  pin_memory: auto # resolve to true if cuda available
+  persistent_workers: true
+  drop_last: false
+
+model:
+  name: vae
+  params:
+    latent_dim: 32
+
+encoder:
+  name: conv2d
+  params:
+    input_shape: [1, 28, 28]
+    output_dim: 32
+    channels: [32, 64]
+    kernel_size: 3
+    stride: 2
+    padding: 1
+    activation: null # defaults to ReLU
+    normalization: batchnorm
+    dropout: 0.0
+
+decoder:
+  name: mlp
+  params:
+    output_shape: [1, 28, 28]
+    hidden_dims: [256, 512]
+    activation: null # defaults to ReLU
+    normalization: null
+    output_activation: null # defaults to no activation
+    dropout: 0.0
+
+losses:
+  reconstruction:
+    mse:
+      weight: 0.8
+      params:
+        reduction: mean
+    mae:
+      weight: 0.2
+      params:
+        reduction: mean
+
+  regularization:
+    gaussian_kld:
+      weight: 0.0001
+      params:
+        reduction: mean
+
+optimizer:
+  name: adam
+  params:
+    lr: 0.001
+
+trainer:
+  max_epochs: 20
+  accelerator: auto
+  devices: auto
+  log_every_n_steps: 20
+  deterministic: false # reproducibility param in lightning's trainer
+  benchmark: false # reproducibility param in lightning's trainer
+  precision: 32-true
+
+logger:
+  name: wandb # logger backend: wandb, tensorboard, csv, mlflow
+  credential_path: # null = assume user logged in / env var set, otherwise path to api_key txt file
+  params: # backend-specific kwargs passed to the lightning logger
+    project: benchrep
+    name: test
+    id: null
+    resume: never
+    log_model: False
+
+checkpointing: #  optional
+  monitor: val/loss
+  mode: min
+  save_top_k: 3
+  save_last: True
+
+inspection: # optional
+  torchview:
+    enabled: true
+    expand_nested: true
+    depth: 10
