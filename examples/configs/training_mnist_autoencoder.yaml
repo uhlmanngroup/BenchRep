@@ -36,6 +36,7 @@ encoder:
     input_shape: [1, 28, 28]
     output_dim: 32
     hidden_dims: [512, 256]
+    activation: null # defaults to ReLU
     normalization: null
     dropout: 0.0
 
@@ -44,7 +45,9 @@ decoder:
   params:
     output_shape: [1, 28, 28]
     hidden_dims: [256, 512]
+    activation: null # defaults to ReLU
     normalization: null
+    output_activation: null # defaults to no activation
     dropout: 0.0
 
 losses:

@@ -7,6 +7,7 @@ from collections.abc import Sequence
 import torch
 from torch import nn
 
+from benchrep.architecture.utils import resolve_activation
 from benchrep.architecture.encoders.base import BaseEncoder
 
 
@@ -24,7 +25,8 @@ class MLPEncoder(BaseEncoder):
     hidden_dims:
         Sizes of the hidden fully connected layers.
     activation:
-        Activation module class used after each hidden linear layer.
+        Activation used after each hidden linear layer. Can be a supported string,
+        an ``nn.Module`` class, or ``None`` to use the default ReLU.
     dropout:
         Dropout probability applied after activation. Set to 0.0 to disable.
     normalization:
@@ -37,7 +39,7 @@ class MLPEncoder(BaseEncoder):
         input_shape: tuple[int, ...],
         output_dim: int,
         hidden_dims: Sequence[int] = (512, 256),
-        activation: type[nn.Module] = nn.ReLU,
+        activation: str | type[nn.Module] | None = None,
         dropout: float = 0.0,
         normalization: str | None = None,
     ) -> None:
@@ -56,7 +58,14 @@ class MLPEncoder(BaseEncoder):
         if not 0.0 <= dropout < 1.0:
             raise ValueError(f"dropout must be in [0, 1), got {dropout}.")
 
+        activation_cls = resolve_activation(activation)
+
         if normalization is not None:
+            if not isinstance(normalization, str):
+                raise TypeError(
+                    "normalization must be None or a string, "
+                    f"got {type(normalization).__name__}."
+                )
             normalization = normalization.lower()
         valid_normalizations = (None, "batchnorm", "layernorm")
 
@@ -71,7 +80,7 @@ class MLPEncoder(BaseEncoder):
         self.hidden_dims = tuple(hidden_dims)
         self.normalization = normalization
         self.dropout = dropout
-        self.activation = activation
+        self.activation = activation_cls
 
         layers: list[nn.Module] = []
         prev_dim = self.input_dim
@@ -84,7 +93,7 @@ class MLPEncoder(BaseEncoder):
             elif normalization == "layernorm":
                 layers.append(nn.LayerNorm(hidden_dim))
 
-            layers.append(activation())
+            layers.append(activation_cls())
 
             if dropout > 0:
                 layers.append(nn.Dropout(dropout))
