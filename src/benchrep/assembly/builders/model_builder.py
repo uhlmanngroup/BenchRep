@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 
+import inspect
+
 import torch
 from torch import nn
 
@@ -130,7 +132,11 @@ def build_autoencoder(
 
     if isinstance(decoder, DecoderConfig):
         decoder_name = decoder.name
-        decoder = _build_decoder(decoder, input_dim=encoder.output_dim)
+        decoder = _build_decoder(
+            decoder,
+            input_dim=encoder.output_dim,
+            encoder=encoder,
+        )
         run_log.info("Built decoder from config: %s -> %s",
                      decoder_name,
                      type(decoder).__name__)
@@ -202,7 +208,11 @@ def build_vae(
 
     if isinstance(decoder, DecoderConfig):
         decoder_name = decoder.name
-        decoder = _build_decoder(decoder, input_dim=latent_dim)
+        decoder = _build_decoder(
+            decoder,
+            input_dim=latent_dim,
+            encoder=encoder,
+        )
         run_log.info("Built decoder from config: %s -> %s",
                      decoder_name,
                      type(decoder).__name__)
@@ -284,18 +294,62 @@ def _build_encoder(encoder_config: EncoderConfig) -> BaseEncoder:
     return ENCODERS.create(encoder_name, **encoder_config.params)
 
 
-def _build_decoder(decoder_config: DecoderConfig, input_dim: int) -> BaseDecoder:
-    """Build a decoder and set its expected input dimensionality."""
+def _build_decoder(
+    decoder_config: DecoderConfig,
+    input_dim: int,
+    encoder: BaseEncoder | None = None,
+) -> BaseDecoder:
+    """Build a decoder from config and wire model-dependent dimensions.
+
+    The decoder config supplies user-facing decoder parameters, while this helper
+    injects dimensions that are determined by the surrounding model assembly.
+
+    ``input_dim`` is always added to the decoder parameters. For ordinary
+    decoders, such as MLP decoders, this is sufficient.
+
+    Spatial decoders also require an ``initial_shape`` constructor argument:
+    the feature-map shape used to reshape the projected latent vector before
+    convolutional decoding. This shape should not be user-configured. If the
+    decoder constructor declares ``initial_shape``, this helper infers it from
+    ``encoder.feature_shape`` and passes it during construction.
+
+    Raises
+    ------
+    ValueError
+        If ``initial_shape`` is provided manually in decoder config, or if a
+        decoder requires ``initial_shape`` but it cannot be inferred from the
+        encoder.
+    """
     decoder_name = normalize_name(
         decoder_config.name,
         field_name="config.decoder.name",
     )
+    decoder_cls = DECODERS.get(decoder_name)
     decoder_params = dict(decoder_config.params)
 
     # Wire decoder input dimensionality from the supplied input dimension.
     decoder_params["input_dim"] = input_dim
 
-    return DECODERS.create(decoder_name, **decoder_params)
+    # Infer and pass initial_shape from encoder.feature_shape if needed.
+    decoder_signature = inspect.signature(decoder_cls)
+    if "initial_shape" in decoder_signature.parameters:
+        if "initial_shape" in decoder_params:
+            raise ValueError(
+                "'initial_shape' should not be provided in decoder config. "
+                "It is inferred from encoder.feature_shape."
+            )
+
+        feature_shape = getattr(encoder, "feature_shape", None)
+
+        if feature_shape is None:
+            raise ValueError(
+                f"Decoder {decoder_name!r} requires 'initial_shape', but it could "
+                "not be inferred because the encoder has no 'feature_shape' attribute."
+            )
+
+        decoder_params["initial_shape"] = feature_shape
+
+    return decoder_cls(**decoder_params)
 
 
 def _build_reconstruction_losses(
