@@ -7,11 +7,12 @@ from dataclasses import dataclass
 import torch
 from torch import nn
 
-from benchrep.architecture.utils import resolve_activation
+from benchrep.architecture.utils import (
+    IntPair,
+    validate_int_pair,
+    resolve_activation,
+)
 from benchrep.architecture.encoders.base import BaseEncoder
-
-
-IntPair = int | tuple[int, int]
 
 
 @dataclass(frozen=True)
@@ -63,6 +64,11 @@ class Conv2DBlock(nn.Module):
         if not 0.0 <= spec.dropout < 1.0:
             raise ValueError(f"dropout must be in [0, 1), got {spec.dropout}.")
 
+        validate_int_pair(spec.kernel_size, name="kernel_size", min_value=0, allow_equal_min=False)
+        validate_int_pair(spec.stride, name="stride", min_value=0, allow_equal_min=False)
+        validate_int_pair(spec.padding, name="padding", min_value=0)
+        validate_int_pair(spec.dilation, name="dilation", min_value=0, allow_equal_min=False)
+
         normalization = (
             spec.normalization.lower()
             if spec.normalization is not None
@@ -105,6 +111,18 @@ class Conv2DBlock(nn.Module):
             raise ValueError(
                 f"pooling must be one of {valid_pooling}, got {spec.pooling!r}."
             )
+        validate_int_pair(
+            spec.pooling_kernel_size,
+            name="pooling_kernel_size",
+            min_value=0,
+            allow_equal_min=False)
+        if spec.pooling_stride is not None:
+            validate_int_pair(
+                spec.pooling_stride,
+                name="pooling_stride",
+                min_value=0,
+                allow_equal_min=False)
+        validate_int_pair(spec.pooling_padding, name="pooling_padding", min_value=0)
 
         layers: list[nn.Module] = [
             nn.Conv2d(

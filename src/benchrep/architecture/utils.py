@@ -3,6 +3,28 @@ from __future__ import annotations
 from torch import nn
 
 
+IntPair = int | tuple[int, int]
+
+def validate_int_pair(
+    value: IntPair,
+    *,
+    name: str,
+    min_value: int,
+    allow_equal_min: bool = True,
+) -> None:
+    values = (value, value) if isinstance(value, int) else value
+
+    invalid = (
+        any(v < min_value for v in values)
+        if allow_equal_min
+        else any(v <= min_value for v in values)
+    )
+
+    if invalid:
+        comparator = ">=" if allow_equal_min else ">"
+        raise ValueError(f"{name} values must be {comparator} {min_value}, got {value}.")
+
+
 def resolve_activation(
     activation: str | type[nn.Module] | None,
 ) -> type[nn.Module]:
