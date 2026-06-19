@@ -508,6 +508,11 @@ class UpsampleConv2DDecoder(BaseDecoder):
         """Infer reconstructed output shape from a dummy latent input."""
         dummy = torch.zeros(1, self.input_dim)
 
+        # Set model to eval mode, to guard against BatchNorm erroring if
+        # dummy hits [1, C, 1, 1]
+        was_training = self.training
+        self.eval()
+
         try:
             with torch.no_grad():
                 output = self._decode_unchecked(dummy)
@@ -517,6 +522,8 @@ class UpsampleConv2DDecoder(BaseDecoder):
                 "through the decoder. Check input_dim, initial_shape, "
                 "upsample settings, convolution settings, and output_shape."
             ) from error
+        finally:
+            self.train(was_training)
 
         if output.ndim != 4:
             raise ValueError(

@@ -439,6 +439,11 @@ class Conv2DEncoder(BaseEncoder):
         """Infer convolutional feature shape before flattening/projection."""
         dummy = torch.zeros(1, *self.input_shape)
 
+        # Set model to eval mode, to guard against BatchNorm erroring if
+        # dummy hits [1, C, 1, 1]
+        was_training = self.training
+        self.eval()
+
         try:
             with torch.no_grad():
                 features = self.conv_stack(dummy)
@@ -447,6 +452,8 @@ class Conv2DEncoder(BaseEncoder):
                 "Conv2DEncoder could not run a dummy input through the conv stack. "
                 "Check input_shape, kernel_size, stride, padding, dilation, and pooling."
             ) from error
+        finally:
+            self.train(was_training)
 
         if features.ndim != 4:
             raise ValueError(
