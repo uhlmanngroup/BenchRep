@@ -79,7 +79,11 @@ def register_builtins() -> None:
 
         from benchrep.architecture.data import MNISTDataset
         from benchrep.architecture.decoders import MLPDecoder, UpsampleConv2DDecoder
-        from benchrep.architecture.encoders import MLPEncoder, Conv2DEncoder
+        from benchrep.architecture.encoders import (
+            MLPEncoder,
+            Conv2DEncoder,
+            TorchvisionResNet,
+        )
         from benchrep.architecture.losses import (
             MSEReconstructionLoss,
             MAEReconstructionLoss,
@@ -106,6 +110,15 @@ def register_builtins() -> None:
         # --- Architecture and training ---
         ENCODERS.register("mlp", MLPEncoder, "dense", "fully_connected", "fc")
         ENCODERS.register("conv2d", Conv2DEncoder, "conv", "cnn", "convolutional")
+        ENCODERS.register(
+            "torchvision_resnet",
+            TorchvisionResNet,
+            "torchvision_resnets",
+            "resnet",
+            "resnets"
+            "tv_resnet",
+            "tv_resnets",
+        )
 
         DECODERS.register("mlp", MLPDecoder, "dense", "fully_connected", "fc")
         DECODERS.register(

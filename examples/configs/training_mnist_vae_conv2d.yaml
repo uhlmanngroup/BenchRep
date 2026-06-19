@@ -67,6 +67,22 @@ decoder:
     output_bias: true
     output_activation: sigmoid
 
+#encoder:
+#  name: conv2d
+#  params:
+#    input_shape: [1, 28, 28]
+#    output_dim: 32
+#    channels: [32, 64]
+#    stride: 2
+#    padding: 1
+#
+#decoder:
+#  name: upsample_conv2d
+#  params:
+#    output_shape: [1, 28, 28]
+#    channels: [32, 16]
+#    output_activation: sigmoid
+
 losses:
   reconstruction:
     mse:
