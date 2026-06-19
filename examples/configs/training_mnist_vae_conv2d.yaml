@@ -63,7 +63,7 @@ decoder:
     normalization_groups: null
     dropout: 0.0
     output_kernel_size: 1
-    output_padding: 0
+    output_conv_padding: 0
     output_bias: true
     output_activation: sigmoid
 
