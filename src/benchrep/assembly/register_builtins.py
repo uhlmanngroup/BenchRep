@@ -115,7 +115,7 @@ def register_builtins() -> None:
             TorchvisionResNet,
             "torchvision_resnets",
             "resnet",
-            "resnets"
+            "resnets",
             "tv_resnet",
             "tv_resnets",
         )
