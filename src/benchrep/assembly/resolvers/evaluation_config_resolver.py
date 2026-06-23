@@ -11,6 +11,7 @@ from benchrep.assembly.registry import (
     EVAL_EXTERNAL_CLUSTERING_METRICS,
     EVAL_EMBEDDING_METRICS,
     EVAL_RECONSTRUCTION_METRICS,
+    EVAL_PREDICTABILITY_PROBES,
 )
 from benchrep.assembly.registry_utils import (
     resolve_registry_keys,
@@ -47,6 +48,9 @@ class EvaluationInputSpec:
     prediction_manifest_path: Path | None
 
 
+PredictabilityTask = Literal["classification", "regression"]
+
+
 @dataclass(frozen=True)
 class EvaluationStepSpec:
     pca_enabled: bool
@@ -76,6 +80,14 @@ class EvaluationStepSpec:
     embedding_metrics_enabled: bool
     embedding_metrics: list[str] | None
     embedding_metric_params: dict[str, dict[str, Any]]
+
+    predictability_enabled: bool
+    predictability_target_key: str
+    predictability_task: PredictabilityTask
+    predictability_probes: list[str]
+    predictability_probe_params: dict[str, dict[str, Any]]
+    predictability_cv_params: dict[str, Any]
+    predictability_tuning_params: dict[str, Any]
 
     reconstruction_metrics_enabled: bool
     reconstruction_metrics: list[str] | None
@@ -524,6 +536,41 @@ def resolve_step_spec(
             "Leiden to overwrite the existing graph."
         )
 
+    predictability_config = evaluation_config.metrics.predictability
+    predictability_enabled = disabled_by_default(predictability_config.enabled)
+    predictability_task: PredictabilityTask = predictability_config.task
+
+    predictability_probes = resolve_registry_keys(
+        selected=predictability_config.selected,
+        registry=EVAL_PREDICTABILITY_PROBES,
+        none_policy="preserve",
+    )
+    if predictability_probes is None:
+        raise ValueError("metrics.predictability.selected cannot be None.")
+
+    predictability_probe_params = resolve_registry_param_keys(
+        params=params_to_dict(predictability_config.params),
+        registry=EVAL_PREDICTABILITY_PROBES,
+    )
+    predictability_cv_params = params_to_dict(predictability_config.cv)
+    predictability_tuning_params = params_to_dict(predictability_config.tuning)
+
+    if predictability_enabled:
+        _validate_predictability_task_and_scoring(
+            task=predictability_task,
+            tuning_params=predictability_tuning_params,
+        )
+        _validate_predictability_linear_model(
+            task=predictability_task,
+            probes=predictability_probes,
+            probe_params=predictability_probe_params,
+        )
+        _validate_predictability_tuning_grid(
+            probes=predictability_probes,
+            tuning_params=predictability_tuning_params,
+            probe_params=predictability_probe_params,
+        )
+
     return EvaluationStepSpec(
         # None = True
         pca_enabled=enabled_by_default(evaluation_config.reductions.pca.enabled),
@@ -591,6 +638,15 @@ def resolve_step_spec(
             params=evaluation_config.metrics.embedding.params,
             registry=EVAL_EMBEDDING_METRICS,
         ),
+
+        # None = False
+        predictability_enabled=predictability_enabled,
+        predictability_target_key=predictability_config.target_key,
+        predictability_task=predictability_task,
+        predictability_probes=predictability_probes,
+        predictability_probe_params=predictability_probe_params,
+        predictability_cv_params=predictability_cv_params,
+        predictability_tuning_params=predictability_tuning_params,
 
         # True if not disabled and has_reconstructions
         reconstruction_metrics_enabled=resolve_enabled_if_available(
@@ -687,3 +743,105 @@ def resolve_enabled_if_explicit_and_available(
         return False
 
     return True
+
+
+# Predictability validation helpers
+CLASSIFICATION_SCORERS = {
+    "balanced_accuracy",
+    "f1_macro",
+    "f1_weighted",
+    "accuracy",
+}
+
+REGRESSION_SCORERS = {
+    "r2",
+    "neg_mean_absolute_error",
+    "neg_root_mean_squared_error",
+}
+
+
+def has_tunable_param_grid(value: Any) -> bool:
+    """Return True if a nested parameter dictionary contains any list-valued parameter."""
+    if isinstance(value, list):
+        return True
+
+    if isinstance(value, dict):
+        return any(has_tunable_param_grid(v) for v in value.values())
+
+    return False
+
+
+def _validate_predictability_task_and_scoring(
+    *,
+    task: PredictabilityTask,
+    tuning_params: dict[str, Any],
+) -> None:
+    if not tuning_params.get("enabled", False):
+        return
+
+    inner_cv = tuning_params.get("inner_cv", {})
+    scoring = inner_cv.get("scoring")
+
+    valid_scorers = (
+        CLASSIFICATION_SCORERS
+        if task == "classification"
+        else REGRESSION_SCORERS
+    )
+
+    if scoring not in valid_scorers:
+        raise ValueError(
+            f"metrics.predictability.tuning.inner_cv.scoring={scoring!r} "
+            f"is not valid for task={task!r}."
+        )
+
+
+def _validate_predictability_linear_model(
+    *,
+    task: PredictabilityTask,
+    probes: list[str],
+    probe_params: dict[str, dict[str, Any]],
+) -> None:
+    if "linear" not in probes:
+        return
+
+    linear_model = probe_params.get("linear", {}).get("model")
+
+    if task == "classification" and linear_model != "logistic_regression":
+        raise ValueError(
+            "metrics.predictability.params.linear.model must be "
+            "'logistic_regression' when task='classification'."
+        )
+
+    if task == "regression" and linear_model != "ridge":
+        raise ValueError(
+            "metrics.predictability.params.linear.model must be "
+            "'ridge' when task='regression'."
+        )
+
+
+def _validate_predictability_tuning_grid(
+    *,
+    probes: list[str],
+    tuning_params: dict[str, Any],
+    probe_params: dict[str, dict[str, Any]],
+) -> None:
+    selected_params = {
+        name: probe_params[name]
+        for name in probes
+        if name in probe_params
+    }
+
+    has_grid_params = has_tunable_param_grid(selected_params)
+    tuning_enabled = tuning_params.get("enabled", False)
+
+    if tuning_enabled and not has_grid_params:
+        raise ValueError(
+            "metrics.predictability.tuning.enabled=True, but no list-valued "
+            "hyperparameters were found for the selected probes."
+        )
+
+    if not tuning_enabled and has_grid_params:
+        raise ValueError(
+            "metrics.predictability.tuning.enabled=False, but list-valued "
+            "hyperparameters were found for the selected probes."
+        )

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal, Any
+from typing import Literal, Any, Annotated, TypeAlias
 
 from pydantic import (
     BaseModel,
@@ -12,6 +12,25 @@ from pydantic import (
     model_validator,
     ConfigDict,
 )
+
+NSplits = Annotated[int, Field(ge=2)]
+
+PositiveFloatOrList: TypeAlias = PositiveFloat | list[PositiveFloat]
+PositiveIntOrList: TypeAlias = PositiveInt | list[PositiveInt]
+
+KNNWeights: TypeAlias = Literal["uniform", "distance"]
+KNNWeightsOrList: TypeAlias = KNNWeights | list[KNNWeights]
+
+MaxDepthValue: TypeAlias = PositiveInt | None
+MaxDepthParam: TypeAlias = MaxDepthValue | list[MaxDepthValue]
+
+PredictabilityProbeName = Literal[
+    "dummy",
+    "linear",
+    "knn",
+    "random_forest",
+    "xgboost",
+]
 
 
 # -------------------------
@@ -180,6 +199,8 @@ class EvaluationReconstructionConfig(BaseModel):
 # -------------------------
 # Metrics config
 # -------------------------
+
+# Clustering ---
 class InternalClusteringMetricConfig(EvalMetricGroupConfig):
     pass
 
@@ -193,12 +214,174 @@ class EvaluationClusteringMetricsConfig(BaseModel):
     external: ExternalClusteringMetricConfig = Field(default_factory=ExternalClusteringMetricConfig)
 
 
+# Reconstruction ---
 class ReconstructionMetricConfig(EvalMetricGroupConfig):
     reduction: Literal["global", "per_channel", "both"] = "global"
 
+
+# Predictability ---
+class EvaluationCrossValidationConfig(BaseModel):
+    method: Literal[
+        "stratified_kfold",
+        "kfold",
+        "group_kfold",
+        "stratified_group_kfold",
+    ] = "stratified_kfold"
+    n_splits: NSplits = 5
+    group_key: str | None = None
+    shuffle: bool = True
+    random_state: int | None = 137
+
+    @model_validator(mode="after")
+    def validate_cv(self) -> EvaluationCrossValidationConfig:
+        if self.method in ("group_kfold", "stratified_group_kfold") and self.group_key is None:
+            raise ValueError(
+                "cv.group_key required when using group_kfold or stratified_group_kfold for cv.method."
+            )
+
+        if self.method == "group_kfold" and self.shuffle:
+            raise ValueError(
+                f"cv.shuffle is not supported for cv.method = {self.method}"
+            )
+
+        return self
+
+
+class TuningInnerCVConfig(BaseModel):
+    n_splits: NSplits = 3
+    scoring: Literal[
+        "balanced_accuracy",
+        "f1_macro",
+        "f1_weighted",
+        "accuracy",
+        "r2",
+        "neg_mean_absolute_error",
+        "neg_root_mean_squared_error",
+    ] = "balanced_accuracy"
+
+
+class EvaluationCVTuningConfig(BaseModel):
+    enabled: bool = False
+    inner_cv: TuningInnerCVConfig | None = None
+
+    @model_validator(mode="after")
+    def validate_tuning(self) -> EvaluationCVTuningConfig:
+        if self.enabled and self.inner_cv is None:
+            raise ValueError(
+                "tuning.inner_cv is required when predictability.tuning.enabled is true."
+            )
+        return self
+
+
+class DummyProbeConfig(BaseModel):
+    strategy: Literal["most_frequent", "stratified", "uniform", "mean", "median"] = "most_frequent"
+
+
+class LogisticRegressionProbeConfig(BaseModel):
+    model: Literal["logistic_regression"] = "logistic_regression"
+    standardize: bool = True
+    C: PositiveFloatOrList = 1.0
+    class_weight: Literal["balanced"] | None = None
+    max_iter: PositiveInt = 5000
+
+
+class RidgeProbeConfig(BaseModel):
+    model: Literal["ridge"] = "ridge"
+    standardize: bool = True
+    alpha: PositiveFloatOrList = 1.0
+
+
+LinearProbeConfig = Annotated[
+    LogisticRegressionProbeConfig | RidgeProbeConfig,
+    Field(discriminator="model"),
+]
+
+
+class KNNProbeConfig(BaseModel):
+    standardize: bool = True
+    n_neighbors: PositiveIntOrList = 15
+    weights: KNNWeightsOrList = "distance"
+    metric: str | list[str] = "euclidean"
+
+
+class RandomForestProbeConfig(BaseModel):
+    n_estimators: PositiveIntOrList = 500
+    max_depth: MaxDepthParam = None
+    class_weight: Literal["balanced"] | None = None
+    random_state: int | None = 137
+    n_jobs: int | None = -1
+
+
+class XGBoostProbeConfig(BaseModel):
+    n_estimators: PositiveIntOrList = 300
+    max_depth: PositiveIntOrList | None = None
+    learning_rate: PositiveFloatOrList = 0.01
+    random_state: int | None = 137
+    n_jobs: int | None = -1
+
+
+class EvaluationPredictabilityParamsConfig(BaseModel):
+    dummy: DummyProbeConfig = Field(default_factory=DummyProbeConfig)
+    linear: LinearProbeConfig = Field(default_factory=LogisticRegressionProbeConfig)
+    knn: KNNProbeConfig = Field(default_factory=KNNProbeConfig)
+    random_forest: RandomForestProbeConfig = Field(default_factory=RandomForestProbeConfig)
+    xgboost: XGBoostProbeConfig = Field(default_factory=XGBoostProbeConfig)
+
+
+class EvaluationPredictabilityConfig(EvalStepConfig):
+    selected: list[PredictabilityProbeName] = Field(
+        default_factory=lambda: ["dummy", "linear", "knn", "random_forest"]
+    )
+    target_key: str = "label"
+    task: Literal["classification", "regression"] = "classification"
+    cv: EvaluationCrossValidationConfig = Field(default_factory=EvaluationCrossValidationConfig)
+    tuning: EvaluationCVTuningConfig = Field(default_factory=EvaluationCVTuningConfig)
+    params: EvaluationPredictabilityParamsConfig = Field(default_factory=EvaluationPredictabilityParamsConfig)
+
+    @model_validator(mode="after")
+    def validate_predictability_config(self) -> "EvaluationPredictabilityConfig":
+        if self.enabled is not True:
+            return self
+
+        if len(self.selected) == 0:
+            raise ValueError("predictability.selected cannot be an empty list.")
+
+        if self.target_key.strip() == "":
+            raise ValueError(
+                "predictability.target_key must be a non-empty string when "
+                "predictability is enabled."
+            )
+
+        if "dummy" in self.selected:
+            resolved_task = self.task
+
+            if resolved_task == "regression":
+                if self.params.dummy.strategy not in {"mean", "median"}:
+                    raise ValueError(
+                        "predictability.params.dummy.strategy must be one of "
+                        "['mean', 'median'] when predictability.task is 'regression'."
+                    )
+            else:
+                if self.params.dummy.strategy not in {
+                    "most_frequent",
+                    "stratified",
+                    "uniform",
+                }:
+                    raise ValueError(
+                        "predictability.params.dummy.strategy must be one of "
+                        "['most_frequent', 'stratified', 'uniform'] when "
+                        "predictability.task is 'classification'."
+                    )
+
+        return self
+
+
+
+# Full evaluation metrics config ---
 class EvaluationMetricsConfig(BaseModel):
     clustering: EvaluationClusteringMetricsConfig = Field(default_factory=EvaluationClusteringMetricsConfig)
     embedding: EvalMetricGroupConfig = Field(default_factory=EvalMetricGroupConfig)
+    predictability: EvaluationPredictabilityConfig = Field(default_factory=EvaluationPredictabilityConfig)
     reconstruction: ReconstructionMetricConfig = Field(default_factory=ReconstructionMetricConfig)
 
 

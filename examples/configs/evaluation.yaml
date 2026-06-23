@@ -1,7 +1,7 @@
 stage: evaluation
 
 source:
-  prediction_manifest_path: /home/qptero/github/BenchRep/outputs/prediction/test_vae_20260619-161227/records/metadata/prediction_manifest.yaml
+  prediction_manifest_path: /home/qptero/github/BenchRep/outputs/prediction/test_vae_20260622-161724/records/metadata/prediction_manifest.yaml
  # null = no manifest; embeddings_path must then be provided
   embeddings_path: null # null = infer from manifest; error if no manifest provided
   reconstructions_path: null # null = infer from manifest if available; skip reconstruction eval if unavailable
@@ -103,6 +103,57 @@ metrics:
     enabled: true # true = force on; false = off; null = off
     selected: null # null = all supported embedding metrics
     params: null # null = metric/backend defaults
+
+  predictability:
+    enabled: true
+    selected: [ "dummy", "linear", "knn", "random_forest", "xgboost" ] # null = default probe set; otherwise list registry probe names
+
+    target_key: label # obs column to predict from adata.X
+    task: null # null defaults to classification; options: classification | regression
+
+    cv:
+      method: stratified_kfold # kfold | stratified_kfold | group_kfold | stratified_group_kfold
+      n_splits: 5
+      group_key: null # required for group_kfold / stratified_group_kfold; obs column defining groups
+      shuffle: true # randomize sample order before splitting where supported
+      random_state: 137
+
+    tuning:
+      enabled: true # true = nested CV using list-valued probe params; false = all params must be scalar
+      inner_cv:
+        n_splits: 3
+        scoring: balanced_accuracy # classification: balanced_accuracy/f1_macro/f1_weighted/accuracy; regression: r2/neg_mean_absolute_error/neg_root_mean_squared_error
+
+    params:
+      dummy:
+        strategy: most_frequent # most_frequent | stratified | uniform
+
+      linear:
+        model: logistic_regression # classification default; regression default will be ridge
+        standardize: true
+        C: [ 0.01, 0.1, 1.0, 10.0 ] # logistic regression inverse regularization strength; list = tune
+        class_weight: balanced # null or balanced
+        max_iter: 5000
+
+      knn:
+        standardize: true
+        n_neighbors: [ 5, 15, 30 ] # list = tune
+        weights: [ "uniform", "distance" ]
+        metric: euclidean # any sklearn-compatible kNN metric string; list = tune
+
+      random_forest:
+        n_estimators: 500 # list = tune
+        max_depth: [ null, 10, 30 ] # null = unrestricted tree depth; list = tune
+        class_weight: balanced # null or balanced
+        random_state: 137
+        n_jobs: -1 # passed to sklearn; -1 uses all available cores
+
+      xgboost:
+        n_estimators: 300
+        max_depth: [ 3, 6 ]
+        learning_rate: [ 0.03, 0.1 ]
+        random_state: 137
+        n_jobs: -1 # passed to xgboost; optional dependency
 
   reconstruction:
     enabled: true # true = force on if reconstructions exist; false = off; null = on only if reconstructions exist
