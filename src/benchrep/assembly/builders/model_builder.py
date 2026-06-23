@@ -237,6 +237,28 @@ def build_vae(
         for loss_name, loss_spec in reconstruction_losses.items()
     }
 
+    # Compression warning
+    variational_head_in_features = encoder.output_dim
+    compression_ratio = variational_head_in_features / latent_dim
+
+    if compression_ratio >= 8:
+        run_log.warning(
+            "Strong encoder-to-latent bottleneck detected: "
+            "in_features=%d, latent_dim=%d, compression_ratio=%.1f. "
+            "This is valid VAE behavior, but may strongly limit representation capacity.",
+            variational_head_in_features,
+            latent_dim,
+            compression_ratio,
+        )
+    elif compression_ratio >= 4:
+        run_log.info(
+            "Meaningful encoder-to-latent compression detected: "
+            "in_features=%d, latent_dim=%d, compression_ratio=%.1f.",
+            variational_head_in_features,
+            latent_dim,
+            compression_ratio,
+        )
+
     variational_head = GaussianVariationalHead(
         in_features=encoder.output_dim,
         latent_dim=latent_dim,
