@@ -1,5 +1,5 @@
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Literal
 import inspect
 
 import anndata as ad
@@ -8,6 +8,7 @@ import torch
 
 
 ArrayLike = np.ndarray | torch.Tensor
+PredictabilityTask = Literal["classification", "regression"]
 
 
 def validate_adata_x(adata: ad.AnnData) -> None:

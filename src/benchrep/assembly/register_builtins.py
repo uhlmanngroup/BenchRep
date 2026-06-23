@@ -74,6 +74,7 @@ def register_builtins() -> None:
             EVAL_INTERNAL_CLUSTERING_METRICS,
             EVAL_EXTERNAL_CLUSTERING_METRICS,
             EVAL_EMBEDDING_METRICS,
+            EVAL_PREDICTABILITY_PROBES,
             EVAL_RECONSTRUCTION_METRICS,
         )
 
@@ -95,12 +96,20 @@ def register_builtins() -> None:
         )
         from benchrep.evaluation.embeddings.clustering import run_kmeans, run_leiden
         from benchrep.evaluation.embeddings.reductions import run_pca, run_tsne, run_umap
+        from benchrep.evaluation.embeddings.predictability_probes import (
+            build_dummy_predictability_probe,
+            build_linear_predictability_probe,
+            build_knn_predictability_probe,
+            build_random_forest_predictability_probe,
+            build_xgboost_predictability_probe,
+        )
         from benchrep.evaluation.reconstructions.reconstruction_metrics import (
             mean_absolute_error,
             mean_squared_error,
             root_mean_squared_error,
             max_absolute_error,
         )
+
 
         # --- Data ---
         DATASETS.register("mnist", MNISTDataset)
@@ -233,6 +242,40 @@ def register_builtins() -> None:
             "homogeneity_score",
         )
 
+        def _predictability_probe_not_implemented(*args, **kwargs):
+            raise NotImplementedError(
+                "Predictability probe builders are registered, but the predictability "
+                "backend has not been implemented yet."
+            )
+
+        # Predictability probes
+        EVAL_PREDICTABILITY_PROBES.register(
+            "dummy",
+            build_dummy_predictability_probe,
+            "baseline",
+        )
+        EVAL_PREDICTABILITY_PROBES.register(
+            "linear",
+            build_linear_predictability_probe,
+            "linear_probe",
+        )
+        EVAL_PREDICTABILITY_PROBES.register(
+            "knn",
+            build_knn_predictability_probe,
+            "k_nearest_neighbors",
+        )
+        EVAL_PREDICTABILITY_PROBES.register(
+            "random_forest",
+            build_random_forest_predictability_probe,
+            "rf",
+            "forest",
+        )
+        EVAL_PREDICTABILITY_PROBES.register(
+            "xgboost",
+            build_xgboost_predictability_probe,
+            "xgb",
+        )
+
         # Reconstruction metrics
         EVAL_RECONSTRUCTION_METRICS.register(
             "mae",
@@ -257,6 +300,7 @@ def register_builtins() -> None:
             max_absolute_error,
             "max_abs_error",
         )
+
 
         _BUILTINS_REGISTERED = True
 
