@@ -117,12 +117,12 @@ metrics:
       group_key: null # required for group_kfold / stratified_group_kfold; obs column defining groups
       shuffle: true # randomize sample order before splitting where supported
       random_state: 137
+      scoring: balanced_accuracy # classification: balanced_accuracy/f1_macro/f1_weighted/accuracy; regression: r2/neg_mean_absolute_error/neg_root_mean_squared_error
 
     tuning:
       enabled: true # true = nested CV using list-valued probe params; false = all params must be scalar
       inner_cv:
         n_splits: 3
-        scoring: balanced_accuracy # classification: balanced_accuracy/f1_macro/f1_weighted/accuracy; regression: r2/neg_mean_absolute_error/neg_root_mean_squared_error
 
     params:
       dummy:

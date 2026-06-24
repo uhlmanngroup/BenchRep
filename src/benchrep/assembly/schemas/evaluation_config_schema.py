@@ -231,6 +231,15 @@ class EvaluationCrossValidationConfig(BaseModel):
     group_key: str | None = None
     shuffle: bool = True
     random_state: int | None = 137
+    scoring: Literal[
+        "balanced_accuracy",
+        "f1_macro",
+        "f1_weighted",
+        "accuracy",
+        "r2",
+        "neg_mean_absolute_error",
+        "neg_root_mean_squared_error",
+    ] | None = None
 
     @model_validator(mode="after")
     def validate_cv(self) -> EvaluationCrossValidationConfig:
@@ -249,15 +258,6 @@ class EvaluationCrossValidationConfig(BaseModel):
 
 class TuningInnerCVConfig(BaseModel):
     n_splits: NSplits = 3
-    scoring: Literal[
-        "balanced_accuracy",
-        "f1_macro",
-        "f1_weighted",
-        "accuracy",
-        "r2",
-        "neg_mean_absolute_error",
-        "neg_root_mean_squared_error",
-    ] = "balanced_accuracy"
 
 
 class EvaluationCVTuningConfig(BaseModel):

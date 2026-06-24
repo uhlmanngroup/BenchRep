@@ -555,11 +555,12 @@ def resolve_step_spec(
     predictability_cv_params = params_to_dict(predictability_config.cv)
     predictability_tuning_params = params_to_dict(predictability_config.tuning)
 
+    predictability_cv_params["scoring"] = _resolve_predictability_scoring(
+        task=predictability_task,
+        cv_params=predictability_cv_params,
+    )
+
     if predictability_enabled:
-        _validate_predictability_task_and_scoring(
-            task=predictability_task,
-            tuning_params=predictability_tuning_params,
-        )
         _validate_predictability_linear_model(
             task=predictability_task,
             probes=predictability_probes,
@@ -771,16 +772,24 @@ def has_tunable_param_grid(value: Any) -> bool:
     return False
 
 
-def _validate_predictability_task_and_scoring(
+def _resolve_predictability_scoring(
     *,
     task: PredictabilityTask,
-    tuning_params: dict[str, Any],
-) -> None:
-    if not tuning_params.get("enabled", False):
-        return
+    cv_params: dict[str, Any],
+) -> str:
+    scoring = cv_params.get("scoring")
 
-    inner_cv = tuning_params.get("inner_cv", {})
-    scoring = inner_cv.get("scoring")
+    if scoring is None:
+        if task == "classification":
+            return "balanced_accuracy"
+
+        if task == "regression":
+            return "r2"
+
+        raise ValueError(
+            "task must be either 'classification' or 'regression', "
+            f"got {task!r}."
+        )
 
     valid_scorers = (
         CLASSIFICATION_SCORERS
@@ -790,9 +799,11 @@ def _validate_predictability_task_and_scoring(
 
     if scoring not in valid_scorers:
         raise ValueError(
-            f"metrics.predictability.tuning.inner_cv.scoring={scoring!r} "
+            f"metrics.predictability.cv.scoring={scoring!r} "
             f"is not valid for task={task!r}."
         )
+
+    return scoring
 
 
 def _validate_predictability_linear_model(
