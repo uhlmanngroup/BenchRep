@@ -25,6 +25,9 @@ from benchrep.assembly.schemas.prediction_config_schema import (
     PredictionExportConfig,
     PredictionConfig,
 )
+from benchrep.assembly.schemas.evaluation_config_schema import (
+    EvaluationConfig,
+)
 
 from benchrep.assembly.schemas.validation import (
     parse_training_config,
@@ -56,6 +59,7 @@ __all__ = [
     "PredictionReconstructionsExportConfig",
     "PredictionExportConfig",
     "PredictionConfig",
+    "EvaluationConfig",
     "parse_training_config",
     "parse_prediction_config",
     "parse_evaluation_config",

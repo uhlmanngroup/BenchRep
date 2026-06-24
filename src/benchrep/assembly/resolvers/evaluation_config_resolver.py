@@ -121,6 +121,7 @@ class EvaluationRunSpec:
 
 def resolve_evaluation_config(
     evaluation_config: EvaluationConfig,
+    prediction_manifest_path_override: Path | str | None = None,
 ) -> EvaluationRunSpec:
     """Resolve a parsed evaluation config into an executable run spec.
 
@@ -146,10 +147,21 @@ def resolve_evaluation_config(
         Fully resolved evaluation runtime specification.
     """
     # Resolve manifest
-    prediction_manifest_path = evaluation_config.source.prediction_manifest_path
+    if prediction_manifest_path_override is not None:
+        prediction_manifest_path = Path(prediction_manifest_path_override).resolve()
+        evaluation_config = evaluation_config.model_copy(
+            update={
+                "source": evaluation_config.source.model_copy(
+                    update={"prediction_manifest_path": prediction_manifest_path}
+                )
+            }
+        )
+    else:
+        prediction_manifest_path = evaluation_config.source.prediction_manifest_path
+        if prediction_manifest_path is not None:
+            prediction_manifest_path = prediction_manifest_path.resolve()
 
     if prediction_manifest_path is not None:
-        prediction_manifest_path = prediction_manifest_path.resolve()
         prediction_manifest = load_yaml(prediction_manifest_path)
         manifest_base_dir = prediction_manifest_path.parent
     else:

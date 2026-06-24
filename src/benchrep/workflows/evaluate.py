@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import argparse
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import anndata as ad
 
 from benchrep.assembly import load_yaml
 from benchrep.assembly.resolvers import resolve_evaluation_config
-from benchrep.assembly.schemas import parse_evaluation_config
+from benchrep.assembly.schemas import parse_evaluation_config, EvaluationConfig
 from benchrep.evaluation.pipelines import (
     create_anndata_evaluation_pipeline,
     create_reconstruction_evaluation_pipeline,
@@ -35,16 +35,30 @@ if TYPE_CHECKING:
     )
 
 
-def main() -> None:
+@dataclass
+class EvaluationWorkflowResult:
+    config: EvaluationConfig
+    run_spec: EvaluationRunSpec
+    run_context: RunContext
+    adata: ad.AnnData
+    reconstruction_outputs: dict[str, Any] | None
+    metrics_path: Path
+
+
+def evaluate(
+        config_path: Path | str,
+        prediction_manifest_path: Path | str | None = None,
+) -> EvaluationWorkflowResult:
     register_builtins()
 
-    args = parse_args()
-
     # Parse and resolve config
-    raw_eval_config_path = Path(args.config).resolve()
+    raw_eval_config_path = Path(config_path).resolve()
     raw_eval_config = load_yaml(raw_eval_config_path)
     eval_config = parse_evaluation_config(raw_eval_config)
-    run_spec = resolve_evaluation_config(eval_config)
+    run_spec = resolve_evaluation_config(
+        evaluation_config=eval_config,
+        prediction_manifest_path_override=prediction_manifest_path,
+    )
 
     # Setup paths
     run_context = RunContext.create(
@@ -64,7 +78,7 @@ def main() -> None:
     # Bookkeeping --- config
     save_config_records(
         original_config_path=raw_eval_config_path,
-        resolved_config=eval_config,
+        resolved_config=run_spec.evaluation_config,
         config_out_dir=run_context.config_dir,
     )
 
@@ -147,6 +161,15 @@ def main() -> None:
     completed_at = datetime.now().isoformat(timespec="seconds")  # TODO use in eval manifest
     run_log.info("Evaluation completed at: %s", completed_at)
 
+    return EvaluationWorkflowResult(
+        config=run_spec.evaluation_config,
+        run_spec=run_spec,
+        run_context=run_context,
+        adata=adata,
+        reconstruction_outputs=reconstruction_outputs,
+        metrics_path=metrics_path,
+    )
+
 
 def write_smoke_test_plots(
     *,
@@ -189,20 +212,3 @@ def write_smoke_test_plots(
                 output_path=output_path,
                 overwrite=overwrite,
             )
-
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Run BenchRep evaluation from a YAML config."
-    )
-    parser.add_argument(
-        "--config",
-        type=str,
-        required=True,
-        help="Path to YAML config file.",
-    )
-    return parser.parse_args()
-
-
-if __name__ == "__main__":
-    main()

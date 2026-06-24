@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-import argparse
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import lightning as L
 import torch
@@ -13,8 +14,8 @@ from benchrep.assembly.builders import (
     build_model,
     build_trainer,
 )
-from benchrep.assembly.resolvers import resolve_prediction_config
-from benchrep.assembly.schemas import parse_prediction_config
+from benchrep.assembly.resolvers import resolve_prediction_config, PredictionRunSpec
+from benchrep.assembly.schemas import parse_prediction_config, PredictionConfig
 from benchrep.records import (
     save_config_records,
     setup_run_logger,
@@ -26,16 +27,33 @@ from benchrep.runtime import RunContext
 from benchrep.assembly.register_builtins import register_builtins
 
 
-def main() -> None:
+@dataclass
+class PredictionWorkflowResult:
+    config: PredictionConfig
+    run_spec: PredictionRunSpec
+    run_context: RunContext
+    datamodule: L.LightningDataModule
+    model: L.LightningModule
+    trainer: L.Trainer
+    predictions: list[Any]
+    export_paths: Any
+    manifest_path: Path
+
+
+def predict(
+        config_path: Path | str,
+        training_manifest_path: Path | str | None = None,
+) -> PredictionWorkflowResult:
     register_builtins()
 
-    args = parse_args()
-
     # Parse and resolve config
-    raw_pred_config_path = Path(args.config).resolve()
+    raw_pred_config_path = Path(config_path).resolve()
     raw_pred_config = load_yaml(raw_pred_config_path)
     pred_config = parse_prediction_config(raw_pred_config)
-    run_spec = resolve_prediction_config(pred_config)
+    run_spec = resolve_prediction_config(
+        prediction_config=pred_config,
+        training_manifest_path_override=training_manifest_path,
+    )
 
     # Setup paths
     model_name = f"{run_spec.training_config.model.name}"
@@ -72,7 +90,7 @@ def main() -> None:
     # Bookkeeping --- config
     save_config_records(
         original_config_path=raw_pred_config_path,
-        resolved_config=pred_config,
+        resolved_config=run_spec.prediction_config,
         config_out_dir=run_context.config_dir,
     )
 
@@ -184,19 +202,14 @@ def main() -> None:
 
     run_log.info("Exported prediction manifest to: '%s'", manifest_path)
 
-
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Run BenchRep prediction from a YAML config."
+    return PredictionWorkflowResult(
+        config=pred_config,
+        run_spec=run_spec,
+        run_context=run_context,
+        datamodule=datamodule,
+        model=model,
+        trainer=trainer,
+        predictions=predictions,
+        export_paths=export_paths,
+        manifest_path=manifest_path,
     )
-    parser.add_argument(
-        "--config",
-        type=str,
-        required=True,
-        help="Path to YAML config file.",
-    )
-    return parser.parse_args()
-
-
-if __name__ == "__main__":
-    main()

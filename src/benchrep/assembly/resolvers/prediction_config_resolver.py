@@ -79,9 +79,21 @@ class PredictionRunSpec:
 
 def resolve_prediction_config(
     prediction_config: PredictionConfig,
+    training_manifest_path_override: Path | str | None = None,
 ) -> PredictionRunSpec:
     """Resolve prediction config values that depend on the training run."""
-    training_manifest_path = prediction_config.source.training_manifest_path.resolve()
+    if training_manifest_path_override is not None:
+        training_manifest_path = Path(training_manifest_path_override).resolve()
+        prediction_config = prediction_config.model_copy(
+            update={
+                "source": prediction_config.source.model_copy(
+                    update={"training_manifest_path": training_manifest_path}
+                )
+            }
+        )
+    else:
+        training_manifest_path = prediction_config.source.training_manifest_path.resolve()
+
     training_manifest = load_yaml(training_manifest_path)
 
     resolved_training_config_path = get_required_nested_path(

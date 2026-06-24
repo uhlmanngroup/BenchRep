@@ -1,9 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-
-from dataclasses import dataclass
 
 import lightning as L
 from lightning.pytorch.callbacks import ModelCheckpoint
@@ -42,7 +41,7 @@ def train(
         model: L.LightningModule | None = None,
         datamodule: L.LightningDataModule | None = None,
         trainer: L.Trainer | None = None,
-):
+) -> TrainingWorkflowResult:
     register_builtins()
 
     # Parse config
