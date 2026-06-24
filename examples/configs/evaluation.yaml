@@ -109,7 +109,7 @@ metrics:
     selected: [ "dummy", "linear", "knn", "random_forest", "xgboost" ] # null = default probe set; otherwise list registry probe names
 
     target_key: label # obs column to predict from adata.X
-    task: null # null defaults to classification; options: classification | regression
+    task: classification # classification | regression
 
     cv:
       method: stratified_kfold # kfold | stratified_kfold | group_kfold | stratified_group_kfold

@@ -35,6 +35,7 @@ model_graph = [
     "torchview",
     "graphviz",
 ]
+xgboost = ["xgboost"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

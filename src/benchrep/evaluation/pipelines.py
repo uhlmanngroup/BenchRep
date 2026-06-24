@@ -14,6 +14,7 @@ from benchrep.evaluation.embeddings.clustering_metrics import (
     compute_external_clustering_metrics,
     compute_internal_clustering_metrics,
 )
+from benchrep.evaluation.embeddings.predictability import compute_predictability_metrics
 from benchrep.evaluation.reconstructions.error_maps import compute_error_maps
 from benchrep.evaluation.reconstructions.reconstruction_metrics import (
     compute_reconstruction_metrics,
@@ -239,6 +240,23 @@ def create_anndata_evaluation_pipeline(
                 enabled=step_spec.external_clustering_metrics_enabled is not False,
             )
         )
+
+    predictability_target_key = step_spec.predictability_target_key
+    steps.append(
+        AnnDataEvaluationStep(
+            name=f"predictability_metrics_{predictability_target_key}",
+            fn=compute_predictability_metrics,
+            params={
+                "target_key": predictability_target_key,
+                "task": step_spec.predictability_task,
+                "selected": step_spec.predictability_probes,
+                "probe_params": step_spec.predictability_probe_params,
+                "cv_params": step_spec.predictability_cv_params,
+                "tuning_params": step_spec.predictability_tuning_params,
+            },
+            enabled=step_spec.predictability_enabled,
+        )
+    )
 
     return AnnDataEvaluationPipeline(steps=steps)
 
