@@ -20,6 +20,9 @@ wandb/
 # Data
 examples/data/
 
+# Scratch
+scratch/
+
 # IDE
 .idea/
 .vscode/

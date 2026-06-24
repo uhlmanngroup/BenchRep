@@ -35,7 +35,7 @@ def write_training_manifest(
     config: TrainingConfig,
     run_context: RunContext,
     input_config_path: Path,
-    checkpoint_callback: ModelCheckpoint,
+    checkpoint_callback: ModelCheckpoint | None,
     torchview_graph_path: Path | None = None,
     created_at: str,
     completed_at: str,
@@ -68,6 +68,40 @@ def write_training_manifest(
         },
     }
 
+    if checkpoint_callback is None:
+        checkpoints = {
+            "available": False,
+            "checkpoint_dir": str(run_context.training_checkpoint_dir),
+            "monitor": config.checkpointing.monitor,
+            "mode": config.checkpointing.mode,
+            "best_checkpoint_path": None,
+            "best_checkpoint_score": None,
+            "last_checkpoint_path": None,
+            "best_k_models": {},
+        }
+    else:
+        checkpoints = {
+            "available": True,
+            "checkpoint_dir": (
+                str(Path(checkpoint_callback.dirpath))
+                if checkpoint_callback.dirpath is not None
+                else str(run_context.training_checkpoint_dir)
+            ),
+            "monitor": config.checkpointing.monitor,
+            "mode": config.checkpointing.mode,
+            "best_checkpoint_path": checkpoint_callback.best_model_path or None,
+            "best_checkpoint_score": (
+                float(checkpoint_callback.best_model_score)
+                if checkpoint_callback.best_model_score is not None
+                else None
+            ),
+            "last_checkpoint_path": checkpoint_callback.last_model_path or None,
+            "best_k_models": {
+                path: float(score)
+                for path, score in checkpoint_callback.best_k_models.items()
+            },
+        }
+
     manifest = {
         "stage": config.stage,
         "status": status,
@@ -94,22 +128,7 @@ def write_training_manifest(
                 ),
             },
         },
-        "checkpoints": {
-            "checkpoint_dir": str(run_context.training_checkpoint_dir),
-            "monitor": config.checkpointing.monitor,
-            "mode": config.checkpointing.mode,
-            "best_checkpoint_path": checkpoint_callback.best_model_path or None,
-            "best_checkpoint_score": (
-                float(checkpoint_callback.best_model_score)
-                if checkpoint_callback.best_model_score is not None
-                else None
-            ),
-            "last_checkpoint_path": checkpoint_callback.last_model_path or None,
-            "best_k_models": {
-                path: float(score)
-                for path, score in checkpoint_callback.best_k_models.items()
-            },
-        },
+        "checkpoints": checkpoints,
         "summary": summary,
     }
 
