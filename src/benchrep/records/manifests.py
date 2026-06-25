@@ -187,8 +187,23 @@ def write_prediction_manifest(
     created_at: str,
     completed_at: str,
     status: str = "completed",
+    model_source: str = "config",
+    model_class_name: str | None = None,
+    datamodule_source: str = "config",
+    datamodule_class_name: str | None = None,
 ) -> None:
     training_summary = run_spec.training_manifest.get("summary", {})
+
+    training_provenance = run_spec.training_manifest.get("provenance", {})
+
+    model_is_external = model_source != "config"
+    datamodule_is_external = datamodule_source != "config"
+
+    if model_is_external and model_class_name is None:
+        raise ValueError("model_class_name is required when model_source is not 'config'.")
+
+    if datamodule_is_external and datamodule_class_name is None:
+        raise ValueError("datamodule_class_name is required when datamodule_source is not 'config'.")
 
     embedding_spec = run_spec.export_spec.embeddings
     reconstruction_spec = run_spec.export_spec.reconstructions
@@ -197,12 +212,15 @@ def write_prediction_manifest(
 
     summary = {
         "project_name": run_spec.training_config.run.project_name,
-        "model": training_summary.get("model"),
-        "encoder": training_summary.get("encoder"),
-        "decoder": training_summary.get("decoder"),
-        "dataset": run_spec.dataset_config.name,
-        "data_split": run_spec.split,
-        "batch_size": run_spec.batch_size,
+        "model_source": model_source,
+        "datamodule_source": datamodule_source,
+        "model": model_class_name if model_is_external else training_summary.get("model"),
+        "encoder": None if model_is_external else training_summary.get("encoder"),
+        "decoder": None if model_is_external else training_summary.get("decoder"),
+        "dataset": None if datamodule_is_external else run_spec.dataset_config.name,
+        "datamodule": datamodule_class_name if datamodule_is_external else None,
+        "data_split": None if datamodule_is_external else run_spec.split,
+        "batch_size": None if datamodule_is_external else run_spec.batch_size,
         "max_batches": run_spec.max_batches,
     }
 
@@ -221,6 +239,41 @@ def write_prediction_manifest(
             "training_output_dir": str(run_spec.training_output_dir),
             "resolved_training_config_path": str(run_spec.resolved_training_config_path),
             "checkpoint_path": str(run_spec.checkpoint_path),
+        },
+        "provenance": {
+            "training": training_provenance,
+            "prediction": {
+                "model": {
+                    "source": model_source,
+                    "class_name": model_class_name,
+                    "config_reconstructable": not model_is_external,
+                    "configured_model": run_spec.training_config.model.name,
+                    "configured_encoder": run_spec.training_config.encoder.name,
+                    "configured_decoder": (
+                        run_spec.training_config.decoder.name
+                        if run_spec.training_config.decoder is not None
+                        else None
+                    ),
+                },
+                "datamodule": {
+                    "source": datamodule_source,
+                    "class_name": datamodule_class_name,
+                    "config_reconstructable": not datamodule_is_external,
+                    "configured_dataset": run_spec.dataset_config.name,
+                    "configured_transform": (
+                        run_spec.dataset_config.transform.name
+                        if run_spec.dataset_config.transform is not None
+                        else None
+                    ),
+                    "configured_batch_size": run_spec.batch_size,
+                    "configured_split": run_spec.split,
+                },
+                "run_reconstructable_from_config": (
+                        training_provenance.get("run_reconstructable_from_config", True)
+                        and not model_is_external
+                        and not datamodule_is_external
+                ),
+            },
         },
         "records": {
             "input_config_path": str(input_config_path),
