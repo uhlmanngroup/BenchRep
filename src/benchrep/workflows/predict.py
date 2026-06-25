@@ -43,6 +43,8 @@ class PredictionWorkflowResult:
 def predict(
         config_path: Path | str,
         training_manifest_path: Path | str | None = None,
+        model: L.LightningModule | None = None,
+        datamodule: L.LightningDataModule | None = None,
 ) -> PredictionWorkflowResult:
     register_builtins()
 
@@ -56,7 +58,10 @@ def predict(
     )
 
     # Setup paths
-    model_name = f"{run_spec.training_config.model.name}"
+    if model is None:
+        model_name = f"{run_spec.training_config.model.name}"
+    else:
+        model_name = f"manual_{model.__class__.__name__}"
 
     run_context = RunContext.create(
         output_root=run_spec.training_config.run.output_root,
@@ -109,20 +114,31 @@ def predict(
             run_spec.float32_matmul_precision,
         )
 
-    # Build model and predict
-    datamodule = build_datamodule(
-        dataset_config=run_spec.dataset_config,
-        datamodule_config=run_spec.datamodule_config,
-        seed=run_spec.seed,
-        stage=run_spec.stage,
-        split=run_spec.split,
-    )
+    # Build datamodule
+    if datamodule is None:
+        datamodule = build_datamodule(
+            dataset_config=run_spec.dataset_config,
+            datamodule_config=run_spec.datamodule_config,
+            seed=run_spec.seed,
+            stage=run_spec.stage,
+            split=run_spec.split,
+        )
+    else:
+        run_log.info("Manual datamodule was provided; config.dataset and config.datamodule were ignored.")
 
-    # Build model and load checkpoint
-    model = build_model(config=run_spec.training_config)
+    # Build or use model, then load checkpoint
+    if model is None:
+        model = build_model(config=run_spec.training_config)
+    else:
+        run_log.info(
+            "Manual model was provided; config.model/encoder/decoder/losses/optimizer were ignored."
+        )
+
     checkpoint = torch.load(run_spec.checkpoint_path, map_location="cpu")
     model.load_state_dict(checkpoint["state_dict"])
     model.eval()
+
+    run_log.info("Loaded checkpoint weights into prediction model.")
 
     # Build trainer and predict
     trainer, _ = build_trainer(
