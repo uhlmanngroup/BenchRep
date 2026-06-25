@@ -106,7 +106,7 @@ metrics:
 
   predictability:
     enabled: true
-    selected: [ "dummy", "linear", "knn", "random_forest", "xgboost" ]
+    selected: [ "dummy", "linear" ] # [ "dummy", "linear", "knn", "random_forest", "xgboost" ]
     # omit = default probe set; must be a non-empty list if provided; null is invalid
 
     target_key: label # obs column to predict from adata.X

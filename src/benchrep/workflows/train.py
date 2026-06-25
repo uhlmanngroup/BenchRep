@@ -31,7 +31,7 @@ class TrainingWorkflowResult:
     model: L.LightningModule
     datamodule: L.LightningDataModule
     trainer: L.Trainer
-    checkpoint_callback: ModelCheckpoint | None
+    checkpoint_callback: ModelCheckpoint
     manifest_path: Path
     torchview_graph_path: Path | None
 
@@ -40,7 +40,6 @@ def train(
         config_path: Path | str,
         model: L.LightningModule | None = None,
         datamodule: L.LightningDataModule | None = None,
-        trainer: L.Trainer | None = None,
 ) -> TrainingWorkflowResult:
     register_builtins()
 
@@ -111,33 +110,16 @@ def train(
     else:
         run_log.info("Manual model was provided; config.model/encoder/decoder were ignored.")
 
-    if trainer is None:
-        trainer, checkpoint_callback = build_trainer(
-            trainer_config=config.trainer,
-            stage=config.stage,
-            run_context=run_context,
-            logger_config=config.logger,
-            checkpoint_config=config.checkpointing,
-        )
-    else:
-        run_log.info("Manual trainer was provided; config.trainer/logger/checkpointing were ignored. "
-                     "Manual trainer may write checkpoints/logs outside the BenchRep run directory.")
+    trainer, checkpoint_callback = build_trainer(
+        trainer_config=config.trainer,
+        stage=config.stage,
+        run_context=run_context,
+        logger_config=config.logger,
+        checkpoint_config=config.checkpointing,
+    )
 
-        checkpoint_callbacks = [
-            cb for cb in getattr(trainer, "callbacks", [])
-            if isinstance(cb, ModelCheckpoint)
-        ]
-
-        if len(checkpoint_callbacks) == 1:
-            checkpoint_callback = checkpoint_callbacks[0]
-        elif len(checkpoint_callbacks) == 0:
-            checkpoint_callback = None
-            run_log.warning("No ModelCheckpoint callback detected in manual trainer.")
-        else:
-            checkpoint_callback = None
-            run_log.warning(
-                "Multiple ModelCheckpoint callbacks detected in manual trainer; checkpoint path recording skipped."
-            )
+    if checkpoint_callback is None:
+        raise RuntimeError("Training trainer builder did not return a checkpoint callback.")
 
     run_log.info("Starting training...")
 
