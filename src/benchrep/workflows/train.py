@@ -48,7 +48,11 @@ def train(
     raw_config = load_yaml(raw_config_path)
     config = parse_training_config(raw_config)
 
-    if model is None:
+    # Override flags
+    manual_model_provided = model is not None
+    manual_datamodule_provided = datamodule is not None
+
+    if not manual_model_provided:
         # Setup paths
         model_name = f"{config.model.name}_{config.encoder.name}"
         if config.decoder is not None:
@@ -94,7 +98,7 @@ def train(
             config.reproducibility.float32_matmul_precision,
         )
 
-    if datamodule is None:
+    if not manual_datamodule_provided:
         datamodule = build_datamodule(
             dataset_config=config.dataset,
             datamodule_config=config.datamodule,
@@ -105,7 +109,7 @@ def train(
     else:
         run_log.info("Manual datamodule was provided; config.dataset and config.datamodule were ignored.")
 
-    if model is None:
+    if not manual_model_provided:
         model = build_model(config=config)
     else:
         run_log.info("Manual model was provided; config.model/encoder/decoder were ignored.")

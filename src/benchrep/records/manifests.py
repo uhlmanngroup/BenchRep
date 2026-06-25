@@ -40,23 +40,48 @@ def write_training_manifest(
     created_at: str,
     completed_at: str,
     status: str = "completed",
+    model_source: str = "config",
+    model_class_name: str | None = None,
+    datamodule_source: str = "config",
+    datamodule_class_name: str | None = None,
 ) -> None:
+    # Source flags
+    model_is_external = model_source != "config"
+    datamodule_is_external = datamodule_source != "config"
+
+    if model_is_external and model_class_name is None:
+        raise ValueError("model_class_name is required when model_source is not 'config'.")
+
+    if datamodule_is_external and datamodule_class_name is None:
+        raise ValueError("datamodule_class_name is required when datamodule_source is not 'config'.")
+
     summary = {
-        "model": config.model.name,
-        "encoder": config.encoder.name,
-        "decoder": config.decoder.name if config.decoder is not None else None,
-        "dataset": config.dataset.name,
-        "transform": (
-            config.dataset.transform.name
-            if config.dataset.transform is not None
-            else None
+        "model_source": model_source,
+        "datamodule_source": datamodule_source,
+        "model": model_class_name if model_is_external else config.model.name,
+        "encoder": None if model_is_external else config.encoder.name,
+        "decoder": (
+            None
+            if model_is_external or config.decoder is None
+            else config.decoder.name
         ),
-        "batch_size": config.datamodule.batch_size,
-        "losses": {
-            role: list(loss_terms)
-            for role, loss_terms in config.losses.items()
-        },
-        "optimizer": config.optimizer.name,
+        "dataset": None if datamodule_is_external else config.dataset.name,
+        "datamodule": datamodule_class_name if datamodule_is_external else None,
+        "transform": (
+            None
+            if datamodule_is_external or config.dataset.transform is None
+            else config.dataset.transform.name
+        ),
+        "batch_size": None if datamodule_is_external else config.datamodule.batch_size,
+        "losses": (
+            None
+            if model_is_external
+            else {
+                role: list(loss_terms)
+                for role, loss_terms in config.losses.items()
+            }
+        ),
+        "optimizer": None if model_is_external else config.optimizer.name,
         "seed": config.reproducibility.seed,
         "float32_matmul_precision": config.reproducibility.float32_matmul_precision,
         "trainer": {
@@ -83,10 +108,13 @@ def write_training_manifest(
             else None
         ),
         "last_checkpoint_path": checkpoint_callback.last_model_path or None,
-        "best_k_models": {
-            path: float(score)
+        "best_k_models": [
+            {
+                "path": path,
+                "score": float(score),
+            }
             for path, score in checkpoint_callback.best_k_models.items()
-        },
+        ],
     }
 
     manifest = {
@@ -97,6 +125,33 @@ def write_training_manifest(
         "run": {
             "run_name": run_context.run_name,
             "output_dir": str(run_context.output_dir),
+        },
+        "provenance": {
+            "model": {
+                "source": model_source,
+                "class_name": model_class_name,
+                "config_reconstructable": not model_is_external,
+                "configured_model": config.model.name,
+                "configured_encoder": config.encoder.name,
+                "configured_decoder": (
+                    config.decoder.name if config.decoder is not None else None
+                ),
+            },
+            "datamodule": {
+                "source": datamodule_source,
+                "class_name": datamodule_class_name,
+                "config_reconstructable": not datamodule_is_external,
+                "configured_dataset": config.dataset.name,
+                "configured_transform": (
+                    config.dataset.transform.name
+                    if config.dataset.transform is not None
+                    else None
+                ),
+                "configured_batch_size": config.datamodule.batch_size,
+            },
+            "run_reconstructable_from_config": (
+                not model_is_external and not datamodule_is_external
+            ),
         },
         "records": {
             "input_config_path": str(input_config_path),
