@@ -43,14 +43,18 @@ def train(
 ) -> TrainingWorkflowResult:
     register_builtins()
 
-    # Parse config
-    raw_config_path = Path(config_path).resolve()
-    raw_config = load_yaml(raw_config_path)
-    config = parse_training_config(raw_config)
-
     # Override flags
     manual_model_provided = model is not None
     manual_datamodule_provided = datamodule is not None
+
+    # Parse config
+    raw_config_path = Path(config_path).resolve()
+    raw_config = load_yaml(raw_config_path)
+    config = parse_training_config(
+        raw_config,
+        model_overridden=manual_model_provided,
+        datamodule_overridden=manual_datamodule_provided,
+    )
 
     if not manual_model_provided:
         # Setup paths
@@ -172,6 +176,12 @@ def train(
         created_at=created_at,
         completed_at=completed_at,
         status="completed",
+        model_source="external_object" if manual_model_provided else "config",
+        model_class_name=model.__class__.__name__,
+        datamodule_source=(
+            "external_object" if manual_datamodule_provided else "config"
+        ),
+        datamodule_class_name=datamodule.__class__.__name__,
     )
 
     run_log.info("Exported training manifest to: '%s'", manifest_path)

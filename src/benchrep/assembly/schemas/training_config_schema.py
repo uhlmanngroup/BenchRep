@@ -10,6 +10,7 @@ from pydantic import (
     PositiveInt,
     NonNegativeInt,
     model_validator,
+    ValidationInfo,
 )
 
 from benchrep.assembly.registry import MODELS
@@ -18,6 +19,15 @@ from benchrep.architecture.models import (
     Autoencoder,
     VAE,
 )
+
+
+# Helper for model and datamodule overrides
+def _require_present(value: object, field_name: str) -> None:
+    if value is None:
+        raise ValueError(
+            f"`{field_name}` is required unless the corresponding object is overridden."
+        )
+
 
 # -------------------------
 # Generic reusable blocks
@@ -143,21 +153,53 @@ class TrainingConfig(BaseModel):
     stage: Literal["training"] = "training"
     run: RunConfig = Field(default_factory=RunConfig)
     reproducibility: ReproducibilityConfig = Field(default_factory=ReproducibilityConfig)
-    model: ModelConfig
-    encoder: EncoderConfig
+
+    model: ModelConfig | None = None
+    encoder: EncoderConfig | None = None
     decoder: DecoderConfig | None = None
-    losses: dict[str, dict[str, LossTermConfig]] = Field(default_factory=dict)
-    optimizer: OptimizerConfig
+    losses: dict[str, dict[str, LossTermConfig]] | None = Field(default_factory=dict)
+    optimizer: OptimizerConfig | None = None
+
     data: DataSelectionConfig = Field(default_factory=DataSelectionConfig)
-    dataset: DatasetConfig
-    datamodule: DataModuleConfig = Field(default_factory=DataModuleConfig)
+    dataset: DatasetConfig | None = None
+    datamodule: DataModuleConfig | None = Field(default_factory=DataModuleConfig)
+
     trainer: TrainerConfig = Field(default_factory=TrainerConfig)
     logger: LoggerConfig | None = None
     checkpointing: CheckpointConfig = Field(default_factory=CheckpointConfig)
     inspection: InspectionConfig = Field(default_factory=InspectionConfig)
 
     @model_validator(mode="after")
-    def validate_model_requirements(self) -> "TrainingConfig":
+    def validate_override_requirements(self, info: ValidationInfo) -> "TrainingConfig":
+        ctx = info.context or {}
+        model_overridden = ctx.get("model_overridden", False)
+        datamodule_overridden = ctx.get("datamodule_overridden", False)
+
+        if not model_overridden:
+            _require_present(self.model, "model")
+            _require_present(self.encoder, "encoder")
+            _require_present(self.losses, "losses")
+            _require_present(self.optimizer, "optimizer")
+
+        if not datamodule_overridden:
+            _require_present(self.dataset, "dataset")
+            _require_present(self.datamodule, "datamodule")
+
+        return self
+
+    @model_validator(mode="after")
+    def validate_model_requirements(self, info: ValidationInfo) -> "TrainingConfig":
+        ctx = info.context or {}
+        model_overridden = ctx.get("model_overridden", False)
+
+        if model_overridden:
+            return self
+
+        assert self.model is not None
+        assert self.encoder is not None
+        assert self.losses is not None
+        assert self.optimizer is not None
+
         model_name = normalize_name(
             self.model.name,
             field_name="model.name",
@@ -174,6 +216,7 @@ class TrainingConfig(BaseModel):
                     "Autoencoder requires at least one reconstruction loss under "
                     "`losses.reconstruction`."
                 )
+
         elif model_cls is VAE:
             if self.decoder is None:
                 raise ValueError("VAE requires a decoder config section.")
@@ -183,7 +226,9 @@ class TrainingConfig(BaseModel):
 
             latent_dim = self.model.params.get("latent_dim")
             if not isinstance(latent_dim, int) or latent_dim <= 0:
-                raise ValueError("VAE requires `model.params.latent_dim` to be a positive integer.")
+                raise ValueError(
+                    "VAE requires `model.params.latent_dim` to be a positive integer."
+                )
 
             if "reconstruction" not in self.losses or not self.losses["reconstruction"]:
                 raise ValueError(

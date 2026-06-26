@@ -55,33 +55,45 @@ def write_training_manifest(
     if datamodule_is_external and datamodule_class_name is None:
         raise ValueError("datamodule_class_name is required when datamodule_source is not 'config'.")
 
+    configured_model = config.model.name if config.model is not None else None
+    configured_encoder = config.encoder.name if config.encoder is not None else None
+    configured_decoder = config.decoder.name if config.decoder is not None else None
+
+    configured_dataset = config.dataset.name if config.dataset is not None else None
+    configured_transform = (
+        config.dataset.transform.name
+        if config.dataset is not None and config.dataset.transform is not None
+        else None
+    )
+    configured_batch_size = (
+        config.datamodule.batch_size
+        if not datamodule_is_external and config.datamodule is not None
+        else None
+    )
+
     summary = {
         "model_source": model_source,
         "datamodule_source": datamodule_source,
-        "model": model_class_name if model_is_external else config.model.name,
-        "encoder": None if model_is_external else config.encoder.name,
-        "decoder": (
-            None
-            if model_is_external or config.decoder is None
-            else config.decoder.name
-        ),
-        "dataset": None if datamodule_is_external else config.dataset.name,
+        "model": model_class_name if model_is_external else configured_model,
+        "encoder": None if model_is_external else configured_encoder,
+        "decoder": None if model_is_external else configured_decoder,
+        "dataset": None if datamodule_is_external else configured_dataset,
         "datamodule": datamodule_class_name if datamodule_is_external else None,
-        "transform": (
-            None
-            if datamodule_is_external or config.dataset.transform is None
-            else config.dataset.transform.name
-        ),
-        "batch_size": None if datamodule_is_external else config.datamodule.batch_size,
+        "transform": None if datamodule_is_external else configured_transform,
+        "batch_size": None if datamodule_is_external else configured_batch_size,
         "losses": (
             None
-            if model_is_external
+            if model_is_external or config.losses is None
             else {
                 role: list(loss_terms)
                 for role, loss_terms in config.losses.items()
             }
         ),
-        "optimizer": None if model_is_external else config.optimizer.name,
+        "optimizer": (
+            None
+            if model_is_external or config.optimizer is None
+            else config.optimizer.name
+        ),
         "seed": config.reproducibility.seed,
         "float32_matmul_precision": config.reproducibility.float32_matmul_precision,
         "trainer": {
@@ -131,26 +143,20 @@ def write_training_manifest(
                 "source": model_source,
                 "class_name": model_class_name,
                 "config_reconstructable": not model_is_external,
-                "configured_model": config.model.name,
-                "configured_encoder": config.encoder.name,
-                "configured_decoder": (
-                    config.decoder.name if config.decoder is not None else None
-                ),
+                "configured_model": configured_model,
+                "configured_encoder": configured_encoder,
+                "configured_decoder": configured_decoder,
             },
             "datamodule": {
                 "source": datamodule_source,
                 "class_name": datamodule_class_name,
                 "config_reconstructable": not datamodule_is_external,
-                "configured_dataset": config.dataset.name,
-                "configured_transform": (
-                    config.dataset.transform.name
-                    if config.dataset.transform is not None
-                    else None
-                ),
-                "configured_batch_size": config.datamodule.batch_size,
+                "configured_dataset": configured_dataset,
+                "configured_transform": configured_transform,
+                "configured_batch_size": configured_batch_size,
             },
             "run_reconstructable_from_config": (
-                not model_is_external and not datamodule_is_external
+                    not model_is_external and not datamodule_is_external
             ),
         },
         "records": {
