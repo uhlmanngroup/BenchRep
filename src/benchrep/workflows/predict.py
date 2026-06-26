@@ -48,19 +48,26 @@ def predict(
 ) -> PredictionWorkflowResult:
     register_builtins()
 
-    # Parse and resolve config
-    raw_pred_config_path = Path(config_path).resolve()
-    raw_pred_config = load_yaml(raw_pred_config_path)
-    pred_config = parse_prediction_config(raw_pred_config)
-    run_spec = resolve_prediction_config(
-        prediction_config=pred_config,
-        training_manifest_path_override=training_manifest_path,
-    )
     manual_model_provided = model is not None
     manual_datamodule_provided = datamodule is not None
 
+    # Parse and resolve config
+    raw_pred_config_path = Path(config_path).resolve()
+    raw_pred_config = load_yaml(raw_pred_config_path)
+    pred_config = parse_prediction_config(
+        raw_pred_config,
+        training_manifest_path_overridden=training_manifest_path is not None,
+    )
+    run_spec = resolve_prediction_config(
+        prediction_config=pred_config,
+        training_manifest_path_override=training_manifest_path,
+        model_overridden=manual_model_provided,
+        datamodule_overridden=manual_datamodule_provided,
+    )
+
     # Setup paths
     if not manual_model_provided:
+        assert run_spec.training_config.model is not None
         model_name = f"{run_spec.training_config.model.name}"
     else:
         model_name = f"manual_{model.__class__.__name__}"
@@ -94,32 +101,6 @@ def predict(
         run_spec.export_spec.reconstructions.seed,
     )
 
-    training_provenance = run_spec.training_manifest.get("provenance", {})
-    training_model_provenance = training_provenance.get("model", {})
-    training_datamodule_provenance = training_provenance.get("datamodule", {})
-
-    if (
-            training_model_provenance.get("source") != "config"
-            and not manual_model_provided
-    ):
-        raise ValueError(
-            "Training manifest indicates that the trained model came from an external "
-            "Python object, but no model override was provided to predict(). "
-            "Pass the trained model instance, or a compatible model instance that can "
-            "load the recorded checkpoint."
-        )
-
-    if (
-            training_datamodule_provenance.get("source") != "config"
-            and not manual_datamodule_provided
-    ):
-        run_log.warning(
-            "Training manifest indicates that training used an external datamodule, "
-            "but no datamodule override was provided to predict(). Prediction will use "
-            "the dataset/datamodule config recorded in the resolved training config, "
-            "with prediction-time batch_size/num_workers/drop_last overrides."
-        )
-
     # Bookkeeping --- config
     save_config_records(
         original_config_path=raw_pred_config_path,
@@ -145,6 +126,9 @@ def predict(
 
     # Build datamodule
     if not manual_datamodule_provided:
+        assert run_spec.dataset_config is not None
+        assert run_spec.datamodule_config is not None
+
         datamodule = build_datamodule(
             dataset_config=run_spec.dataset_config,
             datamodule_config=run_spec.datamodule_config,
@@ -157,6 +141,11 @@ def predict(
 
     # Build or use model, then load checkpoint
     if not manual_model_provided:
+        assert run_spec.training_config.model is not None
+        assert run_spec.training_config.encoder is not None
+        assert run_spec.training_config.losses is not None
+        assert run_spec.training_config.optimizer is not None
+
         model = build_model(config=run_spec.training_config)
     else:
         run_log.info(
@@ -244,17 +233,11 @@ def predict(
         completed_at=completed_at,
         status="completed",
         model_source="external_object" if manual_model_provided else "config",
-        model_class_name=(
-            model.__class__.__name__ if manual_model_provided else None
-        ),
+        model_class_name=model.__class__.__name__,
         datamodule_source=(
             "external_object" if manual_datamodule_provided else "config"
         ),
-        datamodule_class_name=(
-            datamodule.__class__.__name__
-            if manual_datamodule_provided
-            else None
-        ),
+        datamodule_class_name=datamodule.__class__.__name__,
     )
 
     run_log.info("Exported prediction manifest to: '%s'", manifest_path)

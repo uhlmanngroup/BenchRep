@@ -41,19 +41,13 @@ def write_training_manifest(
     completed_at: str,
     status: str = "completed",
     model_source: str = "config",
-    model_class_name: str | None = None,
+    model_class_name: str,
     datamodule_source: str = "config",
-    datamodule_class_name: str | None = None,
+    datamodule_class_name: str,
 ) -> None:
     # Source flags
     model_is_external = model_source != "config"
     datamodule_is_external = datamodule_source != "config"
-
-    if model_is_external and model_class_name is None:
-        raise ValueError("model_class_name is required when model_source is not 'config'.")
-
-    if datamodule_is_external and datamodule_class_name is None:
-        raise ValueError("datamodule_class_name is required when datamodule_source is not 'config'.")
 
     configured_model = config.model.name if config.model is not None else None
     configured_encoder = config.encoder.name if config.encoder is not None else None
@@ -143,20 +137,20 @@ def write_training_manifest(
                 "source": model_source,
                 "class_name": model_class_name,
                 "config_reconstructable": not model_is_external,
-                "configured_model": configured_model,
-                "configured_encoder": configured_encoder,
-                "configured_decoder": configured_decoder,
+                "configured_model": None if model_is_external else configured_model,
+                "configured_encoder": None if model_is_external else configured_encoder,
+                "configured_decoder": None if model_is_external else configured_decoder,
             },
             "datamodule": {
                 "source": datamodule_source,
                 "class_name": datamodule_class_name,
                 "config_reconstructable": not datamodule_is_external,
-                "configured_dataset": configured_dataset,
-                "configured_transform": configured_transform,
-                "configured_batch_size": configured_batch_size,
+                "configured_dataset": None if datamodule_is_external else configured_dataset,
+                "configured_transform": None if datamodule_is_external else configured_transform,
+                "configured_batch_size": None if datamodule_is_external else configured_batch_size,
             },
             "run_reconstructable_from_config": (
-                    not model_is_external and not datamodule_is_external
+                not model_is_external and not datamodule_is_external
             ),
         },
         "records": {
@@ -194,9 +188,9 @@ def write_prediction_manifest(
     completed_at: str,
     status: str = "completed",
     model_source: str = "config",
-    model_class_name: str | None = None,
+    model_class_name: str,
     datamodule_source: str = "config",
-    datamodule_class_name: str | None = None,
+    datamodule_class_name: str,
 ) -> None:
     training_summary = run_spec.training_manifest.get("summary", {})
 
@@ -205,11 +199,41 @@ def write_prediction_manifest(
     model_is_external = model_source != "config"
     datamodule_is_external = datamodule_source != "config"
 
-    if model_is_external and model_class_name is None:
-        raise ValueError("model_class_name is required when model_source is not 'config'.")
+    configured_model = (
+        run_spec.training_config.model.name
+        if run_spec.training_config.model is not None
+        else None
+    )
+    configured_encoder = (
+        run_spec.training_config.encoder.name
+        if run_spec.training_config.encoder is not None
+        else None
+    )
+    configured_decoder = (
+        run_spec.training_config.decoder.name
+        if run_spec.training_config.decoder is not None
+        else None
+    )
 
-    if datamodule_is_external and datamodule_class_name is None:
-        raise ValueError("datamodule_class_name is required when datamodule_source is not 'config'.")
+    configured_dataset = (
+        run_spec.dataset_config.name
+        if run_spec.dataset_config is not None
+        else None
+    )
+    configured_transform = (
+        run_spec.dataset_config.transform.name
+        if (
+            run_spec.dataset_config is not None
+            and run_spec.dataset_config.transform is not None
+        )
+        else None
+    )
+    configured_batch_size = (
+        run_spec.batch_size if not datamodule_is_external else None
+    )
+    configured_split = (
+        run_spec.split if not datamodule_is_external else None
+    )
 
     embedding_spec = run_spec.export_spec.embeddings
     reconstruction_spec = run_spec.export_spec.reconstructions
@@ -223,10 +247,10 @@ def write_prediction_manifest(
         "model": model_class_name if model_is_external else training_summary.get("model"),
         "encoder": None if model_is_external else training_summary.get("encoder"),
         "decoder": None if model_is_external else training_summary.get("decoder"),
-        "dataset": None if datamodule_is_external else run_spec.dataset_config.name,
+        "dataset": None if datamodule_is_external else configured_dataset,
         "datamodule": datamodule_class_name if datamodule_is_external else None,
-        "data_split": None if datamodule_is_external else run_spec.split,
-        "batch_size": None if datamodule_is_external else run_spec.batch_size,
+        "data_split": configured_split,
+        "batch_size": configured_batch_size,
         "max_batches": run_spec.max_batches,
     }
 
@@ -252,32 +276,30 @@ def write_prediction_manifest(
                 "model": {
                     "source": model_source,
                     "class_name": model_class_name,
-                    "config_reconstructable": not model_is_external,
-                    "configured_model": run_spec.training_config.model.name,
-                    "configured_encoder": run_spec.training_config.encoder.name,
-                    "configured_decoder": (
-                        run_spec.training_config.decoder.name
-                        if run_spec.training_config.decoder is not None
-                        else None
+                    "config_reconstructable": (
+                            not model_is_external and configured_model is not None
                     ),
+                    "configured_model": None if model_is_external else configured_model,
+                    "configured_encoder": None if model_is_external else configured_encoder,
+                    "configured_decoder": None if model_is_external else configured_decoder,
                 },
                 "datamodule": {
                     "source": datamodule_source,
                     "class_name": datamodule_class_name,
-                    "config_reconstructable": not datamodule_is_external,
-                    "configured_dataset": run_spec.dataset_config.name,
-                    "configured_transform": (
-                        run_spec.dataset_config.transform.name
-                        if run_spec.dataset_config.transform is not None
-                        else None
+                    "config_reconstructable": (
+                            not datamodule_is_external
+                            and configured_dataset is not None
+                            and run_spec.datamodule_config is not None
                     ),
-                    "configured_batch_size": run_spec.batch_size,
-                    "configured_split": run_spec.split,
+                    "configured_dataset": None if datamodule_is_external else configured_dataset,
+                    "configured_transform": None if datamodule_is_external else configured_transform,
+                    "configured_batch_size": None if datamodule_is_external else configured_batch_size,
+                    "configured_split": configured_split,
                 },
                 "run_reconstructable_from_config": (
-                        training_provenance.get("run_reconstructable_from_config", True)
-                        and not model_is_external
-                        and not datamodule_is_external
+                    training_provenance.get("run_reconstructable_from_config", True)
+                    and not model_is_external
+                    and not datamodule_is_external
                 ),
             },
         },

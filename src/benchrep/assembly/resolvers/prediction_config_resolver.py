@@ -62,11 +62,11 @@ class PredictionRunSpec:
     training_run_name: str
     training_output_dir: Path
 
-    dataset_config: DatasetConfig
-    datamodule_config: DataModuleConfig
+    dataset_config: DatasetConfig | None
+    datamodule_config: DataModuleConfig | None
     split: str
-    batch_size: int
-    num_workers: int
+    batch_size: int | None
+    num_workers: int | None
     trainer_config: TrainerConfig
     max_batches: int | None
 
@@ -80,10 +80,16 @@ class PredictionRunSpec:
 def resolve_prediction_config(
     prediction_config: PredictionConfig,
     training_manifest_path_override: Path | str | None = None,
+    model_overridden: bool = False,
+    datamodule_overridden: bool = False,
 ) -> PredictionRunSpec:
     """Resolve prediction config values that depend on the training run."""
     if training_manifest_path_override is not None:
         training_manifest_path = Path(training_manifest_path_override).resolve()
+        if training_manifest_path.suffix.lower() not in {".yaml", ".yml"}:
+            raise ValueError(
+                "training_manifest_path override must point to a YAML file."
+            )
         prediction_config = prediction_config.model_copy(
             update={
                 "source": prediction_config.source.model_copy(
@@ -96,6 +102,15 @@ def resolve_prediction_config(
 
     training_manifest = load_yaml(training_manifest_path)
 
+    training_provenance = training_manifest.get("provenance", {})
+    training_model_provenance = training_provenance.get("model", {})
+    training_datamodule_provenance = training_provenance.get("datamodule", {})
+
+    training_model_external = training_model_provenance.get("source") != "config"
+    training_datamodule_external = (
+        training_datamodule_provenance.get("source") != "config"
+    )
+
     resolved_training_config_path = get_required_nested_path(
         training_manifest,
         "records",
@@ -104,7 +119,11 @@ def resolve_prediction_config(
     )
 
     raw_training_config = load_yaml(resolved_training_config_path)
-    training_config = parse_training_config(raw_training_config)
+    training_config = parse_training_config(
+        raw_training_config,
+        model_overridden=training_model_external,
+        datamodule_overridden=training_datamodule_external,
+    )
 
     checkpoint_path = _resolve_checkpoint_path(
         checkpoint=prediction_config.source.checkpoint,
@@ -125,28 +144,47 @@ def resolve_prediction_config(
         base_dir=training_manifest_path.parent,
     )
 
-    batch_size = resolve_optional(
-        prediction_config.data.batch_size,
-        training_config.datamodule.batch_size,
-        field_name="data.batch_size",
-    )
+    if training_model_external and not model_overridden:
+        raise ValueError(
+            "Training manifest indicates that the trained model came from an external "
+            "Python object, but no model override was provided to predict(). "
+            "Pass a compatible model instance that can load the recorded checkpoint."
+        )
 
-    num_workers = resolve_optional(
-        prediction_config.data.num_workers,
-        training_config.datamodule.num_workers,
-        field_name="data.num_workers",
-    )
+    if datamodule_overridden:
+        dataset_config = None
+        datamodule_config = None
+        batch_size = None
+        num_workers = None
+    else:
+        if training_config.dataset is None or training_config.datamodule is None:
+            raise ValueError(
+                "Prediction requires a config-reconstructable dataset/datamodule, "
+                "but the training config does not contain `dataset` and `datamodule`. "
+                "Pass a datamodule override to predict()."
+            )
 
-    dataset_config = training_config.dataset
+        batch_size = resolve_optional(
+            prediction_config.data.batch_size,
+            training_config.datamodule.batch_size,
+            field_name="data.batch_size",
+        )
 
-    # Override DataModule config params from prediction config
-    datamodule_config = training_config.datamodule.model_copy(
-        update={
-            "batch_size": batch_size,
-            "num_workers": num_workers,
-            "drop_last": False,  # never drop_last in prediction
-        }
-    )
+        num_workers = resolve_optional(
+            prediction_config.data.num_workers,
+            training_config.datamodule.num_workers,
+            field_name="data.num_workers",
+        )
+
+        dataset_config = training_config.dataset
+
+        datamodule_config = training_config.datamodule.model_copy(
+            update={
+                "batch_size": batch_size,
+                "num_workers": num_workers,
+                "drop_last": False,
+            }
+        )
 
     seed = resolve_optional(
         prediction_config.inference.seed,

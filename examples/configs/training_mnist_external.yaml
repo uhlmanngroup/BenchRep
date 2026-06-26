@@ -1,0 +1,41 @@
+stage: training
+
+reproducibility:
+  seed: 137 # global seed given both to seed_everything and to the datamodule
+  seed_workers: true
+  float32_matmul_precision: highest # defaults to highest
+
+run:
+  output_root: outputs
+  project_name: test
+
+trainer:
+  max_epochs: 5
+  accelerator: auto
+  devices: auto
+  log_every_n_steps: 20
+  deterministic: false # reproducibility param in lightning's trainer
+  benchmark: false # reproducibility param in lightning's trainer
+  precision: 32-true
+
+logger:
+  name: wandb # logger backend: wandb, tensorboard, csv, mlflow
+  credential_path: # null = assume user logged in / env var set, otherwise path to api_key txt file
+  params: # backend-specific kwargs passed to the lightning logger
+    project: benchrep
+    name: test
+    id: null
+    resume: never
+    log_model: False
+
+checkpointing: #  optional
+  monitor: val/loss
+  mode: min
+  save_top_k: 3
+  save_last: True
+
+inspection: # optional
+  torchview:
+    enabled: true
+    expand_nested: true
+    depth: 10

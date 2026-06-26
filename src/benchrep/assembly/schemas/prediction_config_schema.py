@@ -3,14 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, PositiveInt, NonNegativeInt, model_validator
+from pydantic import BaseModel, Field, PositiveInt, NonNegativeInt, model_validator, ValidationInfo
 
 
 # -------------------------
 # Source config
 # -------------------------
 class PredictionSourceConfig(BaseModel):
-    training_manifest_path: Path
+    training_manifest_path: Path | None = None
     checkpoint: str = Field(
         default="best",
         description=(
@@ -67,17 +67,30 @@ class PredictionExportConfig(BaseModel):
 # -------------------------
 class PredictionConfig(BaseModel):
     stage: Literal["prediction"] = "prediction"
-    source: PredictionSourceConfig
+    source: PredictionSourceConfig = Field(
+        default_factory=PredictionSourceConfig)
     data: PredictionDataConfig = Field(default_factory=PredictionDataConfig)
     inference: PredictionInferenceConfig = Field(default_factory=PredictionInferenceConfig)
     exports: PredictionExportConfig = Field(default_factory=PredictionExportConfig)
 
     @model_validator(mode="after")
-    def validate_prediction_config(self) -> PredictionConfig:
+    def validate_prediction_config(self, info: ValidationInfo) -> "PredictionConfig":
+        ctx = info.context or {}
+        training_manifest_path_overridden = ctx.get(
+            "training_manifest_path_overridden",
+            False,
+        )
+
         checkpoint = self.source.checkpoint
 
-        if not self.source.training_manifest_path.suffix.lower() in {".yaml", ".yml"}:
-                raise ValueError("source.training_manifest_path must point to a YAML file.")
+        if self.source.training_manifest_path is None:
+            if not training_manifest_path_overridden:
+                raise ValueError(
+                    "`source.training_manifest_path` is required unless "
+                    "`training_manifest_path` is passed to predict()."
+                )
+        elif self.source.training_manifest_path.suffix.lower() not in {".yaml", ".yml"}:
+            raise ValueError("source.training_manifest_path must point to a YAML file.")
 
         if checkpoint not in {"best", "last"} and not checkpoint.endswith(".ckpt"):
             raise ValueError(

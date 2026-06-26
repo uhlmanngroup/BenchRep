@@ -1,0 +1,26 @@
+stage: prediction
+
+source:
+  checkpoint: best              # best | last | checkpoint filename in training checkpoint dir
+
+inference:
+  seed: null                    # null = reuse training seed
+  seed_workers: null            # null = reuse training setting
+  deterministic: null           # deterministic algs (Trainer param)
+  float32_matmul_precision: null # null = reuse training setting
+
+exports:
+  mode: all                # standard | all | custom
+
+  embeddings:
+    enabled: true
+    keys: auto                  # auto or list of output fields
+    primary_key: auto           # auto or one output field
+
+  reconstructions:
+    enabled: true
+    n_examples: 32              # int | all
+    selection: first            # first | random
+    seed: null                  # null = reuse inference seed
+    include_input: true
+    include_prediction: true
