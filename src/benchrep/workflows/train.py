@@ -18,6 +18,12 @@ from benchrep.records import (
     export_torchview_graph,
     infer_dummy_input_size,
 )
+from benchrep.interfaces.validation import validate_external_model
+from benchrep.interfaces.model_families import (
+    ModelFamilySpec,
+    AUTOENCODER_FAMILY,
+    VAE_FAMILY,
+)
 from benchrep.assembly import load_yaml
 from benchrep.assembly.schemas import parse_training_config, TrainingConfig
 from benchrep.assembly.builders import build_datamodule, build_model, build_trainer
@@ -36,7 +42,35 @@ class TrainingWorkflowResult:
     torchview_graph_path: Path | None
 
 
-def train(
+# Model-specific wrappers
+def train_ae(
+        config_path: Path | str,
+        model: L.LightningModule | None = None,
+        datamodule: L.LightningDataModule | None = None,
+) -> TrainingWorkflowResult:
+    return _train(
+        model_family=AUTOENCODER_FAMILY,
+        config_path=config_path,
+        model=model,
+        datamodule=datamodule,
+    )
+
+
+def train_vae(
+        config_path: Path | str,
+        model: L.LightningModule | None = None,
+        datamodule: L.LightningDataModule | None = None,
+) -> TrainingWorkflowResult:
+    return _train(
+        model_family=VAE_FAMILY,
+        config_path=config_path,
+        model=model,
+        datamodule=datamodule,
+    )
+
+
+def _train(
+        model_family: ModelFamilySpec,
         config_path: Path | str,
         model: L.LightningModule | None = None,
         datamodule: L.LightningDataModule | None = None,
@@ -57,12 +91,16 @@ def train(
     )
 
     if not manual_model_provided:
+        assert config.model is not None
+        assert config.encoder is not None
+
         # Setup paths
         model_name = f"{config.model.name}_{config.encoder.name}"
         if config.decoder is not None:
             model_name = f"{model_name}_{config.decoder.name}"
     else:
-        model_name = f"manual_{model.__class__.__name__}"
+        validate_external_model(model)
+        model_name = f"{model_family.name}_manual_{type(model).__name__}"
 
     run_context = RunContext.create(
         output_root=config.run.output_root,
@@ -103,9 +141,16 @@ def train(
         )
 
     if not manual_datamodule_provided:
+        # Avoid confusing type checker...
+        dataset_config = config.dataset
+        datamodule_config = config.datamodule
+
+        assert dataset_config is not None
+        assert datamodule_config is not None
+
         datamodule = build_datamodule(
-            dataset_config=config.dataset,
-            datamodule_config=config.datamodule,
+            dataset_config=dataset_config,
+            datamodule_config=datamodule_config,
             seed=config.reproducibility.seed,
             stage=config.stage,
             split=config.data.split,
@@ -116,7 +161,9 @@ def train(
     if not manual_model_provided:
         model = build_model(config=config)
     else:
-        run_log.info("Manual model was provided; config.model/encoder/decoder were ignored.")
+        run_log.info(
+            "Manual model was provided; config.model/encoder/decoder/losses/optimizer were ignored."
+        )
 
     trainer, checkpoint_callback = build_trainer(
         trainer_config=config.trainer,
@@ -165,6 +212,9 @@ def train(
             )
 
     # Export training manifest
+    assert model is not None
+    assert datamodule is not None
+
     manifest_path = run_context.metadata_dir / "training_manifest.yaml"
     write_training_manifest(
         output_path=manifest_path,
@@ -177,11 +227,11 @@ def train(
         completed_at=completed_at,
         status="completed",
         model_source="external_object" if manual_model_provided else "config",
-        model_class_name=model.__class__.__name__,
+        model_class_name=type(model).__name__,
         datamodule_source=(
             "external_object" if manual_datamodule_provided else "config"
         ),
-        datamodule_class_name=datamodule.__class__.__name__,
+        datamodule_class_name=type(datamodule).__name__,
     )
 
     run_log.info("Exported training manifest to: '%s'", manifest_path)

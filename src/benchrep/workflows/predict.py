@@ -14,6 +14,12 @@ from benchrep.assembly.builders import (
     build_model,
     build_trainer,
 )
+from benchrep.interfaces.validation import validate_external_model
+from benchrep.interfaces.model_families import (
+    ModelFamilySpec,
+    AUTOENCODER_FAMILY,
+    VAE_FAMILY,
+)
 from benchrep.assembly.resolvers import resolve_prediction_config, PredictionRunSpec
 from benchrep.assembly.schemas import parse_prediction_config, PredictionConfig
 from benchrep.records import (
@@ -40,7 +46,39 @@ class PredictionWorkflowResult:
     manifest_path: Path
 
 
-def predict(
+# Model-specific wrappers
+def predict_ae(
+        config_path: Path | str,
+        training_manifest_path: Path | str | None = None,
+        model: L.LightningModule | None = None,
+        datamodule: L.LightningDataModule | None = None,
+) -> PredictionWorkflowResult:
+    return _predict(
+        model_family=AUTOENCODER_FAMILY,
+        config_path=config_path,
+        training_manifest_path=training_manifest_path,
+        model=model,
+        datamodule=datamodule,
+    )
+
+
+def predict_vae(
+        config_path: Path | str,
+        training_manifest_path: Path | str | None = None,
+        model: L.LightningModule | None = None,
+        datamodule: L.LightningDataModule | None = None,
+) -> PredictionWorkflowResult:
+    return _predict(
+        model_family=VAE_FAMILY,
+        config_path=config_path,
+        training_manifest_path=training_manifest_path,
+        model=model,
+        datamodule=datamodule,
+    )
+
+
+def _predict(
+        model_family: ModelFamilySpec,
         config_path: Path | str,
         training_manifest_path: Path | str | None = None,
         model: L.LightningModule | None = None,
@@ -70,7 +108,8 @@ def predict(
         assert run_spec.training_config.model is not None
         model_name = f"{run_spec.training_config.model.name}"
     else:
-        model_name = f"manual_{model.__class__.__name__}"
+        validate_external_model(model)
+        model_name = f"{model_family.name}_manual_{type(model).__name__}"
 
     run_context = RunContext.create(
         output_root=run_spec.training_config.run.output_root,
@@ -175,21 +214,25 @@ def predict(
             return_predictions=True,
         )
 
+    if not predictions:
+        raise RuntimeError("Prediction returned no batches.")
+
+    first_prediction = predictions[0]
+
+    if not isinstance(first_prediction, model_family.prediction_output_type):
+        raise TypeError(
+            f"Expected `predict_step()` to return "
+            f"`{model_family.prediction_output_type.__name__}` for model family "
+            f"`{model_family.name}`, but the first prediction batch returned "
+            f"`{type(first_prediction).__name__}`."
+        )
+
     run_log.info("Finished prediction")
     run_log.info("Prediction returned %s batches.", len(predictions))
-
-    if predictions:
-        first_prediction = predictions[0]
-        if isinstance(first_prediction, dict):
-            run_log.info(
-                "First prediction batch keys: %s",
-                tuple(first_prediction.keys()),
-            )
-        else:
-            run_log.info(
-                "First prediction batch type: %s",
-                type(first_prediction).__name__,
-            )
+    run_log.info(
+        "First prediction batch type: %s",
+        type(first_prediction).__name__,
+    )
 
     run_log.info("Exporting prediction outputs...")
 
@@ -233,11 +276,11 @@ def predict(
         completed_at=completed_at,
         status="completed",
         model_source="external_object" if manual_model_provided else "config",
-        model_class_name=model.__class__.__name__,
+        model_class_name=type(model).__name__,
         datamodule_source=(
             "external_object" if manual_datamodule_provided else "config"
         ),
-        datamodule_class_name=datamodule.__class__.__name__,
+        datamodule_class_name=type(datamodule).__name__,
     )
 
     run_log.info("Exported prediction manifest to: '%s'", manifest_path)

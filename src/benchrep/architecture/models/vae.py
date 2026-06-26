@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 
+from dataclasses import dataclass, field
+from typing import TypeAlias
 from typing_extensions import TypedDict, NotRequired
 
 import lightning as L
@@ -13,6 +15,10 @@ from benchrep.architecture.decoders.base import BaseDecoder
 from benchrep.architecture.encoders.base import BaseEncoder
 from benchrep.architecture.heads.variational import GaussianVariationalHead
 from benchrep.architecture.losses.base import LossTerm
+
+
+PredictionObsValue: TypeAlias = torch.Tensor | list[int] | list[str]
+PredictionMetadata: TypeAlias = dict[str, PredictionObsValue]
 
 
 class VAEForwardOutput(TypedDict):
@@ -33,18 +39,24 @@ class VAEForwardOutput(TypedDict):
     z_mu: torch.Tensor
     z_logvar: torch.Tensor
 
+@dataclass(slots=True)
+class VAEPredictionOutput:
+    """Prediction output returned by VAE-family models."""
 
-class VAEPredictionOutput(TypedDict):
-    """Prediction output returned by ``VAE``."""
-    input: torch.Tensor
+    # Core representation outputs
     embedding: torch.Tensor
     z_sample: torch.Tensor
     z_mu: torch.Tensor
     z_logvar: torch.Tensor
-    reconstruction: torch.Tensor
-    sample_id: NotRequired[torch.Tensor | list[int] | list[str]]
-    label: NotRequired[torch.Tensor | list[int] | list[str]]
-    metadata: NotRequired[dict[str, torch.Tensor | list[int] | list[str]]]
+
+    # Reconstruction-related outputs
+    input: torch.Tensor | None = None
+    reconstruction: torch.Tensor | None = None
+
+    # Optional observation-level annotations
+    sample_id: PredictionObsValue | None = None
+    label: PredictionObsValue | None = None
+    metadata: PredictionMetadata = field(default_factory=dict)
 
 
 class VAE(L.LightningModule):
@@ -161,25 +173,17 @@ class VAE(L.LightningModule):
         x = self._get_input_from_batch(batch)
         output = self(x)
 
-        prediction: VAEPredictionOutput = {
-            "input": x,
-            "embedding": output["embedding"],
-            "z_sample": output["z_sample"],
-            "z_mu": output["z_mu"],
-            "z_logvar": output["z_logvar"],
-            "reconstruction": output["reconstruction"],
-        }
-
-        if "sample_id" in batch:
-            prediction["sample_id"] = batch["sample_id"]
-
-        if "label" in batch:
-            prediction["label"] = batch["label"]
-
-        if "metadata" in batch:
-            prediction["metadata"] = batch["metadata"]
-
-        return prediction
+        return VAEPredictionOutput(
+            input=x,
+            embedding=output["embedding"],
+            z_sample=output["z_sample"],
+            z_mu=output["z_mu"],
+            z_logvar=output["z_logvar"],
+            reconstruction=output["reconstruction"],
+            sample_id=batch.get("sample_id"),
+            label=batch.get("label"),
+            metadata=batch.get("metadata", {}),
+        )
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
         return self.optimizer_factory(self.parameters())
