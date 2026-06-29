@@ -2,61 +2,19 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 
-from dataclasses import dataclass, field
-from typing import TypeAlias
-from typing_extensions import TypedDict, NotRequired
-
 import lightning as L
 import torch
 from torch import nn
 
-from benchrep.architecture.models.autoencoder import AutoencoderBatch
+from benchrep.architecture.models.contracts import (
+    AutoencoderBatch,
+    VAEForwardOutput,
+    VAEPredictionOutput,
+)
 from benchrep.architecture.decoders.base import BaseDecoder
 from benchrep.architecture.encoders.base import BaseEncoder
 from benchrep.architecture.heads.variational import GaussianVariationalHead
 from benchrep.architecture.losses.base import LossTerm
-
-
-PredictionObsValue: TypeAlias = torch.Tensor | list[int] | list[str]
-PredictionMetadata: TypeAlias = dict[str, PredictionObsValue]
-
-
-class VAEForwardOutput(TypedDict):
-    """
-    Forward output returned by ``VAE``.
-
-    `embedding` is the model-agnostic representation used by generic BenchRep
-    inference/evaluation code. For VAEs, it is intentionally set to `z_mu`
-    (i.e. redundant by design).
-
-    `z_mu` and `z_logvar` are the approximate posterior parameters used for
-    KL divergence. `z_sample` is the stochastic latent sample used by the decoder.
-    """
-
-    embedding: torch.Tensor
-    reconstruction: torch.Tensor
-    z_sample: torch.Tensor
-    z_mu: torch.Tensor
-    z_logvar: torch.Tensor
-
-@dataclass(slots=True)
-class VAEPredictionOutput:
-    """Prediction output returned by VAE-family models."""
-
-    # Core representation outputs
-    embedding: torch.Tensor
-    z_sample: torch.Tensor
-    z_mu: torch.Tensor
-    z_logvar: torch.Tensor
-
-    # Reconstruction-related outputs
-    input: torch.Tensor | None = None
-    reconstruction: torch.Tensor | None = None
-
-    # Optional observation-level annotations
-    sample_id: PredictionObsValue | None = None
-    label: PredictionObsValue | None = None
-    metadata: PredictionMetadata = field(default_factory=dict)
 
 
 class VAE(L.LightningModule):
@@ -182,7 +140,7 @@ class VAE(L.LightningModule):
             reconstruction=output["reconstruction"],
             sample_id=batch.get("sample_id"),
             label=batch.get("label"),
-            metadata=batch.get("metadata", {}),
+            metadata=batch.get("metadata"),
         )
 
     def configure_optimizers(self) -> torch.optim.Optimizer:

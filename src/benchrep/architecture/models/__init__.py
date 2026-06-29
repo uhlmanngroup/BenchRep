@@ -1,13 +1,10 @@
 from benchrep.architecture.models.autoencoder import (
-    AutoencoderBatch,
-    AutoencoderForwardOutput,
     Autoencoder,
-    AutoencoderPredictionOutput,
 )
+from benchrep.architecture.models.contracts import AutoencoderBatch, AutoencoderForwardOutput, \
+    AutoencoderPredictionOutput, VAEForwardOutput, VAEPredictionOutput
 from benchrep.architecture.models.vae import (
-    VAEForwardOutput,
     VAE,
-    VAEPredictionOutput,
 )
 
 __all__ = [

@@ -1,55 +1,19 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from typing_extensions import TypedDict, NotRequired
 
 import lightning as L
 import torch
 from torch import nn
 
+from benchrep.architecture.models.contracts import (
+    AutoencoderBatch,
+    AutoencoderForwardOutput,
+    AutoencoderPredictionOutput,
+)
 from benchrep.architecture.decoders.base import BaseDecoder
 from benchrep.architecture.encoders.base import BaseEncoder
 from benchrep.architecture.losses.base import LossTerm
-
-
-class AutoencoderBatch(TypedDict):
-    """Batch contract for autoencoder-style reconstruction models.
-
-    Required:
-        x:
-            Input tensor to reconstruct.
-
-    Optional:
-        sample_id:
-            Per-sample identifiers used to track outputs during inference or
-            downstream evaluation.
-        label:
-            Per-sample labels used for annotation or
-            evaluation (e.g. cell type).
-        metadata:
-            Additional per-sample metadata, e.g. patient_id, batch,
-            treatment_group, or timepoint.
-    """
-    x: torch.Tensor
-    sample_id: NotRequired[torch.Tensor | list[int] | list[str]]
-    label: NotRequired[torch.Tensor | list[int] | list[str]]
-    metadata: NotRequired[dict[str, torch.Tensor | list[int] | list[str]]]
-
-
-class AutoencoderForwardOutput(TypedDict):
-    """Forward output returned by ``Autoencoder``."""
-    embedding: torch.Tensor
-    reconstruction: torch.Tensor
-
-
-class AutoencoderPredictionOutput(TypedDict):
-    """Prediction output returned by ``Autoencoder``."""
-    input: torch.Tensor
-    embedding: torch.Tensor
-    reconstruction: torch.Tensor
-    sample_id: NotRequired[torch.Tensor | list[int] | list[str]]
-    label: NotRequired[torch.Tensor | list[int] | list[str]]
-    metadata: NotRequired[dict[str, torch.Tensor | list[int] | list[str]]]
 
 
 class Autoencoder(L.LightningModule):
@@ -129,22 +93,15 @@ class Autoencoder(L.LightningModule):
         x = self._get_input_from_batch(batch)
         output = self(x)
 
-        prediction: AutoencoderPredictionOutput = {
-            "input": x,
-            "embedding": output["embedding"],
-            "reconstruction": output["reconstruction"],
-        }
+        return AutoencoderPredictionOutput(
+            embedding=output["embedding"],
+            input=x,
+            reconstruction=output["reconstruction"],
+            sample_id=batch.get("sample_id"),
+            label=batch.get("label"),
+            metadata=batch.get("metadata"),
 
-        if "sample_id" in batch:
-            prediction["sample_id"] = batch["sample_id"]
-
-        if "label" in batch:
-            prediction["label"] = batch["label"]
-
-        if "metadata" in batch:
-            prediction["metadata"] = batch["metadata"]
-
-        return prediction
+        )
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
         return self.optimizer_factory(self.parameters())
