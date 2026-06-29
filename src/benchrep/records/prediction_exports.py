@@ -6,7 +6,7 @@ from typing import Any, Sequence
 
 import torch
 
-from benchrep.architecture.models.contracts import (
+from benchrep.interfaces.contracts import (
     AutoencoderPredictionOutput,
     VAEPredictionOutput,
 )

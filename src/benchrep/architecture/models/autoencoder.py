@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 
-import lightning as L
 import torch
 from torch import nn
 
-from benchrep.architecture.models.contracts import (
+from benchrep.interfaces.models import BenchRepAutoencoderModel
+from benchrep.interfaces.contracts import (
     AutoencoderBatch,
     AutoencoderForwardOutput,
     AutoencoderPredictionOutput,
@@ -16,7 +16,7 @@ from benchrep.architecture.encoders.base import BaseEncoder
 from benchrep.architecture.losses.base import LossTerm
 
 
-class Autoencoder(L.LightningModule):
+class Autoencoder(BenchRepAutoencoderModel):
     def __init__(
         self,
         encoder: BaseEncoder,

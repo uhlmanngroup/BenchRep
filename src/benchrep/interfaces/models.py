@@ -1,25 +1,31 @@
 from __future__ import annotations
 
-from typing import Any, Protocol, TypeVar, runtime_checkable
+from abc import ABC, abstractmethod
+from typing import Any
 
-from benchrep.architecture.models import (
+import lightning as L
+
+from benchrep.interfaces.contracts import (
     AutoencoderPredictionOutput,
     VAEPredictionOutput,
 )
 
-PredictionOutputT = TypeVar("PredictionOutputT", covariant=True)
 
-@runtime_checkable
-class BenchRepPredictor(Protocol[PredictionOutputT]):
-    """Object whose prediction step returns a BenchRep-compatible output."""
-
+class BenchRepAutoencoderModel(L.LightningModule, ABC):
+    @abstractmethod
     def predict_step(
             self,
             batch: Any,
             batch_idx: int,
-    ) -> PredictionOutputT:
-        ...
+    ) -> AutoencoderPredictionOutput:
+        raise NotImplementedError
 
 
-AutoencoderPredictor = BenchRepPredictor[AutoencoderPredictionOutput]
-VAEPredictor = BenchRepPredictor[VAEPredictionOutput]
+class BenchRepVAEModel(L.LightningModule, ABC):
+    @abstractmethod
+    def predict_step(
+            self,
+            batch: Any,
+            batch_idx: int,
+    ) -> VAEPredictionOutput:
+        raise NotImplementedError

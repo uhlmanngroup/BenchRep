@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 
-import lightning as L
 import torch
 from torch import nn
 
-from benchrep.architecture.models.contracts import (
+from benchrep.interfaces.models import BenchRepVAEModel
+from benchrep.interfaces.contracts import (
     AutoencoderBatch,
     VAEForwardOutput,
     VAEPredictionOutput,
@@ -17,7 +17,7 @@ from benchrep.architecture.heads.variational import GaussianVariationalHead
 from benchrep.architecture.losses.base import LossTerm
 
 
-class VAE(L.LightningModule):
+class VAE(BenchRepVAEModel):
     """Standard Gaussian variational autoencoder.
 
     The model follows the standard VAE structure and uses the Autoencoder

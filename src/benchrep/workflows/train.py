@@ -20,9 +20,14 @@ from benchrep.records import (
 )
 from benchrep.interfaces.validation import validate_external_model
 from benchrep.interfaces.model_families import (
+    SupportedModel,
     ModelFamilySpec,
     AUTOENCODER_FAMILY,
     VAE_FAMILY,
+)
+from benchrep.interfaces.models import (
+    BenchRepAutoencoderModel,
+    BenchRepVAEModel,
 )
 from benchrep.assembly import load_yaml
 from benchrep.assembly.schemas import parse_training_config, TrainingConfig
@@ -34,7 +39,7 @@ from benchrep.assembly.register_builtins import register_builtins
 class TrainingWorkflowResult:
     config: TrainingConfig
     run_context: RunContext
-    model: L.LightningModule
+    model: SupportedModel
     datamodule: L.LightningDataModule
     trainer: L.Trainer
     checkpoint_callback: ModelCheckpoint
@@ -45,7 +50,7 @@ class TrainingWorkflowResult:
 # Model-specific wrappers
 def train_ae(
         config_path: Path | str,
-        model: L.LightningModule | None = None,
+        model: BenchRepAutoencoderModel | None = None,
         datamodule: L.LightningDataModule | None = None,
 ) -> TrainingWorkflowResult:
     return _train(
@@ -58,7 +63,7 @@ def train_ae(
 
 def train_vae(
         config_path: Path | str,
-        model: L.LightningModule | None = None,
+        model: BenchRepVAEModel | None = None,
         datamodule: L.LightningDataModule | None = None,
 ) -> TrainingWorkflowResult:
     return _train(
@@ -72,7 +77,7 @@ def train_vae(
 def _train(
         model_family: ModelFamilySpec,
         config_path: Path | str,
-        model: L.LightningModule | None = None,
+        model: SupportedModel | None = None,
         datamodule: L.LightningDataModule | None = None,
 ) -> TrainingWorkflowResult:
     register_builtins()
@@ -99,7 +104,7 @@ def _train(
         if config.decoder is not None:
             model_name = f"{model_name}_{config.decoder.name}"
     else:
-        validate_external_model(model)
+        validate_external_model(model, model_family)
         model_name = f"{model_family.name}_manual_{type(model).__name__}"
 
     run_context = RunContext.create(

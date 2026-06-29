@@ -14,8 +14,10 @@ from benchrep.assembly.builders import (
     build_model,
     build_trainer,
 )
+from benchrep.interfaces.models import BenchRepAutoencoderModel, BenchRepVAEModel
 from benchrep.interfaces.validation import validate_external_model
 from benchrep.interfaces.model_families import (
+    SupportedModel,
     ModelFamilySpec,
     AUTOENCODER_FAMILY,
     VAE_FAMILY,
@@ -39,7 +41,7 @@ class PredictionWorkflowResult:
     run_spec: PredictionRunSpec
     run_context: RunContext
     datamodule: L.LightningDataModule
-    model: L.LightningModule
+    model: SupportedModel
     trainer: L.Trainer
     predictions: list[Any]
     export_paths: Any
@@ -50,7 +52,7 @@ class PredictionWorkflowResult:
 def predict_ae(
         config_path: Path | str,
         training_manifest_path: Path | str | None = None,
-        model: L.LightningModule | None = None,
+        model: BenchRepAutoencoderModel | None = None,
         datamodule: L.LightningDataModule | None = None,
 ) -> PredictionWorkflowResult:
     return _predict(
@@ -65,7 +67,7 @@ def predict_ae(
 def predict_vae(
         config_path: Path | str,
         training_manifest_path: Path | str | None = None,
-        model: L.LightningModule | None = None,
+        model: BenchRepVAEModel | None = None,
         datamodule: L.LightningDataModule | None = None,
 ) -> PredictionWorkflowResult:
     return _predict(
@@ -81,7 +83,7 @@ def _predict(
         model_family: ModelFamilySpec,
         config_path: Path | str,
         training_manifest_path: Path | str | None = None,
-        model: L.LightningModule | None = None,
+        model: SupportedModel | None = None,
         datamodule: L.LightningDataModule | None = None,
 ) -> PredictionWorkflowResult:
     register_builtins()
@@ -108,7 +110,7 @@ def _predict(
         assert run_spec.training_config.model is not None
         model_name = f"{run_spec.training_config.model.name}"
     else:
-        validate_external_model(model)
+        validate_external_model(model, model_family)
         model_name = f"{model_family.name}_manual_{type(model).__name__}"
 
     run_context = RunContext.create(
