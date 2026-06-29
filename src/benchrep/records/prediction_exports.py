@@ -1,16 +1,23 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 import torch
 
+from benchrep.architecture.models.contracts import (
+    AutoencoderPredictionOutput,
+    VAEPredictionOutput,
+)
 from benchrep.assembly.resolvers.prediction_config_resolver import PredictionExportSpec
 from benchrep.records.anndata_io import (
     package_matrix_as_anndata,
     write_h5ad,
 )
+
+
+PredictionOutput = AutoencoderPredictionOutput | VAEPredictionOutput
 
 
 @dataclass(frozen=True)
@@ -37,14 +44,14 @@ class ReconstructionExportPaths:
 
 def export_prediction_outputs(
     *,
-    predictions: list[dict[str, Any]],
+    predictions: Sequence[PredictionOutput],
     export_spec: PredictionExportSpec,
     embedding_dir: Path,
     reconstruction_dir: Path,
 ) -> PredictionExportPaths:
     """Export prediction outputs returned by ``Trainer.predict``.
 
-    This function consumes the batch-level dictionaries returned by model
+    This function consumes the batch-level data objects returned by model
     ``predict_step`` methods and writes the requested prediction artifacts to the
     export directories provided by the caller.
 
@@ -59,7 +66,7 @@ def export_prediction_outputs(
     function returns the concrete file paths it wrote so callers can log them,
     test them, or include them in manifests.
     """
-    _validate_prediction_batches(predictions)
+    _validate_prediction_outputs(predictions)
 
     exported_embeddings_path_and_keys = None
     exported_reconstruction_paths = None
@@ -88,23 +95,22 @@ def export_prediction_outputs(
     )
 
 
-def _validate_prediction_batches(predictions: list[dict[str, Any]]) -> None:
+def _validate_prediction_outputs(predictions: Sequence[PredictionOutput]) -> None:
     if not predictions:
         raise ValueError("Cannot export prediction outputs because no predictions were returned.")
 
     for batch_idx, batch in enumerate(predictions):
-        if not isinstance(batch, dict):
+        if not isinstance(batch, PredictionOutput):
             raise TypeError(
                 "Prediction export requires model.predict_step() to return a "
-                "dictionary of named outputs, e.g. "
-                "{'embedding': tensor, 'reconstruction': tensor}. "
+                "BenchRep prediction-output dataclass, "
                 f"Prediction batch {batch_idx} has type {type(batch).__name__}."
             )
 
 
 def _export_embeddings(
     *,
-    predictions: list[dict[str, Any]],
+    predictions: Sequence[PredictionOutput],
     export_spec: PredictionExportSpec,
     output_dir: Path,
 ) -> EmbeddingExportPathAndKeys:
@@ -122,8 +128,8 @@ def _export_embeddings(
 
     Returns
     -------
-    Path
-        Path to the written ``embeddings.h5ad`` file.
+    EmbeddingExportPathAndKeys
+        Paths and resolved embedding-key metadata for the written embedding export.
     """
     embedding_keys = _resolve_embedding_keys(
         predictions=predictions,
@@ -213,7 +219,7 @@ def _export_embeddings(
 
 def _resolve_embedding_keys(
     *,
-    predictions: list[dict[str, Any]],
+    predictions: Sequence[PredictionOutput],
     export_spec: PredictionExportSpec,
 ) -> list[str]:
     requested_keys = export_spec.embeddings.keys
@@ -227,13 +233,13 @@ def _resolve_embedding_keys(
 
     missing_keys = [
         key for key in requested_keys
-        if key not in first_batch
+        if not _has_prediction_value(first_batch, key)
     ]
 
     if missing_keys:
         raise KeyError(
             "Embedding export requested keys that are not present in prediction "
-            f"outputs: {missing_keys}. Available keys: {tuple(first_batch.keys())}."
+            f"outputs: {missing_keys}. Available keys: {_available_prediction_keys(first_batch)}."
         )
 
     return list(requested_keys)
@@ -261,7 +267,7 @@ def _resolve_primary_embedding_key(
     return primary_key
 
 
-def _find_embedding_like_keys(first_prediction: dict[str, Any]) -> list[str]:
+def _find_embedding_like_keys(first_batch: PredictionOutput) -> list[str]:
     """Find recognized embedding-like outputs in one prediction batch.
 
     This helper is used for ``exports.mode='all'`` / ``embeddings.keys='all'``.
@@ -284,10 +290,10 @@ def _find_embedding_like_keys(first_prediction: dict[str, Any]) -> list[str]:
     embedding_keys = []
 
     for key in recognized_embedding_keys:
-        if key not in first_prediction:
+        if not _has_prediction_value(first_batch, key):
             continue
 
-        value = first_prediction[key]
+        value = getattr(first_batch, key)
 
         if isinstance(value, torch.Tensor) and value.ndim == 2:
             embedding_keys.append(key)
@@ -297,7 +303,7 @@ def _find_embedding_like_keys(first_prediction: dict[str, Any]) -> list[str]:
             "Could not find any recognized embedding outputs for export. Expected "
             "at least one 2D tensor under one of the recognized keys "
             f"{recognized_embedding_keys}. Available keys: "
-            f"{tuple(first_prediction.keys())}."
+            f"{_available_prediction_keys(first_batch)}."
         )
 
     return embedding_keys
@@ -305,22 +311,22 @@ def _find_embedding_like_keys(first_prediction: dict[str, Any]) -> list[str]:
 
 def _concat_optional_batch_values(
     *,
-    predictions: list[dict[str, Any]],
+    predictions: Sequence[PredictionOutput],
     key: str,
 ) -> list[Any] | None:
-    if key not in predictions[0]:
+    if not _has_prediction_value(predictions[0], key):
         return None
 
     values: list[Any] = []
 
     for batch_idx, batch in enumerate(predictions):
-        if key not in batch:
+        if not _has_prediction_value(batch, key):
             raise KeyError(
                 f"Prediction key {key!r} is present in the first batch but missing "
                 f"from batch {batch_idx}."
             )
 
-        value = batch[key]
+        value = getattr(batch, key)
 
         if isinstance(value, torch.Tensor):
             values.extend(value.detach().cpu().tolist())
@@ -337,21 +343,21 @@ def _concat_optional_batch_values(
 
 def _concat_optional_metadata(
     *,
-    predictions: list[dict[str, Any]],
+    predictions: Sequence[PredictionOutput],
 ) -> dict[str, list[Any]] | None:
-    if "metadata" not in predictions[0]:
+    if not _has_prediction_value(predictions[0], "metadata"):
         return None
 
     merged_metadata: dict[str, list[Any]] = {}
 
     for batch_idx, batch in enumerate(predictions):
-        if "metadata" not in batch:
+        if not _has_prediction_value(batch, "metadata"):
             raise KeyError(
                 "'metadata' is present in the first prediction batch but missing "
                 f"from batch {batch_idx}."
             )
 
-        metadata = batch["metadata"]
+        metadata = getattr(batch, "metadata")
 
         if not isinstance(metadata, dict):
             raise TypeError(
@@ -418,7 +424,7 @@ def _select_reconstruction_indices(
 
 def _export_reconstructions(
     *,
-    predictions: list[dict[str, Any]],
+    predictions: Sequence[PredictionOutput],
     export_spec: PredictionExportSpec,
     output_dir: Path,
 ) -> ReconstructionExportPaths:
@@ -450,11 +456,11 @@ def _export_reconstructions(
     tensors_to_export: dict[str, torch.Tensor] = {}
 
     if recon_spec.include_input:
-        if "input" not in predictions[0]:
+        if not _has_prediction_value(predictions[0], "input"):
             raise KeyError(
                 "Reconstruction export requested include_input=True, but prediction "
                 f"outputs do not contain key 'input'. Available keys: "
-                f"{tuple(predictions[0].keys())}."
+                f"{_available_prediction_keys(predictions[0])}."
             )
 
         tensors_to_export["input"] = _concat_tensor_batches(
@@ -463,11 +469,11 @@ def _export_reconstructions(
         )
 
     if recon_spec.include_prediction:
-        if "reconstruction" not in predictions[0]:
+        if not _has_prediction_value(predictions[0], "reconstruction"):
             raise KeyError(
                 "Reconstruction export requested include_prediction=True, but prediction "
                 "outputs do not contain key 'reconstruction'. Available keys: "
-                f"{tuple(predictions[0].keys())}."
+                f"{_available_prediction_keys(predictions[0])}."
             )
 
         tensors_to_export["reconstruction"] = _concat_tensor_batches(
@@ -564,19 +570,19 @@ def _export_reconstructions(
 
 def _concat_tensor_batches(
     *,
-    predictions: list[dict[str, Any]],
+    predictions: Sequence[PredictionOutput],
     key: str,
 ) -> torch.Tensor:
     tensors = []
 
     for batch_idx, batch in enumerate(predictions):
-        if key not in batch:
+        if not _has_prediction_value(batch, key):
             raise KeyError(
                 f"Prediction batch {batch_idx} does not contain key {key!r}. "
-                f"Available keys: {tuple(batch.keys())}."
+                f"Available keys: {_available_prediction_keys(batch)}."
             )
 
-        value = batch[key]
+        value = getattr(batch, key)
 
         if not isinstance(value, torch.Tensor):
             raise TypeError(
@@ -587,3 +593,22 @@ def _concat_tensor_batches(
         tensors.append(value.detach().cpu())
 
     return torch.cat(tensors, dim=0)
+
+
+def _prediction_field_names(prediction: PredictionOutput) -> tuple[str, ...]:
+    return tuple(field.name for field in fields(prediction))
+
+
+def _has_prediction_value(prediction: PredictionOutput, key: str) -> bool:
+    if key not in _prediction_field_names(prediction):
+        return False
+
+    return getattr(prediction, key) is not None
+
+
+def _available_prediction_keys(prediction: PredictionOutput) -> tuple[str, ...]:
+    return tuple(
+        key
+        for key in _prediction_field_names(prediction)
+        if _has_prediction_value(prediction, key)
+    )
