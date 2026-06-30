@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TypeAlias, NotRequired
+from typing import TypeAlias, Literal, NotRequired
 from typing_extensions import TypedDict
 
 import torch
 
-
+ContractKind: TypeAlias = Literal["typeddict", "dataclass"]
 PredictionObsValue: TypeAlias = torch.Tensor | list[int] | list[str]
 PredictionMetadata: TypeAlias = dict[str, PredictionObsValue]
 

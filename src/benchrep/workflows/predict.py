@@ -221,10 +221,10 @@ def _predict(
 
     first_prediction = predictions[0]
 
-    if not isinstance(first_prediction, model_family.prediction_output_type):
+    if not isinstance(first_prediction, model_family.expected_prediction_output_type):
         raise TypeError(
             f"Expected `predict_step()` to return "
-            f"`{model_family.prediction_output_type.__name__}` for model family "
+            f"`{model_family.expected_prediction_output_type.__name__}` for model family "
             f"`{model_family.name}`, but the first prediction batch returned "
             f"`{type(first_prediction).__name__}`."
         )
