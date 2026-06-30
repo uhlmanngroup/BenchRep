@@ -10,7 +10,10 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 import torch
 
 from benchrep.runtime.run_context import RunContext
-from benchrep.runtime.train_run_validation import validate_train_preconditions
+from benchrep.runtime.train_run_validation import (
+    validate_train_preconditions,
+    format_external_datamodule_training_failure_message,
+)
 from benchrep.runtime.utils import CompatibilityPolicy
 from benchrep.records import (
     save_config_records,
@@ -184,10 +187,9 @@ def _train(
     assert model is not None
     assert datamodule is not None
 
-    validate_train_preconditions(
+    precondition_result = validate_train_preconditions(
         model_family=model_family,
         model=model,
-        datamodule=datamodule,
         model_is_external=model_is_external,
         datamodule_is_external=datamodule_is_external,
         compatibility_policy=compatibility_policy,
@@ -206,8 +208,25 @@ def _train(
 
     run_log.info("Starting training...")
 
-    with capture_console_streams(log_out_dir=run_context.log_dir, capture_stdout=False):
-        trainer.fit(model, datamodule=datamodule)
+    try:
+        with capture_console_streams(log_out_dir=run_context.log_dir, capture_stdout=False):
+            trainer.fit(model, datamodule=datamodule)
+
+    except Exception as exc:
+        if precondition_result.should_wrap_training_errors_with_batch_hint:
+            run_log.error(
+                "Training failed while using an external datamodule with an internal model.",
+                exc_info=True,
+            )
+
+            raise RuntimeError(
+                format_external_datamodule_training_failure_message(
+                    precondition_result=precondition_result,
+                    original_error=exc,
+                )
+            ) from exc
+
+        raise
 
     run_log.info("Finished training")
     completed_at = datetime.now().isoformat(timespec="seconds")
