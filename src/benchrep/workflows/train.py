@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 
 import lightning as L
 from lightning.pytorch.callbacks import ModelCheckpoint
@@ -18,7 +19,10 @@ from benchrep.records import (
     export_torchview_graph,
     infer_dummy_input_size,
 )
-from benchrep.interfaces.validation import validate_external_model
+from benchrep.interfaces.validation import (
+    validate_external_model,
+    sanity_check_predict_step_return_annotation,
+)
 from benchrep.interfaces.model_families import (
     SupportedModel,
     ModelFamilySpec,
@@ -47,17 +51,22 @@ class TrainingWorkflowResult:
     torchview_graph_path: Path | None
 
 
+DownstreamCompatibilityPolicy = Literal["error", "warn"]
+
+
 # Model-specific wrappers
 def train_ae(
         config_path: Path | str,
         model: BenchRepAutoencoderModel | None = None,
         datamodule: L.LightningDataModule | None = None,
+        downstream_compatibility_policy: DownstreamCompatibilityPolicy = "error",
 ) -> TrainingWorkflowResult:
     return _train(
         model_family=AUTOENCODER_FAMILY,
         config_path=config_path,
         model=model,
         datamodule=datamodule,
+        downstream_compatibility_policy=downstream_compatibility_policy,
     )
 
 
@@ -65,12 +74,14 @@ def train_vae(
         config_path: Path | str,
         model: BenchRepVAEModel | None = None,
         datamodule: L.LightningDataModule | None = None,
+        compatibility_policy: DownstreamCompatibilityPolicy = "error",
 ) -> TrainingWorkflowResult:
     return _train(
         model_family=VAE_FAMILY,
         config_path=config_path,
         model=model,
         datamodule=datamodule,
+        downstream_compatibility_policy=compatibility_policy,
     )
 
 
@@ -79,8 +90,14 @@ def _train(
         config_path: Path | str,
         model: SupportedModel | None = None,
         datamodule: L.LightningDataModule | None = None,
+        downstream_compatibility_policy: DownstreamCompatibilityPolicy = "error"
 ) -> TrainingWorkflowResult:
     register_builtins()
+
+    if downstream_compatibility_policy not in {"error", "warn"}:
+        raise ValueError(
+            "downstream_compatibility_policy must be 'error' or 'warn'."
+        )
 
     # Override flags
     manual_model_provided = model is not None
@@ -128,6 +145,32 @@ def _train(
         resolved_config=config,
         config_out_dir=run_context.config_dir,
     )
+
+    if manual_model_provided:
+        try:
+            sanity_check_predict_step_return_annotation(
+                model=model,
+                model_family=model_family,
+                check_field_types=True,
+            )
+
+            run_log.info(
+                "Training-time prediction-output annotation sanity check passed; "
+                "this only checks declared annotations and does not guarantee that "
+                "prediction/export/evaluation will succeed. Runtime compatibility "
+                "will be checked during prediction."
+            )
+
+        except TypeError as exc:
+            if downstream_compatibility_policy == "error":
+                raise
+
+            run_log.warning(
+                "Training-time prediction-output annotation sanity check failed; "
+                "continuing because downstream_compatibility_policy='warn'. "
+                "BenchRep prediction/export/evaluation may fail later. Reason: %s",
+                exc,
+            )
 
     # Enforce reproducibility
     L.seed_everything(
