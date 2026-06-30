@@ -15,7 +15,7 @@ from benchrep.assembly.builders import (
     build_trainer,
 )
 from benchrep.interfaces.models import BenchRepAutoencoderModel, BenchRepVAEModel
-from benchrep.interfaces.validation import validate_external_model
+from benchrep.interfaces.compatibility import validate_external_model
 from benchrep.interfaces.model_families import (
     SupportedModel,
     ModelFamilySpec,

@@ -3,14 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Literal
 
 import lightning as L
 from lightning.pytorch.callbacks import ModelCheckpoint
 
 import torch
 
-from benchrep.runtime import RunContext
+from benchrep.runtime.run_context import RunContext
+from benchrep.runtime.train_run_validation import validate_train_preconditions
+from benchrep.runtime.utils import CompatibilityPolicy
 from benchrep.records import (
     save_config_records,
     capture_console_streams,
@@ -18,10 +19,6 @@ from benchrep.records import (
     write_training_manifest,
     export_torchview_graph,
     infer_dummy_input_size,
-)
-from benchrep.interfaces.validation import (
-    validate_external_model,
-    sanity_check_predict_step_return_annotation,
 )
 from benchrep.interfaces.model_families import (
     SupportedModel,
@@ -51,22 +48,19 @@ class TrainingWorkflowResult:
     torchview_graph_path: Path | None
 
 
-DownstreamCompatibilityPolicy = Literal["error", "warn"]
-
-
 # Model-specific wrappers
 def train_ae(
         config_path: Path | str,
         model: BenchRepAutoencoderModel | None = None,
         datamodule: L.LightningDataModule | None = None,
-        downstream_compatibility_policy: DownstreamCompatibilityPolicy = "error",
+        compatibility_policy: CompatibilityPolicy = "error",
 ) -> TrainingWorkflowResult:
     return _train(
         model_family=AUTOENCODER_FAMILY,
         config_path=config_path,
         model=model,
         datamodule=datamodule,
-        downstream_compatibility_policy=downstream_compatibility_policy,
+        compatibility_policy=compatibility_policy,
     )
 
 
@@ -74,14 +68,14 @@ def train_vae(
         config_path: Path | str,
         model: BenchRepVAEModel | None = None,
         datamodule: L.LightningDataModule | None = None,
-        compatibility_policy: DownstreamCompatibilityPolicy = "error",
+        compatibility_policy: CompatibilityPolicy = "error",
 ) -> TrainingWorkflowResult:
     return _train(
         model_family=VAE_FAMILY,
         config_path=config_path,
         model=model,
         datamodule=datamodule,
-        downstream_compatibility_policy=compatibility_policy,
+        compatibility_policy=compatibility_policy,
     )
 
 
@@ -90,29 +84,29 @@ def _train(
         config_path: Path | str,
         model: SupportedModel | None = None,
         datamodule: L.LightningDataModule | None = None,
-        downstream_compatibility_policy: DownstreamCompatibilityPolicy = "error"
+        compatibility_policy: CompatibilityPolicy = "error"
 ) -> TrainingWorkflowResult:
     register_builtins()
 
-    if downstream_compatibility_policy not in {"error", "warn"}:
+    if compatibility_policy not in {"error", "warn"}:
         raise ValueError(
-            "downstream_compatibility_policy must be 'error' or 'warn'."
+            "compatibility_policy must be 'error' or 'warn'."
         )
 
     # Override flags
-    manual_model_provided = model is not None
-    manual_datamodule_provided = datamodule is not None
+    model_is_external = model is not None
+    datamodule_is_external = datamodule is not None
 
     # Parse config
     raw_config_path = Path(config_path).resolve()
     raw_config = load_yaml(raw_config_path)
     config = parse_training_config(
         raw_config,
-        model_overridden=manual_model_provided,
-        datamodule_overridden=manual_datamodule_provided,
+        model_overridden=model_is_external,
+        datamodule_overridden=datamodule_is_external,
     )
 
-    if not manual_model_provided:
+    if not model_is_external:
         assert config.model is not None
         assert config.encoder is not None
 
@@ -121,8 +115,7 @@ def _train(
         if config.decoder is not None:
             model_name = f"{model_name}_{config.decoder.name}"
     else:
-        validate_external_model(model, model_family)
-        model_name = f"{model_family.name}_manual_{type(model).__name__}"
+        model_name = f"{model_family.name}_external_{type(model).__name__}"
 
     run_context = RunContext.create(
         output_root=config.run.output_root,
@@ -146,32 +139,6 @@ def _train(
         config_out_dir=run_context.config_dir,
     )
 
-    if manual_model_provided:
-        try:
-            sanity_check_predict_step_return_annotation(
-                model=model,
-                model_family=model_family,
-                check_field_types=True,
-            )
-
-            run_log.info(
-                "Training-time prediction-output annotation sanity check passed; "
-                "this only checks declared annotations and does not guarantee that "
-                "prediction/export/evaluation will succeed. Runtime compatibility "
-                "will be checked during prediction."
-            )
-
-        except TypeError as exc:
-            if downstream_compatibility_policy == "error":
-                raise
-
-            run_log.warning(
-                "Training-time prediction-output annotation sanity check failed; "
-                "continuing because downstream_compatibility_policy='warn'. "
-                "BenchRep prediction/export/evaluation may fail later. Reason: %s",
-                exc,
-            )
-
     # Enforce reproducibility
     L.seed_everything(
         config.reproducibility.seed,
@@ -188,7 +155,7 @@ def _train(
             config.reproducibility.float32_matmul_precision,
         )
 
-    if not manual_datamodule_provided:
+    if not datamodule_is_external:
         # Avoid confusing type checker...
         dataset_config = config.dataset
         datamodule_config = config.datamodule
@@ -204,14 +171,27 @@ def _train(
             split=config.data.split,
         )
     else:
-        run_log.info("Manual datamodule was provided; config.dataset and config.datamodule were ignored.")
+        run_log.info("External datamodule was provided; config.dataset and config.datamodule were ignored.")
 
-    if not manual_model_provided:
+    if not model_is_external:
         model = build_model(config=config)
     else:
         run_log.info(
-            "Manual model was provided; config.model/encoder/decoder/losses/optimizer were ignored."
+            "External model was provided; config.model/encoder/decoder/losses/optimizer were ignored."
         )
+
+    # Preflight check
+    assert model is not None
+    assert datamodule is not None
+
+    validate_train_preconditions(
+        model_family=model_family,
+        model=model,
+        datamodule=datamodule,
+        model_is_external=model_is_external,
+        datamodule_is_external=datamodule_is_external,
+        compatibility_policy=compatibility_policy,
+    )
 
     trainer, checkpoint_callback = build_trainer(
         trainer_config=config.trainer,
@@ -274,10 +254,10 @@ def _train(
         created_at=created_at,
         completed_at=completed_at,
         status="completed",
-        model_source="external_object" if manual_model_provided else "config",
+        model_source="external_object" if model_is_external else "config",
         model_class_name=type(model).__name__,
         datamodule_source=(
-            "external_object" if manual_datamodule_provided else "config"
+            "external_object" if datamodule_is_external else "config"
         ),
         datamodule_class_name=type(datamodule).__name__,
     )

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 import lightning as L
 from torch import Generator
 from torch.utils.data import DataLoader, Dataset, random_split
