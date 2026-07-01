@@ -205,12 +205,14 @@ def audit_predict_outputs(
             audit_items=audit_items,
             name="input config",
             path=input_config_path,
+            expected_suffixes={".yaml", ".yml"},
         )
 
     audit_existing_file(
         audit_items=audit_items,
         name="resolved config",
         path=resolved_config_path,
+        expected_suffixes={".yaml", ".yml"},
     )
 
     # -------------------------
@@ -531,7 +533,7 @@ def audit_predict_outputs(
                 )
             )
 
-        if resolved_primary_key is not None and resolved_primary_key in resolved_keys:
+        if isinstance(resolved_keys, list) and resolved_primary_key in resolved_keys:
             audit_items.append(
                 AuditItem(
                     name="primary embedding key",
@@ -623,7 +625,7 @@ def audit_predict_outputs(
                 audit_items=audit_items,
                 name="reconstruction prediction artifact",
                 path=getattr(reconstruction_paths, "reconstruction_path", None),
-                expected_suffixes={".pt", ".pth", ".npy", ".npz"},
+                expected_suffixes={".pt"},
             )
         else:
             audit_items.append(

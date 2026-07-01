@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import lightning as L
 
-from typing import Any
+from typing import Any, Literal
 from pathlib import Path
 
 from benchrep.runtime.utils import (
@@ -146,6 +146,10 @@ def audit_train_outputs(
     training_manifest_path: Path | str,
     torchview_requested: bool,
     torchview_graph_path: Path | str | None,
+    model_source: Literal["config", "external_object"],
+    model_class_name: str,
+    datamodule_source: Literal["config", "external_object"],
+    datamodule_class_name: str,
 ) -> None:
     audit_items: list[AuditItem] = []
 
@@ -193,15 +197,29 @@ def audit_train_outputs(
 
     if manifest_path_is_valid:
         try:
-            training_manifest = load_yaml(training_manifest_path)
+            loaded_manifest = load_yaml(training_manifest_path)
 
-            audit_items.append(
-                AuditItem(
-                    name="training manifest load",
-                    status="ok",
-                    message=f"loaded YAML mapping from '{training_manifest_path}'",
+            if not isinstance(loaded_manifest, dict):
+                audit_items.append(
+                    AuditItem(
+                        name="training manifest load",
+                        status="error",
+                        message=(
+                            f"loaded YAML object from '{training_manifest_path}', "
+                            f"but expected a mapping and got "
+                            f"{type(loaded_manifest).__name__}"
+                        ),
+                    )
                 )
-            )
+            else:
+                training_manifest = loaded_manifest
+                audit_items.append(
+                    AuditItem(
+                        name="training manifest load",
+                        status="ok",
+                        message=f"loaded YAML mapping from '{training_manifest_path}'",
+                    )
+                )
 
         except Exception as exc:
             audit_items.append(
@@ -300,6 +318,43 @@ def audit_train_outputs(
                         ),
                     )
                 )
+
+    # -------------------------
+    # Training provenance
+    # -------------------------
+    audit_items.append(
+        AuditItem(
+            name="model provenance",
+            status="ok" if model_source == "config" else "warning",
+            message=(
+                f"model_source={model_source!r}, model_class={model_class_name!r}"
+                if model_source == "config"
+                else (
+                    f"model_source={model_source!r}, model_class={model_class_name!r}; "
+                    "training used an externally supplied Python model object "
+                    "and is not fully reconstructable from config alone"
+                )
+            ),
+        )
+    )
+
+    audit_items.append(
+        AuditItem(
+            name="datamodule provenance",
+            status="ok" if datamodule_source == "config" else "warning",
+            message=(
+                f"datamodule_source={datamodule_source!r}, "
+                f"datamodule_class={datamodule_class_name!r}"
+                if datamodule_source == "config"
+                else (
+                    f"datamodule_source={datamodule_source!r}, "
+                    f"datamodule_class={datamodule_class_name!r}; "
+                    "training used an externally supplied Python datamodule object "
+                    "and is not fully reconstructable from config alone"
+                )
+            ),
+        )
+    )
 
     # -------------------------
     # Checkpoints

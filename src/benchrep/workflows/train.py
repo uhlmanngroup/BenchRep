@@ -295,6 +295,10 @@ def _train(
         training_manifest_path=manifest_path,
         torchview_requested=train_config.inspection.torchview.enabled,
         torchview_graph_path=torchview_graph_path,
+        model_source="external_object" if model_is_external else "config",
+        model_class_name=type(model).__name__,
+        datamodule_source="external_object" if datamodule_is_external else "config",
+        datamodule_class_name=type(datamodule).__name__,
     )
 
     return TrainingWorkflowResult(
