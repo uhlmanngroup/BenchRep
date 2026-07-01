@@ -129,9 +129,9 @@ def audit_existing_file(
     audit_items: list[AuditItem],
     name: str,
     path: Path | str,
-    require_yaml_suffix: bool = False,
+    expected_suffixes: set[str] | None = None,
 ) -> bool:
-    """Record whether an expected output file exists and passes basic checks."""
+    """Record whether an expected output file exists and has an expected suffix."""
     path = Path(path)
 
     if not path.exists():
@@ -154,15 +154,23 @@ def audit_existing_file(
         )
         return False
 
-    if require_yaml_suffix and path.suffix.lower() not in {".yaml", ".yml"}:
-        audit_items.append(
-            AuditItem(
-                name=name,
-                status="error",
-                message=f"path does not have a YAML suffix: '{path}'",
+    if expected_suffixes is not None:
+        normalized_suffixes = {suffix.lower() for suffix in expected_suffixes}
+        actual_suffix = path.suffix.lower()
+
+        if actual_suffix not in normalized_suffixes:
+            expected = ", ".join(sorted(normalized_suffixes))
+            audit_items.append(
+                AuditItem(
+                    name=name,
+                    status="error",
+                    message=(
+                        f"path has suffix {actual_suffix!r}, "
+                        f"expected one of {{{expected}}}: '{path}'"
+                    ),
+                )
             )
-        )
-        return False
+            return False
 
     audit_items.append(
         AuditItem(
@@ -211,3 +219,38 @@ def audit_existing_dir(
         )
     )
     return True
+
+
+def log_audit_summary(
+    stage: Literal["training", "prediction"],
+    audit_items: list[AuditItem],
+) -> None:
+    run_log = get_run_logger()
+
+    run_log.info("")
+    run_log.info("=" * 53)
+    run_log.info(f"{stage.capitalize()} output audit summary")
+    run_log.info("=" * 53)
+
+    n_errors = sum(item.status == "error" for item in audit_items)
+    n_warnings = sum(item.status == "warning" for item in audit_items)
+
+    run_log.info(
+        f"{stage.capitalize()} output audit summary: %s error(s), %s warning(s).",
+        n_errors,
+        n_warnings,
+    )
+
+    run_log.info("")
+
+    for item in audit_items:
+        message = f"{stage.capitalize()} output audit: %s: %s" % (item.name, item.message)
+
+        if item.status == "ok":
+            run_log.info(message)
+        elif item.status == "warning":
+            run_log.warning(message)
+        elif item.status == "error":
+            run_log.error(message)
+        elif item.status == "skipped":
+            run_log.info(message)

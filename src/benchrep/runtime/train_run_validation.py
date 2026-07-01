@@ -5,7 +5,6 @@ import lightning as L
 from typing import Any
 from pathlib import Path
 
-from benchrep.records import get_run_logger
 from benchrep.runtime.utils import (
     CompatibilityPolicy,
     PreconditionResult,
@@ -13,6 +12,7 @@ from benchrep.runtime.utils import (
     run_compatibility_check,
     audit_existing_file,
     audit_existing_dir,
+    log_audit_summary,
 )
 from benchrep.runtime.run_context import RunContext
 from benchrep.interfaces.model_families import ModelFamilySpec
@@ -147,8 +147,6 @@ def audit_train_outputs(
     torchview_requested: bool,
     torchview_graph_path: Path | str | None,
 ) -> None:
-    run_log = get_run_logger()
-
     audit_items: list[AuditItem] = []
 
     training_manifest_path = Path(training_manifest_path)
@@ -173,12 +171,14 @@ def audit_train_outputs(
             audit_items=audit_items,
             name="input config",
             path=input_config_path,
+            expected_suffixes={".yaml", ".yml"},
         )
 
     audit_existing_file(
         audit_items=audit_items,
         name="resolved config",
         path=resolved_config_path,
+        expected_suffixes={".yaml", ".yml"},
     )
 
     # -------------------------
@@ -188,7 +188,7 @@ def audit_train_outputs(
         audit_items=audit_items,
         name="training manifest",
         path=training_manifest_path,
-        require_yaml_suffix=True,
+        expected_suffixes={".yaml", ".yml"},
     )
 
     if manifest_path_is_valid:
@@ -493,31 +493,7 @@ def audit_train_outputs(
     # -------------------------
     # Final audit summary
     # -------------------------
-    run_log.info("")
-    run_log.info("=" * 51)
-    run_log.info("Training output audit summary")
-    run_log.info("=" * 51)
-
-
-    n_errors = sum(item.status == "error" for item in audit_items)
-    n_warnings = sum(item.status == "warning" for item in audit_items)
-
-    run_log.info(
-        "Training output audit summary: %s error(s), %s warning(s).",
-        n_errors,
-        n_warnings,
+    log_audit_summary(
+        stage="training",
+        audit_items=audit_items,
     )
-
-    run_log.info("")
-
-    for item in audit_items:
-        message = "Training output audit: %s: %s" % (item.name, item.message)
-
-        if item.status == "ok":
-            run_log.info(message)
-        elif item.status == "warning":
-            run_log.warning(message)
-        elif item.status == "error":
-            run_log.error(message)
-        elif item.status == "skipped":
-            run_log.info(message)

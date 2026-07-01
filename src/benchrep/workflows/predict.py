@@ -34,6 +34,7 @@ from benchrep.runtime import RunContext
 from benchrep.runtime.predict_run_validation import (
     validate_predict_contract_compatibility,
     validate_predict_source_inputs,
+    audit_predict_outputs,
 )
 from benchrep.runtime.utils import (
     CompatibilityPolicy,
@@ -196,7 +197,7 @@ def _predict(
     else:
         run_log.info("External datamodule was provided; config.dataset and config.datamodule were ignored.")
 
-    # Build or use model, then load checkpoint
+    # Build or use model
     if not model_is_external:
         assert run_spec.training_config.model is not None
         assert run_spec.training_config.encoder is not None
@@ -294,7 +295,7 @@ def _predict(
     if export_paths.embedding_export is not None:
         run_log.info(
             "Exported embedding artifact to: '%s'",
-            export_paths.embedding_export,
+            export_paths.embedding_export.embeddings_h5ad_path,
         )
 
     if export_paths.reconstruction_paths is not None:
@@ -332,6 +333,21 @@ def _predict(
     )
 
     run_log.info("Exported prediction manifest to: '%s'", manifest_path)
+
+    audit_predict_outputs(
+        run_context=run_context,
+        run_spec=run_spec,
+        model_family=model_family,
+        predictions=predictions,
+        export_paths=export_paths,
+        input_config_path=raw_pred_config_path,
+        resolved_config_path=run_context.config_dir / "resolved_config.yaml",
+        prediction_manifest_path=manifest_path,
+        model_source="external_object" if model_is_external else "config",
+        model_class_name=type(model).__name__,
+        datamodule_source="external_object" if datamodule_is_external else "config",
+        datamodule_class_name=type(datamodule).__name__,
+    )
 
     return PredictionWorkflowResult(
         config=pred_config,

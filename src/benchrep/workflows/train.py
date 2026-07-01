@@ -104,29 +104,29 @@ def _train(
     datamodule_is_external = datamodule is not None
 
     # Parse config
-    raw_config_path = Path(config_path).resolve()
-    raw_config = load_yaml(raw_config_path)
-    config = parse_training_config(
-        raw_config,
+    raw_train_config_path = Path(config_path).resolve()
+    raw_train_config = load_yaml(raw_train_config_path)
+    train_config = parse_training_config(
+        raw_train_config,
         model_overridden=model_is_external,
         datamodule_overridden=datamodule_is_external,
     )
 
     if not model_is_external:
-        assert config.model is not None
-        assert config.encoder is not None
+        assert train_config.model is not None
+        assert train_config.encoder is not None
 
         # Setup paths
-        model_name = f"{config.model.name}_{config.encoder.name}"
-        if config.decoder is not None:
-            model_name = f"{model_name}_{config.decoder.name}"
+        model_name = f"{train_config.model.name}_{train_config.encoder.name}"
+        if train_config.decoder is not None:
+            model_name = f"{model_name}_{train_config.decoder.name}"
     else:
         model_name = f"{model_family.name}_external_{type(model).__name__}"
 
     run_context = RunContext.create(
-        output_root=config.run.output_root,
-        stage=config.stage,
-        project_name=config.run.project_name,
+        output_root=train_config.run.output_root,
+        stage=train_config.stage,
+        project_name=train_config.run.project_name,
         model_name=model_name,
     )
 
@@ -135,36 +135,36 @@ def _train(
     # Initiate local run logger
     run_log = setup_run_logger(log_out_dir=run_context.log_dir)
 
-    run_log.info("Run initialized with config from: '%s'", raw_config_path)
-    run_log.info("Run outputs will be saved to: '%s'", run_context.output_dir)
+    run_log.info("Training run initialized with config from: '%s'", raw_train_config_path)
+    run_log.info("Training outputs will be saved to: '%s'", run_context.output_dir)
 
     # Bookkeeping --- config
     save_config_records(
-        original_config_path=raw_config_path,
-        resolved_config=config,
+        original_config_path=raw_train_config_path,
+        resolved_config=train_config,
         config_out_dir=run_context.config_dir,
     )
 
     # Enforce reproducibility
     L.seed_everything(
-        config.reproducibility.seed,
-        workers=config.reproducibility.seed_workers,
+        train_config.reproducibility.seed,
+        workers=train_config.reproducibility.seed_workers,
     )
-    run_log.info("Global seed set to %s", config.reproducibility.seed)
+    run_log.info("Global seed set to %s", train_config.reproducibility.seed)
 
-    if config.reproducibility.float32_matmul_precision is not None:
+    if train_config.reproducibility.float32_matmul_precision is not None:
         torch.set_float32_matmul_precision(
-            config.reproducibility.float32_matmul_precision
+            train_config.reproducibility.float32_matmul_precision
         )
         run_log.info(
             "float32 matmul precision set to '%s'",
-            config.reproducibility.float32_matmul_precision,
+            train_config.reproducibility.float32_matmul_precision,
         )
 
     if not datamodule_is_external:
         # Avoid confusing type checker...
-        dataset_config = config.dataset
-        datamodule_config = config.datamodule
+        dataset_config = train_config.dataset
+        datamodule_config = train_config.datamodule
 
         assert dataset_config is not None
         assert datamodule_config is not None
@@ -172,15 +172,15 @@ def _train(
         datamodule = build_datamodule(
             dataset_config=dataset_config,
             datamodule_config=datamodule_config,
-            seed=config.reproducibility.seed,
-            stage=config.stage,
-            split=config.data.split,
+            seed=train_config.reproducibility.seed,
+            stage=train_config.stage,
+            split=train_config.data.split,
         )
     else:
         run_log.info("External datamodule was provided; config.dataset and config.datamodule were ignored.")
 
     if not model_is_external:
-        model = build_model(config=config)
+        model = build_model(config=train_config)
     else:
         run_log.info(
             "External model was provided; config.model/encoder/decoder/losses/optimizer were ignored."
@@ -199,11 +199,11 @@ def _train(
     )
 
     trainer, checkpoint_callback = build_trainer(
-        trainer_config=config.trainer,
-        stage=config.stage,
+        trainer_config=train_config.trainer,
+        stage=train_config.stage,
         run_context=run_context,
-        logger_config=config.logger,
-        checkpoint_config=config.checkpointing,
+        logger_config=train_config.logger,
+        checkpoint_config=train_config.checkpointing,
     )
 
     if checkpoint_callback is None:
@@ -238,15 +238,15 @@ def _train(
     # Export torchview graph if possible
     torchview_graph_path = None
 
-    if config.inspection.torchview.enabled:
+    if train_config.inspection.torchview.enabled:
         try:
             dummy_input_size = infer_dummy_input_size(datamodule)
             torchview_graph_path = export_torchview_graph(
                 model=model,
                 input_size=dummy_input_size,
                 output_path=run_context.training_architecture_dir / "model_graph.png",
-                expand_nested=config.inspection.torchview.expand_nested,
-                depth=config.inspection.torchview.depth,
+                expand_nested=train_config.inspection.torchview.expand_nested,
+                depth=train_config.inspection.torchview.depth,
             )
 
             if torchview_graph_path is not None:
@@ -269,9 +269,9 @@ def _train(
     manifest_path = run_context.metadata_dir / "training_manifest.yaml"
     write_training_manifest(
         output_path=manifest_path,
-        config=config,
+        config=train_config,
         run_context=run_context,
-        input_config_path=raw_config_path,
+        input_config_path=raw_train_config_path,
         checkpoint_callback=checkpoint_callback,
         torchview_graph_path=torchview_graph_path,
         created_at=created_at,
@@ -289,16 +289,16 @@ def _train(
 
     audit_train_outputs(
         run_context=run_context,
-        input_config_path=raw_config_path,
+        input_config_path=raw_train_config_path,
         resolved_config_path=run_context.config_dir / "resolved_config.yaml",
         checkpoint_dir=run_context.training_checkpoint_dir,
         training_manifest_path=manifest_path,
-        torchview_requested=config.inspection.torchview.enabled,
+        torchview_requested=train_config.inspection.torchview.enabled,
         torchview_graph_path=torchview_graph_path,
     )
 
     return TrainingWorkflowResult(
-        config=config,
+        config=train_config,
         run_context=run_context,
         model=model,
         datamodule=datamodule,
