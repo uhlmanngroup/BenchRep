@@ -13,6 +13,7 @@ from benchrep.runtime.run_context import RunContext
 from benchrep.runtime.train_run_validation import (
     validate_train_preconditions,
     format_external_datamodule_training_failure_message,
+    audit_train_outputs,
 )
 from benchrep.runtime.utils import CompatibilityPolicy
 from benchrep.records import (
@@ -282,6 +283,16 @@ def _train(
     )
 
     run_log.info("Exported training manifest to: '%s'", manifest_path)
+
+    audit_train_outputs(
+        run_context=run_context,
+        input_config_path=raw_config_path,
+        resolved_config_path=run_context.config_dir / "resolved_config.yaml",
+        checkpoint_dir=run_context.training_checkpoint_dir,
+        training_manifest_path=manifest_path,
+        torchview_requested=config.inspection.torchview.enabled,
+        torchview_graph_path=torchview_graph_path,
+    )
 
     return TrainingWorkflowResult(
         config=config,
