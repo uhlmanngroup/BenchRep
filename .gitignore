@@ -29,3 +29,7 @@ scratch/
 
 # OS
 .DS_Store
+
+# Dependency/class graphs
+classes_BenchRep.png
+packages_BenchRep.png
