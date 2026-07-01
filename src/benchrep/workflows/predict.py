@@ -15,7 +15,6 @@ from benchrep.assembly.builders import (
     build_trainer,
 )
 from benchrep.interfaces.models import BenchRepAutoencoderModel, BenchRepVAEModel
-from benchrep.interfaces.compatibility import validate_external_model
 from benchrep.interfaces.model_families import (
     SupportedModel,
     ModelFamilySpec,
@@ -32,6 +31,14 @@ from benchrep.records import (
     write_prediction_manifest,
 )
 from benchrep.runtime import RunContext
+from benchrep.runtime.predict_run_validation import (
+    validate_predict_contract_compatibility,
+    validate_predict_source_inputs,
+)
+from benchrep.runtime.utils import (
+    CompatibilityPolicy,
+    format_external_datamodule_failure_message,
+)
 from benchrep.assembly.register_builtins import register_builtins
 
 
@@ -54,6 +61,7 @@ def predict_ae(
         training_manifest_path: Path | str | None = None,
         model: BenchRepAutoencoderModel | None = None,
         datamodule: L.LightningDataModule | None = None,
+        compatibility_policy: CompatibilityPolicy = "error",
 ) -> PredictionWorkflowResult:
     return _predict(
         model_family=AUTOENCODER_FAMILY,
@@ -61,6 +69,7 @@ def predict_ae(
         training_manifest_path=training_manifest_path,
         model=model,
         datamodule=datamodule,
+        compatibility_policy=compatibility_policy,
     )
 
 
@@ -69,6 +78,7 @@ def predict_vae(
         training_manifest_path: Path | str | None = None,
         model: BenchRepVAEModel | None = None,
         datamodule: L.LightningDataModule | None = None,
+        compatibility_policy: CompatibilityPolicy = "error",
 ) -> PredictionWorkflowResult:
     return _predict(
         model_family=VAE_FAMILY,
@@ -76,6 +86,7 @@ def predict_vae(
         training_manifest_path=training_manifest_path,
         model=model,
         datamodule=datamodule,
+        compatibility_policy=compatibility_policy,
     )
 
 
@@ -85,11 +96,17 @@ def _predict(
         training_manifest_path: Path | str | None = None,
         model: SupportedModel | None = None,
         datamodule: L.LightningDataModule | None = None,
+        compatibility_policy: CompatibilityPolicy = "error",
 ) -> PredictionWorkflowResult:
     register_builtins()
 
-    manual_model_provided = model is not None
-    manual_datamodule_provided = datamodule is not None
+    if compatibility_policy not in {"error", "warn"}:
+        raise ValueError(
+            "compatibility_policy must be 'error' or 'warn'."
+        )
+
+    model_is_external = model is not None
+    datamodule_is_external = datamodule is not None
 
     # Parse and resolve config
     raw_pred_config_path = Path(config_path).resolve()
@@ -101,17 +118,16 @@ def _predict(
     run_spec = resolve_prediction_config(
         prediction_config=pred_config,
         training_manifest_path_override=training_manifest_path,
-        model_overridden=manual_model_provided,
-        datamodule_overridden=manual_datamodule_provided,
+        model_overridden=model_is_external,
+        datamodule_overridden=datamodule_is_external,
     )
 
     # Setup paths
-    if not manual_model_provided:
+    if not model_is_external:
         assert run_spec.training_config.model is not None
         model_name = f"{run_spec.training_config.model.name}"
     else:
-        validate_external_model(model, model_family)
-        model_name = f"{model_family.name}_manual_{type(model).__name__}"
+        model_name = f"{model_family.name}_external_{type(model).__name__}"
 
     run_context = RunContext.create(
         output_root=run_spec.training_config.run.output_root,
@@ -166,7 +182,7 @@ def _predict(
         )
 
     # Build datamodule
-    if not manual_datamodule_provided:
+    if not datamodule_is_external:
         assert run_spec.dataset_config is not None
         assert run_spec.datamodule_config is not None
 
@@ -178,10 +194,10 @@ def _predict(
             split=run_spec.split,
         )
     else:
-        run_log.info("Manual datamodule was provided; config.dataset and config.datamodule were ignored.")
+        run_log.info("External datamodule was provided; config.dataset and config.datamodule were ignored.")
 
     # Build or use model, then load checkpoint
-    if not manual_model_provided:
+    if not model_is_external:
         assert run_spec.training_config.model is not None
         assert run_spec.training_config.encoder is not None
         assert run_spec.training_config.losses is not None
@@ -190,11 +206,23 @@ def _predict(
         model = build_model(config=run_spec.training_config)
     else:
         run_log.info(
-            "Manual model was provided; config.model/encoder/decoder/losses/optimizer were ignored."
+            "External model was provided; config.model/encoder/decoder/losses/optimizer were ignored."
         )
 
-    checkpoint = torch.load(run_spec.checkpoint_path, map_location="cpu")
-    model.load_state_dict(checkpoint["state_dict"])
+    # Preflight check and source input validation
+    assert model is not None
+    assert datamodule is not None
+
+    precondition_result = validate_predict_contract_compatibility(
+        model_family=model_family,
+        model=model,
+        model_is_external=model_is_external,
+        datamodule_is_external=datamodule_is_external,
+        compatibility_policy=compatibility_policy,
+    )
+
+    predict_inputs = validate_predict_source_inputs(run_spec=run_spec)
+    model.load_state_dict(predict_inputs.state_dict)
     model.eval()
 
     run_log.info("Loaded checkpoint weights into prediction model.")
@@ -209,12 +237,30 @@ def _predict(
 
     run_log.info("Starting prediction...")
 
-    with capture_console_streams(log_out_dir=run_context.log_dir, capture_stdout=False):
-        predictions = trainer.predict(
-            model,
-            datamodule=datamodule,
-            return_predictions=True,
-        )
+    try:
+        with capture_console_streams(log_out_dir=run_context.log_dir, capture_stdout=False):
+            predictions = trainer.predict(
+                model,
+                datamodule=datamodule,
+                return_predictions=True,
+            )
+
+    except Exception as exc:
+        if precondition_result.should_wrap_batch_contract_errors:
+            run_log.error(
+                "Prediction failed while using an external datamodule with an internal model.",
+                exc_info=True,
+            )
+
+            raise RuntimeError(
+                format_external_datamodule_failure_message(
+                    stage="prediction",
+                    precondition_result=precondition_result,
+                    original_error=exc,
+                )
+            ) from exc
+
+        raise
 
     if not predictions:
         raise RuntimeError("Prediction returned no batches.")
@@ -277,10 +323,10 @@ def _predict(
         created_at=created_at,
         completed_at=completed_at,
         status="completed",
-        model_source="external_object" if manual_model_provided else "config",
+        model_source="external_object" if model_is_external else "config",
         model_class_name=type(model).__name__,
         datamodule_source=(
-            "external_object" if manual_datamodule_provided else "config"
+            "external_object" if datamodule_is_external else "config"
         ),
         datamodule_class_name=type(datamodule).__name__,
     )

@@ -2,15 +2,19 @@ from __future__ import annotations
 
 import lightning as L
 
-from collections.abc import Callable
-from dataclasses import dataclass
-from typing import Any, get_type_hints, Literal
+from typing import Any
 from pathlib import Path
 
 from benchrep.records import get_run_logger
-from benchrep.runtime.utils import CompatibilityPolicy
+from benchrep.runtime.utils import (
+    CompatibilityPolicy,
+    PreconditionResult,
+    AuditItem,
+    run_compatibility_check,
+    audit_existing_file,
+    audit_existing_dir,
+)
 from benchrep.runtime.run_context import RunContext
-from benchrep.interfaces.contracts import ContractKind
 from benchrep.interfaces.model_families import ModelFamilySpec
 from benchrep.interfaces.compatibility import (
     validate_external_model,
@@ -21,36 +25,18 @@ from benchrep.interfaces.compatibility import (
 from benchrep.assembly.config import load_yaml
 
 
-AuditStatus = Literal["ok", "warning", "error", "skipped"]
-
-
-@dataclass(frozen=True, slots=True)
-class TrainPreconditionResult:
-    should_wrap_training_errors_with_batch_hint: bool = False
-    expected_batch_type: type[Any] | None = None
-    expected_batch_contract_kind: ContractKind | None = None
-    model_family_name: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class AuditItem:
-    name: str
-    status: AuditStatus
-    message: str
-
-
-def validate_train_preconditions(
+def validate_train_contract_compatibility(
         model_family: ModelFamilySpec,
         model: L.LightningModule,
         model_is_external: bool = False,
         datamodule_is_external: bool = False,
         compatibility_policy: CompatibilityPolicy = "error",
-) -> TrainPreconditionResult:
+) -> PreconditionResult:
     external_model_only = model_is_external and not  datamodule_is_external
     external_datamodule_only = datamodule_is_external and not model_is_external
     fully_internal_run = not model_is_external and not datamodule_is_external
 
-    default_result = TrainPreconditionResult()
+    default_result = PreconditionResult()
 
     if fully_internal_run:
         return default_result
@@ -58,7 +44,7 @@ def validate_train_preconditions(
     if model_is_external:
         validate_external_model(model, model_family)
 
-        _run_compatibility_check(
+        run_compatibility_check(
             check=lambda: sanity_check_predict_step_return_annotation(
                 model=model,
                 model_family=model_family,
@@ -86,7 +72,7 @@ def validate_train_preconditions(
         )
 
     if external_model_only:
-        _run_compatibility_check(
+        run_compatibility_check(
             check=lambda: sanity_check_training_step_batch_annotation(
                 model=model,
                 model_family=model_family,
@@ -113,7 +99,7 @@ def validate_train_preconditions(
             ),
         )
 
-        _run_compatibility_check(
+        run_compatibility_check(
             check=lambda: sanity_check_predict_step_batch_annotation(
                 model=model,
                 model_family=model_family,
@@ -141,8 +127,8 @@ def validate_train_preconditions(
         )
 
     if external_datamodule_only:
-        return TrainPreconditionResult(
-            should_wrap_training_errors_with_batch_hint=True,
+        return PreconditionResult(
+            should_wrap_batch_contract_errors=True,
             expected_batch_type=model_family.expected_batch_type,
             expected_batch_contract_kind=model_family.expected_batch_contract_kind,
             model_family_name=model_family.name,
@@ -183,13 +169,13 @@ def audit_train_outputs(
             )
         )
     else:
-        _audit_existing_file(
+        audit_existing_file(
             audit_items=audit_items,
             name="input config",
             path=input_config_path,
         )
 
-    _audit_existing_file(
+    audit_existing_file(
         audit_items=audit_items,
         name="resolved config",
         path=resolved_config_path,
@@ -198,7 +184,7 @@ def audit_train_outputs(
     # -------------------------
     # Training manifest
     # -------------------------
-    manifest_path_is_valid = _audit_existing_file(
+    manifest_path_is_valid = audit_existing_file(
         audit_items=audit_items,
         name="training manifest",
         path=training_manifest_path,
@@ -297,7 +283,7 @@ def audit_train_outputs(
         else:
             manifest_output_dir = Path(run_section["output_dir"])
 
-            _audit_existing_dir(
+            audit_existing_dir(
                 audit_items=audit_items,
                 name="manifest run output dir",
                 path=manifest_output_dir,
@@ -320,7 +306,7 @@ def audit_train_outputs(
     # -------------------------
     checkpoint_dir = Path(checkpoint_dir)
 
-    checkpoint_dir_is_valid = _audit_existing_dir(
+    checkpoint_dir_is_valid = audit_existing_dir(
         audit_items=audit_items,
         name="checkpoint directory",
         path=checkpoint_dir,
@@ -396,7 +382,7 @@ def audit_train_outputs(
             else:
                 manifest_checkpoint_dir = Path(manifest_checkpoint_dir_raw)
 
-                _audit_existing_dir(
+                audit_existing_dir(
                     audit_items=audit_items,
                     name="manifest checkpoint directory",
                     path=manifest_checkpoint_dir,
@@ -498,7 +484,7 @@ def audit_train_outputs(
         )
 
     else:
-        _audit_existing_file(
+        audit_existing_file(
             audit_items=audit_items,
             name="torchview graph",
             path=torchview_graph_path,
@@ -535,177 +521,3 @@ def audit_train_outputs(
             run_log.error(message)
         elif item.status == "skipped":
             run_log.info(message)
-
-
-def _run_compatibility_check(
-    *,
-    check: Callable[[], None],
-    compatibility_policy: CompatibilityPolicy,
-    success_message: str,
-    error_prefix: str,
-    warning_prefix: str,
-) -> None:
-    run_log = get_run_logger()
-
-    try:
-        check()
-        run_log.info(success_message)
-
-    except TypeError as exc:
-        if compatibility_policy == "error":
-            raise TypeError(
-                f"{error_prefix} "
-                f"Original reason: {exc}"
-            ) from exc
-
-        run_log.warning(
-            "%s Original reason: %s",
-            warning_prefix,
-            exc,
-        )
-
-
-def format_external_datamodule_training_failure_message(
-    *,
-    precondition_result: TrainPreconditionResult,
-    original_error: BaseException,
-) -> str:
-    expected_batch_type = precondition_result.expected_batch_type
-    expected_batch_contract_kind = precondition_result.expected_batch_contract_kind
-    model_family_name = precondition_result.model_family_name
-
-    if expected_batch_type is None or expected_batch_contract_kind is None:
-        return (
-            "Training failed. "
-            f"Original error ({type(original_error).__name__}): {original_error}"
-        )
-
-    return (
-        "Training failed while using an external datamodule with a BenchRep internal model. "
-        "This may indicate that the datamodule does not produce the expected BenchRep "
-        "batch contract, although the original error may also be unrelated.\n\n"
-        f"Expected batch contract for model family `{model_family_name}`:\n"
-        f"{_format_expected_contract(expected_batch_type, expected_batch_contract_kind)}\n\n"
-        f"Original error ({type(original_error).__name__}): {original_error}"
-    )
-
-
-def _format_expected_contract(
-    expected_type: type[Any],
-    expected_contract_kind: ContractKind,
-) -> str:
-    type_name = getattr(expected_type, "__name__", repr(expected_type))
-    lines = [
-        f"- contract: `{type_name}`",
-        f"- kind: `{expected_contract_kind}`",
-    ]
-
-    if expected_contract_kind == "typeddict":
-        type_hints = get_type_hints(expected_type)
-        required_keys = getattr(expected_type, "__required_keys__", frozenset())
-        optional_keys = getattr(expected_type, "__optional_keys__", frozenset())
-
-        if required_keys:
-            lines.append("- required fields:")
-            for key in sorted(required_keys):
-                annotation = type_hints.get(key, Any)
-                lines.append(f"  - `{key}`: `{_format_annotation(annotation)}`")
-
-        if optional_keys:
-            lines.append("- optional fields:")
-            for key in sorted(optional_keys):
-                annotation = type_hints.get(key, Any)
-                lines.append(f"  - `{key}`: `{_format_annotation(annotation)}`")
-
-    return "\n".join(lines)
-
-
-def _format_annotation(annotation: Any) -> str:
-    return getattr(annotation, "__name__", repr(annotation))
-
-
-def _audit_existing_file(
-    *,
-    audit_items: list[AuditItem],
-    name: str,
-    path: Path | str,
-    require_yaml_suffix: bool = False,
-) -> bool:
-    path = Path(path)
-
-    if not path.exists():
-        audit_items.append(
-            AuditItem(
-                name=name,
-                status="error",
-                message=f"not found at '{path}'",
-            )
-        )
-        return False
-
-    if not path.is_file():
-        audit_items.append(
-            AuditItem(
-                name=name,
-                status="error",
-                message=f"path exists but is not a file: '{path}'",
-            )
-        )
-        return False
-
-    if require_yaml_suffix and path.suffix.lower() not in {".yaml", ".yml"}:
-        audit_items.append(
-            AuditItem(
-                name=name,
-                status="error",
-                message=f"path does not have a YAML suffix: '{path}'",
-            )
-        )
-        return False
-
-    audit_items.append(
-        AuditItem(
-            name=name,
-            status="ok",
-            message=f"found at '{path}'",
-        )
-    )
-    return True
-
-
-def _audit_existing_dir(
-    *,
-    audit_items: list[AuditItem],
-    name: str,
-    path: Path | str,
-) -> bool:
-    path = Path(path)
-
-    if not path.exists():
-        audit_items.append(
-            AuditItem(
-                name=name,
-                status="error",
-                message=f"not found at '{path}'",
-            )
-        )
-        return False
-
-    if not path.is_dir():
-        audit_items.append(
-            AuditItem(
-                name=name,
-                status="error",
-                message=f"path exists but is not a directory: '{path}'",
-            )
-        )
-        return False
-
-    audit_items.append(
-        AuditItem(
-            name=name,
-            status="ok",
-            message=f"found at '{path}'",
-        )
-    )
-    return True
