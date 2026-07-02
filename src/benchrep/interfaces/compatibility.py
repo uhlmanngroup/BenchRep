@@ -72,6 +72,7 @@ def sanity_check_predict_step_return_annotation(
             model_family.expected_prediction_output_contract_kind
         ),
         check_field_types=check_field_types,
+        require_subclass=True,
     )
 
 
@@ -100,6 +101,7 @@ def sanity_check_method_parameter_annotation(
         expected_type=expected_parameter_type,
         expected_contract_kind=expected_parameter_contract_kind,
         check_field_types=check_field_types,
+        require_subclass=False,
         context=f"`{method_name}()` parameter `{parameter_name}`",
     )
 
@@ -111,6 +113,7 @@ def sanity_check_method_return_annotation(
     expected_return_type: type[Any],
     expected_return_contract_kind: ContractKind,
     check_field_types: bool = True,
+    require_subclass: bool = False,
 ) -> None:
     """Inspect a declared method return contract without running the model."""
 
@@ -129,6 +132,7 @@ def sanity_check_method_return_annotation(
         expected_type=expected_return_type,
         expected_contract_kind=expected_return_contract_kind,
         check_field_types=check_field_types,
+        require_subclass=require_subclass,
         context=f"`{method_name}()` return type",
     )
 
@@ -139,6 +143,7 @@ def _check_declared_contract_annotation(
     expected_type: type[Any],
     expected_contract_kind: ContractKind,
     check_field_types: bool,
+    require_subclass: bool = False,
     context: str,
 ) -> None:
     if not _is_supported_contract_type(expected_type, expected_contract_kind):
@@ -162,6 +167,24 @@ def _check_declared_contract_annotation(
             f"BenchRep expected compatibility with `{expected_type.__name__}`; "
             f"got {declared_type!r}."
         )
+
+    if require_subclass:
+        if expected_contract_kind != "dataclass":
+            raise TypeError(
+                f"Internal BenchRep error: nominal contract checking is only "
+                f"supported for dataclass contracts, got "
+                f"{expected_contract_kind!r}."
+            )
+
+        if not issubclass(declared_type, expected_type):
+            raise TypeError(
+                f"Method annotation sanity check failed: "
+                f"Declared {context} `{declared_type.__name__}` must inherit "
+                f"from `{expected_type.__name__}`. "
+                f"Structurally similar dataclasses are not enough for "
+                f"prediction outputs; subclass the BenchRep prediction-output "
+                f"contract instead."
+            )
 
     expected_required_fields = _required_contract_fields(
         expected_type,
