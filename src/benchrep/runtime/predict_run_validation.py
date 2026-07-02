@@ -24,6 +24,7 @@ from benchrep.interfaces.compatibility import (
     validate_external_model,
     sanity_check_predict_step_batch_annotation,
     sanity_check_predict_step_return_annotation,
+    validate_prediction_output_structure,
 )
 from benchrep.assembly.config import load_yaml
 from benchrep.assembly.resolvers import PredictionRunSpec
@@ -441,30 +442,35 @@ def audit_predict_outputs(
             )
         )
 
-        expected_prediction_type = model_family.expected_prediction_output_type
+        try:
+            for batch_idx, prediction in enumerate(predictions):
+                validate_prediction_output_structure(
+                    prediction=prediction,
+                    model_family=model_family,
+                    batch_idx=batch_idx,
+                    check_value_types=True,
+                )
 
-        if isinstance(first_prediction, expected_prediction_type):
+        except TypeError as exc:
+            audit_items.append(
+                AuditItem(
+                    name="prediction output contract",
+                    status="error",
+                    message=str(exc),
+                )
+            )
+
+        else:
+            expected_prediction_type = model_family.expected_prediction_output_type
+
             audit_items.append(
                 AuditItem(
                     name="prediction output contract",
                     status="ok",
                     message=(
-                        f"first prediction batch matches expected output type "
+                        f"all prediction batches are structurally compatible with "
                         f"`{expected_prediction_type.__name__}` for model family "
                         f"`{model_family.name}`"
-                    ),
-                )
-            )
-        else:
-            audit_items.append(
-                AuditItem(
-                    name="prediction output contract",
-                    status="error",
-                    message=(
-                        f"expected first prediction batch to be "
-                        f"`{expected_prediction_type.__name__}` for model family "
-                        f"`{model_family.name}`, but got "
-                        f"`{first_prediction_type.__name__}`"
                     ),
                 )
             )

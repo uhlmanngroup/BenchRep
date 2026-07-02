@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, is_dataclass
 from pathlib import Path
-from typing import Any, Sequence
+from typing import Any, Sequence, cast
 
 import torch
 
@@ -15,10 +15,12 @@ from benchrep.records.anndata_io import (
     package_matrix_as_anndata,
     write_h5ad,
 )
+from benchrep.interfaces.model_families import ModelFamilySpec
+from benchrep.interfaces.compatibility import validate_prediction_output_structure
 
 
 PredictionOutput = AutoencoderPredictionOutput | VAEPredictionOutput
-
+PredictionOutputLike = object
 
 @dataclass(frozen=True)
 class PredictionExportPaths:
@@ -44,7 +46,8 @@ class ReconstructionExportPaths:
 
 def export_prediction_outputs(
     *,
-    predictions: Sequence[PredictionOutput],
+    model_family: ModelFamilySpec,
+    predictions: Sequence[PredictionOutputLike],
     export_spec: PredictionExportSpec,
     embedding_dir: Path,
     reconstruction_dir: Path,
@@ -66,7 +69,10 @@ def export_prediction_outputs(
     function returns the concrete file paths it wrote so callers can log them,
     test them, or include them in manifests.
     """
-    _validate_prediction_outputs(predictions)
+    _validate_prediction_outputs(
+        model_family=model_family,
+        predictions=predictions,
+    )
 
     exported_embeddings_path_and_keys = None
     exported_reconstruction_paths = None
@@ -95,22 +101,26 @@ def export_prediction_outputs(
     )
 
 
-def _validate_prediction_outputs(predictions: Sequence[PredictionOutput]) -> None:
+def _validate_prediction_outputs(
+        *,
+        model_family: ModelFamilySpec,
+        predictions: Sequence[PredictionOutputLike],
+) -> None:
     if not predictions:
         raise ValueError("Cannot export prediction outputs because no predictions were returned.")
 
     for batch_idx, batch in enumerate(predictions):
-        if not isinstance(batch, PredictionOutput):
-            raise TypeError(
-                "Prediction export requires model.predict_step() to return a "
-                "BenchRep prediction-output dataclass, "
-                f"Prediction batch {batch_idx} has type {type(batch).__name__}."
-            )
+        validate_prediction_output_structure(
+            prediction=batch,
+            model_family=model_family,
+            batch_idx=batch_idx,
+            check_value_types=True,
+        )
 
 
 def _export_embeddings(
     *,
-    predictions: Sequence[PredictionOutput],
+    predictions: Sequence[PredictionOutputLike],
     export_spec: PredictionExportSpec,
     output_dir: Path,
 ) -> EmbeddingExportPathAndKeys:
@@ -219,7 +229,7 @@ def _export_embeddings(
 
 def _resolve_embedding_keys(
     *,
-    predictions: Sequence[PredictionOutput],
+    predictions: Sequence[PredictionOutputLike],
     export_spec: PredictionExportSpec,
 ) -> list[str]:
     requested_keys = export_spec.embeddings.keys
@@ -267,7 +277,7 @@ def _resolve_primary_embedding_key(
     return primary_key
 
 
-def _find_embedding_like_keys(first_batch: PredictionOutput) -> list[str]:
+def _find_embedding_like_keys(first_batch: PredictionOutputLike) -> list[str]:
     """Find recognized embedding-like outputs in one prediction batch.
 
     This helper is used for ``exports.mode='all'`` / ``embeddings.keys='all'``.
@@ -311,7 +321,7 @@ def _find_embedding_like_keys(first_batch: PredictionOutput) -> list[str]:
 
 def _concat_optional_batch_values(
     *,
-    predictions: Sequence[PredictionOutput],
+    predictions: Sequence[PredictionOutputLike],
     key: str,
 ) -> list[Any] | None:
     if not _has_prediction_value(predictions[0], key):
@@ -343,7 +353,7 @@ def _concat_optional_batch_values(
 
 def _concat_optional_metadata(
     *,
-    predictions: Sequence[PredictionOutput],
+    predictions: Sequence[PredictionOutputLike],
 ) -> dict[str, list[Any]] | None:
     if not _has_prediction_value(predictions[0], "metadata"):
         return None
@@ -424,7 +434,7 @@ def _select_reconstruction_indices(
 
 def _export_reconstructions(
     *,
-    predictions: Sequence[PredictionOutput],
+    predictions: Sequence[PredictionOutputLike],
     export_spec: PredictionExportSpec,
     output_dir: Path,
 ) -> ReconstructionExportPaths:
@@ -570,7 +580,7 @@ def _export_reconstructions(
 
 def _concat_tensor_batches(
     *,
-    predictions: Sequence[PredictionOutput],
+    predictions: Sequence[PredictionOutputLike],
     key: str,
 ) -> torch.Tensor:
     tensors = []
@@ -595,18 +605,27 @@ def _concat_tensor_batches(
     return torch.cat(tensors, dim=0)
 
 
-def _prediction_field_names(prediction: PredictionOutput) -> tuple[str, ...]:
-    return tuple(field.name for field in fields(prediction))
+def _prediction_field_names(prediction: PredictionOutputLike) -> tuple[str, ...]:
+    if not is_dataclass(prediction) or isinstance(prediction, type):
+        raise TypeError(
+            "Prediction output must be a dataclass instance, "
+            f"got `{type(prediction).__name__}`."
+        )
+
+    return tuple(
+        field.name
+        for field in fields(cast(Any, prediction))
+    )
 
 
-def _has_prediction_value(prediction: PredictionOutput, key: str) -> bool:
+def _has_prediction_value(prediction: PredictionOutputLike, key: str) -> bool:
     if key not in _prediction_field_names(prediction):
         return False
 
     return getattr(prediction, key) is not None
 
 
-def _available_prediction_keys(prediction: PredictionOutput) -> tuple[str, ...]:
+def _available_prediction_keys(prediction: PredictionOutputLike) -> tuple[str, ...]:
     return tuple(
         key
         for key in _prediction_field_names(prediction)

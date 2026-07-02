@@ -21,6 +21,7 @@ from benchrep.interfaces.model_families import (
     AUTOENCODER_FAMILY,
     VAE_FAMILY,
 )
+from benchrep.interfaces.compatibility import validate_prediction_output_structure
 from benchrep.assembly.resolvers import resolve_prediction_config, PredictionRunSpec
 from benchrep.assembly.schemas import parse_prediction_config, PredictionConfig
 from benchrep.records import (
@@ -266,26 +267,28 @@ def _predict(
     if not predictions:
         raise RuntimeError("Prediction returned no batches.")
 
-    first_prediction = predictions[0]
+    # Sanity test predictions
+    sanity_test_batch_idx = 0
+    sanity_test_prediction = predictions[sanity_test_batch_idx]
 
-    if not isinstance(first_prediction, model_family.expected_prediction_output_type):
-        raise TypeError(
-            f"Expected `predict_step()` to return "
-            f"`{model_family.expected_prediction_output_type.__name__}` for model family "
-            f"`{model_family.name}`, but the first prediction batch returned "
-            f"`{type(first_prediction).__name__}`."
-        )
+    validate_prediction_output_structure(
+        prediction=sanity_test_prediction,
+        model_family=model_family,
+        batch_idx=sanity_test_batch_idx,
+        check_value_types=True,
+    )
 
     run_log.info("Finished prediction")
     run_log.info("Prediction returned %s batches.", len(predictions))
     run_log.info(
         "First prediction batch type: %s",
-        type(first_prediction).__name__,
+        type(sanity_test_prediction).__name__,
     )
 
     run_log.info("Exporting prediction outputs...")
 
     export_paths = export_prediction_outputs(
+        model_family=model_family,
         predictions=predictions,
         export_spec=run_spec.export_spec,
         embedding_dir=run_context.prediction_embeddings_dir,

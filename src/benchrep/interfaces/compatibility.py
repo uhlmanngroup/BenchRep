@@ -72,8 +72,80 @@ def sanity_check_predict_step_return_annotation(
             model_family.expected_prediction_output_contract_kind
         ),
         check_field_types=check_field_types,
-        require_subclass=True,
+        require_subclass=False,
     )
+
+
+def validate_prediction_output_structure(
+    *,
+    prediction: Any,
+    model_family: ModelFamilySpec,
+    batch_idx: int | None = None,
+    check_value_types: bool = True,
+) -> None:
+    """Validate one runtime prediction output structurally."""
+
+    expected_type = model_family.expected_prediction_output_type
+    expected_contract_kind = model_family.expected_prediction_output_contract_kind
+
+    context = (
+        "Prediction output"
+        if batch_idx is None
+        else f"Prediction batch {batch_idx}"
+    )
+
+    if expected_contract_kind != "dataclass":
+        raise TypeError(
+            "Internal BenchRep error: runtime prediction-output structural "
+            f"validation currently expects a dataclass contract, got "
+            f"{expected_contract_kind!r}."
+        )
+
+    if not _is_dataclass_instance(prediction):
+        raise TypeError(
+            f"{context} must be a dataclass-like object structurally compatible "
+            f"with `{expected_type.__name__}`. Got `{type(prediction).__name__}`. "
+            f"Subclassing `{expected_type.__name__}` is recommended but not required."
+        )
+
+    expected_required_fields = _required_contract_fields(
+        expected_type,
+        expected_contract_kind,
+    )
+
+    declared_fields = _contract_field_types(
+        type(prediction),
+        expected_contract_kind,
+    )
+
+    missing_fields = set(expected_required_fields) - set(declared_fields)
+
+    if missing_fields:
+        raise TypeError(
+            f"{context} `{type(prediction).__name__}` is missing required "
+            f"field(s): {sorted(missing_fields)}. Expected structural "
+            f"compatibility with `{expected_type.__name__}`."
+        )
+
+    for field_name, expected_annotation in expected_required_fields.items():
+        value = getattr(prediction, field_name)
+
+        if value is None:
+            raise TypeError(
+                f"{context} `{type(prediction).__name__}` has required field "
+                f"{field_name!r}, but its value is None. Expected compatibility "
+                f"with `{expected_type.__name__}`."
+            )
+
+        if check_value_types and not _runtime_value_matches_annotation(
+            value,
+            expected_annotation,
+        ):
+            raise TypeError(
+                f"{context} `{type(prediction).__name__}` has incompatible "
+                f"runtime value for required field {field_name!r}: expected "
+                f"{expected_annotation!r}, got `{type(value).__name__}`."
+            )
 
 
 # Generics
@@ -310,3 +382,27 @@ def _allows_none(annotation: Any) -> bool:
         return type(None) in get_args(annotation)
 
     return False
+
+
+def _is_dataclass_instance(obj: Any) -> bool:
+    return not isinstance(obj, type) and is_dataclass(obj)
+
+
+def _runtime_value_matches_annotation(value: Any, annotation: Any) -> bool:
+    if annotation is Any:
+        return True
+
+    origin = get_origin(annotation)
+
+    if origin in {Union, UnionType}:
+        return any(
+            _runtime_value_matches_annotation(value, arg)
+            for arg in get_args(annotation)
+        )
+
+    if isinstance(annotation, type):
+        return isinstance(value, annotation)
+
+    # Be permissive for complex typing constructs that are not safely
+    # checkable with isinstance(). Annotation validation covers those statically.
+    return True
