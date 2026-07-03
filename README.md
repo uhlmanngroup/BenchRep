@@ -266,7 +266,8 @@ from benchrep.workflows.train import train_ae
 from benchrep.workflows.predict import predict_ae
 from benchrep.workflows.evaluate import evaluate
 
-# predict_step and training_step must have structurally compatible batch/output dataclass types
+# predict_step must have structurally compatible output dataclass types, that's all
+# but if using a BenchRep DM, predict_step and training_step must also have compatible batch (input) dataclass types.
 class MyModel(BenchRepAutoencoderModel):
     ...
 
