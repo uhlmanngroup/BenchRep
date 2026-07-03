@@ -249,27 +249,61 @@ Useful for more control without fully leaving the BenchRep framework.
 
 ### 3. Component-driven usage
 
-The lowest-level usage mode is to import and instantiate components directly, or write them entirely from scratch.
-Completely custom models do need to subclass from the BenchRep base models, though those only enforce a predict_step
-contract. The train_step and predict_step inputs and outputs are validated only structurally and not nominally. Basically,
-any LightningModule and LightningDataModule can work with very few contracts (especially if both are custom).
+The lowest-level usage mode is to provide custom Python objects directly to the workflow entrypoints.
 
-Caveat is that this route does not allow for the writing of a resolved_config that can be used to reconstruct the run,
-at least not without the custom models being passed manually again.
+For autoencoder-style workflows, custom models should subclass the appropriate BenchRep base model, but the required contract is intentionally tiny. Custom datamodules can be ordinary Lightning datamodules. This route is useful when users want BenchRep’s training, prediction, export, manifest, and evaluation machinery without using the full config/builder system.
 
-For example, a user may directly use/write:
+Caveat: runs using external Python objects are not fully reconstructable from the resolved config alone. Reproducing the run requires passing the custom model/datamodule code again.
 
-```text
-- an encoder class
-- a decoder class
-- a loss class
-- a model class
-- a datamodule
+Example:
+
+```python
+import lightning as L
+import torch
+
+from benchrep.interfaces.models import BenchRepAutoencoderModel
+from benchrep.workflows.train import train_ae
+from benchrep.workflows.predict import predict_ae
+from benchrep.workflows.evaluate import evaluate
+
+# predict_step and training_step must have structurally compatible batch/output dataclass types
+class MyModel(BenchRepAutoencoderModel):
+    ...
+
+
+class MyDataset(torch.utils.data.Dataset):
+    ...
+
+
+class MyDataModule(L.LightningDataModule):
+    ...
+
+
+model = MyModel(latent_dim=8)
+datamodule = MyDataModule(batch_size=64)
+
+train_result = train_ae(
+    "examples/configs/training_external_ae.yaml",
+    model=model,
+    datamodule=datamodule,
+    compatibility_policy="warn",
+)
+
+pred_result = predict_ae(
+    "examples/configs/prediction_external_ae.yaml",
+    training_manifest_path=train_result.manifest_path,
+    model=model,
+    datamodule=datamodule,
+    compatibility_policy="warn",
+)
+
+eval_result = evaluate(
+    "examples/configs/evaluation.yaml",
+    prediction_manifest_path=pred_result.manifest_path,
+)
 ```
 
-Useful for expert users who want BenchRep components (e.g. embedding evaluation) but do not want the full config or builder system. It would also be possible to add the components to the registry to enable later config-driven usage.
+Fully config-driven use can be recovered later by registering custom components and representing them in config.
+ allows for a fully reconstructable run (as long as no custom model/datamodule were used.)
 
-
-NOTE: for users who prefer to code in Python and not YAML, it will soon be possible to pass individual config components
-as pydantic objects to the entrypoint workflows, and they would be harmonized with a base YAML if provided to produce a
-resolved_config that allows for a fully reconstructable run (as long as no custom model/datamodule were used.) 
+NOTE: for users who prefer to code in Python and not YAML, it will soon be possible to pass individual config components as pydantic objects to the entrypoint workflows, and they would be harmonized with a base YAML if provided to produce a resolved_config that allows for a fully reconstructable run (as long as no custom model/datamodule were used.)
