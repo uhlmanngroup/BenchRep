@@ -106,7 +106,7 @@ metrics:
 
   predictability:
     enabled: true
-    selected: [ "dummy", "linear" ] # [ "dummy", "linear", "knn", "random_forest", "xgboost" ]
+    selected: [ "svm_rbf" ] # [ "dummy", "linear", "knn", "random_forest", "xgboost", "svm_rbf" ]
     # omit = default probe set; must be a non-empty list if provided; null is invalid
 
     target_key: label # obs column to predict from adata.X
@@ -159,6 +159,14 @@ metrics:
         learning_rate: [ 0.03, 0.1 ]
         random_state: 137
         n_jobs: -1 # passed to xgboost; optional dependency
+
+      svm_rbf:
+        standardize: true
+        C: [ 0.1, 1.0, 10.0 ] # inverse regularization strength; list = tune
+        gamma: [ "scale", "auto" ] # RBF kernel width; list = tune
+        class_weight: balanced # classification only; null or balanced
+        cache_size: 5000 # MB used by sklearn's kernel cache
+        max_iter: -1 # -1 = no iteration limit
 
   reconstruction:
     enabled: true # true = force on if reconstructions exist; false = off; null = on only if reconstructions exist

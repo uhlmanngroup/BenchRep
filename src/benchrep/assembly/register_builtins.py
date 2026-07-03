@@ -102,6 +102,7 @@ def register_builtins() -> None:
             build_knn_predictability_probe,
             build_random_forest_predictability_probe,
             build_xgboost_predictability_probe,
+            build_svm_rbf_predictability_probe,
         )
         from benchrep.evaluation.reconstructions.reconstruction_metrics import (
             mean_absolute_error,
@@ -274,6 +275,14 @@ def register_builtins() -> None:
             "xgboost",
             build_xgboost_predictability_probe,
             "xgb",
+        )
+        EVAL_PREDICTABILITY_PROBES.register(
+            "svm_rbf",
+            build_svm_rbf_predictability_probe,
+            "support_vector_machine_rbf",
+            "svm_radial_basis_function",
+            "support_vector_machine_radial_basis_function",
+            "rbf_svm",
         )
 
         # Reconstruction metrics

@@ -21,6 +21,10 @@ PositiveIntOrList: TypeAlias = PositiveInt | list[PositiveInt]
 KNNWeights: TypeAlias = Literal["uniform", "distance"]
 KNNWeightsOrList: TypeAlias = KNNWeights | list[KNNWeights]
 
+SVMRBFGammaValue: TypeAlias = Literal["scale", "auto"] | PositiveFloat
+SVMRBFGammaValueOrList: TypeAlias = SVMRBFGammaValue | list[SVMRBFGammaValue]
+MaxIterWithNoLimitSentinel: TypeAlias = Literal[-1] | PositiveInt
+
 MaxDepthValue: TypeAlias = PositiveInt | None
 MaxDepthParam: TypeAlias = MaxDepthValue | list[MaxDepthValue]
 
@@ -30,6 +34,7 @@ PredictabilityProbeName = Literal[
     "knn",
     "random_forest",
     "xgboost",
+    "svm_rbf"
 ]
 
 
@@ -320,17 +325,27 @@ class XGBoostProbeConfig(BaseModel):
     n_jobs: int | None = -1
 
 
+class SVMRBFProbeConfig(BaseModel):
+    standardize: bool = True
+    C: PositiveFloatOrList = 1.0
+    gamma: SVMRBFGammaValueOrList = "scale"
+    class_weight: Literal["balanced"] | None = None
+    cache_size: PositiveFloat = 200.0
+    max_iter: MaxIterWithNoLimitSentinel = -1
+
+
 class EvaluationPredictabilityParamsConfig(BaseModel):
     dummy: DummyProbeConfig = Field(default_factory=DummyProbeConfig)
     linear: LinearProbeConfig = Field(default_factory=LogisticRegressionProbeConfig)
     knn: KNNProbeConfig = Field(default_factory=KNNProbeConfig)
     random_forest: RandomForestProbeConfig = Field(default_factory=RandomForestProbeConfig)
     xgboost: XGBoostProbeConfig = Field(default_factory=XGBoostProbeConfig)
+    svm_rbf: SVMRBFProbeConfig = Field(default_factory=SVMRBFProbeConfig)
 
 
 class EvaluationPredictabilityConfig(EvalStepConfig):
     selected: list[PredictabilityProbeName] = Field(
-        default_factory=lambda: ["dummy", "linear", "knn", "random_forest"]
+        default_factory=lambda: ["dummy", "linear", "knn", "random_forest", "svm_rbf"]
     )
     target_key: str = "label"
     task: Literal["classification", "regression"] = "classification"

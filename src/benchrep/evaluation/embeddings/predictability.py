@@ -20,7 +20,6 @@ from sklearn.model_selection import (
     StratifiedKFold,
 )
 
-from benchrep.assembly.registry_utils import resolve_registry_keys
 from benchrep.evaluation.utils import (
     PredictabilityTask,
     validate_adata_x,

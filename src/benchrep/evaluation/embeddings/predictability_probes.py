@@ -10,6 +10,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
+from sklearn.svm import SVC, SVR
 
 from benchrep.evaluation.utils import PredictabilityTask
 
@@ -240,6 +241,58 @@ def build_xgboost_predictability_probe(
             "task must be either 'classification' or 'regression', "
             f"got {task!r}."
         )
+
+    return PredictabilityProbeSpec(
+        estimator=estimator,
+        param_grid=param_grid,
+    )
+
+
+def build_svm_rbf_predictability_probe(
+        *,
+        task: PredictabilityTask,
+        params: Mapping[str, Any],
+) -> PredictabilityProbeSpec:
+    """Build an RBF-kernel SVM predictability probe.
+
+    Classification uses ``SVC(kernel="rbf")``.
+    Regression uses ``SVR(kernel="rbf")``.
+
+    If ``standardize`` is true, the estimator is wrapped in a sklearn
+    ``Pipeline`` with ``StandardScaler``.
+    """
+    params = dict(params)
+
+    standardize = params.pop("standardize", True)
+
+    fixed_params, param_grid = split_fixed_and_grid_params(params)
+
+    if task == "classification":
+        estimator = SVC(kernel="rbf", **fixed_params)
+
+    elif task == "regression":
+        fixed_params.pop("class_weight", None)
+        param_grid.pop("class_weight", None)
+
+        estimator = SVR(kernel="rbf", **fixed_params)
+
+    else:
+        raise ValueError(
+            "task must be either 'classification' or 'regression', "
+            f"got {task!r}."
+        )
+
+    if standardize:
+        estimator = Pipeline(
+            steps=[
+                ("scaler", StandardScaler()),
+                ("estimator", estimator),
+            ]
+        )
+        param_grid = {
+            f"estimator__{key}": value
+            for key, value in param_grid.items()
+        }
 
     return PredictabilityProbeSpec(
         estimator=estimator,
