@@ -6,14 +6,14 @@ from typing import Any, Literal
 import warnings
 
 from benchrep.assembly.config import load_yaml
-from benchrep.assembly.registry import (
+from benchrep.assembly.registries.core import (
     EVAL_INTERNAL_CLUSTERING_METRICS,
     EVAL_EXTERNAL_CLUSTERING_METRICS,
     EVAL_EMBEDDING_METRICS,
     EVAL_RECONSTRUCTION_METRICS,
     EVAL_PREDICTABILITY_PROBES,
 )
-from benchrep.assembly.registry_utils import (
+from benchrep.assembly.registries.utils import (
     resolve_registry_keys,
     resolve_registry_param_keys,
 )

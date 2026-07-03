@@ -21,7 +21,7 @@ from lightning.pytorch.loggers import (
 from lightning.pytorch.callbacks import ModelCheckpoint
 
 from benchrep.records import get_run_logger
-from benchrep.assembly.registry import LOGGERS
+from benchrep.assembly.registries.core import LOGGERS
 from benchrep.assembly.schemas import TrainerConfig, LoggerConfig, CheckpointConfig
 from benchrep.runtime import RunContext
 

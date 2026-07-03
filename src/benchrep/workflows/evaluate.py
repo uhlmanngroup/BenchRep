@@ -26,7 +26,7 @@ from benchrep.evaluation.reconstructions.data import (
     load_reconstruction_evaluation_input,
 )
 from benchrep.runtime import RunContext
-from benchrep.assembly.register_builtins import register_builtins
+from benchrep.assembly.registries.builtins import register_builtins
 
 
 if TYPE_CHECKING:

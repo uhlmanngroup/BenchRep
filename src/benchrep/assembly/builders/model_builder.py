@@ -19,7 +19,7 @@ from benchrep.architecture.models import (
 )
 from benchrep.architecture.losses.base import LossTerm
 from benchrep.assembly.builders.optimizer_builder import build_optimizer_factory
-from benchrep.assembly.registry_utils import normalize_name
+from benchrep.assembly.registries.utils import normalize_name
 from benchrep.assembly.schemas import (
     TrainingConfig,
     DecoderConfig,
@@ -27,7 +27,7 @@ from benchrep.assembly.schemas import (
     LossTermConfig,
     OptimizerConfig,
 )
-from benchrep.assembly.registry import (
+from benchrep.assembly.registries.core import (
     DECODERS,
     ENCODERS,
     MODELS,

@@ -5,8 +5,8 @@ from typing import Any
 
 import numpy as np
 
-from benchrep.assembly.registry import EVAL_RECONSTRUCTION_METRICS
-from benchrep.assembly.registry_utils import (
+from benchrep.assembly.registries.core import EVAL_RECONSTRUCTION_METRICS
+from benchrep.assembly.registries.utils import (
     resolve_registry_keys,
     resolve_registry_param_keys,
 )

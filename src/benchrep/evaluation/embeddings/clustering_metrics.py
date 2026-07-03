@@ -5,11 +5,11 @@ from typing import Any
 
 import anndata as ad
 
-from benchrep.assembly.registry import (
+from benchrep.assembly.registries.core import (
     EVAL_EXTERNAL_CLUSTERING_METRICS,
     EVAL_INTERNAL_CLUSTERING_METRICS,
 )
-from benchrep.assembly.registry_utils import (
+from benchrep.assembly.registries.utils import (
     resolve_registry_keys,
     resolve_registry_param_keys,
 )

@@ -26,7 +26,7 @@ from benchrep.evaluation.utils import (
     validate_obs_key,
 )
 from benchrep.evaluation.embeddings.predictability_probes import PredictabilityProbeSpec
-from benchrep.assembly.registry import EVAL_PREDICTABILITY_PROBES
+from benchrep.assembly.registries.core import EVAL_PREDICTABILITY_PROBES
 
 
 @dataclass(frozen=True)

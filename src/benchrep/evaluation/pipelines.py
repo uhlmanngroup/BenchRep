@@ -6,7 +6,7 @@ from typing import Any, TYPE_CHECKING
 
 import anndata as ad
 
-from benchrep.assembly.registry import (
+from benchrep.assembly.registries.core import (
     EVAL_CLUSTERING_METHODS,
     EVAL_REDUCTIONS,
 )

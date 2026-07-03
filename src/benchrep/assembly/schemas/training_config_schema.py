@@ -13,8 +13,8 @@ from pydantic import (
     ValidationInfo,
 )
 
-from benchrep.assembly.registry import MODELS
-from benchrep.assembly.registry_utils import normalize_name
+from benchrep.assembly.registries.core import MODELS
+from benchrep.assembly.registries.utils import normalize_name
 from benchrep.architecture.models import (
     Autoencoder,
     VAE,

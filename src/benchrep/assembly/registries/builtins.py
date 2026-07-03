@@ -5,11 +5,11 @@ _BUILTINS_REGISTERING = False
 def register_builtins() -> None:
     """Register BenchRep's built-in components exactly once.
 
-    Registries are defined separately in ``benchrep.assembly.registry`` so that
-    implementation modules can safely import registry objects for lookup without
-    creating import cycles. This function is the single place where BenchRep's
-    built-in datasets, transforms, architectures, losses, optimizers, loggers,
-    evaluation methods, and metrics are attached to those registries.
+    Registries are defined separately in ``benchrep.assembly.registries.core`` so
+    that implementation modules can safely import registry objects for lookup
+    without creating import cycles. This function is the single place where
+    BenchRep's built-in datasets, transforms, architectures, losses, optimizers,
+    loggers, evaluation methods, and metrics are attached to those registries.
 
     Imports are intentionally kept inside this function. This keeps importing
     the registration module cheap and avoids pulling in heavy optional/runtime
@@ -59,7 +59,7 @@ def register_builtins() -> None:
             homogeneity_score,
         )
 
-        from benchrep.assembly.registry import (
+        from benchrep.assembly.registries.core import (
             DATASETS,
             TRANSFORMS,
             ENCODERS,

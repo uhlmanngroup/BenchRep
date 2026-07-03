@@ -41,7 +41,7 @@ from benchrep.runtime.utils import (
     CompatibilityPolicy,
     format_external_datamodule_failure_message,
 )
-from benchrep.assembly.register_builtins import register_builtins
+from benchrep.assembly.registries.builtins import register_builtins
 
 
 @dataclass

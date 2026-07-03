@@ -1,5 +1,5 @@
 from benchrep.assembly.config import load_yaml
-from benchrep.assembly.registry_utils import (
+from benchrep.assembly.registries.utils import (
     normalize_name,
 )
 

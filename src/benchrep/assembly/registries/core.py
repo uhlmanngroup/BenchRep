@@ -97,7 +97,7 @@ class Registry:
 def _ensure_builtins_registered() -> None:
     """Ensure BenchRep built-in registry entries are available."""
 
-    from benchrep.assembly.register_builtins import register_builtins
+    from benchrep.assembly.registries.builtins import register_builtins
 
     register_builtins()
 

@@ -5,9 +5,9 @@ from collections.abc import Callable, Iterable
 import torch
 from torch import nn
 
-from benchrep.assembly.registry_utils import normalize_name
+from benchrep.assembly.registries.utils import normalize_name
 from benchrep.assembly.schemas import OptimizerConfig
-from benchrep.assembly.registry import OPTIMIZERS
+from benchrep.assembly.registries.core import OPTIMIZERS
 
 
 def build_optimizer_factory(
