@@ -123,6 +123,17 @@ def _predict(
     model_is_external = model is not None
     datamodule_is_external = datamodule is not None
 
+    # Training manifest override
+    if training_manifest_path is not None:
+        training_manifest_path = Path(training_manifest_path).resolve()
+        if training_manifest_path.suffix.lower() not in {".yaml", ".yml"}:
+            raise ValueError(
+                "training_manifest_path override must point to a YAML file."
+            )
+        training_manifest_path_overridden = True
+    else:
+        training_manifest_path_overridden = False
+
     # Compose, parse, and resolve config
     config_composition_result = compose_effective_config(
         schema=PredictionConfig,
@@ -131,6 +142,7 @@ def _predict(
         config_components=config_components,
         external_model=model_is_external,
         external_datamodule=datamodule_is_external,
+        training_manifest_path_overridden=training_manifest_path_overridden,
     )
 
     pred_config = config_composition_result.effective_config
