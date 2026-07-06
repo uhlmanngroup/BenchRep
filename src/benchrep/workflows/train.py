@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import Mapping
 
 import lightning as L
 from lightning.pytorch.callbacks import ModelCheckpoint
@@ -36,8 +37,11 @@ from benchrep.interfaces.models import (
     BenchRepAutoencoderModel,
     BenchRepVAEModel,
 )
-from benchrep.assembly import load_yaml
-from benchrep.assembly.schemas import parse_training_config, TrainingConfig
+from benchrep.assembly.config import (
+    compose_effective_config,
+    SupportedConfigComponent,
+)
+from benchrep.assembly.schemas import TrainingConfig
 from benchrep.assembly.builders import build_datamodule, build_model, build_trainer
 from benchrep.assembly.registries.builtins import register_builtins
 
@@ -56,7 +60,9 @@ class TrainingWorkflowResult:
 
 # Model-specific wrappers
 def train_ae(
-        config_path: Path | str,
+        config_path: Path | str | None = None,
+        full_config_object: TrainingConfig | None = None,
+        config_components: Mapping[str, SupportedConfigComponent] | None = None,
         model: BenchRepAutoencoderModel | None = None,
         datamodule: L.LightningDataModule | None = None,
         compatibility_policy: CompatibilityPolicy = "error",
@@ -64,6 +70,8 @@ def train_ae(
     return _train(
         model_family=AUTOENCODER_FAMILY,
         config_path=config_path,
+        full_config_object=full_config_object,
+        config_components=config_components,
         model=model,
         datamodule=datamodule,
         compatibility_policy=compatibility_policy,
@@ -71,7 +79,9 @@ def train_ae(
 
 
 def train_vae(
-        config_path: Path | str,
+        config_path: Path | str | None = None,
+        full_config_object: TrainingConfig | None = None,
+        config_components: Mapping[str, SupportedConfigComponent] | None = None,
         model: BenchRepVAEModel | None = None,
         datamodule: L.LightningDataModule | None = None,
         compatibility_policy: CompatibilityPolicy = "error",
@@ -79,6 +89,8 @@ def train_vae(
     return _train(
         model_family=VAE_FAMILY,
         config_path=config_path,
+        full_config_object=full_config_object,
+        config_components=config_components,
         model=model,
         datamodule=datamodule,
         compatibility_policy=compatibility_policy,
@@ -87,7 +99,9 @@ def train_vae(
 
 def _train(
         model_family: ModelFamilySpec,
-        config_path: Path | str,
+        config_path: Path | str | None = None,
+        full_config_object: TrainingConfig | None = None,
+        config_components: Mapping[str, SupportedConfigComponent] | None = None,
         model: SupportedModel | None = None,
         datamodule: L.LightningDataModule | None = None,
         compatibility_policy: CompatibilityPolicy = "error"
@@ -103,14 +117,17 @@ def _train(
     model_is_external = model is not None
     datamodule_is_external = datamodule is not None
 
-    # Parse config
-    raw_train_config_path = Path(config_path).resolve()
-    raw_train_config = load_yaml(raw_train_config_path)
-    train_config = parse_training_config(
-        raw_train_config,
-        model_overridden=model_is_external,
-        datamodule_overridden=datamodule_is_external,
+    # Compose and parse config
+    config_composition_result = compose_effective_config(
+        schema=TrainingConfig,
+        config_path=config_path,
+        full_config_object=full_config_object,
+        config_components=config_components,
+        external_model=model_is_external,
+        external_datamodule=datamodule_is_external,
     )
+
+    train_config = config_composition_result.effective_config
 
     if not model_is_external:
         assert train_config.model is not None
@@ -135,12 +152,20 @@ def _train(
     # Initiate local run logger
     run_log = setup_run_logger(log_out_dir=run_context.log_dir)
 
-    run_log.info("Training run initialized with config from: '%s'", raw_train_config_path)
+    # Log composition messages and warnings
+    for msg in config_composition_result.composition_messages:
+        run_log.info(msg)
+    for warning in config_composition_result.composition_warnings:
+        run_log.warning(warning)
+
+    run_log.info("Training run initialized.")
+    run_log.info("Training effective config source: '%s'", config_composition_result.effective_source)
+
     run_log.info("Training outputs will be saved to: '%s'", run_context.output_dir)
 
     # Bookkeeping --- config
     save_config_records(
-        original_config_path=raw_train_config_path,
+        original_config_path=config_composition_result.original_config_path,
         resolved_config=train_config,
         config_out_dir=run_context.config_dir,
     )
@@ -177,13 +202,19 @@ def _train(
             split=train_config.data.split,
         )
     else:
-        run_log.info("External datamodule was provided; config.dataset and config.datamodule were ignored.")
+        run_log.info(
+            "External datamodule was provided; dataset/datamodule config sections "
+            "will be ignored regardless of whether they came from YAML, a full config "
+            "object, or config_components."
+        )
 
     if not model_is_external:
         model = build_model(config=train_config)
     else:
         run_log.info(
-            "External model was provided; config.model/encoder/decoder/losses/optimizer were ignored."
+            "External model was provided; model/encoder/decoder/losses/optimizer "
+            "config sections will be ignored regardless of whether they came from "
+            "YAML, a full config object, or config_components."
         )
 
     # Preflight check
@@ -268,10 +299,9 @@ def _train(
 
     manifest_path = run_context.metadata_dir / "training_manifest.yaml"
     write_training_manifest(
+        config_composition_result=config_composition_result,
         output_path=manifest_path,
-        config=train_config,
         run_context=run_context,
-        input_config_path=raw_train_config_path,
         checkpoint_callback=checkpoint_callback,
         torchview_graph_path=torchview_graph_path,
         created_at=created_at,
@@ -289,7 +319,7 @@ def _train(
 
     audit_train_outputs(
         run_context=run_context,
-        input_config_path=raw_train_config_path,
+        input_config_path=config_composition_result.original_config_path,
         resolved_config_path=run_context.config_dir / "resolved_config.yaml",
         checkpoint_dir=run_context.training_checkpoint_dir,
         training_manifest_path=manifest_path,

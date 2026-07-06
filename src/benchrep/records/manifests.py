@@ -8,6 +8,7 @@ import yaml
 from lightning.pytorch.callbacks import ModelCheckpoint
 
 from benchrep.assembly.schemas import TrainingConfig
+from benchrep.assembly.config import ConfigCompositionResult
 from benchrep.assembly.resolvers import PredictionRunSpec
 from benchrep.records.prediction_exports import PredictionExportPaths
 from benchrep.runtime import RunContext
@@ -31,10 +32,9 @@ def _optional_path_to_str(path: Path | None) -> str | None:
 
 def write_training_manifest(
     *,
+    config_composition_result: ConfigCompositionResult[TrainingConfig],
     output_path: Path,
-    config: TrainingConfig,
     run_context: RunContext,
-    input_config_path: Path,
     checkpoint_callback: ModelCheckpoint,
     torchview_graph_path: Path | None = None,
     created_at: str,
@@ -48,6 +48,8 @@ def write_training_manifest(
     # Source flags
     model_is_external = model_source != "config"
     datamodule_is_external = datamodule_source != "config"
+
+    config = config_composition_result.effective_config
 
     configured_model = config.model.name if config.model is not None else None
     configured_encoder = config.encoder.name if config.encoder is not None else None
@@ -133,6 +135,19 @@ def write_training_manifest(
             "output_dir": str(run_context.output_dir),
         },
         "provenance": {
+            "config": {
+                "run_reconstructable_from_resolved_config": (
+                    not model_is_external and not datamodule_is_external
+                ),
+                "effective_source": config_composition_result.effective_source,
+                "yaml_supplied": config_composition_result.yaml_supplied,
+                "yaml_used_as_base": config_composition_result.yaml_used_as_base,
+                "original_config_path": (
+                    str(config_composition_result.original_config_path)
+                    if config_composition_result.original_config_path is not None
+                    else None
+                ),
+            },
             "model": {
                 "source": model_source,
                 "class_name": model_class_name,
@@ -149,12 +164,18 @@ def write_training_manifest(
                 "configured_transform": None if datamodule_is_external else configured_transform,
                 "configured_batch_size": None if datamodule_is_external else configured_batch_size,
             },
-            "run_reconstructable_from_config": (
-                not model_is_external and not datamodule_is_external
-            ),
         },
         "records": {
-            "input_config_path": str(input_config_path),
+            "input_config_path": (
+                str(config_composition_result.original_config_path)
+                if config_composition_result.original_config_path is not None
+                else None
+            ),
+            "original_config_record_path": (
+                str(run_context.config_dir / "original_config.yaml")
+                if config_composition_result.original_config_path is not None
+                else None
+            ),
             "resolved_config_path": str(run_context.config_dir / "resolved_config.yaml"),
             "log_dir": str(run_context.log_dir),
             "metadata_dir": str(run_context.metadata_dir),

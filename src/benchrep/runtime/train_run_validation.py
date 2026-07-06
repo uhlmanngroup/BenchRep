@@ -165,8 +165,8 @@ def audit_train_outputs(
                 name="input config",
                 status="skipped",
                 message=(
-                    "no input config path was provided; this is expected for runs "
-                    "started from config objects rather than a YAML file"
+                    "no input config path was provided; this is expected for runs started "
+                    "from a full config object or config_components rather than a YAML file"
                 ),
             )
         )

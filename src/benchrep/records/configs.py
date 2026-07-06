@@ -12,7 +12,6 @@ explicit output directory can also be provided.
 from pathlib import Path
 from shutil import copy2
 from typing import Any
-import logging
 
 import yaml
 from pydantic import BaseModel
