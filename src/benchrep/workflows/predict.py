@@ -3,12 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 import lightning as L
 import torch
 
-from benchrep.assembly import load_yaml
+from benchrep.assembly.config import (
+    compose_effective_config,
+    SupportedConfigComponent,
+)
 from benchrep.assembly.builders import (
     build_datamodule,
     build_model,
@@ -23,7 +26,7 @@ from benchrep.interfaces.model_families import (
 )
 from benchrep.interfaces.compatibility import validate_prediction_output_structure
 from benchrep.assembly.resolvers import resolve_prediction_config, PredictionRunSpec
-from benchrep.assembly.schemas import parse_prediction_config, PredictionConfig
+from benchrep.assembly.schemas import PredictionConfig
 from benchrep.records import (
     save_config_records,
     setup_run_logger,
@@ -60,6 +63,8 @@ class PredictionWorkflowResult:
 # Model-specific wrappers
 def predict_ae(
         config_path: Path | str,
+        full_config_object: PredictionConfig | None = None,
+        config_components: Mapping[str, SupportedConfigComponent] | None = None,
         training_manifest_path: Path | str | None = None,
         model: BenchRepAutoencoderModel | None = None,
         datamodule: L.LightningDataModule | None = None,
@@ -68,6 +73,8 @@ def predict_ae(
     return _predict(
         model_family=AUTOENCODER_FAMILY,
         config_path=config_path,
+        full_config_object=full_config_object,
+        config_components=config_components,
         training_manifest_path=training_manifest_path,
         model=model,
         datamodule=datamodule,
@@ -77,6 +84,8 @@ def predict_ae(
 
 def predict_vae(
         config_path: Path | str,
+        full_config_object: PredictionConfig | None = None,
+        config_components: Mapping[str, SupportedConfigComponent] | None = None,
         training_manifest_path: Path | str | None = None,
         model: BenchRepVAEModel | None = None,
         datamodule: L.LightningDataModule | None = None,
@@ -85,6 +94,8 @@ def predict_vae(
     return _predict(
         model_family=VAE_FAMILY,
         config_path=config_path,
+        full_config_object=full_config_object,
+        config_components=config_components,
         training_manifest_path=training_manifest_path,
         model=model,
         datamodule=datamodule,
@@ -95,6 +106,8 @@ def predict_vae(
 def _predict(
         model_family: ModelFamilySpec,
         config_path: Path | str,
+        full_config_object: PredictionConfig | None = None,
+        config_components: Mapping[str, SupportedConfigComponent] | None = None,
         training_manifest_path: Path | str | None = None,
         model: SupportedModel | None = None,
         datamodule: L.LightningDataModule | None = None,
@@ -110,13 +123,18 @@ def _predict(
     model_is_external = model is not None
     datamodule_is_external = datamodule is not None
 
-    # Parse and resolve config
-    raw_pred_config_path = Path(config_path).resolve()
-    raw_pred_config = load_yaml(raw_pred_config_path)
-    pred_config = parse_prediction_config(
-        raw_pred_config,
-        training_manifest_path_overridden=training_manifest_path is not None,
+    # Compose, parse, and resolve config
+    config_composition_result = compose_effective_config(
+        schema=PredictionConfig,
+        config_path=config_path,
+        full_config_object=full_config_object,
+        config_components=config_components,
+        external_model=model_is_external,
+        external_datamodule=datamodule_is_external,
     )
+
+    pred_config = config_composition_result.effective_config
+
     run_spec = resolve_prediction_config(
         prediction_config=pred_config,
         training_manifest_path_override=training_manifest_path,
@@ -141,10 +159,16 @@ def _predict(
 
     run_log = setup_run_logger(log_out_dir=run_context.log_dir)
 
-    run_log.info("Prediction run initialized from config: '%s'", raw_pred_config_path)
-    run_log.info("Prediction outputs will be saved to: '%s'", run_context.output_dir)
+    # Log composition messages and warnings
+    for msg in config_composition_result.composition_messages:
+        run_log.info(msg)
+    for warning in config_composition_result.composition_warnings:
+        run_log.warning(warning)
+
+    run_log.info("Prediction run initialized.")
     run_log.info("Resolved training manifest: '%s'", run_spec.training_manifest_path)
-    run_log.info("Resolved training config: '%s'", run_spec.resolved_training_config_path)
+    run_log.info("Prediction effective config source: '%s'", config_composition_result.effective_source)
+    run_log.info("Prediction outputs will be saved to: '%s'", run_context.output_dir)
     run_log.info("Resolved checkpoint: '%s'", run_spec.checkpoint_path)
     run_log.info(
         "Resolved prediction exports: mode=%s, embeddings_enabled=%s, "
@@ -162,7 +186,7 @@ def _predict(
 
     # Bookkeeping --- config
     save_config_records(
-        original_config_path=raw_pred_config_path,
+        original_config_path=config_composition_result.original_config_path,
         resolved_config=run_spec.prediction_config,
         config_out_dir=run_context.config_dir,
     )
@@ -185,6 +209,7 @@ def _predict(
 
     # Build datamodule
     if not datamodule_is_external:
+        # Avoid confusing type checker...
         assert run_spec.dataset_config is not None
         assert run_spec.datamodule_config is not None
 
@@ -196,7 +221,9 @@ def _predict(
             split=run_spec.split,
         )
     else:
-        run_log.info("External datamodule was provided; config.dataset and config.datamodule were ignored.")
+        run_log.info(
+            "External datamodule was provided; resolved dataset/datamodule config sections will be ignored."
+        )
 
     # Build or use model
     if not model_is_external:
@@ -208,7 +235,8 @@ def _predict(
         model = build_model(config=run_spec.training_config)
     else:
         run_log.info(
-            "External model was provided; config.model/encoder/decoder/losses/optimizer were ignored."
+            "External model was provided; resolved model/encoder/decoder/losses/optimizer "
+            "config sections will be ignored."
         )
 
     # Preflight check and source input validation
@@ -319,10 +347,10 @@ def _predict(
     # Export prediction manifest
     manifest_path = run_context.metadata_dir / "prediction_manifest.yaml"
     write_prediction_manifest(
+        config_composition_result=config_composition_result,
         output_path=manifest_path,
         run_spec=run_spec,
         run_context=run_context,
-        input_config_path=raw_pred_config_path,
         export_paths=export_paths,
         created_at=created_at,
         completed_at=completed_at,
@@ -343,7 +371,7 @@ def _predict(
         model_family=model_family,
         predictions=predictions,
         export_paths=export_paths,
-        input_config_path=raw_pred_config_path,
+        input_config_path=config_composition_result.original_config_path,
         resolved_config_path=run_context.config_dir / "resolved_config.yaml",
         prediction_manifest_path=manifest_path,
         model_source="external_object" if model_is_external else "config",
@@ -353,7 +381,7 @@ def _predict(
     )
 
     return PredictionWorkflowResult(
-        config=pred_config,
+        config=run_spec.prediction_config,
         run_spec=run_spec,
         run_context=run_context,
         datamodule=datamodule,

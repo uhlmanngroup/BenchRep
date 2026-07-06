@@ -160,7 +160,6 @@ def _train(
 
     run_log.info("Training run initialized.")
     run_log.info("Training effective config source: '%s'", config_composition_result.effective_source)
-
     run_log.info("Training outputs will be saved to: '%s'", run_context.output_dir)
 
     # Bookkeeping --- config

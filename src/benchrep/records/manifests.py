@@ -7,7 +7,7 @@ import yaml
 
 from lightning.pytorch.callbacks import ModelCheckpoint
 
-from benchrep.assembly.schemas import TrainingConfig
+from benchrep.assembly.schemas import TrainingConfig, PredictionConfig
 from benchrep.assembly.config import ConfigCompositionResult
 from benchrep.assembly.resolvers import PredictionRunSpec
 from benchrep.records.prediction_exports import PredictionExportPaths
@@ -200,10 +200,10 @@ def write_training_manifest(
 
 def write_prediction_manifest(
     *,
+    config_composition_result: ConfigCompositionResult[PredictionConfig],
     output_path: Path,
     run_spec: PredictionRunSpec,
     run_context: RunContext,
-    input_config_path: Path,
     export_paths: PredictionExportPaths,
     created_at: str,
     completed_at: str,
@@ -213,9 +213,14 @@ def write_prediction_manifest(
     datamodule_source: str = "config",
     datamodule_class_name: str,
 ) -> None:
-    training_summary = run_spec.training_manifest.get("summary", {})
-
     training_provenance = run_spec.training_manifest.get("provenance", {})
+    training_config_provenance = training_provenance.get("config", {})
+    training_run_reconstructable = bool(
+        training_config_provenance.get(
+            "run_reconstructable_from_resolved_config",
+            False,
+        )
+    )
 
     model_is_external = model_source != "config"
     datamodule_is_external = datamodule_source != "config"
@@ -265,9 +270,9 @@ def write_prediction_manifest(
         "project_name": run_spec.training_config.run.project_name,
         "model_source": model_source,
         "datamodule_source": datamodule_source,
-        "model": model_class_name if model_is_external else training_summary.get("model"),
-        "encoder": None if model_is_external else training_summary.get("encoder"),
-        "decoder": None if model_is_external else training_summary.get("decoder"),
+        "model": model_class_name if model_is_external else configured_model,
+        "encoder": None if model_is_external else configured_encoder,
+        "decoder": None if model_is_external else configured_decoder,
         "dataset": None if datamodule_is_external else configured_dataset,
         "datamodule": datamodule_class_name if datamodule_is_external else None,
         "data_split": configured_split,
@@ -294,6 +299,21 @@ def write_prediction_manifest(
         "provenance": {
             "training": training_provenance,
             "prediction": {
+                "config": {
+                    "run_reconstructable_from_resolved_config": (
+                        training_run_reconstructable
+                        and not model_is_external
+                        and not datamodule_is_external
+                    ),
+                    "effective_source": config_composition_result.effective_source,
+                    "yaml_supplied": config_composition_result.yaml_supplied,
+                    "yaml_used_as_base": config_composition_result.yaml_used_as_base,
+                    "original_config_path": (
+                        str(config_composition_result.original_config_path)
+                        if config_composition_result.original_config_path is not None
+                        else None
+                    ),
+                },
                 "model": {
                     "source": model_source,
                     "class_name": model_class_name,
@@ -317,15 +337,19 @@ def write_prediction_manifest(
                     "configured_batch_size": None if datamodule_is_external else configured_batch_size,
                     "configured_split": configured_split,
                 },
-                "run_reconstructable_from_config": (
-                    training_provenance.get("run_reconstructable_from_config", True)
-                    and not model_is_external
-                    and not datamodule_is_external
-                ),
             },
         },
         "records": {
-            "input_config_path": str(input_config_path),
+            "input_config_path": (
+                str(config_composition_result.original_config_path)
+                if config_composition_result.original_config_path is not None
+                else None
+            ),
+            "original_config_record_path": (
+                str(run_context.config_dir / "original_config.yaml")
+                if config_composition_result.original_config_path is not None
+                else None
+            ),
             "resolved_config_path": str(run_context.config_dir / "resolved_config.yaml"),
             "log_dir": str(run_context.log_dir),
             "metadata_dir": str(run_context.metadata_dir),
