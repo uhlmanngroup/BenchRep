@@ -43,7 +43,7 @@ from benchrep.assembly.schemas.evaluation_config_schema import (
     EvaluationReconstructionConfig,
     EvaluationPlotsConfig,
 )
-from benchrep.assembly.schemas.validation import (
+from benchrep.assembly.schemas.parsing import (
     parse_training_config,
     parse_prediction_config,
     parse_evaluation_config,
@@ -153,7 +153,7 @@ class ConfigCompositionResult(Generic[ConfigT]):
 
 
 @overload
-def build_effective_config(
+def compose_effective_config(
     *,
     schema: type[TrainingConfig],
     config_path: Path | str | None = None,
@@ -163,7 +163,7 @@ def build_effective_config(
 
 
 @overload
-def build_effective_config(
+def compose_effective_config(
     *,
     schema: type[PredictionConfig],
     config_path: Path | str | None = None,
@@ -173,7 +173,7 @@ def build_effective_config(
 
 
 @overload
-def build_effective_config(
+def compose_effective_config(
     *,
     schema: type[EvaluationConfig],
     config_path: Path | str | None = None,
@@ -182,7 +182,7 @@ def build_effective_config(
 ) -> ConfigCompositionResult[EvaluationConfig]: ...
 
 
-def build_effective_config(
+def compose_effective_config(
     *,
     schema: type[ConfigT],
     config_path: Path | str | None = None,
@@ -192,7 +192,7 @@ def build_effective_config(
     external_datamodule: bool = False,
     training_manifest_path_overridden: bool = False,
 ) -> ConfigCompositionResult[ConfigT]:
-    """Build the effective typed config object for a BenchRep workflow.
+    """Compose the effective typed config object for a BenchRep workflow.
 
     This helper centralizes the early entrypoint logic that decides which config
     input should be used before workflow-specific resolution. It accepts an

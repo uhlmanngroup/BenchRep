@@ -29,7 +29,7 @@ from benchrep.assembly.schemas.evaluation_config_schema import (
     EvaluationConfig,
 )
 
-from benchrep.assembly.schemas.validation import (
+from benchrep.assembly.schemas.parsing import (
     parse_training_config,
     parse_prediction_config,
     parse_evaluation_config,
