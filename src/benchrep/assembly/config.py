@@ -20,7 +20,6 @@ import yaml
 
 from pydantic import BaseModel
 
-from benchrep.records.logs import get_run_logger
 from benchrep.assembly.schemas.training_config_schema import (
     TrainingConfig,
     RunConfig,
@@ -123,6 +122,8 @@ class ConfigCompositionResult(Generic[ConfigT]):
     effective_source: ConfigSource
     yaml_supplied: bool
     yaml_used_as_base: bool
+    composition_messages: tuple[str, ...] = ()
+    composition_warnings: tuple[str, ...] = ()
 
 
 @overload
@@ -270,7 +271,8 @@ def compose_effective_config(
         If ``schema`` is unsupported, ``full_config_object`` has the wrong type,
         or a component value does not match the expected top-level section type.
     """
-    run_log = get_run_logger()
+    composition_messages: list[str] = []
+    composition_warnings: list[str] = []
 
     if schema not in SUPPORTED_CONFIG_SCHEMAS:
         raise TypeError(f"Unsupported config schema: {schema.__name__}")
@@ -304,17 +306,16 @@ def compose_effective_config(
         effective_config = full_config_object
 
         if yaml_supplied:
-            run_log.warning(
+            composition_warnings.append(
                 "full_config_object provided; config YAML will be ignored as "
-                "effective config: %s",
-                original_config_path,
+                f"effective config: {original_config_path}"
             )
 
         if config_components:
             component_names = ", ".join(config_components.keys())
-            run_log.warning(
-                "full_config_object provided; config_components will be ignored: %s",
-                component_names,
+            composition_warnings.append(
+                "full_config_object provided; config_components will be ignored: "
+                f"{component_names}"
             )
 
         return ConfigCompositionResult(
@@ -324,6 +325,8 @@ def compose_effective_config(
             effective_source=config_source,
             yaml_supplied=yaml_supplied,
             yaml_used_as_base=yaml_used_as_base,
+            composition_messages=tuple(composition_messages),
+            composition_warnings=tuple(composition_warnings),
         )
 
     # Convert keyed config components into raw top-level config sections.
@@ -338,7 +341,7 @@ def compose_effective_config(
         raw_config = dict(original_config_raw)
         raw_config.update(component_raw)
 
-        run_log.info(
+        composition_messages.append(
             "Both config_path and config_components provided; config_components "
             "will replace matching top-level YAML sections."
         )
@@ -348,18 +351,17 @@ def compose_effective_config(
         yaml_used_as_base = True
         raw_config = original_config_raw
 
-        run_log.info("Only config_path provided; using YAML as effective config.")
+        composition_messages.append("Only config_path provided; using YAML as effective config.")
 
     else:
         config_source = "components"
         yaml_used_as_base = False
         raw_config = component_raw
 
-        run_log.info(
+        composition_messages.append(
             "Only config_components provided; composing effective config from "
             "top-level components. Components must provide enough information to "
-            "validate as %s; schema defaults may fill omitted optional fields.",
-            schema.__name__,
+            f"validate as {schema.__name__}; schema defaults may fill omitted optional fields."
         )
 
     effective_config = _parse_effective_config(
@@ -377,6 +379,8 @@ def compose_effective_config(
         effective_source=config_source,
         yaml_supplied=yaml_supplied,
         yaml_used_as_base=yaml_used_as_base,
+        composition_messages=tuple(composition_messages),
+        composition_warnings=tuple(composition_warnings),
     )
 
 
@@ -453,10 +457,7 @@ def _normalize_config_components(
     if schema not in SUPPORTED_CONFIG_SCHEMAS:
         raise TypeError(f"Unsupported config schema: {schema.__name__}")
 
-    expected_component_types = get_expected_component_types(
-        schema,
-        exclude_fields={"stage"},
-    )
+    expected_component_types = get_expected_component_types(schema)
     allowed_keys = set(expected_component_types)
 
     unknown_keys = set(config_components) - allowed_keys
