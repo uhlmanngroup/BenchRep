@@ -84,21 +84,10 @@ def resolve_prediction_config(
     datamodule_overridden: bool = False,
 ) -> PredictionRunSpec:
     """Resolve prediction config values that depend on the training run."""
-    if training_manifest_path_override is not None:
-        training_manifest_path = Path(training_manifest_path_override).resolve()
-        if training_manifest_path.suffix.lower() not in {".yaml", ".yml"}:
-            raise ValueError(
-                "training_manifest_path override must point to a YAML file."
-            )
-        prediction_config = prediction_config.model_copy(
-            update={
-                "source": prediction_config.source.model_copy(
-                    update={"training_manifest_path": training_manifest_path}
-                )
-            }
-        )
-    else:
-        training_manifest_path = prediction_config.source.training_manifest_path.resolve()
+    prediction_config, training_manifest_path = _resolve_training_manifest_path(
+        prediction_config=prediction_config,
+        training_manifest_path_override=training_manifest_path_override,
+    )
 
     training_manifest = load_yaml(training_manifest_path)
 
@@ -362,3 +351,35 @@ def resolve_prediction_exports(
             include_prediction=export_config.reconstructions.include_prediction,
         ),
     )
+
+
+def _resolve_training_manifest_path(
+    *,
+    prediction_config: PredictionConfig,
+    training_manifest_path_override: Path | str | None,
+) -> tuple[PredictionConfig, Path]:
+    if training_manifest_path_override is not None:
+        training_manifest_path = Path(training_manifest_path_override).resolve()
+
+        prediction_config = prediction_config.model_copy(
+            update={
+                "source": prediction_config.source.model_copy(
+                    update={"training_manifest_path": training_manifest_path}
+                )
+            }
+        )
+    else:
+        training_manifest_path = prediction_config.source.training_manifest_path.resolve()
+
+    if training_manifest_path.suffix.lower() not in {".yaml", ".yml"}:
+        raise ValueError(
+            "source.training_manifest_path must point to a YAML file. "
+            f"Got: {training_manifest_path}"
+        )
+
+    if not training_manifest_path.is_file():
+        raise FileNotFoundError(
+            f"Training manifest file does not exist: {training_manifest_path}"
+        )
+
+    return prediction_config, training_manifest_path
