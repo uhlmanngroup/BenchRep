@@ -2,7 +2,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TypeAlias, Literal, TypeVar, Generic, Mapping, overload
+from types import UnionType
+from typing import (
+    Any,
+    TypeAlias,
+    Literal,
+    TypeVar,
+    Generic,
+    Mapping,
+    overload,
+    get_args,
+    get_origin,
+    Union,
+)
 
 import yaml
 
@@ -50,15 +62,15 @@ from benchrep.assembly.schemas.parsing import (
 )
 
 
-SupportedConfig: TypeAlias = TrainingConfig | PredictionConfig | EvaluationConfig
-ConfigT = TypeVar("ConfigT", bound=SupportedConfig)
+SUPPORTED_CONFIG_SCHEMAS = (TrainingConfig, PredictionConfig, EvaluationConfig)
+SupportedConfigType: TypeAlias = TrainingConfig | PredictionConfig | EvaluationConfig
+ConfigT = TypeVar("ConfigT", bound=SupportedConfigType)
 
 ConfigSource: TypeAlias = Literal[
     "yaml",
     "config_object",
     "components",
     "yaml_with_components",
-    "config_object_with_components",
 ]
 
 LossesConfig: TypeAlias = dict[str, dict[str, LossTermConfig]]
@@ -102,45 +114,6 @@ SupportedConfigComponent: TypeAlias = (
     | SupportedEvaluationConfigComponent
 )
 
-STAGE_BY_SCHEMA = {
-    TrainingConfig: "train",
-    PredictionConfig: "predict",
-    EvaluationConfig: "evaluate",
-}
-
-TRAINING_COMPONENT_TYPES: dict[str, type[Any]] = {
-    "run": RunConfig,
-    "reproducibility": ReproducibilityConfig,
-    "model": ModelConfig,
-    "encoder": EncoderConfig,
-    "decoder": DecoderConfig,
-    "optimizer": OptimizerConfig,
-    "data": DataSelectionConfig,
-    "dataset": DatasetConfig,
-    "datamodule": DataModuleConfig,
-    "trainer": TrainerConfig,
-    "logger": LoggerConfig,
-    "checkpointing": CheckpointConfig,
-    "inspection": InspectionConfig,
-}
-
-PREDICTION_COMPONENT_TYPES: dict[str, type[Any]] = {
-    "source": PredictionSourceConfig,
-    "data": PredictionDataConfig,
-    "inference": PredictionInferenceConfig,
-    "exports": PredictionExportConfig,
-}
-
-EVALUATION_COMPONENT_TYPES: dict[str, type[Any]] = {
-    "source": EvaluationSourceConfig,
-    "run": EvaluationRunConfig,
-    "reductions": EvaluationReductionsConfig,
-    "clustering": EvaluationClusteringConfig,
-    "metrics": EvaluationMetricsConfig,
-    "reconstruction": EvaluationReconstructionConfig,
-    "plots": EvaluationPlotsConfig,
-}
-
 
 @dataclass(frozen=True)
 class ConfigCompositionResult(Generic[ConfigT]):
@@ -159,6 +132,9 @@ def compose_effective_config(
     config_path: Path | str | None = None,
     full_config_object: TrainingConfig | None = None,
     config_components: Mapping[str, SupportedTrainingConfigComponent] | None = None,
+    external_model: bool = False,
+    external_datamodule: bool = False,
+    training_manifest_path_overridden: bool = False,
 ) -> ConfigCompositionResult[TrainingConfig]: ...
 
 
@@ -169,6 +145,9 @@ def compose_effective_config(
     config_path: Path | str | None = None,
     full_config_object: PredictionConfig | None = None,
     config_components: Mapping[str, SupportedPredictionConfigComponent] | None = None,
+    external_model: bool = False,
+    external_datamodule: bool = False,
+    training_manifest_path_overridden: bool = False,
 ) -> ConfigCompositionResult[PredictionConfig]: ...
 
 
@@ -179,6 +158,9 @@ def compose_effective_config(
     config_path: Path | str | None = None,
     full_config_object: EvaluationConfig | None = None,
     config_components: Mapping[str, SupportedEvaluationConfigComponent] | None = None,
+    external_model: bool = False,
+    external_datamodule: bool = False,
+    training_manifest_path_overridden: bool = False,
 ) -> ConfigCompositionResult[EvaluationConfig]: ...
 
 
@@ -290,7 +272,7 @@ def compose_effective_config(
     """
     run_log = get_run_logger()
 
-    if schema not in STAGE_BY_SCHEMA:
+    if schema not in SUPPORTED_CONFIG_SCHEMAS:
         raise TypeError(f"Unsupported config schema: {schema.__name__}")
 
     # Load original YAML, if supplied and keep for records regardless.
@@ -375,7 +357,9 @@ def compose_effective_config(
 
         run_log.info(
             "Only config_components provided; composing effective config from "
-            "top-level components."
+            "top-level components. Components must provide enough information to "
+            "validate as %s; schema defaults may fill omitted optional fields.",
+            schema.__name__,
         )
 
     effective_config = _parse_effective_config(
@@ -432,28 +416,48 @@ def load_yaml(yaml_path: str | Path) -> dict[str, Any]:
     return yaml_file
 
 
+def _strip_none_from_type(annotation: Any) -> Any:
+    origin = get_origin(annotation)
+
+    if origin in {Union, UnionType}:
+        args = tuple(arg for arg in get_args(annotation) if arg is not type(None))
+        if len(args) == 1:
+            return args[0]
+
+    return annotation
+
+
+def get_expected_component_types(
+    schema: type[BaseModel],
+    *,
+    exclude_fields: set[str] | None = None,
+) -> dict[str, Any]:
+    if exclude_fields is None:
+        exclude_fields = {"stage"}
+
+    return {
+        name: _strip_none_from_type(field.annotation)
+        for name, field in schema.model_fields.items()
+        if name not in exclude_fields
+    }
+
+
 def _normalize_config_components(
     *,
-    schema: type[SupportedConfig],
+    schema: type[SupportedConfigType],
     config_components: Mapping[str, SupportedConfigComponent] | None,
 ) -> dict[str, Any]:
     if not config_components:
         return {}
 
-    if schema is TrainingConfig:
-        allowed_component_types = TRAINING_COMPONENT_TYPES
-        allowed_keys = set(allowed_component_types) | {"losses"}
-
-    elif schema is PredictionConfig:
-        allowed_component_types = PREDICTION_COMPONENT_TYPES
-        allowed_keys = set(allowed_component_types)
-
-    elif schema is EvaluationConfig:
-        allowed_component_types = EVALUATION_COMPONENT_TYPES
-        allowed_keys = set(allowed_component_types)
-
-    else:
+    if schema not in SUPPORTED_CONFIG_SCHEMAS:
         raise TypeError(f"Unsupported config schema: {schema.__name__}")
+
+    expected_component_types = get_expected_component_types(
+        schema,
+        exclude_fields={"stage"},
+    )
+    allowed_keys = set(expected_component_types)
 
     unknown_keys = set(config_components) - allowed_keys
     if unknown_keys:
@@ -475,7 +479,7 @@ def _normalize_config_components(
             normalized[key] = component
             continue
 
-        expected_type = allowed_component_types[key]
+        expected_type = expected_component_types[key]
 
         if not isinstance(component, expected_type):
             raise TypeError(
