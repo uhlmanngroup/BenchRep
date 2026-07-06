@@ -45,7 +45,7 @@ def validate_predict_contract_compatibility(
         datamodule_is_external: bool = False,
         compatibility_policy: CompatibilityPolicy = "error",
 ) -> PreconditionResult:
-    external_model_only = model_is_external and not  datamodule_is_external
+    external_model_only = model_is_external and not datamodule_is_external
     external_datamodule_only = datamodule_is_external and not model_is_external
     fully_internal_run = not model_is_external and not datamodule_is_external
 
@@ -132,6 +132,13 @@ def validate_predict_source_inputs(
         raise ValueError(
             "Prediction requires a completed training manifest, "
             f"but manifest status is {manifest_status!r}."
+        )
+
+    manifest_stage = run_spec.training_manifest.get("stage")
+    if manifest_stage != "training":
+        raise ValueError(
+            "Prediction requires a training manifest, "
+            f"but manifest stage is {manifest_stage!r}."
         )
 
     try:
@@ -330,25 +337,39 @@ def audit_predict_outputs(
             )
 
         else:
-            manifest_output_dir = Path(run_section["output_dir"])
+            output_dir_value = run_section.get("output_dir")
 
-            audit_existing_dir(
-                audit_items=audit_items,
-                name="manifest run output dir",
-                path=manifest_output_dir,
-            )
-
-            if manifest_output_dir != run_context.output_dir:
+            if not isinstance(output_dir_value, str):
                 audit_items.append(
                     AuditItem(
-                        name="manifest run output dir consistency",
-                        status="warning",
+                        name="manifest run output dir",
+                        status="error",
                         message=(
-                            f"`run.output_dir` is '{manifest_output_dir}', "
-                            f"but current run output directory is '{run_context.output_dir}'"
+                            "`run.output_dir` must be a string path, "
+                            f"got {type(output_dir_value).__name__}"
                         ),
                     )
                 )
+            else:
+                manifest_output_dir = Path(output_dir_value)
+
+                audit_existing_dir(
+                    audit_items=audit_items,
+                    name="manifest run output dir",
+                    path=manifest_output_dir,
+                )
+
+                if manifest_output_dir != run_context.output_dir:
+                    audit_items.append(
+                        AuditItem(
+                            name="manifest run output dir consistency",
+                            status="warning",
+                            message=(
+                                f"`run.output_dir` is '{manifest_output_dir}', "
+                                f"but current run output directory is '{run_context.output_dir}'"
+                            ),
+                        )
+                    )
 
     # -------------------------
     # Prediction source provenance
@@ -420,8 +441,6 @@ def audit_predict_outputs(
             )
         )
 
-        first_prediction = None
-
     else:
         audit_items.append(
             AuditItem(
@@ -431,8 +450,7 @@ def audit_predict_outputs(
             )
         )
 
-        first_prediction = predictions[0]
-        first_prediction_type = type(first_prediction)
+        first_prediction_type = type(predictions[0])
 
         audit_items.append(
             AuditItem(
@@ -451,7 +469,7 @@ def audit_predict_outputs(
                     check_value_types=True,
                 )
 
-        except TypeError as exc:
+        except Exception as exc:
             audit_items.append(
                 AuditItem(
                     name="prediction output contract",
