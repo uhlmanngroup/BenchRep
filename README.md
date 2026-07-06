@@ -224,7 +224,36 @@ Automated underlying pipeline:
 
 ```
 
-Useful for reproducible experiments and quick comparisons.
+Useful for reproducible experiments and quick comparisons. 
+
+For users who prefer to code in Python and not YAML, it's also
+possible to pass a fully constructed top-level Pydantic config object (e.g. TrainingConfig, PredictionConfig) to the train and predict workflows (evaluate workflow in progress) to bypass the YAML-route entirely. BenchRep also allows for passing specific config components (corresponding to YAML sections under the top level Pydantic object) as a mapping together with a base YAML file, which are then harmonized into  a single parsed config object. Precedence rules: full top-level config object > config components > YAML. In all cases, when using a fully config-based approach, whether using YAML or config objects, a resolved config YAML is saved to allow for reconstructing the run easily.
+
+```python
+from benchrep.assembly.schemas.training_config_schema import ReproducibilityConfig
+from benchrep.workflows.train import train_vae
+from benchrep.workflows.predict import predict_vae
+from benchrep.workflows.evaluate import evaluate
+
+reproducibility_config = ReproducibilityConfig(
+    seed=3407,
+    seed_workers=True,
+    float32_matmul_precision="medium",
+)
+
+train_result = train_vae(
+    "examples/configs/training_mnist_vae.yaml",
+    config_components={"reproducibility": reproducibility_config},
+)
+pred_result = predict_vae(
+    "examples/configs/prediction_mnist.yaml",
+    training_manifest_path=train_result.manifest_path,
+)
+eval_result = evaluate(
+    "examples/configs/evaluation.yaml",
+    prediction_manifest_path=pred_result.manifest_path,
+)
+```
 
 ---
 
@@ -243,7 +272,8 @@ Example:
 - pass all components into the model builder
 ```
 
-Useful for more control without fully leaving the BenchRep framework.
+Useful for more control without fully leaving the BenchRep framework. However, currently, the export of a resolved YAML
+config file that can be used to reconstruct the run is not currently supported for this route. 
 
 ---
 
@@ -253,7 +283,9 @@ The lowest-level usage mode is to provide custom Python objects directly to the 
 
 For autoencoder-style workflows, custom models should subclass the appropriate BenchRep base model, but the required contract is intentionally tiny. Custom datamodules can be ordinary Lightning datamodules. This route is useful when users want BenchRep’s training, prediction, export, manifest, and evaluation machinery without using the full config/builder system.
 
-Caveat: runs using external Python objects are not fully reconstructable from the resolved config alone. Reproducing the run requires passing the custom model/datamodule code again.
+Caveat: runs using external Python objects are not fully reconstructable from the resolved config alone. Reproducing the run requires passing the custom model/datamodule code again. In theory, external Python objects can be added to BenchRep's registry to allow for
+reconstructable fully config-driven usage later; however, this route is yet fully implemented and would likely result
+in auditor errors regardless of runtime success.
 
 Example:
 
@@ -303,8 +335,3 @@ eval_result = evaluate(
     prediction_manifest_path=pred_result.manifest_path,
 )
 ```
-
-Fully config-driven use can be recovered later by registering custom components and representing them in config.
- allows for a fully reconstructable run (as long as no custom model/datamodule were used.)
-
-NOTE: for users who prefer to code in Python and not YAML, it will soon be possible to pass individual config components as pydantic objects to the entrypoint workflows, and they would be harmonized with a base YAML if provided to produce a resolved_config that allows for a fully reconstructable run (as long as no custom model/datamodule were used.)
