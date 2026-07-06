@@ -37,7 +37,7 @@ from benchrep.records import (
 from benchrep.runtime import RunContext
 from benchrep.runtime.predict_run_validation import (
     validate_predict_contract_compatibility,
-    validate_predict_source_inputs,
+    prepare_predict_source_inputs,
     audit_predict_outputs,
 )
 from benchrep.runtime.utils import (
@@ -263,7 +263,7 @@ def _predict(
         compatibility_policy=compatibility_policy,
     )
 
-    predict_inputs = validate_predict_source_inputs(run_spec=run_spec)
+    predict_inputs = prepare_predict_source_inputs(run_spec=run_spec)
     model.load_state_dict(predict_inputs.state_dict)
     model.eval()
 

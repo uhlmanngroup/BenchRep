@@ -123,7 +123,7 @@ def validate_predict_contract_compatibility(
     return default_result
 
 
-def validate_predict_source_inputs(
+def prepare_predict_source_inputs(
     run_spec: PredictionRunSpec,
 ) -> PredictSourceInputsResult:
     manifest_status = run_spec.training_manifest.get("status")
