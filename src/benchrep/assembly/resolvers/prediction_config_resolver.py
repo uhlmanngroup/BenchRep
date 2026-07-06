@@ -89,7 +89,7 @@ def resolve_prediction_config(
         training_manifest_path_override=training_manifest_path_override,
     )
 
-    training_manifest = load_yaml(training_manifest_path)
+    training_manifest = _load_training_manifest(training_manifest_path)
 
     training_provenance = training_manifest.get("provenance", {})
     training_model_provenance = training_provenance.get("model", {})
@@ -383,3 +383,29 @@ def _resolve_training_manifest_path(
         )
 
     return prediction_config, training_manifest_path
+
+
+def _load_training_manifest(path: Path) -> dict[str, Any]:
+    training_manifest = load_yaml(path)
+
+    if not isinstance(training_manifest, dict):
+        raise TypeError(
+            "Training manifest must load as a mapping, "
+            f"got {type(training_manifest).__name__}."
+        )
+
+    manifest_stage = training_manifest.get("stage")
+    if manifest_stage != "training":
+        raise ValueError(
+            "Prediction requires a training manifest, "
+            f"but manifest stage is {manifest_stage!r}."
+        )
+
+    manifest_status = training_manifest.get("status")
+    if manifest_status != "completed":
+        raise ValueError(
+            "Prediction requires a completed training manifest, "
+            f"but manifest status is {manifest_status!r}."
+        )
+
+    return training_manifest
