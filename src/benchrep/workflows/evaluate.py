@@ -3,13 +3,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Mapping
 
 import anndata as ad
 
-from benchrep.assembly import load_yaml
+from benchrep.assembly.config import (
+    compose_effective_config,
+    SupportedConfigComponent,
+)
 from benchrep.assembly.resolvers import resolve_evaluation_config
-from benchrep.assembly.schemas import parse_evaluation_config, EvaluationConfig
+from benchrep.assembly.schemas import EvaluationConfig
 from benchrep.evaluation.pipelines import (
     create_anndata_evaluation_pipeline,
     create_reconstruction_evaluation_pipeline,
@@ -22,10 +25,10 @@ from benchrep.records import (
     save_evaluation_metrics_json,
     export_reconstruction_tiffs,
 )
-from benchrep.evaluation.reconstructions.data import (
-    load_reconstruction_evaluation_input,
-)
 from benchrep.runtime import RunContext
+from benchrep.runtime.evaluate_run_validation import (
+    prepare_evaluate_source_inputs,
+)
 from benchrep.assembly.registries.builtins import register_builtins
 
 
@@ -46,15 +49,31 @@ class EvaluationWorkflowResult:
 
 
 def evaluate(
-        config_path: Path | str,
+        config_path: Path | str | None = None,
+        full_config_object: EvaluationConfig | None = None,
+        config_components: Mapping[str, SupportedConfigComponent] | None = None,
         prediction_manifest_path: Path | str | None = None,
 ) -> EvaluationWorkflowResult:
     register_builtins()
 
-    # Parse and resolve config
-    raw_eval_config_path = Path(config_path).resolve()
-    raw_eval_config = load_yaml(raw_eval_config_path)
-    eval_config = parse_evaluation_config(raw_eval_config)
+    # Prediction manifest override
+    if prediction_manifest_path is not None:
+        prediction_manifest_path = Path(prediction_manifest_path).resolve()
+        if prediction_manifest_path.suffix.lower() not in {".yaml", ".yml"}:
+            raise ValueError(
+                "prediction_manifest_path override must point to a YAML file."
+            )
+
+    # Compose, parse, and resolve config
+    config_composition_result = compose_effective_config(
+        schema=EvaluationConfig,
+        config_path=config_path,
+        full_config_object=full_config_object,
+        config_components=config_components,
+    )
+
+    eval_config = config_composition_result.effective_config
+
     run_spec = resolve_evaluation_config(
         evaluation_config=eval_config,
         prediction_manifest_path_override=prediction_manifest_path,
@@ -71,26 +90,52 @@ def evaluate(
 
     run_log = setup_run_logger(log_out_dir=run_context.log_dir)
 
-    run_log.info("Evaluation run initialized from config: '%s'", raw_eval_config_path)
+    # Log composition messages and warnings
+    for msg in config_composition_result.composition_messages:
+        run_log.info(msg)
+    for warning in config_composition_result.composition_warnings:
+        run_log.warning(warning)
+
+    run_log.info("Evaluation run initialized.")
+    run_log.info(
+        "Evaluation effective config source: '%s'",
+        config_composition_result.effective_source,
+    )
     run_log.info("Evaluation outputs will be saved to: '%s'", run_context.output_dir)
     run_log.info("Resolved embeddings path: '%s'", run_spec.input_spec.embeddings_path)
 
     # Bookkeeping --- config
     save_config_records(
-        original_config_path=raw_eval_config_path,
+        original_config_path=config_composition_result.original_config_path,
         resolved_config=run_spec.evaluation_config,
         config_out_dir=run_context.config_dir,
     )
 
-    # Load embeddings AnnData
-    run_log.info("Loading embeddings AnnData...")
-    adata = ad.read_h5ad(run_spec.input_spec.embeddings_path)
+    # Load and validate evaluation inputs
+    run_log.info("Loading and validating evaluation source inputs...")
+    source_inputs = prepare_evaluate_source_inputs(run_spec)
+
+    adata = source_inputs.adata_input
+    reconstruction_input = source_inputs.reconstruction_input
+
     run_log.info(
         "Loaded AnnData with shape %s, obs columns=%s, obsm keys=%s",
         adata.shape,
         tuple(adata.obs.columns),
         tuple(adata.obsm.keys()),
     )
+
+    if reconstruction_input is None:
+        run_log.info("No reconstruction evaluation inputs were loaded.")
+    else:
+        run_log.info(
+            "Loaded reconstruction evaluation inputs with input shape=%s, "
+            "reconstruction shape=%s, n_examples=%s, metadata=%s",
+            reconstruction_input.inputs.shape,
+            reconstruction_input.reconstructions.shape,
+            reconstruction_input.n_examples,
+            reconstruction_input.metadata is not None,
+        )
 
     # Create and run AnnData evaluation pipeline
     embeddings_pipeline = create_anndata_evaluation_pipeline(run_spec)
@@ -104,6 +149,7 @@ def evaluate(
     run_log.info("Final obsm keys: %s", tuple(adata.obsm.keys()))
     run_log.info("Final obs columns: %s", tuple(adata.obs.columns))
 
+    #FIXME
     # Quick-and-dirty plots for smoke testing
     if run_spec.step_spec.plots_enabled:
         run_log.info("Generating smoke-test plots...")
@@ -117,21 +163,15 @@ def evaluate(
 
     # Create and run reconstructions evaluation pipeline
     reconstruction_outputs = None
-    if run_spec.input_spec.reconstructions is not None:
-        run_log.info("Loading reconstruction evaluation inputs...")
-
-        recon_spec = run_spec.input_spec.reconstructions
-        reconstruction_input = load_reconstruction_evaluation_input(
-            input_path=recon_spec.input_path,
-            reconstruction_path=recon_spec.reconstruction_path,
-            obs_path=recon_spec.obs_path,
-            metadata_path=recon_spec.metadata_path,
-            n_examples=recon_spec.n_examples,
-        )
-
+    if reconstruction_input is not None:
         run_log.info("Starting reconstruction evaluation pipeline...")
         reconstruction_pipeline = create_reconstruction_evaluation_pipeline(run_spec)
-        reconstruction_outputs = reconstruction_pipeline.run(reconstruction_input)
+
+        with capture_console_streams(
+                log_out_dir=run_context.log_dir,
+                capture_stdout=False,
+        ):
+            reconstruction_outputs = reconstruction_pipeline.run(reconstruction_input)
 
         if reconstruction_outputs:
             run_log.info(
@@ -148,6 +188,10 @@ def evaluate(
             run_log.info(
                 "Saved reconstruction TIFF outputs: %s",
                 {key: len(paths) for key, paths in reconstruction_tiff_paths.items()},
+            )
+        else:
+            run_log.info(
+                "Finished reconstruction evaluation pipeline with no outputs."
             )
 
     # Collect and export metrics

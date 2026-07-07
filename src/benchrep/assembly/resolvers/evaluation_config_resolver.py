@@ -146,45 +146,25 @@ def resolve_evaluation_config(
     EvaluationRunSpec
         Fully resolved evaluation runtime specification.
     """
-    # Resolve manifest
-    if prediction_manifest_path_override is not None:
-        prediction_manifest_path = Path(prediction_manifest_path_override).resolve()
-        evaluation_config = evaluation_config.model_copy(
-            update={
-                "source": evaluation_config.source.model_copy(
-                    update={"prediction_manifest_path": prediction_manifest_path}
-                )
-            }
-        )
-    else:
-        prediction_manifest_path = evaluation_config.source.prediction_manifest_path
-        if prediction_manifest_path is not None:
-            prediction_manifest_path = prediction_manifest_path.resolve()
+    # Resolve prediction manifest
+    evaluation_config, prediction_manifest_path = _resolve_prediction_manifest_path(
+        evaluation_config=evaluation_config,
+        prediction_manifest_path_override=prediction_manifest_path_override,
+    )
 
     if prediction_manifest_path is not None:
-        prediction_manifest = load_yaml(prediction_manifest_path)
+        prediction_manifest = _load_prediction_manifest(prediction_manifest_path)
         manifest_base_dir = prediction_manifest_path.parent
     else:
         prediction_manifest = None
         manifest_base_dir = None
 
     # Resolve embedding input: manual path overrides manifest
-    if evaluation_config.source.embeddings_path is not None:
-        embeddings_path = evaluation_config.source.embeddings_path.resolve()
-    else:
-        if prediction_manifest is None:
-            raise ValueError(
-                "source.embeddings_path is required when no prediction manifest "
-                "is provided."
-            )
-
-        embeddings_path = get_required_nested_path(
-            prediction_manifest,
-            "exports",
-            "embeddings",
-            "path",
-            base_dir=manifest_base_dir,
-        )
+    embeddings_path = resolve_embeddings_path(
+        embeddings_path=evaluation_config.source.embeddings_path,
+        prediction_manifest=prediction_manifest,
+        manifest_base_dir=manifest_base_dir,
+    )
 
     # Resolve reconstructions: manual path overrides manifest
     reconstructions = resolve_reconstructions(
@@ -223,6 +203,43 @@ def resolve_evaluation_config(
         input_spec=input_spec,
         step_spec=step_spec,
     )
+
+
+def resolve_embeddings_path(
+        embeddings_path: Path | None = None,
+        prediction_manifest: dict[str, Any] | None = None,
+        manifest_base_dir: Path | None = None,
+) -> Path:
+    """Resolve the AnnData embeddings input for evaluation.
+
+    Manual ``source.embeddings_path`` takes precedence over embeddings inferred
+    from a prediction manifest.
+    """
+    if embeddings_path is not None:
+        resolved_embeddings_path = Path(embeddings_path).resolve()
+
+    else:
+        if prediction_manifest is None:
+            raise ValueError(
+                "source.embeddings_path is required when no prediction manifest "
+                "is provided."
+            )
+
+        if manifest_base_dir is None:
+            raise ValueError(
+                "manifest_base_dir is required when resolving embeddings "
+                "from a prediction manifest."
+            )
+
+        resolved_embeddings_path = get_required_nested_path(
+            prediction_manifest,
+            "exports",
+            "embeddings",
+            "path",
+            base_dir=manifest_base_dir,
+        )
+
+    return resolved_embeddings_path
 
 
 def resolve_reconstructions(
@@ -868,3 +885,66 @@ def _validate_predictability_tuning_grid(
             "metrics.predictability.tuning.enabled=False, but list-valued "
             "hyperparameters were found for the selected probes."
         )
+
+
+def _resolve_prediction_manifest_path(
+    *,
+    evaluation_config: EvaluationConfig,
+    prediction_manifest_path_override: Path | str | None,
+) -> tuple[EvaluationConfig, Path | None]:
+    if prediction_manifest_path_override is not None:
+        prediction_manifest_path = Path(prediction_manifest_path_override).resolve()
+
+        evaluation_config = evaluation_config.model_copy(
+            update={
+                "source": evaluation_config.source.model_copy(
+                    update={"prediction_manifest_path": prediction_manifest_path}
+                )
+            }
+        )
+    else:
+        prediction_manifest_path = evaluation_config.source.prediction_manifest_path
+        if prediction_manifest_path is not None:
+            prediction_manifest_path = prediction_manifest_path.resolve()
+
+    if prediction_manifest_path is None:
+        return evaluation_config, None
+
+    if prediction_manifest_path.suffix.lower() not in {".yaml", ".yml"}:
+        raise ValueError(
+            "source.prediction_manifest_path must point to a YAML file. "
+            f"Got: {prediction_manifest_path}"
+        )
+
+    if not prediction_manifest_path.is_file():
+        raise FileNotFoundError(
+            f"Prediction manifest file does not exist: {prediction_manifest_path}"
+        )
+
+    return evaluation_config, prediction_manifest_path
+
+
+def _load_prediction_manifest(path: Path) -> dict[str, Any]:
+    prediction_manifest = load_yaml(path)
+
+    if not isinstance(prediction_manifest, dict):
+        raise TypeError(
+            "Prediction manifest must load as a mapping, "
+            f"got {type(prediction_manifest).__name__}."
+        )
+
+    manifest_stage = prediction_manifest.get("stage")
+    if manifest_stage != "prediction":
+        raise ValueError(
+            "Evaluation requires a prediction manifest, "
+            f"but manifest stage is {manifest_stage!r}."
+        )
+
+    manifest_status = prediction_manifest.get("status")
+    if manifest_status != "completed":
+        raise ValueError(
+            "Evaluation requires a completed prediction manifest, "
+            f"but manifest status is {manifest_status!r}."
+        )
+
+    return prediction_manifest
