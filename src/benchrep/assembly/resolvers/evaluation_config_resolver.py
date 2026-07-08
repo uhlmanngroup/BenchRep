@@ -541,15 +541,43 @@ def resolve_step_spec(
     ``None`` parameters are omitted by ``params_to_dict`` so backend defaults can
     apply.
     """
-    # Prep for guard to prevent clustering metric computation if no clustering is enabled.
-    kmeans_enabled = disabled_by_default(evaluation_config.clustering.kmeans.enabled)
-    leiden_enabled = enabled_by_default(evaluation_config.clustering.leiden.enabled)
-    clustering_enabled = kmeans_enabled or leiden_enabled
+    # Resolve step switches and params needed by multiple downstream decisions.
+    pca_enabled = enabled_by_default(evaluation_config.reductions.pca.enabled)
+    pca_params = params_to_dict(evaluation_config.reductions.pca.params)
 
-    # Guard against key collision for kNNs of UMAP and Leiden (as current implementation is independent kNN ownership)
     umap_enabled = enabled_by_default(evaluation_config.reductions.umap.enabled)
     umap_params = params_to_dict(evaluation_config.reductions.umap.params)
+
+    tsne_enabled = disabled_by_default(evaluation_config.reductions.tsne.enabled)
+    tsne_params = params_to_dict(evaluation_config.reductions.tsne.params)
+
+    kmeans_enabled = disabled_by_default(evaluation_config.clustering.kmeans.enabled)
+    kmeans_params = params_to_dict(evaluation_config.clustering.kmeans.params)
+
+    leiden_enabled = enabled_by_default(evaluation_config.clustering.leiden.enabled)
     leiden_params = params_to_dict(evaluation_config.clustering.leiden.params)
+
+    # Prep for guard to prevent clustering metric computation if no clustering is enabled.
+    clustering_enabled = kmeans_enabled or leiden_enabled
+
+    external_clustering_metrics_enabled = (
+        evaluation_config.metrics.clustering.external.enabled
+        if clustering_enabled
+        else False
+    )
+
+    plot_params = params_to_dict(evaluation_config.plots.params)
+    plot_params = _resolve_plot_params(
+        plot_params=plot_params,
+        kmeans_enabled=kmeans_enabled,
+        kmeans_params=kmeans_params,
+        leiden_enabled=leiden_enabled,
+        leiden_params=leiden_params,
+        external_clustering_metrics_enabled=external_clustering_metrics_enabled,
+        external_clustering_label_key=evaluation_config.metrics.clustering.external.label_key,
+    )
+
+    # Guard against key collision for kNNs of UMAP and Leiden (as current implementation is independent kNN ownership)
     if (
             umap_enabled
             and leiden_enabled
@@ -603,20 +631,20 @@ def resolve_step_spec(
 
     return EvaluationStepSpec(
         # None = True
-        pca_enabled=enabled_by_default(evaluation_config.reductions.pca.enabled),
-        pca_params=params_to_dict(evaluation_config.reductions.pca.params),
+        pca_enabled=pca_enabled,
+        pca_params=pca_params,
 
         # None = True
         umap_enabled=umap_enabled,
         umap_params=umap_params,
 
         # None = False
-        tsne_enabled=disabled_by_default(evaluation_config.reductions.tsne.enabled),
-        tsne_params=params_to_dict(evaluation_config.reductions.tsne.params),
+        tsne_enabled=tsne_enabled,
+        tsne_params=tsne_params,
 
         # None = False
         kmeans_enabled=kmeans_enabled,
-        kmeans_params=params_to_dict(evaluation_config.clustering.kmeans.params),
+        kmeans_params=kmeans_params,
 
         # None = True
         leiden_enabled=leiden_enabled,
@@ -641,11 +669,7 @@ def resolve_step_spec(
 
         # None is resolved later after loading AnnData and checking adata.obs
         # Force disable if not clustering_enabled
-        external_clustering_metrics_enabled=(
-            evaluation_config.metrics.clustering.external.enabled
-            if clustering_enabled
-            else False
-        ),
+        external_clustering_metrics_enabled=external_clustering_metrics_enabled,
         external_clustering_label_key=evaluation_config.metrics.clustering.external.label_key,
         external_clustering_metrics=resolve_registry_keys(
             selected=evaluation_config.metrics.clustering.external.selected,
@@ -705,8 +729,57 @@ def resolve_step_spec(
 
         # None = True
         plots_enabled=enabled_by_default(evaluation_config.plots.enabled),
-        plot_params=params_to_dict(evaluation_config.plots.params),
+        plot_params=plot_params,
     )
+
+
+def _resolve_plot_params(
+    *,
+    plot_params: dict[str, Any],
+    kmeans_enabled: bool,
+    kmeans_params: dict[str, Any],
+    leiden_enabled: bool,
+    leiden_params: dict[str, Any],
+    external_clustering_metrics_enabled: bool | None,
+    external_clustering_label_key: str,
+) -> dict[str, Any]:
+    """Resolve effective plot parameters from user config and default outputs."""
+
+    resolved = dict(plot_params)
+    color_by = list(resolved.get("color_by") or [])
+
+    if kmeans_enabled:
+        color_by.append(kmeans_params.get("key_added", "kmeans"))
+
+    if leiden_enabled:
+        color_by.append(leiden_params.get("key_added", "leiden"))
+
+    if external_clustering_metrics_enabled is not False:
+        color_by.append(external_clustering_label_key)
+
+    resolved["color_by"] = _deduplicate_strings(color_by)
+
+    return resolved
+
+
+def _deduplicate_strings(values: list[Any]) -> list[str]:
+    """Return non-empty strings once, preserving first occurrence order."""
+
+    seen: set[str] = set()
+    deduplicated: list[str] = []
+
+    for value in values:
+        if not isinstance(value, str):
+            continue
+
+        value = value.strip()
+        if value == "" or value in seen:
+            continue
+
+        seen.add(value)
+        deduplicated.append(value)
+
+    return deduplicated
 
 
 # Logical helpers

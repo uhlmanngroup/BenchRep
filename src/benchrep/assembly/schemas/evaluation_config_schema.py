@@ -405,6 +405,8 @@ class EvaluationMetricsConfig(BaseModel):
 # -------------------------
 class PlotParams(BaseModel):
     color_by: list[str] | None = None
+    dpi: PositiveInt = 300
+    formats: list[Literal["png", "pdf", "svg"]] = Field(default_factory=lambda: ["png"])
 
 
 class EvaluationPlotsConfig(EvalStepConfig):

@@ -1,26 +1,59 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 import anndata as ad
 import matplotlib.pyplot as plt
+import numpy as np
+from pandas import CategoricalDtype
+from pandas.api.types import (
+    is_bool_dtype,
+    is_integer_dtype,
+    is_numeric_dtype,
+    is_object_dtype,
+    is_string_dtype,
+)
+
+
+ColorKind = Literal["auto", "categorical", "continuous"]
 
 
 def plot_2d_projection(
     adata: ad.AnnData,
     *,
     basis: str,
-    color: str,
+    color_by: str | None = None,
+    color_kind: ColorKind = "auto",
+    max_categorical_levels: int = 30,
     output_path: str | Path,
     title: str | None = None,
+    dpi: int = 300,
     overwrite: bool = False,
 ) -> None:
     """
-    Plot a 2D projection from ``adata.obsm`` colored by an ``adata.obs`` column.
+    Plot a 2D projection from ``adata.obsm``.
 
     ``basis`` should point to a coordinate matrix in ``adata.obsm``, such as
-    ``"X_pca"``, ``"X_umap"``, or ``"X_tsne"``.
+    ``"X_pca"``, ``"X_umap"``, or ``"X_tsne"``. If ``color_by`` is provided, it
+    must point to an ``adata.obs`` column and is rendered as categorical or
+    continuous depending on ``color_kind``.
+
+    The output format is inferred from ``output_path`` suffix, e.g. ``.png``,
+    ``.pdf``, or ``.svg``
     """
+
+    if color_kind not in {"auto", "categorical", "continuous"}:
+        raise ValueError(
+            "color_kind must be one of {'auto', 'categorical', 'continuous'}, "
+            f"got {color_kind!r}."
+        )
+
+    if max_categorical_levels < 1:
+        raise ValueError(
+            "max_categorical_levels must be >= 1, "
+            f"got {max_categorical_levels}."
+        )
 
     if basis not in adata.obsm:
         raise KeyError(
@@ -28,11 +61,14 @@ def plot_2d_projection(
             f"Available keys: {list(adata.obsm.keys())}"
         )
 
-    if color not in adata.obs.columns:
+    if color_by is not None and color_by not in adata.obs.columns:
         raise KeyError(
-            f"adata.obs does not contain {color!r}. "
+            f"adata.obs does not contain {color_by!r}. "
             f"Available columns: {list(adata.obs.columns)}"
         )
+
+    if dpi < 72:
+        raise ValueError(f"dpi must be >= 72, got {dpi}.")
 
     coords = adata.obsm[basis]
 
@@ -58,36 +94,117 @@ def plot_2d_projection(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    values = adata.obs[color].astype("category")
-    codes = values.cat.codes
-
     fig, ax = plt.subplots(figsize=(6, 5))
 
-    scatter = ax.scatter(
-        coords[:, 0],
-        coords[:, 1],
-        c=codes,
-        s=8,
-        alpha=0.8,
-    )
+    if color_by is None:
+        ax.scatter(
+            coords[:, 0],
+            coords[:, 1],
+            s=8,
+            alpha=0.8,
+        )
+        ax.set_title(title or basis)
+
+    else:
+        values = adata.obs[color_by]
+        resolved_color_kind = (
+            _infer_color_kind(
+                values,
+                max_categorical_levels=max_categorical_levels,
+            )
+            if color_kind == "auto"
+            else color_kind
+        )
+
+        if resolved_color_kind == "continuous":
+            if not is_numeric_dtype(values) or is_bool_dtype(values):
+                raise TypeError(
+                    f"Cannot render adata.obs[{color_by!r}] as continuous because "
+                    f"its dtype is {values.dtype!r}."
+                )
+
+            scatter = ax.scatter(
+                coords[:, 0],
+                coords[:, 1],
+                c=values.to_numpy(dtype=float, na_value=np.nan),
+                s=8,
+                alpha=0.8,
+            )
+            fig.colorbar(scatter, ax=ax, label=color_by)
+
+        else:
+            categorical_values = (
+                values
+                .astype("category")
+                .cat
+                .remove_unused_categories()
+            )
+            codes = categorical_values.cat.codes.to_numpy(dtype=float)
+            codes[codes < 0] = np.nan
+
+            scatter = ax.scatter(
+                coords[:, 0],
+                coords[:, 1],
+                c=codes,
+                s=8,
+                alpha=0.8,
+            )
+
+            labels = [str(label) for label in categorical_values.cat.categories]
+            if len(labels) <= 20:
+                handles, _ = scatter.legend_elements()
+                ax.legend(
+                    handles,
+                    labels,
+                    title=color_by,
+                    bbox_to_anchor=(1.05, 1),
+                    loc="upper left",
+                    borderaxespad=0,
+                )
+
+        ax.set_title(title or f"{basis} colored by {color_by}")
 
     ax.set_xlabel(f"{basis}_1")
     ax.set_ylabel(f"{basis}_2")
-    ax.set_title(title or f"{basis} colored by {color}")
-
-    handles, _ = scatter.legend_elements()
-    labels = [str(label) for label in values.cat.categories]
-
-    if len(labels) <= 20:
-        ax.legend(
-            handles,
-            labels,
-            title=color,
-            bbox_to_anchor=(1.05, 1),
-            loc="upper left",
-            borderaxespad=0,
-        )
 
     fig.tight_layout()
-    fig.savefig(output_path, dpi=200, bbox_inches="tight")
+    fig.savefig(output_path, dpi=dpi, bbox_inches="tight")
     plt.close(fig)
+
+
+def _infer_color_kind(
+    values,
+    *,
+    max_categorical_levels: int,
+) -> Literal["categorical", "continuous"]:
+    """Infer whether an obs column should be plotted as categorical or continuous."""
+
+    non_missing = values.dropna()
+    n_unique = int(non_missing.nunique())
+
+    if n_unique <= 1:
+        return "categorical"
+
+    if (
+        isinstance(values.dtype, CategoricalDtype)
+        or is_object_dtype(values)
+        or is_string_dtype(values)
+        or is_bool_dtype(values)
+    ):
+        return "categorical"
+
+    if is_integer_dtype(values):
+        if n_unique <= max_categorical_levels:
+            return "categorical"
+        return "continuous"
+
+    if is_numeric_dtype(values):
+        array = non_missing.to_numpy(dtype=float, na_value=np.nan)
+        integer_like = np.all(np.isclose(array, np.round(array)))
+
+        if integer_like and n_unique <= max_categorical_levels:
+            return "categorical"
+
+        return "continuous"
+
+    return "categorical"

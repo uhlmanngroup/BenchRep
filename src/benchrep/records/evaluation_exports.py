@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 import json
 import math
 
@@ -19,11 +19,16 @@ import re
 import tifffile
 
 from benchrep.evaluation.reconstructions.data import ReconstructionEvaluationInput
+from benchrep.evaluation.embeddings.plotting import plot_2d_projection
 from benchrep.evaluation.utils import (
     to_python_scalar,
     ensure_reconstruction_channel_axis,
     validate_reconstruction_arrays,
 )
+
+
+if TYPE_CHECKING:
+    from benchrep.assembly.resolvers.evaluation_config_resolver import EvaluationStepSpec
 
 
 def save_evaluation_metrics_json(
@@ -145,6 +150,84 @@ def _to_json_safe(value: Any) -> Any:
     )
 
 
+def export_reduction_plots(
+    *,
+    output_dir: str | Path,
+    adata: ad.AnnData,
+    step_spec: "EvaluationStepSpec",
+    overwrite: bool = False,
+) -> dict[str, list[Path]]:
+    """Export static 2D reduction plots for enabled reductions."""
+
+    if not step_spec.plots_enabled:
+        return {}
+
+    output_dir = Path(output_dir)
+
+    bases: list[str] = []
+    if step_spec.pca_enabled:
+        bases.append(step_spec.pca_params.get("key_added", "X_pca"))
+    if step_spec.umap_enabled:
+        bases.append(step_spec.umap_params.get("key_added", "X_umap"))
+    if step_spec.tsne_enabled:
+        bases.append(step_spec.tsne_params.get("key_added", "X_tsne"))
+
+    color_by = step_spec.plot_params.get("color_by") or []
+    dpi = step_spec.plot_params.get("dpi", 300)
+    formats = step_spec.plot_params.get("formats", ["png"])
+    formats = [fmt.strip().lower() for fmt in formats if isinstance(fmt, str) and fmt.strip()]
+    formats = list(dict.fromkeys(formats))
+
+    written_paths: dict[str, list[Path]] = {}
+
+    for basis in bases:
+        if not isinstance(basis, str) or basis not in adata.obsm:
+            continue
+
+        basis_token = _sanitize_filename_token(basis)
+
+        # Uncolored
+        uncolored_key = f"{basis}:uncolored"
+        written_paths[uncolored_key] = []
+
+        for fmt in formats:
+            output_path = output_dir / f"{basis_token}.{fmt}"
+            plot_2d_projection(
+                adata,
+                basis=basis,
+                color_by=None,
+                output_path=output_path,
+                dpi=dpi,
+                overwrite=overwrite,
+            )
+            written_paths[uncolored_key].append(output_path)
+
+        # Colored
+        for color in color_by:
+            if not isinstance(color, str) or color not in adata.obs.columns:
+                continue
+
+            color_token = _sanitize_filename_token(color)
+            colored_key = f"{basis}:colored_by:{color}"
+            written_paths[colored_key] = []
+
+            for fmt in formats:
+                output_path = output_dir / (
+                    f"{basis_token}_colored_by_{color_token}.{fmt}"
+                )
+                plot_2d_projection(
+                    adata,
+                    basis=basis,
+                    color_by=color,
+                    output_path=output_path,
+                    dpi=dpi,
+                    overwrite=overwrite,
+                )
+                written_paths[colored_key].append(output_path)
+
+    return written_paths
+
+
 def export_reconstruction_tiffs(
     *,
     output_dir: str | Path,
@@ -241,6 +324,16 @@ def export_reconstruction_tiffs(
     return written_paths
 
 
+def _sanitize_filename_token(value: Any, *, fallback: str = "unnamed") -> str:
+    """Return a filesystem-safe token for generated artifact filenames."""
+
+    token = str(value).strip()
+    token = re.sub(r"[^A-Za-z0-9_.-]+", "_", token)
+    token = token.strip("._-")
+
+    return token or fallback
+
+
 def _resolve_reconstruction_filenames(
     *,
     obs: Any,
@@ -275,11 +368,9 @@ def _resolve_reconstruction_filenames(
         else:
             filename_stem = f"{fallback}_{sample_id}"
 
-        filename_stem = str(filename_stem).strip()
-        filename_stem = re.sub(r"[^A-Za-z0-9_.-]+", "_", filename_stem)
-        filename_stem = filename_stem.strip("._-")
+        filename_stem = _sanitize_filename_token(filename_stem, fallback=fallback)
 
-        filename_stems.append(filename_stem or fallback)
+        filename_stems.append(filename_stem)
 
     return filename_stems
 

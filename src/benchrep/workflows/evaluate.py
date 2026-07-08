@@ -17,12 +17,12 @@ from benchrep.evaluation.pipelines import (
     create_anndata_evaluation_pipeline,
     create_reconstruction_evaluation_pipeline,
 )
-from benchrep.evaluation.embeddings.plotting import plot_2d_projection
 from benchrep.records import (
     capture_console_streams,
     save_config_records,
     setup_run_logger,
     save_evaluation_metrics_json,
+    export_reduction_plots,
     export_reconstruction_tiffs,
 )
 from benchrep.runtime import RunContext
@@ -149,17 +149,23 @@ def evaluate(
     run_log.info("Final obsm keys: %s", tuple(adata.obsm.keys()))
     run_log.info("Final obs columns: %s", tuple(adata.obs.columns))
 
-    #FIXME
-    # Quick-and-dirty plots for smoke testing
     if run_spec.step_spec.plots_enabled:
-        run_log.info("Generating smoke-test plots...")
-        write_smoke_test_plots(
+        run_log.info("Generating reduction plots...")
+
+        reduction_plot_paths = export_reduction_plots(
+            output_dir=run_context.evaluation_embeddings_figures_dir,
             adata=adata,
-            run_spec=run_spec,
-            plot_dir=run_context.evaluation_embeddings_figures_dir,
-            overwrite=True,
+            step_spec=run_spec.step_spec,
+            overwrite=False,
         )
-        run_log.info("Finished generating smoke-test plots")
+
+        n_reduction_plots = sum(len(paths) for paths in reduction_plot_paths.values())
+
+        run_log.info(
+            "Finished generating %d reduction plot files in %s.",
+            n_reduction_plots,
+            run_context.evaluation_embeddings_figures_dir,
+        )
 
     # Create and run reconstructions evaluation pipeline
     reconstruction_outputs = None
@@ -213,46 +219,3 @@ def evaluate(
         reconstruction_outputs=reconstruction_outputs,
         metrics_path=metrics_path,
     )
-
-
-def write_smoke_test_plots(
-    *,
-    adata: ad.AnnData,
-    run_spec: "EvaluationRunSpec",
-    plot_dir: Path,
-    overwrite: bool = False,
-) -> None:
-    step_spec = run_spec.step_spec
-
-    bases: list[str] = []
-
-    if step_spec.pca_enabled:
-        bases.append(step_spec.pca_params.get("key_added", "X_pca"))
-    if step_spec.umap_enabled:
-        bases.append(step_spec.umap_params.get("key_added", "X_umap"))
-    if step_spec.tsne_enabled:
-        bases.append(step_spec.tsne_params.get("key_added", "X_tsne"))
-
-    color_by = step_spec.plot_params.get("color_by", [])
-    if color_by is None:
-        color_by = []
-
-    plot_dir.mkdir(parents=True, exist_ok=True)
-
-    for basis in bases:
-        if basis not in adata.obsm:
-            continue
-
-        for color in color_by:
-            if color not in adata.obs.columns:
-                continue
-
-            output_path = plot_dir / f"{basis}_colored_by_{color}.png"
-
-            plot_2d_projection(
-                adata,
-                basis=basis,
-                color=color,
-                output_path=output_path,
-                overwrite=overwrite,
-            )

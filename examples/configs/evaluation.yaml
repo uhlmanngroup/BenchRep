@@ -188,4 +188,6 @@ plots:
   enabled: true # true = force on; false = off; null = on
   params:
     color_by:
-      - label # null = do not color plots by obs columns
+      - label # null = only default cluster/label colors if available, appended regardless
+    dpi: 300 # omit = 300
+    formats: [ png ] # supports png, pdf, svg; omit = png
