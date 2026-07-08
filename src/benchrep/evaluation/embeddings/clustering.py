@@ -162,6 +162,12 @@ def run_leiden(
         **neighbors_kwargs,
     )
 
+    # Adopt Scanpy's announced future Leiden defaults explicitly to avoid the
+    # FutureWarning while preserving user overrides through leiden_kwargs.
+    leiden_kwargs.setdefault("flavor", "igraph")
+    leiden_kwargs.setdefault("n_iterations", 2)
+    leiden_kwargs.setdefault("directed", False)
+
     sc.tl.leiden(
         adata,
         resolution=resolution,
