@@ -162,7 +162,7 @@ def evaluate(
         n_reduction_plots = sum(len(paths) for paths in reduction_plot_paths.values())
 
         run_log.info(
-            "Finished generating %d reduction plot files in %s.",
+            "Finished generating %d reduction plot files in %s",
             n_reduction_plots,
             run_context.evaluation_embeddings_figures_dir,
         )

@@ -169,6 +169,7 @@ def _predict(
     )
     created_at = datetime.now().isoformat(timespec="seconds")
 
+    # Initiate local run logger
     run_log = setup_run_logger(log_out_dir=run_context.log_dir)
 
     # Log composition messages and warnings
