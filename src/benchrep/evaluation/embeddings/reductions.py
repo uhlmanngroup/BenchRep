@@ -10,10 +10,13 @@ from sklearn.decomposition import PCA
 from benchrep.evaluation.utils import validate_adata_x
 
 
+DEFAULT_PCA_N_COMPONENTS = 30
+
+
 def run_pca(
     adata: ad.AnnData,
     *,
-    n_components: int = 2,
+    n_components: int | None = None,
     key_added: str = "X_pca",
     random_state: int = 137,
     overwrite: bool = False,
@@ -33,7 +36,8 @@ def run_pca(
     adata:
         AnnData object whose ``X`` matrix contains the representation to reduce.
     n_components:
-        Number of principal components to compute.
+        Number of principal components to compute. If ``None``, compute
+        ``min(30, adata.n_obs, adata.n_vars)`` components.
     key_added:
         Key under which PCA coordinates are stored in ``adata.obsm``.
     random_state:
@@ -57,18 +61,26 @@ def run_pca(
             "Pass overwrite=True to replace it."
         )
 
-    if n_components < 1:
-        raise ValueError(f"n_components must be >= 1, got {n_components}.")
-
     max_components = min(adata.n_obs, adata.n_vars)
-    if n_components > max_components:
+
+    if n_components is None:
+        resolved_n_components = min(DEFAULT_PCA_N_COMPONENTS, max_components)
+    else:
+        resolved_n_components = n_components
+
+    if resolved_n_components < 1:
+        raise ValueError(
+            f"n_components must be >= 1, got {resolved_n_components}."
+        )
+
+    if resolved_n_components > max_components:
         raise ValueError(
             "n_components cannot exceed min(adata.n_obs, adata.n_vars), "
-            f"got n_components={n_components} and max={max_components}."
+            f"got n_components={resolved_n_components} and max={max_components}."
         )
 
     pca = PCA(
-        n_components=n_components,
+        n_components=resolved_n_components,
         random_state=random_state,
         **pca_kwargs,
     )
@@ -80,14 +92,13 @@ def run_pca(
         key_added=key_added,
         metadata={
             "method": "pca",
-            "n_components": n_components,
+            "n_components": resolved_n_components,
+            "requested_n_components": n_components,
+            "default_n_components": DEFAULT_PCA_N_COMPONENTS,
             "random_state": random_state,
             "input_shape": tuple(adata.X.shape),
             "explained_variance": pca.explained_variance_.tolist(),
             "explained_variance_ratio": pca.explained_variance_ratio_.tolist(),
-            "cumulative_explained_variance_ratio": np.cumsum(
-                pca.explained_variance_ratio_
-            ).tolist(),
             "params": dict(pca_kwargs),
         },
     )

@@ -19,7 +19,7 @@ import re
 import tifffile
 
 from benchrep.evaluation.reconstructions.data import ReconstructionEvaluationInput
-from benchrep.evaluation.embeddings.plotting import plot_2d_projection
+from benchrep.evaluation.embeddings.plotting import plot_2d_projection, plot_pca_variance
 from benchrep.evaluation.utils import (
     to_python_scalar,
     ensure_reconstruction_channel_axis,
@@ -176,9 +176,50 @@ def export_reduction_plots(
     dpi = step_spec.plot_params.get("dpi", 300)
     formats = step_spec.plot_params.get("formats", ["png"])
     formats = [fmt.strip().lower() for fmt in formats if isinstance(fmt, str) and fmt.strip()]
-    formats = list(dict.fromkeys(formats))
+    formats = list(dict.fromkeys(formats)) or ["png"]
 
     written_paths: dict[str, list[Path]] = {}
+
+    if step_spec.pca_enabled:
+        pca_key = step_spec.pca_params.get("key_added", "X_pca")
+
+        if isinstance(pca_key, str):
+            pca_metadata = _get_reduction_metadata(adata, pca_key)
+
+            if pca_metadata is not None:
+                explained_variance_ratio = pca_metadata.get("explained_variance_ratio")
+
+                if explained_variance_ratio is not None:
+                    pca_token = _sanitize_filename_token(pca_key)
+
+                    scree_key = f"{pca_key}:scree"
+                    written_paths[scree_key] = []
+
+                    cumulative_key = f"{pca_key}:cumulative_variance"
+                    written_paths[cumulative_key] = []
+
+                    for fmt in formats:
+                        scree_path = output_dir / f"{pca_token}_scree.{fmt}"
+                        plot_pca_variance(
+                            explained_variance_ratio=explained_variance_ratio,
+                            output_path=scree_path,
+                            kind="scree",
+                            title=f"{pca_key} explained variance",
+                            dpi=dpi,
+                            overwrite=overwrite,
+                        )
+                        written_paths[scree_key].append(scree_path)
+
+                        cumulative_path = output_dir / f"{pca_token}_cumulative_variance.{fmt}"
+                        plot_pca_variance(
+                            explained_variance_ratio=explained_variance_ratio,
+                            output_path=cumulative_path,
+                            kind="cumulative",
+                            title=f"{pca_key} cumulative explained variance",
+                            dpi=dpi,
+                            overwrite=overwrite,
+                        )
+                        written_paths[cumulative_key].append(cumulative_path)
 
     for basis in bases:
         if not isinstance(basis, str) or basis not in adata.obsm:
@@ -422,3 +463,24 @@ def _write_reconstruction_tiffs(
         written_paths.append(output_path)
 
     return written_paths
+
+
+def _get_reduction_metadata(
+    adata: ad.AnnData,
+    reduction_key: str,
+) -> Mapping[str, Any] | None:
+    """Return BenchRep reduction metadata for a stored reduction key."""
+
+    benchrep_uns = adata.uns.get("benchrep")
+    if not isinstance(benchrep_uns, Mapping):
+        return None
+
+    reductions = benchrep_uns.get("reductions")
+    if not isinstance(reductions, Mapping):
+        return None
+
+    metadata = reductions.get(reduction_key)
+    if not isinstance(metadata, Mapping):
+        return None
+
+    return metadata

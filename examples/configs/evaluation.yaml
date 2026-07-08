@@ -14,7 +14,7 @@ reductions:
   pca:
     enabled: true # true = force on; false = off; null = on
     params:
-      n_components: null # explicit run_pca arg; null = omit param and use function/default behavior
+      n_components: null # auto = min(30, n_obs, n_vars)
       key_added: X_pca # explicit run_pca arg; obsm key for PCA coordinates
       random_state: 137 # explicit run_pca arg
       overwrite: false # explicit run_pca arg; true = replace existing obsm/provenance entry

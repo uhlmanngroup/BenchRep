@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Literal
+from collections.abc import Sequence
 
 import anndata as ad
 import matplotlib.pyplot as plt
@@ -17,6 +18,9 @@ from pandas.api.types import (
 
 
 ColorKind = Literal["auto", "categorical", "continuous"]
+
+DEFAULT_PCA_VARIANCE_PLOT_N_COMPONENTS = 20
+PCAVariancePlotKind = Literal["scree", "cumulative"]
 
 
 def plot_2d_projection(
@@ -169,6 +173,94 @@ def plot_2d_projection(
 
     fig.tight_layout()
     fig.savefig(output_path, dpi=dpi, bbox_inches="tight")
+    plt.close(fig)
+
+
+def plot_pca_variance(
+    *,
+    explained_variance_ratio: Sequence[float],
+    output_path: str | Path,
+    kind: PCAVariancePlotKind,
+    max_components: int = DEFAULT_PCA_VARIANCE_PLOT_N_COMPONENTS,
+    title: str | None = None,
+    dpi: int = 300,
+    overwrite: bool = False,
+) -> None:
+    """Plot PCA explained-variance diagnostics."""
+
+    if kind not in {"scree", "cumulative"}:
+        raise ValueError(f"Unsupported PCA variance plot kind: {kind!r}.")
+
+    if max_components < 1:
+        raise ValueError(f"max_components must be >= 1, got {max_components}.")
+
+    if dpi < 72:
+        raise ValueError(f"dpi must be >= 72, got {dpi}.")
+
+    output_path = Path(output_path)
+    if output_path.exists() and not overwrite:
+        raise FileExistsError(
+            f"Output path already exists: {output_path}. "
+            "Pass overwrite=True to replace it."
+        )
+
+    explained = np.asarray(explained_variance_ratio, dtype=float).reshape(-1)
+
+    if explained.size == 0:
+        raise ValueError("explained_variance_ratio must contain at least one value.")
+
+    if not np.all(np.isfinite(explained)):
+        raise ValueError("explained_variance_ratio contains NaN or infinite values.")
+
+    if np.any(explained < 0.0):
+        raise ValueError("explained_variance_ratio must contain non-negative values.")
+
+    if float(np.max(explained)) > 1.0 + 1e-6:
+        raise ValueError(
+            "explained_variance_ratio appears to contain percentages or raw "
+            "variance values. Expected fractions in [0, 1]."
+        )
+
+    if float(np.sum(explained)) > 1.0 + 1e-6:
+        raise ValueError(
+            "explained_variance_ratio sums to more than 1.0. Expected "
+            "per-component fractions of total variance."
+        )
+
+    n_plot = min(max_components, explained.size)
+    components = np.arange(1, n_plot + 1)
+
+    if kind == "scree":
+        values = explained[:n_plot] * 100.0
+        ylabel = "Explained variance (%)"
+        resolved_title = title or "PCA explained variance"
+    else:
+        values = np.cumsum(explained)[:n_plot] * 100.0
+        ylabel = "Cumulative explained variance (%)"
+        resolved_title = title or "PCA cumulative explained variance"
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+
+    if kind == "scree":
+        ax.bar(components, values)
+
+        max_value = float(np.max(values))
+        upper_ylim = min(100.0, max_value * 1.1)
+        ax.set_ylim(0.0, upper_ylim)
+    else:
+        ax.plot(components, values, marker="o")
+        ax.set_ylim(0.0, 100.0)
+
+    ax.set_xlabel("Principal component")
+    ax.set_ylabel(ylabel)
+    ax.set_title(resolved_title)
+    ax.set_xticks(components)
+    ax.grid(True, axis="y", alpha=0.3)
+
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=dpi)
     plt.close(fig)
 
 
