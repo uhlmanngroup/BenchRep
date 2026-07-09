@@ -21,12 +21,14 @@ ColorKind = Literal["auto", "categorical", "continuous"]
 
 DEFAULT_PCA_VARIANCE_PLOT_N_COMPONENTS = 20
 PCAVariancePlotKind = Literal["scree", "cumulative"]
+DEFAULT_ACCENT_COLOR = "#6A3D9A"
 
 
 def plot_2d_projection(
     adata: ad.AnnData,
     *,
     basis: str,
+    accent_color: str = DEFAULT_ACCENT_COLOR,
     color_by: str | None = None,
     color_kind: ColorKind = "auto",
     max_categorical_levels: int = 30,
@@ -106,6 +108,7 @@ def plot_2d_projection(
             coords[:, 1],
             s=8,
             alpha=0.8,
+            color=accent_color,
         )
         ax.set_title(title or basis)
 
@@ -184,6 +187,7 @@ def plot_pca_variance(
     max_components: int = DEFAULT_PCA_VARIANCE_PLOT_N_COMPONENTS,
     title: str | None = None,
     dpi: int = 300,
+    accent_color: str = DEFAULT_ACCENT_COLOR,
     overwrite: bool = False,
 ) -> None:
     """Plot PCA explained-variance diagnostics."""
@@ -244,13 +248,13 @@ def plot_pca_variance(
     fig, ax = plt.subplots(figsize=(6, 4))
 
     if kind == "scree":
-        ax.bar(components, values)
+        ax.bar(components, values, color=accent_color)
 
         max_value = float(np.max(values))
         upper_ylim = min(100.0, max_value * 1.1)
         ax.set_ylim(0.0, upper_ylim)
     else:
-        ax.plot(components, values, marker="o")
+        ax.plot(components, values, marker="o", color=accent_color)
         ax.set_ylim(0.0, 100.0)
 
     ax.set_xlabel("Principal component")

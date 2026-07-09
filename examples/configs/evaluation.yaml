@@ -187,6 +187,7 @@ reconstruction:
 plots:
   enabled: true # true = force on; false = off; null = on
   params:
+    color_accent: "#6A3D9A"
     color_by:
       - label # null = only default cluster/label colors if available, appended regardless
     dpi: 300 # omit = 300

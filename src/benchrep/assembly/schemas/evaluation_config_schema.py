@@ -11,6 +11,7 @@ from pydantic import (
     PositiveFloat,
     model_validator,
     ConfigDict,
+    StringConstraints,
 )
 
 NSplits = Annotated[int, Field(ge=2)]
@@ -35,6 +36,11 @@ PredictabilityProbeName = Literal[
     "random_forest",
     "xgboost",
     "svm_rbf"
+]
+
+HexColor = Annotated[
+    str,
+    StringConstraints(pattern=r"^#[0-9A-Fa-f]{6}$"),
 ]
 
 
@@ -404,6 +410,7 @@ class EvaluationMetricsConfig(BaseModel):
 # Plots config
 # -------------------------
 class PlotParams(BaseModel):
+    accent_color: HexColor = "#6A3D9A"
     color_by: list[str] | None = None
     dpi: PositiveInt = 300
     formats: list[Literal["png", "pdf", "svg"]] = Field(default_factory=lambda: ["png"])
