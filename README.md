@@ -168,6 +168,93 @@ Note: BenchRep automatically handles training vs prediction, with the appropriat
 
 ---
 
+## Outputs
+
+### Shared run records
+
+```text
+outputs/<workflow>/<run_name>_<timestamp>/
+└── records/
+    ├── configs/
+    │   ├── original_config.yaml
+    │   └── resolved_config.yaml
+    ├── logs/
+    │   ├── stderr.log
+    │   └── benchrep.run.log
+    └── metadata/
+        └── <workflow>_manifest.yaml # evaluation manifest in develpment
+```
+
+### Training-specific outputs
+
+```text
+outputs/training/<run_name>_<timestamp>/
+├── checkpoints/
+│   └── <model_checkpoint>.ckpt
+└── architecture/
+    └── model_graph.png
+```
+
+### Prediction-specific outputs
+
+```text
+outputs/prediction/<run_name>_<timestamp>/
+├── embeddings/
+│   └── embeddings.h5ad
+└── reconstructions/
+    ├── input.pt
+    ├── reconstruction.pt
+    ├── obs.pt
+    └── reconstruction_export_metadata.pt
+```
+
+### Evaluation-specific outputs
+
+```text
+outputs/evaluation/<run_name>_<timestamp>/
+├── artifacts/
+│   ├── embeddings/
+│   │   └── evaluated_embeddings.h5ad
+│   └── reconstructions/
+│       ├── inputs/
+│       │   └── input_<example_i>.tif
+│       ├── predictions/
+│       │   └── prediction_<example_i>.tif
+│       └── error_maps/
+│           └── error_map_<example_i>.tif
+├── records/
+│   └── metrics/
+│       └── metrics.json
+└── figures/
+    ├── embeddings/
+    │   ├── reductions/
+    │   │   ├── uncolored/
+    │   │   │   ├── X_pca.png
+    │   │   │   ├── X_umap.png
+    │   │   │   └── X_tsne.png
+    │   │   └── colored_by/
+    │   │       └── <obs_key>/
+    │   │           └── X_<reduction>.png
+    │   └── diagnostics/
+    │       ├── pca/
+    │       │   ├── X_pca_scree.png
+    │       │   └── X_pca_cumulative_variance.png
+    │       └── clustering/
+    │           └── <clustering_method>/
+    │               └── cluster_sizes.png
+    └── reconstructions/
+```
+
+`metrics.json` includes:
+
+1. `clustering`: configured internal and external clustering metrics for each clustering method, plus metadata.
+2. `predictability`: configured cross-validated probe scores for each target/probe, including tuning metadata when enabled.
+3. `reconstruction`: configured global or per-channel reconstruction errors, plus metadata.
+
+Note: plots have configurable dpi, accent color, and format (png, pdf, svg).
+
+---
+
 ## Usage Modes
 
 BenchRep is intended to support more than one level of usage.
@@ -254,6 +341,8 @@ eval_result = evaluate(
     prediction_manifest_path=pred_result.manifest_path,
 )
 ```
+
+Note: the evaluation workflow can be used independently of BenchRep training and prediction. Users can provide embeddings as an AnnData-compatible `.h5ad` file, optionally provide reconstruction inputs/outputs as `.pt` files, and run evaluation from a YAML config, config object, or config components.
 
 ---
 
