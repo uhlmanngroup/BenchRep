@@ -25,6 +25,7 @@ from benchrep.records import (
     export_reduction_plots,
     export_cluster_size_plots,
     export_reconstruction_tiffs,
+    write_h5ad,
 )
 from benchrep.runtime import RunContext
 from benchrep.runtime.evaluate_run_validation import (
@@ -153,6 +154,18 @@ def evaluate(
     log_clustering_count_warnings(
         adata,
         max_clusters_warn=DEFAULT_MAX_CLUSTERS_WARN,
+    )
+
+    evaluated_embeddings_path = run_context.evaluation_embeddings_dir / "evaluated_embeddings.h5ad"
+    write_h5ad(
+        adata,
+        evaluated_embeddings_path,
+        overwrite=False,
+    )
+
+    run_log.info(
+        "Saved evaluated embeddings AnnData to: '%s'",
+        evaluated_embeddings_path,
     )
 
     run_log.info("Finished AnnData evaluation pipeline")
