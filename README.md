@@ -221,7 +221,8 @@ outputs/evaluation/<run_name>_<timestamp>/
 │       ├── predictions/
 │       │   └── prediction_<example_i>.tif
 │       └── error_maps/
-│           └── error_map_<example_i>.tif
+│           └── <error_kind>/
+│               └── error_map_<error_kind>_<example_idx>.tif
 ├── records/
 │   └── metrics/
 │       └── metrics.json
