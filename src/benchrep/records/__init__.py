@@ -10,6 +10,7 @@ from benchrep.records.prediction_exports import export_prediction_outputs
 from benchrep.records.evaluation_exports import (
     save_evaluation_metrics_json,
     export_reduction_plots,
+    export_cluster_size_plots,
     export_reconstruction_tiffs,
 )
 from benchrep.records.anndata_io import (
@@ -30,6 +31,7 @@ __all__ = [
     "export_prediction_outputs",
     "save_evaluation_metrics_json",
     "export_reduction_plots",
+    "export_cluster_size_plots",
     "export_reconstruction_tiffs",
     "read_h5ad",
     "write_h5ad",

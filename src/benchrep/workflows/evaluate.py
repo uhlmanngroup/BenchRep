@@ -23,6 +23,7 @@ from benchrep.records import (
     setup_run_logger,
     save_evaluation_metrics_json,
     export_reduction_plots,
+    export_cluster_size_plots,
     export_reconstruction_tiffs,
 )
 from benchrep.runtime import RunContext
@@ -37,6 +38,9 @@ if TYPE_CHECKING:
     from benchrep.assembly.resolvers.evaluation_config_resolver import (
         EvaluationRunSpec,
     )
+
+
+DEFAULT_MAX_CLUSTERS_WARN = 50
 
 
 @dataclass
@@ -148,7 +152,7 @@ def evaluate(
 
     log_clustering_count_warnings(
         adata,
-        max_clusters_warn=50,
+        max_clusters_warn=DEFAULT_MAX_CLUSTERS_WARN,
     )
 
     run_log.info("Finished AnnData evaluation pipeline")
@@ -156,7 +160,7 @@ def evaluate(
     run_log.info("Final obs columns: %s", tuple(adata.obs.columns))
 
     if run_spec.step_spec.plots_enabled:
-        run_log.info("Generating reduction plots...")
+        run_log.info("Generating reduction and diagnostic plots...")
 
         reduction_plot_paths = export_reduction_plots(
             output_dir=run_context.evaluation_embeddings_figures_dir,
@@ -165,11 +169,19 @@ def evaluate(
             overwrite=False,
         )
 
+        cluster_size_plot_paths = export_cluster_size_plots(
+            output_dir=run_context.evaluation_embeddings_figures_dir,
+            adata=adata,
+            step_spec=run_spec.step_spec,
+            overwrite=False,
+        )
+
         n_reduction_plots = sum(len(paths) for paths in reduction_plot_paths.values())
+        n_cluster_size_plots = sum(len(paths) for paths in cluster_size_plot_paths.values())
 
         run_log.info(
-            "Finished generating %d reduction plot files in %s",
-            n_reduction_plots,
+            "Finished generating %d reduction and diagnostic plot files in %s",
+            n_reduction_plots + n_cluster_size_plots,
             run_context.evaluation_embeddings_figures_dir,
         )
 

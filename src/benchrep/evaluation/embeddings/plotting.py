@@ -7,14 +7,7 @@ from collections.abc import Sequence
 import anndata as ad
 import matplotlib.pyplot as plt
 import numpy as np
-from pandas import CategoricalDtype
-from pandas.api.types import (
-    is_bool_dtype,
-    is_integer_dtype,
-    is_numeric_dtype,
-    is_object_dtype,
-    is_string_dtype,
-)
+import pandas as pd
 
 
 ColorKind = Literal["auto", "categorical", "continuous"]
@@ -73,8 +66,7 @@ def plot_2d_projection(
             f"Available columns: {list(adata.obs.columns)}"
         )
 
-    if dpi < 72:
-        raise ValueError(f"dpi must be >= 72, got {dpi}.")
+    _validate_dpi(dpi)
 
     coords = adata.obsm[basis]
 
@@ -90,15 +82,7 @@ def plot_2d_projection(
             f"got {coords.shape[0]} rows for {adata.n_obs} observations."
         )
 
-    output_path = Path(output_path)
-
-    if output_path.exists() and not overwrite:
-        raise FileExistsError(
-            f"File already exists: {output_path}. "
-            "Pass overwrite=True to replace it."
-        )
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path = _prepare_output_path(output_path, overwrite=overwrite)
 
     fig, ax = plt.subplots(figsize=(6, 5))
 
@@ -124,7 +108,7 @@ def plot_2d_projection(
         )
 
         if resolved_color_kind == "continuous":
-            if not is_numeric_dtype(values) or is_bool_dtype(values):
+            if not pd.api.types.is_numeric_dtype(values) or pd.api.types.is_bool_dtype(values):
                 raise TypeError(
                     f"Cannot render adata.obs[{color_by!r}] as continuous because "
                     f"its dtype is {values.dtype!r}."
@@ -198,15 +182,7 @@ def plot_pca_variance(
     if max_components < 1:
         raise ValueError(f"max_components must be >= 1, got {max_components}.")
 
-    if dpi < 72:
-        raise ValueError(f"dpi must be >= 72, got {dpi}.")
-
-    output_path = Path(output_path)
-    if output_path.exists() and not overwrite:
-        raise FileExistsError(
-            f"Output path already exists: {output_path}. "
-            "Pass overwrite=True to replace it."
-        )
+    _validate_dpi(dpi)
 
     explained = np.asarray(explained_variance_ratio, dtype=float).reshape(-1)
 
@@ -243,7 +219,7 @@ def plot_pca_variance(
         ylabel = "Cumulative explained variance (%)"
         resolved_title = title or "PCA cumulative explained variance"
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path = _prepare_output_path(output_path, overwrite=overwrite)
 
     fig, ax = plt.subplots(figsize=(6, 4))
 
@@ -268,6 +244,48 @@ def plot_pca_variance(
     plt.close(fig)
 
 
+def plot_cluster_sizes(
+    labels: Sequence[object] | pd.Series,
+    *,
+    output_path: str | Path,
+    title: str | None = None,
+    dpi: int = 300,
+    overwrite: bool = False,
+    accent_color: str = DEFAULT_ACCENT_COLOR,
+) -> None:
+    """Plot cluster sizes for one clustering label vector."""
+
+    _validate_dpi(dpi)
+
+    label_series = pd.Series(labels, dtype="object")
+    label_series = label_series[label_series.notna()]
+
+    if label_series.empty:
+        raise ValueError("Cannot plot cluster sizes because labels contain no values.")
+
+    counts = label_series.astype(str).value_counts().sort_values(ascending=True)
+
+    output_path = _prepare_output_path(output_path, overwrite=overwrite)
+
+    height = max(4.0, min(18.0, 0.28 * len(counts) + 1.5))
+    fig, ax = plt.subplots(figsize=(7, height))
+
+    ax.barh(
+        counts.index,
+        counts.to_numpy(),
+        color=accent_color,
+    )
+
+    ax.set_xlabel("Number of observations")
+    ax.set_ylabel("Cluster")
+    ax.set_title(title or "Cluster sizes")
+    ax.grid(True, axis="x", alpha=0.3)
+
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=dpi, bbox_inches="tight")
+    plt.close(fig)
+
+
 def _infer_color_kind(
     values,
     *,
@@ -282,19 +300,19 @@ def _infer_color_kind(
         return "categorical"
 
     if (
-        isinstance(values.dtype, CategoricalDtype)
-        or is_object_dtype(values)
-        or is_string_dtype(values)
-        or is_bool_dtype(values)
+        isinstance(values.dtype, pd.CategoricalDtype)
+        or pd.api.types.is_object_dtype(values)
+        or pd.api.types.is_string_dtype(values)
+        or pd.api.types.is_bool_dtype(values)
     ):
         return "categorical"
 
-    if is_integer_dtype(values):
+    if pd.api.types.is_integer_dtype(values):
         if n_unique <= max_categorical_levels:
             return "categorical"
         return "continuous"
 
-    if is_numeric_dtype(values):
+    if pd.api.types.is_numeric_dtype(values):
         array = non_missing.to_numpy(dtype=float, na_value=np.nan)
         integer_like = np.all(np.isclose(array, np.round(array)))
 
@@ -304,3 +322,27 @@ def _infer_color_kind(
         return "continuous"
 
     return "categorical"
+
+
+def _validate_dpi(dpi: int) -> None:
+    if not isinstance(dpi, int):
+        raise TypeError(f"dpi must be an int, got {type(dpi).__name__}.")
+    if dpi < 72:
+        raise ValueError(f"dpi must be >= 72, got {dpi}.")
+
+
+def _prepare_output_path(
+    output_path: str | Path,
+    *,
+    overwrite: bool,
+) -> Path:
+    output_path = Path(output_path)
+
+    if output_path.exists() and not overwrite:
+        raise FileExistsError(
+            f"Output path already exists: {output_path}. "
+            "Pass overwrite=True to replace it."
+        )
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    return output_path

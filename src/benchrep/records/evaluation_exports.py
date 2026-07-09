@@ -1,10 +1,3 @@
-"""Evaluation output exporters.
-
-This module will contain disk-writing utilities for evaluation artifacts,
-including evaluated AnnData files, metrics JSON/YAML, plots, reconstruction
-examples, and error maps.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Mapping
@@ -20,9 +13,10 @@ import tifffile
 
 from benchrep.evaluation.reconstructions.data import ReconstructionEvaluationInput
 from benchrep.evaluation.embeddings.plotting import (
+    DEFAULT_ACCENT_COLOR,
     plot_2d_projection,
     plot_pca_variance,
-    DEFAULT_ACCENT_COLOR,
+    plot_cluster_sizes,
 )
 from benchrep.evaluation.utils import (
     to_python_scalar,
@@ -99,10 +93,7 @@ def export_reduction_plots(
 
     accent_color = step_spec.plot_params.get("accent_color") or DEFAULT_ACCENT_COLOR
     color_by = step_spec.plot_params.get("color_by") or []
-    dpi = step_spec.plot_params.get("dpi", 300)
-    formats = step_spec.plot_params.get("formats", ["png"])
-    formats = [fmt.strip().lower() for fmt in formats if isinstance(fmt, str) and fmt.strip()]
-    formats = list(dict.fromkeys(formats)) or ["png"]
+    dpi, formats = _resolve_plot_file_options(step_spec)
 
     written_paths: dict[str, list[Path]] = {}
 
@@ -194,6 +185,64 @@ def export_reduction_plots(
                     overwrite=overwrite,
                 )
                 written_paths[colored_key].append(output_path)
+
+    return written_paths
+
+
+def export_cluster_size_plots(
+    *,
+    output_dir: str | Path,
+    adata: ad.AnnData,
+    step_spec: "EvaluationStepSpec",
+    overwrite: bool = False,
+) -> dict[str, list[Path]]:
+    """Export cluster-size diagnostic plots for clustering outputs."""
+
+    if not step_spec.plots_enabled:
+        return {}
+
+    output_dir = Path(output_dir)
+
+    diagnostics_dir = output_dir / "diagnostics"
+    clustering_diagnostics_dir = diagnostics_dir / "clustering"
+
+    accent_color = step_spec.plot_params.get("accent_color") or DEFAULT_ACCENT_COLOR
+    dpi, formats = _resolve_plot_file_options(step_spec)
+
+    clustering_uns = adata.uns.get("benchrep", {}).get("clustering", {})
+    if not isinstance(clustering_uns, Mapping):
+        return {}
+
+    written_paths: dict[str, list[Path]] = {}
+
+    for key_added, metadata in clustering_uns.items():
+        if not isinstance(key_added, str):
+            continue
+
+        if not isinstance(metadata, Mapping):
+            continue
+
+        if key_added not in adata.obs.columns:
+            continue
+
+        key_token = _sanitize_filename_token(key_added)
+        cluster_sizes_key = f"{key_added}:cluster_sizes"
+        written_paths[cluster_sizes_key] = []
+
+        cluster_sizes_dir = clustering_diagnostics_dir / key_token
+
+        for fmt in formats:
+            output_path = cluster_sizes_dir / f"cluster_sizes.{fmt}"
+
+            plot_cluster_sizes(
+                adata.obs[key_added],
+                output_path=output_path,
+                title=f"{key_added} cluster sizes",
+                dpi=dpi,
+                accent_color=accent_color,
+                overwrite=overwrite,
+            )
+            written_paths[cluster_sizes_key].append(output_path)
 
     return written_paths
 
@@ -498,3 +547,22 @@ def _get_reduction_metadata(
         return None
 
     return metadata
+
+
+def _resolve_plot_file_options(
+    step_spec: "EvaluationStepSpec",
+) -> tuple[int, list[str]]:
+    """Resolve shared static plot export options from the evaluation step spec."""
+    plot_params = step_spec.plot_params
+
+    dpi = plot_params.get("dpi", 300)
+
+    formats = plot_params.get("formats", ["png"])
+    formats = [
+        fmt.strip().lower()
+        for fmt in formats
+        if isinstance(fmt, str) and fmt.strip()
+    ]
+    formats = list(dict.fromkeys(formats)) or ["png"]
+
+    return dpi, formats
