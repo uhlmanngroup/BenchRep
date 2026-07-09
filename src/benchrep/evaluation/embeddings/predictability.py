@@ -48,7 +48,7 @@ class PredictabilityProbeResult:
     fold_scores: list[float]
     mean_score: float
     std_score: float
-    best_params_by_fold: list[dict[str, Any]] | None
+    best_params_by_fold: dict[str, dict[str, Any]] | None
     tuned: bool
 
 
@@ -246,9 +246,9 @@ def evaluate_predictability_probe(
         outer_splits = cv_spec.outer_cv.split(X, y)
 
     fold_scores: list[float] = []
-    best_params_by_fold: list[dict[str, Any]] = []
+    best_params_by_fold: dict[str, dict[str, Any]] = {}
 
-    for train_idx, test_idx in outer_splits:
+    for fold_idx, (train_idx, test_idx) in enumerate(outer_splits):
         estimator = clone(probe_spec.estimator)
 
         if tuning_enabled:
@@ -277,7 +277,10 @@ def evaluate_predictability_probe(
                 )
 
             fitted_estimator = search.best_estimator_
-            best_params_by_fold.append(dict(search.best_params_))
+            best_params_by_fold[f"fold_{fold_idx}"] = {
+                str(key): _to_h5ad_safe_scalar(value)
+                for key, value in search.best_params_.items()
+            }
 
         else:
             fitted_estimator = estimator.fit(
@@ -417,3 +420,13 @@ def _store_predictability_metric_result(
     predictability_uns = metrics_uns.setdefault("predictability", {})
 
     predictability_uns[target_key] = dict(result)
+
+
+def _to_h5ad_safe_scalar(value: Any) -> Any:
+    if isinstance(value, np.generic):
+        return value.item()
+
+    if isinstance(value, tuple):
+        return list(value)
+
+    return value
