@@ -253,7 +253,7 @@ def export_reconstruction_tiffs(
     reconstruction_input: ReconstructionEvaluationInput,
     reconstruction_outputs: Mapping[str, Any] | None = None,
     overwrite: bool = False,
-) -> dict[str, list[Path]]:
+) -> dict[str, Any]:
     """Export reconstruction inputs, predictions, and error maps as TIFF files."""
 
     output_dir = Path(output_dir)
@@ -278,7 +278,7 @@ def export_reconstruction_tiffs(
         n_examples=n_examples,
     )
 
-    written_paths: dict[str, list[Path]] = {
+    written_paths: dict[str, Any] = {
         "inputs": _write_reconstruction_tiffs(
             arrays=input_array,
             output_dir=output_dir / "inputs",
@@ -298,47 +298,62 @@ def export_reconstruction_tiffs(
     if reconstruction_outputs is None:
         return written_paths
 
-    error_map_output = reconstruction_outputs.get("error_maps")
-    if error_map_output is None:
+    error_map_outputs = reconstruction_outputs.get("error_maps")
+    if error_map_outputs is None:
         return written_paths
 
-    if not isinstance(error_map_output, Mapping):
+    if not isinstance(error_map_outputs, Mapping):
         raise TypeError(
             "Expected reconstruction_outputs['error_maps'] to be a mapping, "
-            f"got {type(error_map_output).__name__}."
+            f"got {type(error_map_outputs).__name__}."
         )
 
-    error_maps = error_map_output.get("error_maps")
-    if error_maps is None:
-        return written_paths
-
-    error_map_array = ensure_reconstruction_channel_axis(np.asarray(error_maps))
     input_array_with_channels = ensure_reconstruction_channel_axis(input_array)
+    written_error_map_paths: dict[str, list[Path]] = {}
 
-    if error_map_array.shape[0] < n_examples:
-        raise ValueError(
-            "Expected at least as many error maps as selected reconstruction "
-            f"examples. Got {error_map_array.shape[0]} error maps and "
-            f"{n_examples} selected examples."
+    for error_kind, error_map_output in error_map_outputs.items():
+        error_kind = str(error_kind)
+
+        if not isinstance(error_map_output, Mapping):
+            raise TypeError(
+                "Expected each reconstruction error-map output to be a mapping, "
+                f"got {type(error_map_output).__name__} for kind {error_kind!r}."
+            )
+
+        error_maps = error_map_output.get("error_maps")
+        if error_maps is None:
+            continue
+
+        error_map_array = ensure_reconstruction_channel_axis(np.asarray(error_maps))
+
+        if error_map_array.shape[0] < n_examples:
+            raise ValueError(
+                "Expected at least as many error maps as selected reconstruction "
+                f"examples for kind {error_kind!r}. Got {error_map_array.shape[0]} "
+                f"error maps and {n_examples} selected examples."
+            )
+
+        error_map_array = error_map_array[:n_examples]
+
+        if error_map_array.shape != input_array_with_channels.shape:
+            raise ValueError(
+                "Expected selected error maps to have the same shape as selected "
+                "reconstruction inputs after adding any missing channel axis. "
+                f"For kind {error_kind!r}, got error maps shape "
+                f"{error_map_array.shape} and input shape "
+                f"{input_array_with_channels.shape}."
+            )
+
+        written_error_map_paths[error_kind] = _write_reconstruction_tiffs(
+            arrays=error_map_array,
+            output_dir=output_dir / "error_maps" / error_kind,
+            filename_prefix=f"error_map_{error_kind}",
+            filename_stems=filename_stems,
+            overwrite=overwrite,
         )
 
-    error_map_array = error_map_array[:n_examples]
-
-    if error_map_array.shape != input_array_with_channels.shape:
-        raise ValueError(
-            "Expected selected error maps to have the same shape as selected "
-            "reconstruction inputs after adding any missing channel axis. "
-            f"Got error maps shape {error_map_array.shape} and input shape "
-            f"{input_array_with_channels.shape}."
-        )
-
-    written_paths["error_maps"] = _write_reconstruction_tiffs(
-        arrays=error_map_array,
-        output_dir=output_dir / "error_maps",
-        filename_prefix="error_map",
-        filename_stems=filename_stems,
-        overwrite=overwrite,
-    )
+    if written_error_map_paths:
+        written_paths["error_maps"] = written_error_map_paths
 
     return written_paths
 

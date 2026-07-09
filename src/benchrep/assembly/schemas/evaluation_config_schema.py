@@ -38,6 +38,15 @@ PredictabilityProbeName = Literal[
     "svm_rbf"
 ]
 
+ErrorMapKind = Literal[
+    "absolute",
+    "squared",
+    "signed",
+    "relative",
+    "normalized_absolute_global",
+    "normalized_absolute_per_channel",
+]
+
 HexColor = Annotated[
     str,
     StringConstraints(pattern=r"^#[0-9A-Fa-f]{6}$"),
@@ -184,17 +193,9 @@ class EvaluationClusteringConfig(BaseModel):
 # Reconstruction artifacts config
 # -------------------------
 class ErrorMapParams(BaseModel):
-    kind: (
-        Literal[
-            "absolute",
-            "squared",
-            "signed",
-            "relative",
-            "normalized_absolute_global",
-            "normalized_absolute_per_channel",
-        ]
-        | None
-    ) = "absolute"
+    kinds: list[ErrorMapKind] = Field(
+        default_factory=lambda: ["absolute", "signed", "relative"]
+    )
     denominator_floor: PositiveFloat | None = None
 
 

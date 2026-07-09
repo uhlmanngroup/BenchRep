@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 import numpy as np
@@ -18,11 +18,10 @@ SUPPORTED_ERROR_MAP_KINDS = {
     "normalized_absolute_per_channel",
 }
 
-
 def compute_error_maps(
     reconstruction_input: ReconstructionEvaluationInput,
     *,
-    kind: str = "absolute",
+    kinds: Sequence[str] = ("absolute", "signed", "relative"),
     n_examples: int | None = None,
     denominator_floor: float = 1e-8,
     data_range: float | None = None,
@@ -50,6 +49,18 @@ def compute_error_maps(
     Error maps are returned as arrays. Disk export to TIFF/PNG belongs to the
     records/export layer.
     """
+    kinds = tuple(dict.fromkeys(kinds))
+
+    if not kinds:
+        raise ValueError("kinds must contain at least one error map kind.")
+
+    invalid_kinds = [kind for kind in kinds if kind not in SUPPORTED_ERROR_MAP_KINDS]
+
+    if invalid_kinds:
+        raise ValueError(
+            f"Unsupported error map kinds: {invalid_kinds!r}. "
+            f"Supported kinds: {sorted(SUPPORTED_ERROR_MAP_KINDS)}."
+        )
 
     inputs, reconstructions = validate_reconstruction_arrays(
         inputs=reconstruction_input.inputs,
@@ -65,24 +76,28 @@ def compute_error_maps(
         inputs = inputs[:resolved_n_examples]
         reconstructions = reconstructions[:resolved_n_examples]
 
-    error_maps = _compute_error_map_array(
-        inputs=inputs,
-        reconstructions=reconstructions,
-        kind=kind,
-        denominator_floor=denominator_floor,
-        data_range=data_range,
-    )
+    error_maps_dict = {}
+    for error_kind in kinds:
+        error_maps = _compute_error_map_array(
+            inputs=inputs,
+            reconstructions=reconstructions,
+            kind=error_kind,
+            denominator_floor=denominator_floor,
+            data_range=data_range,
+        )
 
-    return {
-        "kind": kind,
-        "error_maps": error_maps,
-        "shape": tuple(error_maps.shape),
-        "n_examples": error_maps.shape[0],
-        "params": {
-            "denominator_floor": denominator_floor,
-            "data_range": data_range,
-        },
-    }
+        error_maps_dict[error_kind] = {
+            "error_maps": error_maps,
+            "shape": tuple(error_maps.shape),
+            "n_examples": error_maps.shape[0],
+            "params": {
+                "denominator_floor": denominator_floor,
+                "data_range": data_range,
+            },
+        }
+
+
+    return error_maps_dict
 
 
 def _compute_error_map_array(
@@ -94,12 +109,6 @@ def _compute_error_map_array(
     data_range: float | None,
 ) -> np.ndarray:
     """Compute one kind of reconstruction error map."""
-
-    if kind not in SUPPORTED_ERROR_MAP_KINDS:
-        raise ValueError(
-            f"Unsupported error map kind: {kind!r}. "
-            f"Supported kinds: {sorted(SUPPORTED_ERROR_MAP_KINDS)}."
-        )
 
     if denominator_floor <= 0:
         raise ValueError(
@@ -163,7 +172,9 @@ def _resolve_global_data_range(
             raise ValueError(f"data_range must be > 0, got {data_range}.")
         return float(data_range)
 
-    inferred_data_range = float(np.max(inputs) - np.min(inputs))
+    input_min = float(np.min(inputs))
+    input_max = float(np.max(inputs))
+    inferred_data_range = input_max - input_min
 
     return max(inferred_data_range, denominator_floor)
 
@@ -176,7 +187,9 @@ def _resolve_per_channel_data_range(
     """Resolve per-channel intensity ranges for normalized error maps."""
 
     if inputs.ndim == 3:
-        inferred_data_range = float(np.max(inputs) - np.min(inputs))
+        input_min = float(np.min(inputs))
+        input_max = float(np.max(inputs))
+        inferred_data_range = input_max - input_min
         return max(inferred_data_range, denominator_floor)
 
     channel_mins = np.min(inputs, axis=(0, 2, 3))

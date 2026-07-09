@@ -180,8 +180,9 @@ reconstruction:
     enabled: true # true = force on if reconstructions exist; false = off; null = off
     params:
       # absolute | squared | signed | relative | normalized_absolute_global | normalized_absolute_per_channel;
-      # omit/null = absolute
-      kind: absolute
+      # omit = [ "absolute", "signed", "relative" ]
+      kinds: [ "absolute", "squared", "signed", "relative",
+              "normalized_absolute_global", "normalized_absolute_per_channel" ]
       denominator_floor: null # null/omit = default denominator floor for relative/normalized error maps
 
 plots:
