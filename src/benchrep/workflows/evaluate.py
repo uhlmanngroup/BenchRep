@@ -28,6 +28,7 @@ from benchrep.records import (
 from benchrep.runtime import RunContext
 from benchrep.runtime.evaluate_run_validation import (
     prepare_evaluate_source_inputs,
+    log_clustering_count_warnings,
 )
 from benchrep.assembly.registries.builtins import register_builtins
 
@@ -144,6 +145,11 @@ def evaluate(
 
     with capture_console_streams(log_out_dir=run_context.log_dir, capture_stdout=False):
         adata = embeddings_pipeline.run(adata)
+
+    log_clustering_count_warnings(
+        adata,
+        max_clusters_warn=50,
+    )
 
     run_log.info("Finished AnnData evaluation pipeline")
     run_log.info("Final obsm keys: %s", tuple(adata.obsm.keys()))
