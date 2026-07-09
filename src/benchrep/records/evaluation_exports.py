@@ -164,6 +164,12 @@ def export_reduction_plots(
 
     output_dir = Path(output_dir)
 
+    reductions_dir = output_dir / "reductions"
+    uncolored_dir = reductions_dir / "uncolored"
+    colored_by_dir = reductions_dir / "colored_by"
+    diagnostics_dir = output_dir / "diagnostics"
+    pca_diagnostics_dir = diagnostics_dir / "pca"
+
     bases: list[str] = []
     if step_spec.pca_enabled:
         bases.append(step_spec.pca_params.get("key_added", "X_pca"))
@@ -199,7 +205,7 @@ def export_reduction_plots(
                     written_paths[cumulative_key] = []
 
                     for fmt in formats:
-                        scree_path = output_dir / f"{pca_token}_scree.{fmt}"
+                        scree_path = pca_diagnostics_dir / f"{pca_token}_scree.{fmt}"
                         plot_pca_variance(
                             explained_variance_ratio=explained_variance_ratio,
                             output_path=scree_path,
@@ -210,7 +216,7 @@ def export_reduction_plots(
                         )
                         written_paths[scree_key].append(scree_path)
 
-                        cumulative_path = output_dir / f"{pca_token}_cumulative_variance.{fmt}"
+                        cumulative_path = pca_diagnostics_dir / f"{pca_token}_cumulative_variance.{fmt}"
                         plot_pca_variance(
                             explained_variance_ratio=explained_variance_ratio,
                             output_path=cumulative_path,
@@ -232,7 +238,7 @@ def export_reduction_plots(
         written_paths[uncolored_key] = []
 
         for fmt in formats:
-            output_path = output_dir / f"{basis_token}.{fmt}"
+            output_path = uncolored_dir / f"{basis_token}.{fmt}"
             plot_2d_projection(
                 adata,
                 basis=basis,
@@ -252,10 +258,10 @@ def export_reduction_plots(
             colored_key = f"{basis}:colored_by:{color}"
             written_paths[colored_key] = []
 
+            colored_by_subdir = colored_by_dir / color_token
+
             for fmt in formats:
-                output_path = output_dir / (
-                    f"{basis_token}_colored_by_{color_token}.{fmt}"
-                )
+                output_path = colored_by_subdir / f"{basis_token}.{fmt}"
                 plot_2d_projection(
                     adata,
                     basis=basis,
