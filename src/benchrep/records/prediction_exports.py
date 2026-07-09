@@ -206,7 +206,8 @@ def _export_embeddings(
 
         adata.obsm[key] = embedding.numpy()
 
-    adata.uns["benchrep_prediction_export"] = {
+    benchrep_uns = adata.uns.setdefault("benchrep", {})
+    benchrep_uns["prediction_export"] = {
         "mode": export_spec.mode,
         "embedding_keys": embedding_keys,
         "primary_key": primary_key,
