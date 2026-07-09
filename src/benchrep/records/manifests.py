@@ -7,9 +7,9 @@ import yaml
 
 from lightning.pytorch.callbacks import ModelCheckpoint
 
-from benchrep.assembly.schemas import TrainingConfig, PredictionConfig
+from benchrep.assembly.schemas import TrainingConfig, PredictionConfig, EvaluationConfig
 from benchrep.assembly.config import ConfigCompositionResult
-from benchrep.assembly.resolvers import PredictionRunSpec
+from benchrep.assembly.resolvers import PredictionRunSpec, EvaluationRunSpec
 from benchrep.records.prediction_exports import PredictionExportPaths
 from benchrep.runtime import RunContext
 from benchrep.records.logs import (
