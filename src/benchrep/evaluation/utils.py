@@ -165,3 +165,31 @@ def to_python_scalar(value: Any) -> Any:
         return value.item()
 
     return value
+
+
+def validate_dpi(dpi: int) -> None:
+    if not isinstance(dpi, int):
+        raise TypeError(
+            f"dpi must be an int, got {type(dpi).__name__}."
+        )
+
+    if dpi < 72:
+        raise ValueError(f"dpi must be >= 72, got {dpi}.")
+
+
+def prepare_output_path(
+    output_path: str | Path,
+    *,
+    overwrite: bool,
+) -> Path:
+    output_path = Path(output_path)
+
+    if output_path.exists() and not overwrite:
+        raise FileExistsError(
+            f"Output path already exists: {output_path}. "
+            "Pass overwrite=True to replace it."
+        )
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    return output_path

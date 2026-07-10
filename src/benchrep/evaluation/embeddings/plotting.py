@@ -9,6 +9,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from benchrep.evaluation.utils import prepare_output_path, validate_dpi
+
 
 ColorKind = Literal["auto", "categorical", "continuous"]
 
@@ -66,7 +68,7 @@ def plot_2d_projection(
             f"Available columns: {list(adata.obs.columns)}"
         )
 
-    _validate_dpi(dpi)
+    validate_dpi(dpi)
 
     coords = adata.obsm[basis]
 
@@ -82,7 +84,7 @@ def plot_2d_projection(
             f"got {coords.shape[0]} rows for {adata.n_obs} observations."
         )
 
-    output_path = _prepare_output_path(output_path, overwrite=overwrite)
+    output_path = prepare_output_path(output_path, overwrite=overwrite)
 
     fig, ax = plt.subplots(figsize=(6, 5))
 
@@ -182,7 +184,7 @@ def plot_pca_variance(
     if max_components < 1:
         raise ValueError(f"max_components must be >= 1, got {max_components}.")
 
-    _validate_dpi(dpi)
+    validate_dpi(dpi)
 
     explained = np.asarray(explained_variance_ratio, dtype=float).reshape(-1)
 
@@ -219,7 +221,7 @@ def plot_pca_variance(
         ylabel = "Cumulative explained variance (%)"
         resolved_title = title or "PCA cumulative explained variance"
 
-    output_path = _prepare_output_path(output_path, overwrite=overwrite)
+    output_path = prepare_output_path(output_path, overwrite=overwrite)
 
     fig, ax = plt.subplots(figsize=(6, 4))
 
@@ -255,7 +257,7 @@ def plot_cluster_sizes(
 ) -> None:
     """Plot cluster sizes for one clustering label vector."""
 
-    _validate_dpi(dpi)
+    validate_dpi(dpi)
 
     label_series = pd.Series(labels, dtype="object")
     label_series = label_series[label_series.notna()]
@@ -265,7 +267,7 @@ def plot_cluster_sizes(
 
     counts = label_series.astype(str).value_counts().sort_values(ascending=True)
 
-    output_path = _prepare_output_path(output_path, overwrite=overwrite)
+    output_path = prepare_output_path(output_path, overwrite=overwrite)
 
     height = max(4.0, min(18.0, 0.28 * len(counts) + 1.5))
     fig, ax = plt.subplots(figsize=(7, height))
@@ -322,27 +324,3 @@ def _infer_color_kind(
         return "continuous"
 
     return "categorical"
-
-
-def _validate_dpi(dpi: int) -> None:
-    if not isinstance(dpi, int):
-        raise TypeError(f"dpi must be an int, got {type(dpi).__name__}.")
-    if dpi < 72:
-        raise ValueError(f"dpi must be >= 72, got {dpi}.")
-
-
-def _prepare_output_path(
-    output_path: str | Path,
-    *,
-    overwrite: bool,
-) -> Path:
-    output_path = Path(output_path)
-
-    if output_path.exists() and not overwrite:
-        raise FileExistsError(
-            f"Output path already exists: {output_path}. "
-            "Pass overwrite=True to replace it."
-        )
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    return output_path
