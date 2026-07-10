@@ -230,9 +230,7 @@ outputs/evaluation/<run_name>_<timestamp>/
     ├── embeddings/
     │   ├── reductions/
     │   │   ├── uncolored/
-    │   │   │   ├── X_pca.png
-    │   │   │   ├── X_umap.png
-    │   │   │   └── X_tsne.png
+    │   │   │   └── X_<reduction>.png
     │   │   └── colored_by/
     │   │       └── <obs_key>/
     │   │           └── X_<reduction>.png
