@@ -1,9 +1,17 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Annotated
 
-from pydantic import BaseModel, Field, PositiveInt, NonNegativeInt, model_validator, ValidationInfo
+from pydantic import (
+    BaseModel,
+    Field,
+    PositiveInt,
+    NonNegativeInt,
+    model_validator,
+    ValidationInfo,
+    StringConstraints,
+)
 
 
 # -------------------------
@@ -48,7 +56,10 @@ class PredictionReconstructionsExportConfig(BaseModel):
     enabled: bool = True
     n_examples: Literal["all"] | PositiveInt = 32
     selection: Literal["first", "random"] = "first"
-    stratify_by: str | None = None
+    stratify_by: Annotated[
+                          str,
+                          StringConstraints(strip_whitespace=True, min_length=1),
+                      ] | None = None
     seed: int | None = None
     include_input: bool = True
     include_prediction: bool = True
