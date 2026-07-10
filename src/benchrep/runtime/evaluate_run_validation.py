@@ -469,15 +469,13 @@ def _validate_reconstruction_obs_length(
     if obs_length is None:
         return
 
-    n_examples = reconstruction_input.n_examples
-    if n_examples is None:
-        n_examples = int(reconstruction_input.inputs.shape[0])
+    n_available = int(reconstruction_input.inputs.shape[0])
 
-    if obs_length < n_examples:
+    if obs_length != n_available:
         raise ValueError(
-            "Reconstruction obs must contain at least as many rows/items as the "
-            "selected reconstruction examples. "
-            f"Got obs length={obs_length}, selected examples={n_examples}."
+            "Reconstruction obs must contain exactly one row/item per "
+            "reconstruction example. "
+            f"Got obs length={obs_length}, reconstruction examples={n_available}."
         )
 
 

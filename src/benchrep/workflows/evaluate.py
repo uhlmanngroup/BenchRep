@@ -25,6 +25,7 @@ from benchrep.records import (
     export_reduction_plots,
     export_cluster_size_plots,
     export_reconstruction_tiffs,
+    export_reconstruction_grids,
     write_h5ad,
 )
 from benchrep.runtime import RunContext
@@ -229,6 +230,25 @@ def evaluate(
         else:
             run_log.info(
                 "Finished reconstruction evaluation pipeline with no outputs."
+            )
+
+        if run_spec.step_spec.plots_enabled:
+            reconstruction_grid_paths = export_reconstruction_grids(
+                output_dir=run_context.evaluation_reconstructions_figures_dir,
+                reconstruction_input=reconstruction_input,
+                step_spec=run_spec.step_spec,
+                overwrite=False,
+            )
+
+            n_reconstruction_grids = sum(
+                len(paths)
+                for paths in reconstruction_grid_paths.values()
+            )
+
+            run_log.info(
+                "Saved %d reconstruction grid figure(s) to: '%s'",
+                n_reconstruction_grids,
+                run_context.evaluation_reconstructions_figures_dir,
             )
 
     # Collect and export metrics

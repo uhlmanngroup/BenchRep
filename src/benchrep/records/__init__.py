@@ -12,6 +12,7 @@ from benchrep.records.evaluation_exports import (
     export_reduction_plots,
     export_cluster_size_plots,
     export_reconstruction_tiffs,
+    export_reconstruction_grids,
 )
 from benchrep.records.anndata_io import (
     read_h5ad,
@@ -33,6 +34,7 @@ __all__ = [
     "export_reduction_plots",
     "export_cluster_size_plots",
     "export_reconstruction_tiffs",
+    "export_reconstruction_grids",
     "read_h5ad",
     "write_h5ad",
     "package_matrix_as_anndata",
