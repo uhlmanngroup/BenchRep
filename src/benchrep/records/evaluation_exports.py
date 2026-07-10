@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 import json
@@ -12,6 +12,10 @@ import re
 import tifffile
 
 from benchrep.evaluation.reconstructions.data import ReconstructionEvaluationInput
+from benchrep.evaluation.reconstructions.error_maps import compute_error_maps
+from benchrep.evaluation.reconstructions.plotting import (
+    plot_reconstruction_grid_page,
+)
 from benchrep.evaluation.embeddings.plotting import (
     DEFAULT_ACCENT_COLOR,
     plot_2d_projection,
@@ -23,10 +27,15 @@ from benchrep.evaluation.utils import (
     ensure_reconstruction_channel_axis,
     validate_reconstruction_arrays,
 )
-
+from benchrep.records.logs import get_run_logger
 
 if TYPE_CHECKING:
     from benchrep.assembly.resolvers.evaluation_config_resolver import EvaluationStepSpec
+
+
+RECONSTRUCTION_GRID_PAGE_SIZE = 12
+RECONSTRUCTION_GRID_FILE_WARNING_THRESHOLD = 24
+RECONSTRUCTION_GRID_LABEL_VALUE_MAX_LENGTH = 32
 
 
 def save_evaluation_metrics_json(
@@ -358,6 +367,160 @@ def export_reconstruction_tiffs(
     return written_paths
 
 
+def export_reconstruction_grids(
+    *,
+    output_dir: str | Path,
+    reconstruction_input: ReconstructionEvaluationInput,
+    step_spec: "EvaluationStepSpec",
+    overwrite: bool = False,
+) -> dict[str, list[Path]]:
+    """Export paginated reconstruction-summary grids."""
+
+    if not step_spec.plots_enabled:
+        return {}
+
+    inputs, reconstructions = validate_reconstruction_arrays(
+        inputs=reconstruction_input.inputs,
+        reconstructions=reconstruction_input.reconstructions,
+    )
+
+    inputs = ensure_reconstruction_channel_axis(inputs)
+    reconstructions = ensure_reconstruction_channel_axis(reconstructions)
+
+    n_available, n_channels = inputs.shape[:2]
+
+    grid_params = step_spec.plot_params.get("reconstruction_grid", {})
+
+    if not isinstance(grid_params, Mapping):
+        raise TypeError(
+            "plots.params.reconstruction_grid must resolve to a mapping."
+        )
+
+    stratify_by = grid_params.get("stratify_by")
+    channel_selection = grid_params.get("channel_selection")
+
+    pages = _resolve_reconstruction_grid_pages(
+        obs=reconstruction_input.obs,
+        n_available=n_available,
+        stratify_by=stratify_by,
+        random_state=grid_params.get("random_state", 137),
+    )
+
+    selected_channels = _resolve_reconstruction_grid_channels(
+        n_channels=n_channels,
+        channel_selection=channel_selection,
+    )
+
+    dpi, formats = _resolve_plot_file_options(step_spec)
+    output_dir = Path(output_dir)
+
+    run_log = get_run_logger()
+
+    if channel_selection is None and n_channels > 1:
+        run_log.warning(
+            "Reconstruction-grid channel_selection is null for %d-channel data; "
+            "only channel 0 will be shown.",
+            n_channels,
+        )
+
+    n_grid_files = len(pages) * len(selected_channels) * len(formats)
+
+    if n_grid_files > RECONSTRUCTION_GRID_FILE_WARNING_THRESHOLD:
+        run_log.warning(
+            "Reconstruction grid export will write %d figure files "
+            "(%d page(s) × %d channel(s) × %d format(s)).",
+            n_grid_files,
+            len(pages),
+            len(selected_channels),
+            len(formats),
+        )
+
+    written_paths: dict[str, list[Path]] = {
+        f"channel_{channel:04d}": []
+        for channel in selected_channels
+    }
+
+    all_selected_indices = np.concatenate(pages)
+
+    selected_inputs = inputs[all_selected_indices]
+    selected_reconstructions = reconstructions[all_selected_indices]
+
+    selected_error_maps: dict[str, np.ndarray] = {}
+
+    if step_spec.error_maps_enabled:
+        computed_error_maps = compute_error_maps(
+            ReconstructionEvaluationInput(
+                inputs=selected_inputs,
+                reconstructions=selected_reconstructions,
+                obs=None,
+            ),
+            n_examples=None,
+            **dict(step_spec.error_map_params),
+        )
+
+        for error_kind, error_output in computed_error_maps.items():
+            selected_error_maps[str(error_kind)] = (
+                ensure_reconstruction_channel_axis(
+                    np.asarray(error_output["error_maps"])
+                )
+            )
+
+    page_start = 0
+
+    for page_number, selected_indices in enumerate(pages, start=1):
+        page_stop = page_start + len(selected_indices)
+        page_slice = slice(page_start, page_stop)
+
+        page_inputs = selected_inputs[page_slice]
+        page_reconstructions = selected_reconstructions[page_slice]
+
+        row_labels = _resolve_reconstruction_grid_row_labels(
+            obs=reconstruction_input.obs,
+            selected_indices=selected_indices,
+            stratify_by=stratify_by,
+        )
+
+        page_error_maps = {
+            error_kind: error_maps[page_slice]
+            for error_kind, error_maps in selected_error_maps.items()
+        }
+
+        for channel in selected_channels:
+            channel_key = f"channel_{channel:04d}"
+
+            channel_error_maps = {
+                error_kind: error_maps[:, channel]
+                for error_kind, error_maps in page_error_maps.items()
+            }
+
+            for fmt in formats:
+                output_path = (
+                    output_dir
+                    / f"reconstruction_grid_channel_{channel:04d}"
+                      f"_page_{page_number:03d}.{fmt}"
+                )
+
+                plot_reconstruction_grid_page(
+                    inputs=page_inputs[:, channel],
+                    reconstructions=page_reconstructions[:, channel],
+                    error_maps=channel_error_maps,
+                    row_labels=row_labels,
+                    output_path=output_path,
+                    title=(
+                        f"Reconstruction summary — channel {channel} — "
+                        f"page {page_number}/{len(pages)}"
+                    ),
+                    dpi=dpi,
+                    overwrite=overwrite,
+                )
+
+                written_paths[channel_key].append(output_path)
+
+        page_start = page_stop
+
+    return written_paths
+
+
 def _collect_evaluation_metrics(
     *,
     adata: ad.AnnData,
@@ -581,3 +744,298 @@ def _resolve_plot_file_options(
     formats = list(dict.fromkeys(formats)) or ["png"]
 
     return dpi, formats
+
+
+def _resolve_reconstruction_grid_pages(
+    *,
+    obs: Any,
+    n_available: int,
+    stratify_by: str | None,
+    random_state: int,
+    page_size: int = RECONSTRUCTION_GRID_PAGE_SIZE,
+) -> list[np.ndarray]:
+    """Select and paginate reconstruction examples for summary grids."""
+    if n_available < 1:
+        raise ValueError("Cannot create reconstruction grids without examples.")
+
+    if page_size < 1:
+        raise ValueError(f"page_size must be >= 1, got {page_size}.")
+
+    generator = np.random.default_rng(random_state)
+
+    if stratify_by is None:
+        n_selected = min(page_size, n_available)
+        selected_indices = generator.choice(
+            n_available,
+            size=n_selected,
+            replace=False,
+        )
+
+        return [
+            np.asarray(selected_indices, dtype=np.int64)
+        ]
+
+    stratify_values = _get_reconstruction_obs_field(
+        obs=obs,
+        key=stratify_by,
+    )
+
+    if stratify_values is None:
+        raise KeyError(
+            f"Reconstruction-grid stratification requested key "
+            f"{stratify_by!r}, but it is not available in reconstruction "
+            f"observations. Available keys: "
+            f"{_available_reconstruction_obs_keys(obs)}."
+        )
+
+    if len(stratify_values) != n_available:
+        raise ValueError(
+            f"Reconstruction-grid stratification field {stratify_by!r} "
+            f"contains {len(stratify_values)} values, but exactly "
+            f"{n_available} are required—one per reconstruction example."
+        )
+
+    strata: dict[Any, list[int]] = {}
+
+    for example_index, value in enumerate(stratify_values):
+        value = _normalize_reconstruction_stratum(value)
+
+        try:
+            hash(value)
+        except TypeError as exc:
+            raise TypeError(
+                f"Reconstruction-grid stratification field {stratify_by!r} "
+                "must contain scalar, hashable values."
+            ) from exc
+
+        strata.setdefault(value, []).append(example_index)
+
+    selected_indices = [
+        group[int(generator.integers(len(group)))]
+        for group in strata.values()
+    ]
+    generator.shuffle(selected_indices)
+
+    return [
+        np.asarray(
+            selected_indices[start:start + page_size],
+            dtype=np.int64,
+        )
+        for start in range(0, len(selected_indices), page_size)
+    ]
+
+
+def _get_reconstruction_obs_field(
+    *,
+    obs: Any,
+    key: str,
+) -> Sequence[Any] | None:
+    """Return one reconstruction observation field when available."""
+    values = None
+
+    if isinstance(obs, Mapping):
+        values = obs.get(key)
+    elif hasattr(obs, "columns") and key in obs.columns:
+        values = obs[key]
+
+    if values is None:
+        return None
+
+    if hasattr(values, "tolist"):
+        values = values.tolist()
+
+    if isinstance(values, str | bytes) or not isinstance(values, Sequence):
+        raise TypeError(
+            f"Reconstruction observation field {key!r} must contain a "
+            f"sequence of per-example values, got {type(values).__name__}."
+        )
+
+    return values
+
+
+def _available_reconstruction_obs_keys(obs: Any) -> list[str]:
+    """Return available reconstruction observation field names."""
+    if isinstance(obs, Mapping):
+        return sorted(str(key) for key in obs)
+
+    if hasattr(obs, "columns"):
+        return sorted(str(key) for key in obs.columns)
+
+    return []
+
+
+def _normalize_reconstruction_stratum(value: Any) -> Any:
+    """Normalize scalar stratum values, including missing values."""
+    value = to_python_scalar(value)
+
+    if value is None:
+        return "<missing>"
+
+    try:
+        if bool(np.isnan(value)):
+            return "<missing>"
+    except (TypeError, ValueError):
+        pass
+
+    return value
+
+
+def _resolve_reconstruction_grid_channels(
+    *,
+    n_channels: int,
+    channel_selection: str | int | Sequence[int] | None,
+) -> list[int]:
+    """Resolve and validate channels selected for reconstruction grids."""
+    if n_channels < 1:
+        raise ValueError(
+            f"Reconstruction arrays must contain at least one channel, got {n_channels}."
+        )
+
+    if channel_selection is None:
+        selected_channels = [0]
+
+    elif channel_selection == "all":
+        selected_channels = list(range(n_channels))
+
+    elif isinstance(channel_selection, int) and not isinstance(
+        channel_selection,
+        bool,
+    ):
+        selected_channels = [channel_selection]
+
+    elif isinstance(channel_selection, Sequence) and not isinstance(
+        channel_selection,
+        str | bytes,
+    ):
+        selected_channels = list(dict.fromkeys(channel_selection))
+
+        if not selected_channels:
+            raise ValueError(
+                "Reconstruction-grid channel selection cannot be empty."
+            )
+
+        if any(
+            not isinstance(channel, int) or isinstance(channel, bool)
+            for channel in selected_channels
+        ):
+            raise TypeError(
+                "Reconstruction-grid channel selection must contain only integers."
+            )
+
+    else:
+        raise TypeError(
+            "Reconstruction-grid channel selection must be null, 'all', "
+            f"an integer, or a sequence of integers; got "
+            f"{type(channel_selection).__name__}."
+        )
+
+    invalid_channels = [
+        channel
+        for channel in selected_channels
+        if channel < 0 or channel >= n_channels
+    ]
+
+    if invalid_channels:
+        raise IndexError(
+            f"Reconstruction-grid channel indices {invalid_channels} are out "
+            f"of bounds for arrays containing {n_channels} channel(s)."
+        )
+
+    return selected_channels
+
+
+def _resolve_reconstruction_grid_row_labels(
+    *,
+    obs: Any,
+    selected_indices: Sequence[int],
+    stratify_by: str | None,
+) -> list[str]:
+    """Resolve grid row labels from sample IDs, source indices, or row indices."""
+    sample_ids = _get_reconstruction_obs_field(
+        obs=obs,
+        key="sample_id",
+    )
+    source_indices = _get_reconstruction_obs_field(
+        obs=obs,
+        key="source_index",
+    )
+
+    stratify_values = (
+        _get_reconstruction_obs_field(
+            obs=obs,
+            key=stratify_by,
+        )
+        if stratify_by is not None
+        else None
+    )
+
+    row_labels: list[str] = []
+
+    for selected_index in selected_indices:
+        label_parts: list[str] = []
+
+        if stratify_values is not None and stratify_by is not None:
+            stratum_label = _resolve_reconstruction_obs_label(
+                values=stratify_values,
+                index=selected_index,
+                prefix=stratify_by,
+            )
+
+            if stratum_label is not None:
+                label_parts.append(stratum_label)
+
+        identifier = None
+
+        if sample_ids is not None:
+            identifier = _resolve_reconstruction_obs_label(
+                values=sample_ids,
+                index=selected_index,
+                prefix="sample_id",
+            )
+
+        if identifier is None and source_indices is not None:
+            identifier = _resolve_reconstruction_obs_label(
+                values=source_indices,
+                index=selected_index,
+                prefix="source_index",
+            )
+
+        if identifier is None:
+            identifier = f"index={selected_index}"
+
+        label_parts.append(identifier)
+        row_labels.append(" | ".join(label_parts))
+
+    return row_labels
+
+
+def _resolve_reconstruction_obs_label(
+    *,
+    values: Sequence[Any],
+    index: int,
+    prefix: str,
+) -> str | None:
+    """Resolve one non-missing observation value as a grid row label."""
+    try:
+        value = to_python_scalar(values[index])
+    except (IndexError, KeyError, TypeError):
+        return None
+
+    if value is None:
+        return None
+
+    try:
+        if bool(np.isnan(value)):
+            return None
+    except (TypeError, ValueError):
+        pass
+
+    value_text = str(value)
+
+    if len(value_text) > RECONSTRUCTION_GRID_LABEL_VALUE_MAX_LENGTH:
+        value_text = (
+                value_text[:RECONSTRUCTION_GRID_LABEL_VALUE_MAX_LENGTH - 3]
+                + "..."
+        )
+
+    return f"{prefix}={value_text}"
