@@ -674,6 +674,19 @@ def audit_predict_outputs(
             expected_suffixes={".pt"},
         )
 
+        stratify_by = run_spec.export_spec.reconstructions.stratify_by
+        audit_items.append(
+            AuditItem(
+                name="reconstruction stratification",
+                status="ok" if stratify_by is not None else "skipped",
+                message=(
+                    f"reconstruction examples were stratified by {stratify_by!r}"
+                    if stratify_by is not None
+                    else "stratified reconstruction sampling was not requested"
+                ),
+            )
+        )
+
         n_examples_exported = getattr(
             reconstruction_paths,
             "n_examples_exported",

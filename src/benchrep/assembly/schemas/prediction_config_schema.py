@@ -48,9 +48,20 @@ class PredictionReconstructionsExportConfig(BaseModel):
     enabled: bool = True
     n_examples: Literal["all"] | PositiveInt = 32
     selection: Literal["first", "random"] = "first"
+    stratify_by: str | None = None
     seed: int | None = None
     include_input: bool = True
     include_prediction: bool = True
+
+    @model_validator(mode="after")
+    def validate_sampling(self) -> PredictionReconstructionsExportConfig:
+        if self.stratify_by is not None and self.selection != "random":
+            raise ValueError(
+                "`exports.reconstructions.selection` must be 'random' when "
+                "`exports.reconstructions.stratify_by` is set."
+            )
+
+        return self
 
 
 class PredictionExportConfig(BaseModel):

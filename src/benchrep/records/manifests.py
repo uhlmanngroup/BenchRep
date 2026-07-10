@@ -391,6 +391,7 @@ def write_prediction_manifest(
                     else None
                 ),
                 "selection": reconstruction_spec.selection,
+                "stratify_by": reconstruction_spec.stratify_by,
                 "seed": reconstruction_spec.seed,
                 "include_input": reconstruction_spec.include_input,
                 "include_prediction": reconstruction_spec.include_prediction,

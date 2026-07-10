@@ -36,6 +36,7 @@ class PredictionReconstructionsExportSpec:
     enabled: bool
     n_examples: int | Literal["all"]
     selection: Literal["first", "random"]
+    stratify_by: str | None
     seed: int | None
     include_input: bool
     include_prediction: bool
@@ -346,6 +347,7 @@ def resolve_prediction_exports(
             enabled=export_config.reconstructions.enabled,
             n_examples=export_config.reconstructions.n_examples,
             selection=export_config.reconstructions.selection,
+            stratify_by=export_config.reconstructions.stratify_by,
             seed=reconstruction_seed,
             include_input=export_config.reconstructions.include_input,
             include_prediction=export_config.reconstructions.include_prediction,

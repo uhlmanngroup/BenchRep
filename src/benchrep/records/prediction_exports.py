@@ -11,6 +11,7 @@ from benchrep.interfaces.contracts import (
     VAEPredictionOutput,
 )
 from benchrep.assembly.resolvers.prediction_config_resolver import PredictionExportSpec
+from benchrep.records import get_run_logger
 from benchrep.records.anndata_io import (
     package_matrix_as_anndata,
     write_h5ad,
@@ -21,6 +22,7 @@ from benchrep.interfaces.compatibility import validate_prediction_output_structu
 
 PredictionOutput = AutoencoderPredictionOutput | VAEPredictionOutput
 PredictionOutputLike = object
+
 
 @dataclass(frozen=True)
 class PredictionExportPaths:
@@ -42,6 +44,15 @@ class ReconstructionExportPaths:
     obs_path: Path | None = None
     metadata_path: Path | None = None
     n_examples_exported: int | None = None
+
+
+@dataclass(frozen=True)
+class ReconstructionSelectionResult:
+    indices: torch.Tensor
+    n_strata: int | None = None
+    n_represented_strata: int | None = None
+    n_omitted_strata: int = 0
+
 
 
 def export_prediction_outputs(
@@ -400,32 +411,71 @@ def _select_reconstruction_indices(
     n_examples: int | str,
     selection: str,
     seed: int | None,
-) -> torch.Tensor:
+    stratify_by: str | None = None,
+    stratify_values: Sequence[Any] | None = None,
+) -> ReconstructionSelectionResult:
     """Select row indices for reconstruction export.
 
-    ``selection="first"`` returns the first ``n_examples`` rows. ``selection="random"``
-    samples rows without replacement using a local torch generator seeded by
-    ``seed``. The caller is responsible for passing the resolved reconstruction
-    seed; this function only enforces that random selection cannot proceed with
-    ``seed=None``.
+    ``selection="first"`` returns the first requested rows.
+    ``selection="random"`` samples without replacement using a local torch
+    generator seeded by ``seed``. When ``stratify_by`` is set, random sampling
+    is distributed approximately evenly across strata.
 
     If ``n_examples="all"``, all rows are selected. If an integer larger than
     ``n_samples`` is requested, selection is capped at ``n_samples``.
     """
     if n_examples == "all":
-        n_selected = n_samples
-    else:
-        n_selected = min(n_examples, n_samples)
+        return ReconstructionSelectionResult(
+            indices=torch.arange(n_samples),
+        )
+
+    n_selected = min(n_examples, n_samples)
 
     if selection == "first":
-        return torch.arange(n_selected)
+        if stratify_by is not None:
+            raise ValueError(
+                "Stratified reconstruction selection requires "
+                "selection='random'."
+            )
+
+        return ReconstructionSelectionResult(
+            indices=torch.arange(n_selected),
+        )
 
     if selection == "random":
         if seed is None:
-            raise ValueError("Random reconstruction selection requires a seed.")
+            raise ValueError(
+                "Random reconstruction selection requires a seed."
+            )
+
+        if stratify_by is not None:
+            if stratify_values is None:
+                raise ValueError(
+                    "stratify_values must be provided when stratify_by is set."
+                )
+
+            if len(stratify_values) != n_samples:
+                raise ValueError(
+                    f"Reconstruction stratification field {stratify_by!r} "
+                    f"contains {len(stratify_values)} values, expected "
+                    f"{n_samples}."
+                )
+
+            return _select_stratified_reconstruction_indices(
+                stratify_values=stratify_values,
+                stratify_by=stratify_by,
+                n_selected=n_selected,
+                seed=seed,
+            )
 
         generator = torch.Generator().manual_seed(seed)
-        return torch.randperm(n_samples, generator=generator)[:n_selected]
+
+        return ReconstructionSelectionResult(
+            indices=torch.randperm(
+                n_samples,
+                generator=generator,
+            )[:n_selected],
+        )
 
     raise ValueError(
         f"Unsupported reconstruction selection {selection!r}. "
@@ -501,13 +551,48 @@ def _export_reconstructions(
                 f"expected {n_samples}."
             )
 
-    selected_indices = _select_reconstruction_indices(
+    observations = _collect_reconstruction_observations(
+        predictions=predictions,
+        n_samples=n_samples,
+    )
+
+    stratify_values = None
+
+    if recon_spec.stratify_by is not None:
+        if recon_spec.stratify_by not in observations:
+            raise KeyError(
+                "Reconstruction export requested stratification by "
+                f"{recon_spec.stratify_by!r}, but that observation field is "
+                "not present in the prediction outputs. Available fields: "
+                f"{sorted(observations)}."
+            )
+
+        stratify_values = observations[recon_spec.stratify_by]
+
+    selection_result = _select_reconstruction_indices(
         n_samples=n_samples,
         n_examples=recon_spec.n_examples,
         selection=recon_spec.selection,
         seed=recon_spec.seed,
+        stratify_by=recon_spec.stratify_by,
+        stratify_values=stratify_values,
     )
+
+    selected_indices = selection_result.indices
     selected_indices_list = selected_indices.tolist()
+
+    if selection_result.n_omitted_strata > 0:
+        run_log = get_run_logger()
+        run_log.warning(
+            "Reconstruction export was stratified by '%s', but only %d of %d "
+            "strata could be represented within the requested %d examples. "
+            "%d strata were omitted.",
+            recon_spec.stratify_by,
+            selection_result.n_represented_strata,
+            selection_result.n_strata,
+            len(selected_indices),
+            selection_result.n_omitted_strata,
+        )
 
     input_path = None
     reconstruction_path = None
@@ -521,37 +606,15 @@ def _export_reconstructions(
         elif key == "reconstruction":
             reconstruction_path = export_path
 
-    sample_ids = _concat_optional_batch_values(
-        predictions=predictions,
-        key="sample_id",
-    )
-    labels = _concat_optional_batch_values(
-        predictions=predictions,
-        key="label",
-    )
-    metadata = _concat_optional_metadata(
-        predictions=predictions,
-    )
-
-    reconstruction_obs = {
+    reconstruction_obs: dict[str, list[Any]] = {
         "source_index": selected_indices_list,
     }
 
-    if sample_ids is not None:
-        reconstruction_obs["sample_id"] = [
-            sample_ids[i] for i in selected_indices_list
+    for key, values in observations.items():
+        reconstruction_obs[key] = [
+            values[index]
+            for index in selected_indices_list
         ]
-
-    if labels is not None:
-        reconstruction_obs["label"] = [
-            labels[i] for i in selected_indices_list
-        ]
-
-    if metadata is not None:
-        for key, values in metadata.items():
-            reconstruction_obs[key] = [
-                values[i] for i in selected_indices_list
-            ]
 
     obs_path = output_dir / "obs.pt"
     torch.save(reconstruction_obs, obs_path)
@@ -562,7 +625,11 @@ def _export_reconstructions(
             "n_samples_total": n_samples,
             "n_examples_exported": len(selected_indices),
             "selection": recon_spec.selection,
+            "stratify_by": recon_spec.stratify_by,
             "seed": recon_spec.seed,
+            "n_strata": selection_result.n_strata,
+            "n_represented_strata": selection_result.n_represented_strata,
+            "n_omitted_strata": selection_result.n_omitted_strata,
             "include_input": recon_spec.include_input,
             "include_prediction": recon_spec.include_prediction,
             "exported_keys": list(tensors_to_export.keys()),
@@ -631,4 +698,129 @@ def _available_prediction_keys(prediction: PredictionOutputLike) -> tuple[str, .
         key
         for key in _prediction_field_names(prediction)
         if _has_prediction_value(prediction, key)
+    )
+
+
+def _collect_reconstruction_observations(
+    *,
+    predictions: Sequence[PredictionOutputLike],
+    n_samples: int,
+) -> dict[str, list[Any]]:
+    """Collect and validate sample-level fields available for reconstruction export."""
+    observations: dict[str, list[Any]] = {}
+
+    sample_ids = _concat_optional_batch_values(
+        predictions=predictions,
+        key="sample_id",
+    )
+    labels = _concat_optional_batch_values(
+        predictions=predictions,
+        key="label",
+    )
+    metadata = _concat_optional_metadata(
+        predictions=predictions,
+    )
+
+    if sample_ids is not None:
+        observations["sample_id"] = sample_ids
+
+    if labels is not None:
+        observations["label"] = labels
+
+    if metadata is not None:
+        conflicting_keys = set(metadata).intersection(
+            {*observations, "source_index"}
+        )
+
+        if conflicting_keys:
+            raise ValueError(
+                "Prediction metadata contains keys that conflict with "
+                "dedicated reconstruction observation fields: "
+                f"{sorted(conflicting_keys)}."
+            )
+
+        observations.update(metadata)
+
+    for key, values in observations.items():
+        if len(values) != n_samples:
+            raise ValueError(
+                f"Prediction observation field {key!r} contains "
+                f"{len(values)} values, but exactly {n_samples} are "
+                "required—one per reconstruction sample."
+            )
+
+    return observations
+
+
+def _select_stratified_reconstruction_indices(
+    *,
+    stratify_values: Sequence[Any],
+    stratify_by: str,
+    n_selected: int,
+    seed: int,
+) -> ReconstructionSelectionResult:
+    strata: dict[Any, list[int]] = {}
+
+    for index, value in enumerate(stratify_values):
+        try:
+            hash(value)
+        except TypeError as exc:
+            raise TypeError(
+                f"Reconstruction stratification field {stratify_by!r} must "
+                "contain scalar, hashable values."
+            ) from exc
+
+        strata.setdefault(value, []).append(index)
+
+    generator = torch.Generator().manual_seed(seed)
+
+    groups = list(strata.values())
+    group_order = torch.randperm(
+        len(groups),
+        generator=generator,
+    ).tolist()
+
+    shuffled_groups: list[list[int]] = []
+
+    for group_index in group_order:
+        group = groups[group_index]
+        sample_order = torch.randperm(
+            len(group),
+            generator=generator,
+        ).tolist()
+
+        shuffled_groups.append([group[index] for index in sample_order])
+
+    selected: list[int] = []
+    position = 0
+
+    while len(selected) < n_selected:
+        added_example = False
+
+        for group in shuffled_groups:
+            if position >= len(group):
+                continue
+
+            selected.append(group[position])
+            added_example = True
+
+            if len(selected) == n_selected:
+                break
+
+        if not added_example:
+            break
+
+        position += 1
+
+    represented_strata = sum(
+        any(index in selected for index in group)
+        for group in shuffled_groups
+    )
+    n_strata = len(shuffled_groups)
+
+    return ReconstructionSelectionResult(
+        indices=torch.tensor(selected, dtype=torch.long),
+        n_strata=n_strata,
+        n_represented_strata=represented_strata,
+        n_omitted_strata=n_strata - represented_strata,
     )

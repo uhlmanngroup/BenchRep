@@ -20,7 +20,8 @@ exports:
   reconstructions:
     enabled: true
     n_examples: 32              # int | all
-    selection: first            # first | random
+    selection: random            # first | random
+    stratify_by: label          # null | prediction observation/metadata key; requires selection: random
     seed: null                  # null = reuse inference seed
     include_input: true
     include_prediction: true
