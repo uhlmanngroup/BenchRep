@@ -217,12 +217,12 @@ outputs/evaluation/<run_name>_<timestamp>/
 │   │   └── evaluated_embeddings.h5ad
 │   └── reconstructions/
 │       ├── inputs/
-│       │   └── input_<example_i>.tif
+│       │   └── input_<example_i>_<sample_id>.tif
 │       ├── predictions/
-│       │   └── prediction_<example_i>.tif
+│       │   └── prediction_<example_i>_<sample_id>.tif
 │       └── error_maps/
 │           └── <error_kind>/
-│               └── error_map_<error_kind>_<example_idx>.tif
+│               └── error_map_<error_kind>_<example_i>_<sample_id>.tif
 ├── records/
 │   └── metrics/
 │       └── metrics.json
@@ -244,6 +244,7 @@ outputs/evaluation/<run_name>_<timestamp>/
     │           └── <clustering_method>/
     │               └── cluster_sizes.png
     └── reconstructions/
+        └── reconstruction_grid_<channel>_<page>.png
 ```
 
 `metrics.json` includes:
