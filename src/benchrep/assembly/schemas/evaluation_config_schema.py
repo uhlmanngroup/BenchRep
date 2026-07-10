@@ -12,6 +12,7 @@ from pydantic import (
     model_validator,
     ConfigDict,
     StringConstraints,
+    NonNegativeInt,
 )
 
 NSplits = Annotated[int, Field(ge=2)]
@@ -410,11 +411,28 @@ class EvaluationMetricsConfig(BaseModel):
 # -------------------------
 # Plots config
 # -------------------------
+class ReconstructionGridConfig(BaseModel):
+    random_state: int = 137
+    stratify_by: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=1),
+    ] | None = None
+
+    channel_selection: (
+        Literal["all"]
+        | NonNegativeInt
+        | Annotated[list[NonNegativeInt], Field(min_length=1)]
+        | None
+    ) = None
+
 class PlotParams(BaseModel):
     accent_color: HexColor = "#6A3D9A"
     color_by: list[str] | None = None
     dpi: PositiveInt = 300
     formats: list[Literal["png", "pdf", "svg"]] = Field(default_factory=lambda: ["png"])
+    reconstruction_grid: ReconstructionGridConfig = Field(
+        default_factory=ReconstructionGridConfig
+    )
 
 
 class EvaluationPlotsConfig(EvalStepConfig):
