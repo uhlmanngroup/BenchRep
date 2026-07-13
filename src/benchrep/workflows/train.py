@@ -26,6 +26,7 @@ from benchrep.records import (
     write_training_manifest,
     export_torchview_graph,
     infer_dummy_input_size,
+    write_audit_report,
 )
 from benchrep.interfaces.model_families import (
     SupportedModel,
@@ -55,6 +56,7 @@ class TrainingWorkflowResult:
     trainer: L.Trainer
     checkpoint_callback: ModelCheckpoint
     manifest_path: Path
+    audit_report_path: Path
     torchview_graph_path: Path | None
 
 
@@ -316,7 +318,7 @@ def _train(
 
     run_log.info("Exported training manifest to: '%s'", manifest_path)
 
-    audit_train_outputs(
+    audit_items = audit_train_outputs(
         run_context=run_context,
         input_config_path=config_composition_result.original_config_path,
         resolved_config_path=run_context.config_dir / "resolved_config.yaml",
@@ -330,6 +332,21 @@ def _train(
         datamodule_class_name=type(datamodule).__name__,
     )
 
+    audit_report_path = write_audit_report(
+        stage="training",
+        audit_items=audit_items,
+        output_path=(
+            run_context.metadata_dir / "training_audit_report.yaml"
+        ),
+        audited_at=datetime.now().isoformat(timespec="seconds"),
+    )
+
+    run_log.info(
+        "Exported training audit report to: '%s'",
+        audit_report_path,
+    )
+
+
     return TrainingWorkflowResult(
         config=train_config,
         run_context=run_context,
@@ -338,5 +355,6 @@ def _train(
         trainer=trainer,
         checkpoint_callback=checkpoint_callback,
         manifest_path=manifest_path,
+        audit_report_path=audit_report_path,
         torchview_graph_path=torchview_graph_path,
     )

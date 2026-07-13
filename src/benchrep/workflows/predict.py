@@ -33,6 +33,7 @@ from benchrep.records import (
     capture_console_streams,
     export_prediction_outputs,
     write_prediction_manifest,
+    write_audit_report,
 )
 from benchrep.runtime import RunContext
 from benchrep.runtime.predict_run_validation import (
@@ -58,6 +59,7 @@ class PredictionWorkflowResult:
     predictions: list[Any]
     export_paths: Any
     manifest_path: Path
+    audit_report_path: Path
 
 
 # Model-specific wrappers
@@ -378,7 +380,7 @@ def _predict(
 
     run_log.info("Exported prediction manifest to: '%s'", manifest_path)
 
-    audit_predict_outputs(
+    audit_items = audit_predict_outputs(
         run_context=run_context,
         run_spec=run_spec,
         model_family=model_family,
@@ -393,6 +395,20 @@ def _predict(
         datamodule_class_name=type(datamodule).__name__,
     )
 
+    audit_report_path = write_audit_report(
+        stage="prediction",
+        audit_items=audit_items,
+        output_path=(
+                run_context.metadata_dir / "prediction_audit_report.yaml"
+        ),
+        audited_at=datetime.now().isoformat(timespec="seconds"),
+    )
+
+    run_log.info(
+        "Exported prediction audit report to: '%s'",
+        audit_report_path,
+    )
+
     return PredictionWorkflowResult(
         config=run_spec.prediction_config,
         run_spec=run_spec,
@@ -403,4 +419,5 @@ def _predict(
         predictions=predictions,
         export_paths=export_paths,
         manifest_path=manifest_path,
+        audit_report_path=audit_report_path,
     )

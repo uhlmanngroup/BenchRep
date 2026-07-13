@@ -17,6 +17,7 @@ from benchrep.records.anndata_io import (
     write_h5ad,
     package_matrix_as_anndata,
 )
+from benchrep.records.audit_reports import write_audit_report
 
 __all__ = [
     "save_config_records",
@@ -33,4 +34,5 @@ __all__ = [
     "read_h5ad",
     "write_h5ad",
     "package_matrix_as_anndata",
+    "write_audit_report",
 ]

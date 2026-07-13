@@ -188,7 +188,7 @@ def audit_predict_outputs(
     model_class_name: str,
     datamodule_source: Literal["config", "external_object"],
     datamodule_class_name: str,
-) -> None:
+) -> list[AuditItem]:
     audit_items: list[AuditItem] = []
 
     prediction_manifest_path = Path(prediction_manifest_path)
@@ -730,6 +730,8 @@ def audit_predict_outputs(
         stage="prediction",
         audit_items=audit_items,
     )
+
+    return audit_items
 
 
 def _audit_expected_artifact_file(

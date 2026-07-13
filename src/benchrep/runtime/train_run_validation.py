@@ -150,7 +150,7 @@ def audit_train_outputs(
     model_class_name: str,
     datamodule_source: Literal["config", "external_object"],
     datamodule_class_name: str,
-) -> None:
+) -> list[AuditItem]:
     audit_items: list[AuditItem] = []
 
     training_manifest_path = Path(training_manifest_path)
@@ -552,3 +552,5 @@ def audit_train_outputs(
         stage="training",
         audit_items=audit_items,
     )
+
+    return audit_items
