@@ -22,6 +22,7 @@ from benchrep.records import (
     save_config_records,
     setup_run_logger,
     export_evaluation_outputs,
+    write_evaluation_manifest,
 )
 from benchrep.runtime import RunContext
 from benchrep.runtime.evaluate_run_validation import (
@@ -48,6 +49,7 @@ class EvaluationWorkflowResult:
     adata: ad.AnnData
     reconstruction_outputs: dict[str, Any] | None
     export_paths: EvaluationExportPaths
+    manifest_path: Path
 
 
 def evaluate(
@@ -89,7 +91,9 @@ def evaluate(
         project_name=run_spec.run_identity.project_name,
         model_name=run_spec.run_identity.model_name,
     )
+    created_at = datetime.now().isoformat(timespec="seconds")
 
+    # Initiate local run logger
     run_log = setup_run_logger(log_out_dir=run_context.log_dir)
 
     # Log composition messages and warnings
@@ -208,7 +212,22 @@ def evaluate(
     run_log.info("Finished evaluation artifact export.")
 
     completed_at = datetime.now().isoformat(timespec="seconds")
-    run_log.info("Evaluation completed at: %s", completed_at)
+
+    # Export evaluation manifest
+    manifest_path = run_context.metadata_dir / "evaluation_manifest.yaml"
+    write_evaluation_manifest(
+        config_composition_result=config_composition_result,
+        output_path=manifest_path,
+        run_spec=run_spec,
+        run_context=run_context,
+        export_paths=export_paths,
+        created_at=created_at,
+        completed_at=completed_at,
+        status="completed",
+    )
+
+    run_log.info("Exported evaluation manifest to: '%s'", manifest_path)
+
 
     return EvaluationWorkflowResult(
         config=run_spec.evaluation_config,
@@ -217,4 +236,5 @@ def evaluate(
         adata=adata,
         reconstruction_outputs=reconstruction_outputs,
         export_paths=export_paths,
+        manifest_path=manifest_path,
     )

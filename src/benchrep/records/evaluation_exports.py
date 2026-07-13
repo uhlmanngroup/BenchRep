@@ -30,6 +30,7 @@ from benchrep.evaluation.utils import (
 )
 from benchrep.records.logs import get_run_logger
 from benchrep.records.anndata_io import write_h5ad
+from benchrep.records.utils import count_paths
 
 if TYPE_CHECKING:
     from benchrep.assembly.resolvers.evaluation_config_resolver import EvaluationStepSpec
@@ -157,8 +158,8 @@ def export_evaluation_outputs(
         )
 
         n_embedding_plot_files = (
-            _count_exported_paths(reduction_plot_paths)
-            + _count_exported_paths(cluster_size_plot_paths)
+            count_paths(reduction_plot_paths)
+            + count_paths(cluster_size_plot_paths)
         )
 
         run_log.info(
@@ -187,7 +188,7 @@ def export_evaluation_outputs(
 
         run_log.info(
             "Saved %d reconstruction TIFF file(s) to: '%s'",
-            _count_exported_paths(reconstruction_tiff_paths),
+            count_paths(reconstruction_tiff_paths),
             reconstructions_dir,
         )
 
@@ -201,7 +202,7 @@ def export_evaluation_outputs(
 
         run_log.info(
             "Saved %d reconstruction grid figure(s) to: '%s'",
-            _count_exported_paths(reconstruction_grid_paths),
+            count_paths(reconstruction_grid_paths),
             reconstruction_figures_dir,
         )
 
@@ -1229,23 +1230,3 @@ def _resolve_reconstruction_obs_label(
         )
 
     return f"{prefix}={value_text}"
-
-
-def _count_exported_paths(value: Any) -> int:
-    """Count Path objects contained in a nested export result."""
-    if isinstance(value, Path):
-        return 1
-
-    if isinstance(value, Mapping):
-        return sum(
-            _count_exported_paths(item)
-            for item in value.values()
-        )
-
-    if isinstance(value, Sequence) and not isinstance(value, str | bytes):
-        return sum(
-            _count_exported_paths(item)
-            for item in value
-        )
-
-    return 0

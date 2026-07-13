@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -10,24 +11,18 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 from benchrep.assembly.schemas import TrainingConfig, PredictionConfig, EvaluationConfig
 from benchrep.assembly.config import ConfigCompositionResult
 from benchrep.assembly.resolvers import PredictionRunSpec, EvaluationRunSpec
-from benchrep.records.prediction_exports import PredictionExportPaths
 from benchrep.runtime import RunContext
+from benchrep.records.prediction_exports import PredictionExportPaths
+from benchrep.records.evaluation_exports import EvaluationExportPaths
 from benchrep.records.logs import (
     RUN_LOG_FILENAME,
     STDERR_LOG_FILENAME,
     STDOUT_LOG_FILENAME,
 )
-
-
-def write_yaml_record(data: dict[str, Any], output_path: Path) -> None:
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    with output_path.open("w", encoding="utf-8") as f:
-        yaml.safe_dump(data, f, sort_keys=False)
-
-
-def _optional_path_to_str(path: Path | None) -> str | None:
-    return str(path) if path is not None else None
+from benchrep.records.utils import (
+    paths_to_strings,
+    count_paths,
+)
 
 
 def write_training_manifest(
@@ -66,6 +61,14 @@ def write_training_manifest(
         if not datamodule_is_external and config.datamodule is not None
         else None
     )
+
+    records = _build_common_records(
+        config_composition_result,
+        run_context,
+    )
+    records["architecture"] = {
+        "torchview_graph_path": paths_to_strings(torchview_graph_path),
+    }
 
     summary = {
         "model_source": model_source,
@@ -165,32 +168,7 @@ def write_training_manifest(
                 "configured_batch_size": None if datamodule_is_external else configured_batch_size,
             },
         },
-        "records": {
-            "input_config_path": (
-                str(config_composition_result.original_config_path)
-                if config_composition_result.original_config_path is not None
-                else None
-            ),
-            "original_config_record_path": (
-                str(run_context.config_dir / "original_config.yaml")
-                if config_composition_result.original_config_path is not None
-                else None
-            ),
-            "resolved_config_path": str(run_context.config_dir / "resolved_config.yaml"),
-            "log_dir": str(run_context.log_dir),
-            "metadata_dir": str(run_context.metadata_dir),
-            "run_log_path": str(run_context.log_dir / RUN_LOG_FILENAME),
-            "console_stderr_path": str(run_context.log_dir / STDERR_LOG_FILENAME),
-            "console_stdout_path": (
-                f"{run_context.log_dir / STDOUT_LOG_FILENAME} "
-                "[optional; only written when stdout capture is enabled]"
-            ),
-            "architecture": {
-                "torchview_graph_path": (
-                    str(torchview_graph_path) if torchview_graph_path is not None else None
-                ),
-            },
-        },
+        "records": records,
         "checkpoints": checkpoints,
         "summary": summary,
     }
@@ -266,6 +244,11 @@ def write_prediction_manifest(
     embedding_export = export_paths.embedding_export
     reconstruction_paths = export_paths.reconstruction_paths
 
+    records = _build_common_records(
+        config_composition_result,
+        run_context,
+    )
+
     summary = {
         "project_name": run_spec.training_config.run.project_name,
         "model_source": model_source,
@@ -339,27 +322,7 @@ def write_prediction_manifest(
                 },
             },
         },
-        "records": {
-            "input_config_path": (
-                str(config_composition_result.original_config_path)
-                if config_composition_result.original_config_path is not None
-                else None
-            ),
-            "original_config_record_path": (
-                str(run_context.config_dir / "original_config.yaml")
-                if config_composition_result.original_config_path is not None
-                else None
-            ),
-            "resolved_config_path": str(run_context.config_dir / "resolved_config.yaml"),
-            "log_dir": str(run_context.log_dir),
-            "metadata_dir": str(run_context.metadata_dir),
-            "run_log_path": str(run_context.log_dir / RUN_LOG_FILENAME),
-            "console_stderr_path": str(run_context.log_dir / STDERR_LOG_FILENAME),
-            "console_stdout_path": (
-                f"{run_context.log_dir / STDOUT_LOG_FILENAME} "
-                "[optional; only written when stdout capture is enabled]"
-            ),
-        },
+        "records": records,
         "exports": {
             "mode": run_spec.export_spec.mode,
             "embeddings": {
@@ -367,7 +330,7 @@ def write_prediction_manifest(
                 "requested_keys": embedding_spec.keys,
                 "requested_primary_key": embedding_spec.primary_key,
                 "path": (
-                    _optional_path_to_str(embedding_export.embeddings_h5ad_path)
+                    paths_to_strings(embedding_export.embeddings_h5ad_path)
                     if embedding_export is not None
                     else None
                 ),
@@ -397,22 +360,22 @@ def write_prediction_manifest(
                 "include_prediction": reconstruction_spec.include_prediction,
                 "paths": {
                     "input": (
-                        _optional_path_to_str(reconstruction_paths.input_path)
+                        paths_to_strings(reconstruction_paths.input_path)
                         if reconstruction_paths is not None
                         else None
                     ),
                     "reconstruction": (
-                        _optional_path_to_str(reconstruction_paths.reconstruction_path)
+                        paths_to_strings(reconstruction_paths.reconstruction_path)
                         if reconstruction_paths is not None
                         else None
                     ),
                     "obs": (
-                        _optional_path_to_str(reconstruction_paths.obs_path)
+                        paths_to_strings(reconstruction_paths.obs_path)
                         if reconstruction_paths is not None
                         else None
                     ),
                     "metadata": (
-                        _optional_path_to_str(reconstruction_paths.metadata_path)
+                        paths_to_strings(reconstruction_paths.metadata_path)
                         if reconstruction_paths is not None
                         else None
                     ),
@@ -423,3 +386,306 @@ def write_prediction_manifest(
     }
 
     write_yaml_record(manifest, output_path)
+
+
+def write_evaluation_manifest(
+    *,
+    config_composition_result: ConfigCompositionResult[EvaluationConfig],
+    output_path: Path,
+    run_spec: EvaluationRunSpec,
+    run_context: RunContext,
+    export_paths: EvaluationExportPaths,
+    created_at: str,
+    completed_at: str,
+    status: str = "completed",
+) -> None:
+    """Write the evaluation workflow manifest."""
+    config = run_spec.evaluation_config
+    step_spec = run_spec.step_spec
+    reconstruction_spec = run_spec.input_spec.reconstructions
+
+    prediction_manifest = run_spec.prediction_manifest
+
+    prediction_run: Mapping[str, Any] = {}
+    prediction_provenance: Mapping[str, Any] | None = None
+    prediction_summary: Mapping[str, Any] = {}
+
+    if prediction_manifest is not None:
+        run_value = prediction_manifest.get("run", {})
+        if isinstance(run_value, Mapping):
+            prediction_run = run_value
+
+        provenance_value = prediction_manifest.get("provenance")
+        if isinstance(provenance_value, Mapping):
+            prediction_provenance = provenance_value
+
+        summary_value = prediction_manifest.get("summary", {})
+        if isinstance(summary_value, Mapping):
+            prediction_summary = summary_value
+
+    embeddings_source = (
+        "direct_path"
+        if config.source.embeddings_path is not None
+        else "prediction_manifest"
+    )
+
+    if reconstruction_spec is None:
+        reconstructions_source = None
+    elif config.source.reconstructions_path is not None:
+        reconstructions_source = "direct_path"
+    else:
+        reconstructions_source = "prediction_manifest"
+
+    if run_spec.input_spec.prediction_manifest_path is None:
+        source_mode = "direct"
+    elif (
+        embeddings_source == "direct_path"
+        or reconstructions_source == "direct_path"
+    ):
+        source_mode = "mixed"
+    else:
+        source_mode = "prediction_manifest"
+
+    grid_params = step_spec.plot_params.get("reconstruction_grid", {})
+    if not isinstance(grid_params, Mapping):
+        grid_params = {}
+
+    tiff_paths = export_paths.reconstruction_tiff_paths
+    grid_paths = export_paths.reconstruction_grid_paths
+
+    provenance = (
+        dict(prediction_provenance)
+        if prediction_provenance is not None
+        else {}
+    )
+
+    provenance["evaluation"] = {
+        "config": {
+            "run_reconstructable_from_resolved_config": True,
+            "effective_source": config_composition_result.effective_source,
+            "yaml_supplied": config_composition_result.yaml_supplied,
+            "yaml_used_as_base": config_composition_result.yaml_used_as_base,
+            "original_config_path": paths_to_strings(
+                config_composition_result.original_config_path
+            ),
+        },
+    }
+
+    records = _build_common_records(
+        config_composition_result,
+        run_context,
+    )
+
+    manifest = {
+        "stage": run_spec.stage,
+        "status": status,
+        "created_at": created_at,
+        "completed_at": completed_at,
+        "run": {
+            "run_name": run_context.run_name,
+            "output_dir": str(run_context.output_dir),
+        },
+        "source": {
+            "mode": source_mode,
+            "prediction_manifest_path": paths_to_strings(
+                run_spec.input_spec.prediction_manifest_path
+            ),
+            "prediction_run_name": prediction_run.get("run_name"),
+            "prediction_output_dir": prediction_run.get("output_dir"),
+            "embeddings": {
+                "source": embeddings_source,
+                "path": str(run_spec.input_spec.embeddings_path),
+            },
+            "reconstructions": {
+                "source": reconstructions_source,
+                "available": reconstruction_spec is not None,
+                "n_examples_limit": (
+                    reconstruction_spec.n_examples
+                    if reconstruction_spec is not None
+                    else None
+                ),
+                "paths": {
+                    "input": (
+                        paths_to_strings(reconstruction_spec.input_path)
+                        if reconstruction_spec is not None
+                        else None
+                    ),
+                    "reconstruction": (
+                        paths_to_strings(
+                            reconstruction_spec.reconstruction_path
+                        )
+                        if reconstruction_spec is not None
+                        else None
+                    ),
+                    "obs": (
+                        paths_to_strings(reconstruction_spec.obs_path)
+                        if reconstruction_spec is not None
+                        else None
+                    ),
+                    "metadata": (
+                        paths_to_strings(reconstruction_spec.metadata_path)
+                        if reconstruction_spec is not None
+                        else None
+                    ),
+                },
+            },
+        },
+        "provenance": provenance,
+        "records": records,
+        "exports": {
+            "embeddings": {
+                "path": str(export_paths.evaluated_embeddings_path),
+            },
+            "metrics": {
+                "path": str(export_paths.metrics_json_path),
+            },
+            "figures": {
+                "reductions": {
+                    "n_files": count_paths(
+                        export_paths.reduction_plot_paths
+                    ),
+                    "paths": paths_to_strings(
+                        export_paths.reduction_plot_paths
+                    ),
+                },
+                "cluster_sizes": {
+                    "n_files": count_paths(
+                        export_paths.cluster_size_plot_paths
+                    ),
+                    "paths": paths_to_strings(
+                        export_paths.cluster_size_plot_paths
+                    ),
+                },
+            },
+            "reconstructions": {
+                "error_map_params": step_spec.error_map_params,
+                "tiffs": {
+                    "enabled": step_spec.reconstruction_tiffs_enabled,
+                    "n_examples_requested": (
+                        config.reconstruction.n_examples
+                    ),
+                    "n_examples_limit": (
+                        reconstruction_spec.n_examples
+                        if reconstruction_spec is not None
+                        else None
+                    ),
+                    "n_examples_exported": (
+                        _infer_reconstruction_examples_exported(tiff_paths)
+                    ),
+                    "n_files": count_paths(tiff_paths),
+                    "paths": paths_to_strings(tiff_paths),
+                },
+                "grids": {
+                    "enabled": (
+                        reconstruction_spec is not None
+                        and step_spec.plots_enabled
+                    ),
+                    "include_error_maps": grid_params.get(
+                        "include_error_maps",
+                        True,
+                    ),
+                    "stratify_by": grid_params.get("stratify_by"),
+                    "channel_selection": grid_params.get(
+                        "channel_selection"
+                    ),
+                    "n_files": count_paths(grid_paths),
+                    "paths": paths_to_strings(grid_paths),
+                },
+            },
+        },
+        "summary": {
+            "project_name": prediction_summary.get("project_name"),
+            "model": prediction_summary.get("model"),
+            "encoder": prediction_summary.get("encoder"),
+            "decoder": prediction_summary.get("decoder"),
+            "source_mode": source_mode,
+            "has_reconstructions": reconstruction_spec is not None,
+            "reductions": {
+                "pca": step_spec.pca_enabled,
+                "umap": step_spec.umap_enabled,
+                "tsne": step_spec.tsne_enabled,
+            },
+            "clustering": {
+                "kmeans": step_spec.kmeans_enabled,
+                "leiden": step_spec.leiden_enabled,
+            },
+            "metrics": {
+                "clustering_internal": (
+                    step_spec.internal_clustering_metrics_enabled
+                ),
+                "clustering_external": (
+                    step_spec.external_clustering_metrics_enabled
+                ),
+                "embedding": step_spec.embedding_metrics_enabled,
+                "predictability": step_spec.predictability_enabled,
+                "reconstruction": (
+                    step_spec.reconstruction_metrics_enabled
+                ),
+            },
+            "plots_enabled": step_spec.plots_enabled,
+            "reconstruction_tiffs_enabled": (
+                step_spec.reconstruction_tiffs_enabled
+            ),
+        },
+    }
+
+    write_yaml_record(manifest, output_path)
+
+
+def _build_common_records(
+    config_composition_result: ConfigCompositionResult[Any],
+    run_context: RunContext,
+) -> dict[str, Any]:
+    has_original_config = (
+        config_composition_result.original_config_path is not None
+    )
+
+    return {
+        "input_config_path": paths_to_strings(
+            config_composition_result.original_config_path
+        ),
+        "original_config_record_path": (
+            str(run_context.config_dir / "original_config.yaml")
+            if has_original_config
+            else None
+        ),
+        "resolved_config_path": str(
+            run_context.config_dir / "resolved_config.yaml"
+        ),
+        "log_dir": str(run_context.log_dir),
+        "metadata_dir": str(run_context.metadata_dir),
+        "run_log_path": str(run_context.log_dir / RUN_LOG_FILENAME),
+        "console_stderr_path": str(
+            run_context.log_dir / STDERR_LOG_FILENAME
+        ),
+        "console_stdout_path": (
+            f"{run_context.log_dir / STDOUT_LOG_FILENAME} "
+            "[optional; only written when stdout capture is enabled]"
+        ),
+    }
+
+
+def write_yaml_record(data: dict[str, Any], output_path: Path) -> None:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with output_path.open("w", encoding="utf-8") as f:
+        yaml.safe_dump(data, f, sort_keys=False)
+
+
+def _infer_reconstruction_examples_exported(
+    paths: Mapping[str, Any] | None,
+) -> int | None:
+    """Infer the TIFF example count from an input or prediction path list."""
+    if paths is None:
+        return None
+
+    for key in ("inputs", "predictions"):
+        values = paths.get(key)
+
+        if isinstance(values, Sequence) and not isinstance(
+            values,
+            str | bytes,
+        ):
+            return len(values)
+
+    return None

@@ -175,7 +175,7 @@ metrics:
     reduction: per_channel # omit = global; allowed: global | per_channel | both
 
 reconstruction: # controls per-example TIFF export; error-map params are shared with reconstruction grids
-  export_tiffs: false # true = export input, reconstruction, and configured error-map TIFFs
+  export_tiffs: true # true = export input, reconstruction, and configured error-map TIFFs
   # ignored with a warning when export_tiffs=false
   n_examples: 32 # limits TIFF export only; null = manifest count when manifest-sourced, otherwise all available
   error_maps:
