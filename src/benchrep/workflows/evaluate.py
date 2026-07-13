@@ -21,12 +21,7 @@ from benchrep.records import (
     capture_console_streams,
     save_config_records,
     setup_run_logger,
-    save_evaluation_metrics_json,
-    export_reduction_plots,
-    export_cluster_size_plots,
-    export_reconstruction_tiffs,
-    export_reconstruction_grids,
-    write_h5ad,
+    export_evaluation_outputs,
 )
 from benchrep.runtime import RunContext
 from benchrep.runtime.evaluate_run_validation import (
@@ -40,7 +35,7 @@ if TYPE_CHECKING:
     from benchrep.assembly.resolvers.evaluation_config_resolver import (
         EvaluationRunSpec,
     )
-
+    from benchrep.records.evaluation_exports import EvaluationExportPaths
 
 DEFAULT_MAX_CLUSTERS_WARN = 50
 
@@ -52,7 +47,7 @@ class EvaluationWorkflowResult:
     run_context: RunContext
     adata: ad.AnnData
     reconstruction_outputs: dict[str, Any] | None
-    metrics_path: Path
+    export_paths: EvaluationExportPaths
 
 
 def evaluate(
@@ -149,7 +144,10 @@ def evaluate(
 
     run_log.info("Starting AnnData evaluation pipeline...")
 
-    with capture_console_streams(log_out_dir=run_context.log_dir, capture_stdout=False):
+    with capture_console_streams(
+        log_out_dir=run_context.log_dir,
+        capture_stdout=False,
+    ):
         adata = embeddings_pipeline.run(adata)
 
     log_clustering_count_warnings(
@@ -157,109 +155,59 @@ def evaluate(
         max_clusters_warn=DEFAULT_MAX_CLUSTERS_WARN,
     )
 
-    evaluated_embeddings_path = run_context.evaluation_embeddings_dir / "evaluated_embeddings.h5ad"
-    write_h5ad(
-        adata,
-        evaluated_embeddings_path,
-        overwrite=False,
-    )
-
-    run_log.info(
-        "Saved evaluated embeddings AnnData to: '%s'",
-        evaluated_embeddings_path,
-    )
-
-    run_log.info("Finished AnnData evaluation pipeline")
+    run_log.info("Finished AnnData evaluation pipeline.")
     run_log.info("Final obsm keys: %s", tuple(adata.obsm.keys()))
     run_log.info("Final obs columns: %s", tuple(adata.obs.columns))
 
-    if run_spec.step_spec.plots_enabled:
-        run_log.info("Generating reduction and diagnostic plots...")
-
-        reduction_plot_paths = export_reduction_plots(
-            output_dir=run_context.evaluation_embeddings_figures_dir,
-            adata=adata,
-            step_spec=run_spec.step_spec,
-            overwrite=False,
-        )
-
-        cluster_size_plot_paths = export_cluster_size_plots(
-            output_dir=run_context.evaluation_embeddings_figures_dir,
-            adata=adata,
-            step_spec=run_spec.step_spec,
-            overwrite=False,
-        )
-
-        n_reduction_plots = sum(len(paths) for paths in reduction_plot_paths.values())
-        n_cluster_size_plots = sum(len(paths) for paths in cluster_size_plot_paths.values())
-
-        run_log.info(
-            "Finished generating %d reduction and diagnostic plot files in %s",
-            n_reduction_plots + n_cluster_size_plots,
-            run_context.evaluation_embeddings_figures_dir,
-        )
-
-    # Create and run reconstructions evaluation pipeline
+    # Create and run reconstruction evaluation pipeline
     reconstruction_outputs = None
+
     if reconstruction_input is not None:
         run_log.info("Starting reconstruction evaluation pipeline...")
-        reconstruction_pipeline = create_reconstruction_evaluation_pipeline(run_spec)
+
+        reconstruction_pipeline = create_reconstruction_evaluation_pipeline(
+            run_spec
+        )
 
         with capture_console_streams(
-                log_out_dir=run_context.log_dir,
-                capture_stdout=False,
+            log_out_dir=run_context.log_dir,
+            capture_stdout=False,
         ):
-            reconstruction_outputs = reconstruction_pipeline.run(reconstruction_input)
+            reconstruction_outputs = reconstruction_pipeline.run(
+                reconstruction_input
+            )
 
         if reconstruction_outputs:
             run_log.info(
                 "Finished reconstruction evaluation pipeline with outputs: %s",
                 tuple(reconstruction_outputs),
             )
-
-            reconstruction_tiff_paths = export_reconstruction_tiffs(
-                output_dir=run_context.evaluation_reconstructions_dir,
-                reconstruction_input=reconstruction_input,
-                reconstruction_outputs=reconstruction_outputs,
-                overwrite=True,
-            )
-            run_log.info(
-                "Saved reconstruction TIFF outputs: %s",
-                {key: len(paths) for key, paths in reconstruction_tiff_paths.items()},
-            )
         else:
             run_log.info(
                 "Finished reconstruction evaluation pipeline with no outputs."
             )
 
-        if run_spec.step_spec.plots_enabled:
-            reconstruction_grid_paths = export_reconstruction_grids(
-                output_dir=run_context.evaluation_reconstructions_figures_dir,
-                reconstruction_input=reconstruction_input,
-                step_spec=run_spec.step_spec,
-                overwrite=False,
-            )
+    # Export evaluation artifacts
+    run_log.info("Starting evaluation artifact export...")
 
-            n_reconstruction_grids = sum(
-                len(paths)
-                for paths in reconstruction_grid_paths.values()
-            )
-
-            run_log.info(
-                "Saved %d reconstruction grid figure(s) to: '%s'",
-                n_reconstruction_grids,
-                run_context.evaluation_reconstructions_figures_dir,
-            )
-
-    # Collect and export metrics
-    metrics_path = save_evaluation_metrics_json(
-        output_dir=run_context.evaluation_metrics_dir,
+    export_paths = export_evaluation_outputs(
         adata=adata,
+        reconstruction_input=reconstruction_input,
         reconstruction_outputs=reconstruction_outputs,
+        step_spec=run_spec.step_spec,
+        embeddings_dir=run_context.evaluation_embeddings_dir,
+        embeddings_figures_dir=run_context.evaluation_embeddings_figures_dir,
+        metrics_dir=run_context.evaluation_metrics_dir,
+        reconstructions_dir=run_context.evaluation_reconstructions_dir,
+        reconstruction_figures_dir=(
+            run_context.evaluation_reconstructions_figures_dir
+        ),
+        overwrite=False,
     )
-    run_log.info("Saved evaluation metrics JSON to: '%s'", metrics_path)
 
-    completed_at = datetime.now().isoformat(timespec="seconds")  # TODO use in eval manifest
+    run_log.info("Finished evaluation artifact export.")
+
+    completed_at = datetime.now().isoformat(timespec="seconds")
     run_log.info("Evaluation completed at: %s", completed_at)
 
     return EvaluationWorkflowResult(
@@ -268,5 +216,5 @@ def evaluate(
         run_context=run_context,
         adata=adata,
         reconstruction_outputs=reconstruction_outputs,
-        metrics_path=metrics_path,
+        export_paths=export_paths,
     )

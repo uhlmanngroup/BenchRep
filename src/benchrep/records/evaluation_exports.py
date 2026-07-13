@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 import json
@@ -28,6 +29,7 @@ from benchrep.evaluation.utils import (
     validate_reconstruction_arrays,
 )
 from benchrep.records.logs import get_run_logger
+from benchrep.records.anndata_io import write_h5ad
 
 if TYPE_CHECKING:
     from benchrep.assembly.resolvers.evaluation_config_resolver import EvaluationStepSpec
@@ -36,6 +38,194 @@ if TYPE_CHECKING:
 RECONSTRUCTION_GRID_PAGE_SIZE = 12
 RECONSTRUCTION_GRID_FILE_WARNING_THRESHOLD = 24
 RECONSTRUCTION_GRID_LABEL_VALUE_MAX_LENGTH = 32
+
+
+@dataclass(frozen=True)
+class EvaluationExportPaths:
+    evaluated_embeddings_path: Path
+    metrics_json_path: Path
+    reduction_plot_paths: dict[str, list[Path]] | None = None
+    cluster_size_plot_paths: dict[str, list[Path]] | None = None
+    reconstruction_tiff_paths: dict[str, Any] | None = None
+    reconstruction_grid_paths: dict[str, list[Path]] | None = None
+
+
+def export_evaluation_outputs(
+    *,
+    adata: ad.AnnData,
+    reconstruction_input: ReconstructionEvaluationInput | None,
+    reconstruction_outputs: Mapping[str, Any] | None,
+    step_spec: "EvaluationStepSpec",
+    embeddings_dir: str | Path,
+    embeddings_figures_dir: str | Path,
+    metrics_dir: str | Path,
+    reconstructions_dir: str | Path,
+    reconstruction_figures_dir: str | Path,
+    overwrite: bool = False,
+) -> EvaluationExportPaths:
+    """Export all requested evaluation artifacts.
+
+    This function coordinates the granular evaluation exporters and returns the
+    concrete paths they wrote. It does not perform evaluation analysis; callers
+    must provide the already-evaluated AnnData object and any reconstruction
+    pipeline outputs.
+
+    The evaluated AnnData artifact and metrics JSON are always written.
+    Embedding figures are written when plotting is enabled. Reconstruction TIFFs
+    are written when reconstruction TIFF export is enabled. Reconstruction grids
+    are written independently whenever reconstruction inputs are available and
+    plotting is enabled.
+
+    Parameters
+    ----------
+    adata
+        Evaluated AnnData object containing reductions, clustering assignments,
+        metrics, and associated BenchRep metadata.
+    reconstruction_input
+        Loaded reconstruction inputs and predictions, when available.
+    reconstruction_outputs
+        Outputs returned by the reconstruction evaluation pipeline, when run.
+    step_spec
+        Resolved evaluation step configuration.
+    embeddings_dir
+        Directory for the evaluated AnnData artifact.
+    embeddings_figures_dir
+        Directory for embedding reduction and diagnostic figures.
+    metrics_dir
+        Directory for the consolidated evaluation metrics JSON.
+    reconstructions_dir
+        Directory for reconstruction TIFF exports.
+    reconstruction_figures_dir
+        Directory for reconstruction-grid figures.
+    overwrite
+        Whether existing output files may be replaced.
+
+    Returns
+    -------
+    EvaluationExportPaths
+        Concrete paths for every evaluation artifact group that was written.
+        Optional groups are ``None`` when their export was not enabled or their
+        required inputs were unavailable.
+    """
+    run_log = get_run_logger()
+
+    embeddings_dir = Path(embeddings_dir)
+    embeddings_figures_dir = Path(embeddings_figures_dir)
+    metrics_dir = Path(metrics_dir)
+    reconstructions_dir = Path(reconstructions_dir)
+    reconstruction_figures_dir = Path(reconstruction_figures_dir)
+
+    # Evaluated embeddings
+    embeddings_dir.mkdir(parents=True, exist_ok=True)
+
+    evaluated_embeddings_path = (
+        embeddings_dir / "evaluated_embeddings.h5ad"
+    )
+
+    write_h5ad(
+        adata,
+        evaluated_embeddings_path,
+        overwrite=overwrite,
+    )
+
+    run_log.info(
+        "Saved evaluated embeddings AnnData to: '%s'",
+        evaluated_embeddings_path,
+    )
+
+    # Embedding and clustering figures
+    reduction_plot_paths = None
+    cluster_size_plot_paths = None
+
+    if step_spec.plots_enabled:
+        run_log.info(
+            "Generating embedding reduction and diagnostic plots..."
+        )
+
+        reduction_plot_paths = export_reduction_plots(
+            output_dir=embeddings_figures_dir,
+            adata=adata,
+            step_spec=step_spec,
+            overwrite=overwrite,
+        )
+
+        cluster_size_plot_paths = export_cluster_size_plots(
+            output_dir=embeddings_figures_dir,
+            adata=adata,
+            step_spec=step_spec,
+            overwrite=overwrite,
+        )
+
+        n_embedding_plot_files = (
+            _count_exported_paths(reduction_plot_paths)
+            + _count_exported_paths(cluster_size_plot_paths)
+        )
+
+        run_log.info(
+            "Saved %d embedding reduction and diagnostic plot file(s) to: '%s'",
+            n_embedding_plot_files,
+            embeddings_figures_dir,
+        )
+
+    # Reconstruction artifacts
+    reconstruction_tiff_paths = None
+    reconstruction_grid_paths = None
+
+    if step_spec.reconstruction_tiffs_enabled:
+        if reconstruction_input is None:
+            raise RuntimeError(
+                "Reconstruction TIFF export is enabled in the resolved step spec, "
+                "but no reconstruction input was provided."
+            )
+
+        reconstruction_tiff_paths = export_reconstruction_tiffs(
+            output_dir=reconstructions_dir,
+            reconstruction_input=reconstruction_input,
+            reconstruction_outputs=reconstruction_outputs,
+            overwrite=overwrite,
+        )
+
+        run_log.info(
+            "Saved %d reconstruction TIFF file(s) to: '%s'",
+            _count_exported_paths(reconstruction_tiff_paths),
+            reconstructions_dir,
+        )
+
+    if reconstruction_input is not None and step_spec.plots_enabled:
+        reconstruction_grid_paths = export_reconstruction_grids(
+            output_dir=reconstruction_figures_dir,
+            reconstruction_input=reconstruction_input,
+            step_spec=step_spec,
+            overwrite=overwrite,
+        )
+
+        run_log.info(
+            "Saved %d reconstruction grid figure(s) to: '%s'",
+            _count_exported_paths(reconstruction_grid_paths),
+            reconstruction_figures_dir,
+        )
+
+    # Consolidated metrics
+    metrics_json_path = save_evaluation_metrics_json(
+        output_dir=metrics_dir,
+        adata=adata,
+        reconstruction_outputs=reconstruction_outputs,
+        overwrite=overwrite,
+    )
+
+    run_log.info(
+        "Saved evaluation metrics JSON to: '%s'",
+        metrics_json_path,
+    )
+
+    return EvaluationExportPaths(
+        evaluated_embeddings_path=evaluated_embeddings_path,
+        metrics_json_path=metrics_json_path,
+        reduction_plot_paths=reduction_plot_paths,
+        cluster_size_plot_paths=cluster_size_plot_paths,
+        reconstruction_tiff_paths=reconstruction_tiff_paths,
+        reconstruction_grid_paths=reconstruction_grid_paths,
+    )
 
 
 def save_evaluation_metrics_json(
@@ -447,7 +637,7 @@ def export_reconstruction_grids(
 
     selected_error_maps: dict[str, np.ndarray] = {}
 
-    if step_spec.error_maps_enabled:
+    if grid_params.get("include_error_maps", True):
         computed_error_maps = compute_error_maps(
             ReconstructionEvaluationInput(
                 inputs=selected_inputs,
@@ -1039,3 +1229,23 @@ def _resolve_reconstruction_obs_label(
         )
 
     return f"{prefix}={value_text}"
+
+
+def _count_exported_paths(value: Any) -> int:
+    """Count Path objects contained in a nested export result."""
+    if isinstance(value, Path):
+        return 1
+
+    if isinstance(value, Mapping):
+        return sum(
+            _count_exported_paths(item)
+            for item in value.values()
+        )
+
+    if isinstance(value, Sequence) and not isinstance(value, str | bytes):
+        return sum(
+            _count_exported_paths(item)
+            for item in value
+        )
+
+    return 0
