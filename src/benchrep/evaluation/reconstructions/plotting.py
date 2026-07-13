@@ -139,6 +139,8 @@ def plot_reconstruction_grid_page(
         fig.suptitle(title, y=1.0)
 
     fig.tight_layout(rect=(0, 0, 1, 0.99))
+    fig.subplots_adjust(wspace=0.12, hspace=0.08)
+
     fig.savefig(
         output_path,
         dpi=dpi,
