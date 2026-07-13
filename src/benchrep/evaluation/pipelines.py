@@ -296,7 +296,7 @@ def create_reconstruction_evaluation_pipeline(
                     else None
                 ),
             },
-            enabled=step_spec.error_maps_enabled,
+            enabled=step_spec.reconstruction_tiffs_enabled,
         ),
     ]
 

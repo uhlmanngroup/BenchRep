@@ -194,20 +194,19 @@ class EvaluationClusteringConfig(BaseModel):
 # Reconstruction artifacts config
 # -------------------------
 class ErrorMapParams(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     kinds: list[ErrorMapKind] = Field(
-        default_factory=lambda: ["absolute", "signed", "relative"]
+        default_factory=lambda: ["absolute", "signed", "relative"],
+        min_length=1,
     )
     denominator_floor: PositiveFloat | None = None
-
-
-class ErrorMapConfig(EvalStepConfig):
-    params: ErrorMapParams | None = Field(default_factory=ErrorMapParams)
 
 
 class EvaluationReconstructionConfig(BaseModel):
     export_tiffs: bool = False
     n_examples: PositiveInt | None = None
-    error_maps: ErrorMapConfig = Field(default_factory=ErrorMapConfig)
+    error_maps: ErrorMapParams = Field(default_factory=ErrorMapParams)
 
 
 # -------------------------
@@ -413,6 +412,7 @@ class EvaluationMetricsConfig(BaseModel):
 # Plots config
 # -------------------------
 class ReconstructionGridConfig(BaseModel):
+    include_error_maps: bool = True
     random_state: int = 137
     stratify_by: Annotated[
         str,

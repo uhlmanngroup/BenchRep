@@ -168,23 +168,23 @@ metrics:
         cache_size: 5000 # MB used by sklearn's kernel cache
         max_iter: -1 # -1 = no iteration limit
 
-  reconstruction:
+  reconstruction: # independent reconstruction metrics; always computed over all loaded reconstructions
     enabled: true # true = force on if reconstructions exist; false = off; null = on only if reconstructions exist
     selected: null # null = all supported reconstruction metrics
     params: null # null = metric/backend defaults
     reduction: per_channel # omit = global; allowed: global | per_channel | both
 
-reconstruction:
-  export_tiffs: true
-  n_examples: 32 # omit/null = use manifest/exported count if available, else no explicit limit
+reconstruction: # controls per-example TIFF export; error-map params are shared with reconstruction grids
+  export_tiffs: false # true = export input, reconstruction, and configured error-map TIFFs
+  # ignored with a warning when export_tiffs=false
+  n_examples: 32 # limits TIFF export only; null = manifest count when manifest-sourced, otherwise all available
   error_maps:
-    enabled: true # true = force on if reconstructions exist; false = off; null = off
-    params:
-      # absolute | squared | signed | relative | normalized_absolute_global | normalized_absolute_per_channel;
-      # omit = [ "absolute", "signed", "relative" ]
-      kinds: [ "absolute", "squared", "signed", "relative",
-              "normalized_absolute_global", "normalized_absolute_per_channel" ]
-      denominator_floor: null # null/omit = default denominator floor for relative/normalized error maps
+    # shared error-map settings; used by TIFF export and optionally recomputed for grid-selected examples
+    # absolute | squared | signed | relative | normalized_absolute_global | normalized_absolute_per_channel;
+    # omit = [ "absolute", "signed", "relative" ]
+    kinds: [ "absolute", "squared", "signed", "relative",
+            "normalized_absolute_global", "normalized_absolute_per_channel" ]
+    denominator_floor: null # null/omit = default denominator floor for relative/normalized error maps
 
 plots:
   enabled: true # true = force on; false = off; null = on
@@ -195,6 +195,10 @@ plots:
     dpi: 300 # omit = 300
     formats: [ png ] # supports png, pdf, svg; omit = png
     reconstruction_grid:
-      random_state: 137
-      stratify_by: label
-      channel_selection: null  # null = channel 0; int | list[int] | all
+      # no stratify_by: one page with up to 12 random examples
+      # stratify_by set: one example per stratum, split across pages of up to 12 rows
+      # total files = pages × selected channels × formats
+      include_error_maps: true
+      random_state: 137 # controls random example/stratum selection
+      stratify_by: label # null = single random page; otherwise one example per unique value
+      channel_selection: null # null = channel 0; int | list[int] | all

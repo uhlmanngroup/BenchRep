@@ -95,8 +95,6 @@ class EvaluationStepSpec:
     reconstruction_metrics_reduction: str
 
     reconstruction_tiffs_enabled: bool
-
-    error_maps_enabled: bool
     error_map_params: dict[str, Any]
 
     plots_enabled: bool
@@ -268,27 +266,6 @@ def resolve_reconstructions(
         Resolved reconstruction artifact paths, or ``None`` if no usable
         reconstruction bundle is available.
     """
-    manifest_n_examples = None
-
-    if prediction_manifest is not None:
-        manifest_n_examples = get_optional_nested_value(
-            prediction_manifest,
-            "exports",
-            "reconstructions",
-            "n_examples_exported",
-        )
-
-        if manifest_n_examples is not None and not isinstance(manifest_n_examples, int):
-            warnings.warn(
-                "Prediction manifest field "
-                "'exports.reconstructions.n_examples_exported' is not an integer. "
-                "Ignoring it for reconstruction artifact count resolution.",
-                stacklevel=2,
-            )
-            manifest_n_examples = None
-
-    resolved_n_examples = n_examples if n_examples is not None else manifest_n_examples
-
     # Resolve reconstructions: manual path overrides manifest
     if reconstructions_path is not None:
         _recon_root = Path(reconstructions_path).resolve()
@@ -320,10 +297,39 @@ def resolve_reconstructions(
             reconstruction_path=_recon_path,
             obs_path=_recon_obs_path,
             metadata_path=_recon_metadata_path if _recon_metadata_path.is_file() else None,
-            n_examples=resolved_n_examples,
+            n_examples=n_examples, # manual branch only respects explicit eval config
         )
 
     elif prediction_manifest is not None:
+        manifest_n_examples = get_optional_nested_value(
+            prediction_manifest,
+            "exports",
+            "reconstructions",
+            "n_examples_exported",
+        )
+
+        if (
+                manifest_n_examples is not None
+                and (
+                not isinstance(manifest_n_examples, int)
+                or isinstance(manifest_n_examples, bool)
+                or manifest_n_examples < 1
+        )
+        ):
+            warnings.warn(
+                "Prediction manifest field "
+                "'exports.reconstructions.n_examples_exported' is not a positive "
+                "integer. Ignoring it for reconstruction artifact count resolution.",
+                stacklevel=2,
+            )
+            manifest_n_examples = None
+
+        resolved_n_examples = (
+            n_examples
+            if n_examples is not None
+            else manifest_n_examples
+        )
+
         if manifest_base_dir is None:
             raise ValueError(
                 "manifest_base_dir is required when resolving reconstructions "
@@ -522,10 +528,12 @@ def resolve_step_spec(
 
     Most static defaults are resolved immediately. PCA, UMAP, Leiden, internal
     clustering metrics, and plots default to enabled. t-SNE, KMeans, and
-    embedding metrics default to disabled. Reconstruction metrics default to
-    enabled only when reconstruction artifacts are available. Error maps require
-    explicit enablement and available reconstructions. Reconstruction TIFF export
-    and error maps require explicit enablement and available reconstructions.
+    embedding metrics default to disabled.
+
+    Reconstruction metrics default to enabled when reconstruction artifacts are
+    available. Reconstruction TIFF export requires explicit enablement and available
+    reconstructions. Error-map parameters are shared by TIFF and reconstruction-grid
+    consumers and do not have an independent enablement switch.
 
     External clustering metrics remain partially unresolved because they depend
     on the loaded AnnData object: ``None`` is preserved so the workflow can later
@@ -632,6 +640,31 @@ def resolve_step_spec(
             probe_params=predictability_probe_params,
         )
 
+    reconstruction_metrics_enabled = resolve_enabled_if_available(
+        configured=evaluation_config.metrics.reconstruction.enabled,
+        available=has_reconstructions,
+        name="Reconstruction metrics",
+    )
+
+    reconstruction_tiffs_enabled = resolve_enabled_if_explicit_and_available(
+        configured=evaluation_config.reconstruction.export_tiffs,
+        available=has_reconstructions,
+        name="Reconstruction TIFF export",
+    )
+
+    if (
+            evaluation_config.reconstruction.n_examples is not None
+            and not reconstruction_tiffs_enabled
+    ):
+        warnings.warn(
+            "reconstruction.n_examples is set, but reconstruction TIFF export is "
+            "disabled. The value will have no effect; reconstruction metrics use "
+            "all available reconstructions and reconstruction grids use their own "
+            "sampling configuration.",
+            UserWarning,
+            stacklevel=2,
+        )
+
     return EvaluationStepSpec(
         # None = True
         pca_enabled=pca_enabled,
@@ -705,12 +738,8 @@ def resolve_step_spec(
         predictability_cv_params=predictability_cv_params,
         predictability_tuning_params=predictability_tuning_params,
 
-        # True if not disabled and has_reconstructions
-        reconstruction_metrics_enabled=resolve_enabled_if_available(
-            configured=evaluation_config.metrics.reconstruction.enabled,
-            available=has_reconstructions,
-            name="Reconstruction metrics",
-        ),
+        # True if not disabled and reconstructions are available
+        reconstruction_metrics_enabled=reconstruction_metrics_enabled,
         reconstruction_metrics=resolve_registry_keys(
             selected=evaluation_config.metrics.reconstruction.selected,
             registry=EVAL_RECONSTRUCTION_METRICS,
@@ -720,22 +749,17 @@ def resolve_step_spec(
             params=evaluation_config.metrics.reconstruction.params,
             registry=EVAL_RECONSTRUCTION_METRICS,
         ),
-        reconstruction_metrics_reduction=evaluation_config.metrics.reconstruction.reduction,
-
-        # True only if explicitly enabled and reconstructions are available
-        reconstruction_tiffs_enabled=resolve_enabled_if_explicit_and_available(
-            configured=evaluation_config.reconstruction.export_tiffs,
-            available=has_reconstructions,
-            name="Reconstruction TIFF export",
+        reconstruction_metrics_reduction=(
+            evaluation_config.metrics.reconstruction.reduction
         ),
 
         # True only if explicitly enabled and reconstructions are available
-        error_maps_enabled=resolve_enabled_if_explicit_and_available(
-            configured=evaluation_config.reconstruction.error_maps.enabled,
-            available=has_reconstructions,
-            name="Reconstruction error maps",
+        reconstruction_tiffs_enabled=reconstruction_tiffs_enabled,
+
+        # Shared parameters used by TIFF and reconstruction-grid consumers
+        error_map_params=params_to_dict(
+            evaluation_config.reconstruction.error_maps
         ),
-        error_map_params=params_to_dict(evaluation_config.reconstruction.error_maps.params),
 
         # None = True
         plots_enabled=enabled_by_default(evaluation_config.plots.enabled),
