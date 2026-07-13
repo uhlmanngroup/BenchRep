@@ -205,6 +205,7 @@ class ErrorMapConfig(EvalStepConfig):
 
 
 class EvaluationReconstructionConfig(BaseModel):
+    export_tiffs: bool = False
     n_examples: PositiveInt | None = None
     error_maps: ErrorMapConfig = Field(default_factory=ErrorMapConfig)
 

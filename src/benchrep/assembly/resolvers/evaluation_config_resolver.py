@@ -94,6 +94,8 @@ class EvaluationStepSpec:
     reconstruction_metric_params: dict[str, dict[str, Any]]
     reconstruction_metrics_reduction: str
 
+    reconstruction_tiffs_enabled: bool
+
     error_maps_enabled: bool
     error_map_params: dict[str, Any]
 
@@ -522,7 +524,8 @@ def resolve_step_spec(
     clustering metrics, and plots default to enabled. t-SNE, KMeans, and
     embedding metrics default to disabled. Reconstruction metrics default to
     enabled only when reconstruction artifacts are available. Error maps require
-    explicit enablement and available reconstructions.
+    explicit enablement and available reconstructions. Reconstruction TIFF export
+    and error maps require explicit enablement and available reconstructions.
 
     External clustering metrics remain partially unresolved because they depend
     on the loaded AnnData object: ``None`` is preserved so the workflow can later
@@ -718,6 +721,13 @@ def resolve_step_spec(
             registry=EVAL_RECONSTRUCTION_METRICS,
         ),
         reconstruction_metrics_reduction=evaluation_config.metrics.reconstruction.reduction,
+
+        # True only if explicitly enabled and reconstructions are available
+        reconstruction_tiffs_enabled=resolve_enabled_if_explicit_and_available(
+            configured=evaluation_config.reconstruction.export_tiffs,
+            available=has_reconstructions,
+            name="Reconstruction TIFF export",
+        ),
 
         # True only if explicitly enabled and reconstructions are available
         error_maps_enabled=resolve_enabled_if_explicit_and_available(

@@ -175,6 +175,7 @@ metrics:
     reduction: per_channel # omit = global; allowed: global | per_channel | both
 
 reconstruction:
+  export_tiffs: true
   n_examples: 32 # omit/null = use manifest/exported count if available, else no explicit limit
   error_maps:
     enabled: true # true = force on if reconstructions exist; false = off; null = off
