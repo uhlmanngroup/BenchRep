@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+import os
 from pathlib import Path
 from typing import Any
 
@@ -544,7 +545,7 @@ def write_evaluation_manifest(
                     "n_files": count_paths(
                         export_paths.reduction_plot_paths
                     ),
-                    "paths": paths_to_strings(
+                    "output_dir": common_parent_path(
                         export_paths.reduction_plot_paths
                     ),
                 },
@@ -552,7 +553,7 @@ def write_evaluation_manifest(
                     "n_files": count_paths(
                         export_paths.cluster_size_plot_paths
                     ),
-                    "paths": paths_to_strings(
+                    "output_dir": common_parent_path(
                         export_paths.cluster_size_plot_paths
                     ),
                 },
@@ -573,7 +574,7 @@ def write_evaluation_manifest(
                         _infer_reconstruction_examples_exported(tiff_paths)
                     ),
                     "n_files": count_paths(tiff_paths),
-                    "paths": paths_to_strings(tiff_paths),
+                    "output_dir": common_parent_path(tiff_paths),
                 },
                 "grids": {
                     "enabled": (
@@ -589,7 +590,7 @@ def write_evaluation_manifest(
                         "channel_selection"
                     ),
                     "n_files": count_paths(grid_paths),
-                    "paths": paths_to_strings(grid_paths),
+                    "output_dir": common_parent_path(grid_paths),
                 },
             },
         },
@@ -689,3 +690,42 @@ def _infer_reconstruction_examples_exported(
             return len(values)
 
     return None
+
+
+def common_parent_path(value: Any) -> str | None:
+    """Return the common parent directory of one or more nested paths."""
+    paths = _collect_paths(value)
+
+    if not paths:
+        return None
+
+    parent_paths = [str(path.parent) for path in paths]
+
+    return str(Path(os.path.commonpath(parent_paths)))
+
+
+def _collect_paths(value: Any) -> list[Path]:
+    """Collect Path objects recursively from nested export-path structures."""
+    if isinstance(value, Path):
+        return [value]
+
+    if isinstance(value, Mapping):
+        paths: list[Path] = []
+
+        for item in value.values():
+            paths.extend(_collect_paths(item))
+
+        return paths
+
+    if isinstance(value, Sequence) and not isinstance(
+        value,
+        str | bytes,
+    ):
+        paths = []
+
+        for item in value:
+            paths.extend(_collect_paths(item))
+
+        return paths
+
+    return []
