@@ -320,7 +320,7 @@ def _train(
 
     audit_items = audit_train_outputs(
         run_context=run_context,
-        input_config_path=config_composition_result.original_config_path,
+        config_composition_result=config_composition_result,
         resolved_config_path=run_context.config_dir / "resolved_config.yaml",
         checkpoint_dir=run_context.training_checkpoint_dir,
         training_manifest_path=manifest_path,

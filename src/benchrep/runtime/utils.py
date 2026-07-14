@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, get_type_hints, Literal
 
 from benchrep.records import get_run_logger
 from benchrep.interfaces.contracts import ContractKind
-
+from benchrep.assembly.config import ConfigCompositionResult, load_yaml
 
 
 CompatibilityPolicy = Literal["error", "warn"]
@@ -222,7 +222,7 @@ def audit_existing_dir(
 
 
 def log_audit_summary(
-    stage: Literal["training", "prediction"],
+    stage: Literal["training", "prediction", "evaluation"],
     audit_items: list[AuditItem],
 ) -> None:
     run_log = get_run_logger()
@@ -254,3 +254,118 @@ def log_audit_summary(
             run_log.error(message)
         elif item.status == "skipped":
             run_log.info(message)
+
+
+def audit_config_records(
+    *,
+    audit_items: list[AuditItem],
+    config_composition_result: ConfigCompositionResult[Any],
+    resolved_config_path: Path | str,
+) -> None:
+    """Audit config files expected from the config composition result."""
+    resolved_config_path = Path(resolved_config_path)
+    original_config_path = config_composition_result.original_config_path
+
+    # Always written.
+    audit_existing_file(
+        audit_items=audit_items,
+        name="resolved config",
+        path=resolved_config_path,
+        expected_suffixes={".yaml", ".yml"},
+    )
+
+    # Written only when an original YAML path was supplied.
+    if original_config_path is not None:
+        audit_existing_file(
+            audit_items=audit_items,
+            name="original config source",
+            path=original_config_path,
+            expected_suffixes={".yaml", ".yml"},
+        )
+
+        audit_existing_file(
+            audit_items=audit_items,
+            name="original config record",
+            path=resolved_config_path.parent / "original_config.yaml",
+            expected_suffixes={".yaml", ".yml"},
+        )
+    else:
+        audit_items.append(
+            AuditItem(
+                name="original config record",
+                status="skipped",
+                message=(
+                    "no original config record was expected because the run "
+                    "was not given an original YAML config"
+                ),
+            )
+        )
+
+
+def audit_resolved_config_reconstructability(
+    *,
+    audit_items: list[AuditItem],
+    config_composition_result: ConfigCompositionResult[Any],
+    resolved_config_path: Path | str,
+    run_reconstructable_from_resolved_config: bool | None,
+) -> None:
+    """Verify the manifest's resolved-config reconstructability claim."""
+    name = "run reconstructability from resolved config"
+
+    if run_reconstructable_from_resolved_config is None:
+        audit_items.append(
+            AuditItem(
+                name=name,
+                status="error",
+                message=(
+                    "manifest does not report "
+                    "`run_reconstructable_from_resolved_config`"
+                ),
+            )
+        )
+        return
+
+    if not run_reconstructable_from_resolved_config:
+        audit_items.append(
+            AuditItem(
+                name=name,
+                status="skipped",
+                message=(
+                    "manifest reports that the run is not reconstructable "
+                    "from the resolved config"
+                ),
+            )
+        )
+        return
+
+    resolved_config_path = Path(resolved_config_path)
+    config_schema = type(config_composition_result.effective_config)
+
+    try:
+        resolved_raw = load_yaml(resolved_config_path)
+        config_schema.model_validate(resolved_raw)
+    except Exception as exc:
+        audit_items.append(
+            AuditItem(
+                name=name,
+                status="error",
+                message=(
+                    "manifest reports that the run is reconstructable from "
+                    f"the resolved config, but validation as "
+                    f"{config_schema.__name__} failed: {exc}"
+                ),
+            )
+        )
+        return
+
+    audit_items.append(
+        AuditItem(
+            name=name,
+            status="ok",
+            message=(
+                "manifest reports that the run is reconstructable from the "
+                f"resolved config, which successfully validates as "
+                f"{config_schema.__name__}"
+            ),
+        )
+    )

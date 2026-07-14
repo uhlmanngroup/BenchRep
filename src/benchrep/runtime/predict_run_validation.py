@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections import Counter
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 from pathlib import Path
@@ -17,6 +18,8 @@ from benchrep.runtime.utils import (
     audit_existing_file,
     audit_existing_dir,
     log_audit_summary,
+    audit_config_records,
+    audit_resolved_config_reconstructability,
 )
 from benchrep.runtime.run_context import RunContext
 from benchrep.interfaces.model_families import ModelFamilySpec
@@ -26,7 +29,7 @@ from benchrep.interfaces.compatibility import (
     sanity_check_predict_step_return_annotation,
     validate_prediction_output_structure,
 )
-from benchrep.assembly.config import load_yaml
+from benchrep.assembly.config import load_yaml, ConfigCompositionResult
 from benchrep.assembly.resolvers import PredictionRunSpec
 
 
@@ -181,7 +184,7 @@ def audit_predict_outputs(
     model_family: ModelFamilySpec,
     predictions: list[Any],
     export_paths: Any,
-    input_config_path: Path | str | None = None,
+    config_composition_result: ConfigCompositionResult[Any],
     resolved_config_path: Path | str,
     prediction_manifest_path: Path | str,
     model_source: Literal["config", "external_object"],
@@ -197,30 +200,10 @@ def audit_predict_outputs(
     # -------------------------
     # Config records
     # -------------------------
-    if input_config_path is None:
-        audit_items.append(
-            AuditItem(
-                name="input config",
-                status="skipped",
-                message=(
-                    "no input config path was provided; this is expected for runs "
-                    "started from config objects rather than a YAML file"
-                ),
-            )
-        )
-    else:
-        audit_existing_file(
-            audit_items=audit_items,
-            name="input config",
-            path=input_config_path,
-            expected_suffixes={".yaml", ".yml"},
-        )
-
-    audit_existing_file(
+    audit_config_records(
         audit_items=audit_items,
-        name="resolved config",
-        path=resolved_config_path,
-        expected_suffixes={".yaml", ".yml"},
+        config_composition_result=config_composition_result,
+        resolved_config_path=resolved_config_path,
     )
 
     # -------------------------
@@ -270,6 +253,48 @@ def audit_predict_outputs(
                     ),
                 )
             )
+
+    # -------------------------
+    # Resolved-config reconstructability
+    # -------------------------
+    if prediction_manifest is None:
+        audit_items.append(
+            AuditItem(
+                name="run reconstructability from resolved config",
+                status="skipped",
+                message=(
+                    "could not be checked because the prediction manifest "
+                    "is unavailable"
+                ),
+            )
+        )
+    else:
+        provenance_section = prediction_manifest.get("provenance")
+        prediction_provenance = (
+            provenance_section.get("prediction")
+            if isinstance(provenance_section, dict)
+            else None
+        )
+        config_provenance = (
+            prediction_provenance.get("config")
+            if isinstance(prediction_provenance, dict)
+            else None
+        )
+
+        run_reconstructable = (
+            config_provenance.get(
+                "run_reconstructable_from_resolved_config"
+            )
+            if isinstance(config_provenance, dict)
+            else None
+        )
+
+        audit_resolved_config_reconstructability(
+            audit_items=audit_items,
+            config_composition_result=config_composition_result,
+            resolved_config_path=resolved_config_path,
+            run_reconstructable_from_resolved_config=run_reconstructable,
+        )
 
     # -------------------------
     # Manifest status
@@ -447,16 +472,6 @@ def audit_predict_outputs(
                 name="prediction batches",
                 status="ok",
                 message=f"prediction returned {len(predictions)} batch(es)",
-            )
-        )
-
-        first_prediction_type = type(predictions[0])
-
-        audit_items.append(
-            AuditItem(
-                name="first prediction batch type",
-                status="ok",
-                message=f"first prediction batch type is `{first_prediction_type.__name__}`",
             )
         )
 
@@ -660,32 +675,45 @@ def audit_predict_outputs(
                 )
             )
 
-        _audit_expected_artifact_file(
+        obs_path = getattr(reconstruction_paths, "obs_path", None)
+        metadata_path = getattr(reconstruction_paths, "metadata_path", None)
+
+        obs_is_valid = _audit_expected_artifact_file(
             audit_items=audit_items,
             name="reconstruction obs artifact",
-            path=getattr(reconstruction_paths, "obs_path", None),
+            path=obs_path,
             expected_suffixes={".pt"},
         )
 
-        _audit_expected_artifact_file(
+        metadata_is_valid = _audit_expected_artifact_file(
             audit_items=audit_items,
             name="reconstruction metadata artifact",
-            path=getattr(reconstruction_paths, "metadata_path", None),
+            path=metadata_path,
             expected_suffixes={".pt"},
         )
 
         stratify_by = run_spec.export_spec.reconstructions.stratify_by
-        audit_items.append(
-            AuditItem(
-                name="reconstruction stratification",
-                status="ok" if stratify_by is not None else "skipped",
-                message=(
-                    f"reconstruction examples were stratified by {stratify_by!r}"
-                    if stratify_by is not None
-                    else "stratified reconstruction sampling was not requested"
-                ),
+
+        if stratify_by is None or (obs_is_valid and metadata_is_valid):
+            _audit_reconstruction_stratification(
+                audit_items=audit_items,
+                predictions=predictions,
+                stratify_by=stratify_by,
+                n_examples=run_spec.export_spec.reconstructions.n_examples,
+                obs_path=obs_path,
+                metadata_path=metadata_path,
             )
-        )
+        else:
+            audit_items.append(
+                AuditItem(
+                    name="reconstruction stratification",
+                    status="skipped",
+                    message=(
+                        "could not be checked because required reconstruction "
+                        "artifacts are unavailable"
+                    ),
+                )
+            )
 
         n_examples_exported = getattr(
             reconstruction_paths,
@@ -706,7 +734,7 @@ def audit_predict_outputs(
             audit_items.append(
                 AuditItem(
                     name="reconstruction examples",
-                    status="warning",
+                    status="error",
                     message="reconstruction export reported 0 exported examples",
                 )
             )
@@ -757,3 +785,274 @@ def _audit_expected_artifact_file(
         path=path,
         expected_suffixes=expected_suffixes,
     )
+
+
+def _audit_reconstruction_stratification(
+    *,
+    audit_items: list[AuditItem],
+    predictions: Sequence[Any],
+    stratify_by: str | None,
+    n_examples: int | str,
+    obs_path: Path | str | None,
+    metadata_path: Path | str | None,
+) -> None:
+    """Verify reconstruction stratification recorded by the exporter."""
+    name = "reconstruction stratification"
+
+    if stratify_by is None:
+        audit_items.append(
+            AuditItem(
+                name=name,
+                status="skipped",
+                message="stratified reconstruction sampling was not requested",
+            )
+        )
+        return
+
+    if obs_path is None or metadata_path is None:
+        audit_items.append(
+            AuditItem(
+                name=name,
+                status="error",
+                message=(
+                    "stratification was requested, but reconstruction observation "
+                    "or metadata paths were not produced"
+                ),
+            )
+        )
+        return
+
+    try:
+        reconstruction_obs = torch.load(
+            Path(obs_path),
+            map_location="cpu",
+            weights_only=False,
+        )
+        reconstruction_metadata = torch.load(
+            Path(metadata_path),
+            map_location="cpu",
+            weights_only=False,
+        )
+
+        if not isinstance(reconstruction_obs, dict):
+            raise TypeError(
+                "reconstruction observations are not a dictionary"
+            )
+
+        if not isinstance(reconstruction_metadata, dict):
+            raise TypeError(
+                "reconstruction export metadata is not a dictionary"
+            )
+
+        if reconstruction_metadata.get("stratify_by") != stratify_by:
+            raise ValueError(
+                f"metadata reports stratify_by="
+                f"{reconstruction_metadata.get('stratify_by')!r}, "
+                f"expected {stratify_by!r}"
+            )
+
+        source_indices = reconstruction_obs.get("source_index")
+        exported_values = reconstruction_obs.get(stratify_by)
+
+        if not isinstance(source_indices, list):
+            raise TypeError(
+                "reconstruction observations are missing list-valued "
+                "`source_index`"
+            )
+
+        if not isinstance(exported_values, list):
+            raise TypeError(
+                f"reconstruction observations are missing list-valued "
+                f"field {stratify_by!r}"
+            )
+
+        if len(source_indices) != len(exported_values):
+            raise ValueError(
+                f"`source_index` has {len(source_indices)} values, but "
+                f"{stratify_by!r} has {len(exported_values)}"
+            )
+
+        source_values = _collect_prediction_observation_values(
+            predictions=predictions,
+            key=stratify_by,
+        )
+
+        if any(
+            not isinstance(index, int)
+            or index < 0
+            or index >= len(source_values)
+            for index in source_indices
+        ):
+            raise ValueError(
+                "reconstruction observations contain invalid source indices"
+            )
+
+        expected_values = [
+            source_values[index]
+            for index in source_indices
+        ]
+
+        if exported_values != expected_values:
+            raise ValueError(
+                f"exported {stratify_by!r} values do not match the source "
+                "prediction values at the recorded source indices"
+            )
+
+        if reconstruction_metadata.get("n_examples_exported") != len(source_indices):
+            raise ValueError(
+                "`n_examples_exported` does not match the number of "
+                "exported observations"
+            )
+
+        # With n_examples='all', every sample is exported and the exporter
+        # intentionally leaves the stratum-count metadata unset.
+        if n_examples == "all":
+            if len(source_indices) != len(source_values):
+                raise ValueError(
+                    f"n_examples='all' exported {len(source_indices)} of "
+                    f"{len(source_values)} available examples"
+                )
+
+            if source_indices != list(range(len(source_values))):
+                raise ValueError(
+                    "n_examples='all' did not preserve all source indices "
+                    "in order"
+                )
+
+            audit_items.append(
+                AuditItem(
+                    name=name,
+                    status="ok",
+                    message=(
+                        f"all {len(source_indices)} examples were exported with "
+                        f"stratification field {stratify_by!r} preserved"
+                    ),
+                )
+            )
+            return
+
+        source_counts = Counter(source_values)
+        exported_counts = Counter(exported_values)
+
+        n_strata = len(source_counts)
+        n_represented_strata = len(exported_counts)
+        n_omitted_strata = n_strata - n_represented_strata
+
+        expected_metadata = {
+            "n_strata": n_strata,
+            "n_represented_strata": n_represented_strata,
+            "n_omitted_strata": n_omitted_strata,
+        }
+
+        mismatches = [
+            (
+                f"{key}: metadata={reconstruction_metadata.get(key)!r}, "
+                f"observed={expected_value!r}"
+            )
+            for key, expected_value in expected_metadata.items()
+            if reconstruction_metadata.get(key) != expected_value
+        ]
+
+        if mismatches:
+            raise ValueError("; ".join(mismatches))
+
+        # Round-robin selection should represent as many strata as the
+        # requested sample count permits.
+        expected_represented = min(n_strata, len(exported_values))
+
+        if n_represented_strata != expected_represented:
+            raise ValueError(
+                f"represented {n_represented_strata} strata, expected "
+                f"{expected_represented}"
+            )
+
+        # Among strata that were not exhausted, selected counts may differ
+        # by at most one because selection proceeds round-robin.
+        non_exhausted_selected_counts = [
+            exported_counts[stratum]
+            for stratum, available_count in source_counts.items()
+            if exported_counts[stratum] < available_count
+        ]
+
+        if (
+            non_exhausted_selected_counts
+            and max(non_exhausted_selected_counts)
+            - min(non_exhausted_selected_counts) > 1
+        ):
+            raise ValueError(
+                "exported examples were not distributed approximately "
+                "evenly across non-exhausted strata"
+            )
+
+    except Exception as exc:
+        audit_items.append(
+            AuditItem(
+                name=name,
+                status="error",
+                message=(
+                    f"stratification by {stratify_by!r} could not be "
+                    f"validated: {type(exc).__name__}: {exc}"
+                ),
+            )
+        )
+        return
+
+    audit_items.append(
+        AuditItem(
+            name=name,
+            status="ok",
+            message=(
+                f"validated stratification by {stratify_by!r}: "
+                f"{n_represented_strata} of {n_strata} strata represented "
+                f"across {len(exported_values)} exported examples"
+            ),
+        )
+    )
+
+
+def _collect_prediction_observation_values(
+    *,
+    predictions: Sequence[Any],
+    key: str,
+) -> list[Any]:
+    """Collect one observation field from all prediction batches."""
+    values: list[Any] = []
+
+    for batch_idx, prediction in enumerate(predictions):
+        value = (
+            getattr(prediction, key, None)
+            if key in {"sample_id", "label"}
+            else None
+        )
+
+        if value is None:
+            metadata = getattr(prediction, "metadata", None)
+
+            if not isinstance(metadata, dict) or key not in metadata:
+                raise KeyError(
+                    f"prediction batch {batch_idx} does not contain "
+                    f"stratification field {key!r}"
+                )
+
+            value = metadata[key]
+
+        if isinstance(value, torch.Tensor):
+            batch_values = value.detach().cpu().tolist()
+        elif isinstance(value, list):
+            batch_values = value
+        else:
+            raise TypeError(
+                f"stratification field {key!r} in prediction batch "
+                f"{batch_idx} has unsupported type "
+                f"{type(value).__name__}"
+            )
+
+        if not isinstance(batch_values, list):
+            raise TypeError(
+                f"stratification field {key!r} in prediction batch "
+                f"{batch_idx} is not batch-shaped"
+            )
+
+        values.extend(batch_values)
+
+    return values

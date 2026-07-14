@@ -13,6 +13,8 @@ from benchrep.runtime.utils import (
     audit_existing_file,
     audit_existing_dir,
     log_audit_summary,
+    audit_config_records,
+    audit_resolved_config_reconstructability,
 )
 from benchrep.runtime.run_context import RunContext
 from benchrep.interfaces.model_families import ModelFamilySpec
@@ -22,7 +24,7 @@ from benchrep.interfaces.compatibility import (
     sanity_check_predict_step_batch_annotation,
     sanity_check_predict_step_return_annotation,
 )
-from benchrep.assembly.config import load_yaml
+from benchrep.assembly.config import load_yaml, ConfigCompositionResult
 
 
 def validate_train_contract_compatibility(
@@ -140,7 +142,7 @@ def validate_train_contract_compatibility(
 def audit_train_outputs(
     *,
     run_context: RunContext,
-    input_config_path: Path | str | None = None,
+    config_composition_result: ConfigCompositionResult[Any],
     resolved_config_path: Path | str,
     checkpoint_dir: Path | str,
     training_manifest_path: Path | str,
@@ -159,30 +161,10 @@ def audit_train_outputs(
     # -------------------------
     # Config records
     # -------------------------
-    if input_config_path is None:
-        audit_items.append(
-            AuditItem(
-                name="input config",
-                status="skipped",
-                message=(
-                    "no input config path was provided; this is expected for runs started "
-                    "from a full config object or config_components rather than a YAML file"
-                ),
-            )
-        )
-    else:
-        audit_existing_file(
-            audit_items=audit_items,
-            name="input config",
-            path=input_config_path,
-            expected_suffixes={".yaml", ".yml"},
-        )
-
-    audit_existing_file(
+    audit_config_records(
         audit_items=audit_items,
-        name="resolved config",
-        path=resolved_config_path,
-        expected_suffixes={".yaml", ".yml"},
+        config_composition_result=config_composition_result,
+        resolved_config_path=resolved_config_path,
     )
 
     # -------------------------
@@ -232,6 +214,43 @@ def audit_train_outputs(
                     ),
                 )
             )
+
+    # -------------------------
+    # Resolved-config reconstructability
+    # -------------------------
+    if training_manifest is None:
+        audit_items.append(
+            AuditItem(
+                name="run reconstructability from resolved config",
+                status="skipped",
+                message=(
+                    "could not be checked because the training manifest "
+                    "is unavailable"
+                ),
+            )
+        )
+    else:
+        provenance_section = training_manifest.get("provenance")
+        config_provenance = (
+            provenance_section.get("config")
+            if isinstance(provenance_section, dict)
+            else None
+        )
+
+        run_reconstructable = (
+            config_provenance.get(
+                "run_reconstructable_from_resolved_config"
+            )
+            if isinstance(config_provenance, dict)
+            else None
+        )
+
+        audit_resolved_config_reconstructability(
+            audit_items=audit_items,
+            config_composition_result=config_composition_result,
+            resolved_config_path=resolved_config_path,
+            run_reconstructable_from_resolved_config=run_reconstructable,
+        )
 
     # -------------------------
     # Manifest status

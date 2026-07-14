@@ -386,7 +386,7 @@ def _predict(
         model_family=model_family,
         predictions=predictions,
         export_paths=export_paths,
-        input_config_path=config_composition_result.original_config_path,
+        config_composition_result=config_composition_result,
         resolved_config_path=run_context.config_dir / "resolved_config.yaml",
         prediction_manifest_path=manifest_path,
         model_source="external_object" if model_is_external else "config",
