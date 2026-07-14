@@ -23,11 +23,13 @@ from benchrep.records import (
     setup_run_logger,
     export_evaluation_outputs,
     write_evaluation_manifest,
+    write_audit_report,
 )
 from benchrep.runtime import RunContext
 from benchrep.runtime.evaluate_run_validation import (
     prepare_evaluate_source_inputs,
     log_clustering_count_warnings,
+    audit_evaluate_outputs,
 )
 from benchrep.assembly.registries.builtins import register_builtins
 
@@ -50,6 +52,7 @@ class EvaluationWorkflowResult:
     reconstruction_outputs: dict[str, Any] | None
     export_paths: EvaluationExportPaths
     manifest_path: Path
+    audit_report_path: Path
 
 
 def evaluate(
@@ -228,6 +231,30 @@ def evaluate(
 
     run_log.info("Exported evaluation manifest to: '%s'", manifest_path)
 
+    audit_items = audit_evaluate_outputs(
+        run_context=run_context,
+        run_spec=run_spec,
+        adata=adata,
+        reconstruction_outputs=reconstruction_outputs,
+        export_paths=export_paths,
+        config_composition_result=config_composition_result,
+        resolved_config_path=run_context.config_dir / "resolved_config.yaml",
+        evaluation_manifest_path=manifest_path,
+    )
+
+    audit_report_path = write_audit_report(
+        stage="evaluation",
+        audit_items=audit_items,
+        output_path=(
+                run_context.metadata_dir / "evaluation_audit_report.yaml"
+        ),
+        audited_at=datetime.now().isoformat(timespec="seconds"),
+    )
+
+    run_log.info(
+        "Exported evaluation audit report to: '%s'",
+        audit_report_path,
+    )
 
     return EvaluationWorkflowResult(
         config=run_spec.evaluation_config,
@@ -237,4 +264,5 @@ def evaluate(
         reconstruction_outputs=reconstruction_outputs,
         export_paths=export_paths,
         manifest_path=manifest_path,
+        audit_report_path=audit_report_path,
     )

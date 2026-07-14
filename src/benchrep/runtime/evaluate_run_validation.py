@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from importlib.util import find_spec
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -15,12 +16,23 @@ from benchrep.evaluation.reconstructions.data import (
     load_reconstruction_evaluation_input,
 )
 from benchrep.evaluation.utils import validate_adata_x
+from benchrep.assembly.config import load_yaml, ConfigCompositionResult
+from benchrep.runtime.run_context import RunContext
+from benchrep.runtime.utils import (
+    AuditItem,
+    audit_existing_file,
+    audit_existing_dir,
+    log_audit_summary,
+    audit_config_records,
+    audit_resolved_config_reconstructability,
+)
 
 
 if TYPE_CHECKING:
     from benchrep.assembly.resolvers.evaluation_config_resolver import (
         EvaluationRunSpec,
     )
+    from benchrep.records.evaluation_exports import EvaluationExportPaths
 
 
 @dataclass(frozen=True, slots=True)
@@ -92,9 +104,22 @@ def log_clustering_count_warnings(
 
     run_log = get_run_logger()
 
-    clustering_uns = adata.uns.get("benchrep", {}).get("clustering", {})
+    benchrep_uns = adata.uns.get("benchrep")
 
-    if not clustering_uns:
+    if benchrep_uns is None:
+        return
+
+    if not isinstance(benchrep_uns, Mapping):
+        run_log.warning(
+            "Expected adata.uns['benchrep'] to be a mapping, but found %s. "
+            "Skipping clustering count warnings.",
+            type(benchrep_uns).__name__,
+        )
+        return
+
+    clustering_uns = benchrep_uns.get("clustering")
+
+    if clustering_uns is None:
         return
 
     if not isinstance(clustering_uns, Mapping):
@@ -103,6 +128,9 @@ def log_clustering_count_warnings(
             "but found %s. Skipping clustering count warnings.",
             type(clustering_uns).__name__,
         )
+        return
+
+    if not clustering_uns:
         return
 
     for key_added, metadata in clustering_uns.items():
@@ -154,6 +182,588 @@ def log_clustering_count_warnings(
                 n_clusters,
                 max_clusters_warn,
             )
+
+
+def audit_evaluate_outputs(
+    *,
+    run_context: RunContext,
+    run_spec: EvaluationRunSpec,
+    adata: ad.AnnData,
+    reconstruction_outputs: Mapping[str, Any] | None,
+    export_paths: EvaluationExportPaths,
+    config_composition_result: ConfigCompositionResult[Any],
+    resolved_config_path: Path | str,
+    evaluation_manifest_path: Path | str,
+) -> list[AuditItem]:
+    """Audit evaluation runtime results and exported artifacts."""
+    audit_items: list[AuditItem] = []
+
+    evaluation_manifest_path = Path(evaluation_manifest_path)
+    evaluation_manifest: dict[str, Any] | None = None
+
+    # -------------------------
+    # Config records
+    # -------------------------
+    audit_config_records(
+        audit_items=audit_items,
+        config_composition_result=config_composition_result,
+        resolved_config_path=resolved_config_path,
+    )
+
+    # -------------------------
+    # Evaluation manifest
+    # -------------------------
+    manifest_path_is_valid = audit_existing_file(
+        audit_items=audit_items,
+        name="evaluation manifest",
+        path=evaluation_manifest_path,
+        expected_suffixes={".yaml", ".yml"},
+    )
+
+    if manifest_path_is_valid:
+        try:
+            loaded_manifest = load_yaml(evaluation_manifest_path)
+
+            if not isinstance(loaded_manifest, dict):
+                audit_items.append(
+                    AuditItem(
+                        name="evaluation manifest load",
+                        status="error",
+                        message=(
+                            f"loaded YAML object from '{evaluation_manifest_path}', "
+                            f"but expected a mapping and got "
+                            f"{type(loaded_manifest).__name__}"
+                        ),
+                    )
+                )
+            else:
+                evaluation_manifest = loaded_manifest
+                audit_items.append(
+                    AuditItem(
+                        name="evaluation manifest load",
+                        status="ok",
+                        message=(
+                            f"loaded YAML mapping from "
+                            f"'{evaluation_manifest_path}'"
+                        ),
+                    )
+                )
+
+        except Exception as exc:
+            audit_items.append(
+                AuditItem(
+                    name="evaluation manifest load",
+                    status="error",
+                    message=(
+                        f"could not load YAML from "
+                        f"'{evaluation_manifest_path}'. "
+                        f"Original error ({type(exc).__name__}): {exc}"
+                    ),
+                )
+            )
+
+    # -------------------------
+    # Resolved-config reconstructability
+    # -------------------------
+    if evaluation_manifest is None:
+        audit_items.append(
+            AuditItem(
+                name="run reconstructability from resolved config",
+                status="skipped",
+                message=(
+                    "could not be checked because the evaluation manifest "
+                    "is unavailable"
+                ),
+            )
+        )
+    else:
+        provenance_section = evaluation_manifest.get("provenance")
+        evaluation_provenance = (
+            provenance_section.get("evaluation")
+            if isinstance(provenance_section, Mapping)
+            else None
+        )
+        config_provenance = (
+            evaluation_provenance.get("config")
+            if isinstance(evaluation_provenance, Mapping)
+            else None
+        )
+
+        run_reconstructable = (
+            config_provenance.get(
+                "run_reconstructable_from_resolved_config"
+            )
+            if isinstance(config_provenance, Mapping)
+            else None
+        )
+
+        audit_resolved_config_reconstructability(
+            audit_items=audit_items,
+            config_composition_result=config_composition_result,
+            resolved_config_path=resolved_config_path,
+            run_reconstructable_from_resolved_config=run_reconstructable,
+        )
+
+    # -------------------------
+    # Manifest status and output directory
+    # -------------------------
+    if evaluation_manifest is None:
+        audit_items.append(
+            AuditItem(
+                name="manifest status",
+                status="skipped",
+                message=(
+                    "could not be checked because the evaluation manifest "
+                    "is unavailable"
+                ),
+            )
+        )
+        audit_items.append(
+            AuditItem(
+                name="manifest run output dir",
+                status="skipped",
+                message=(
+                    "could not be checked because the evaluation manifest "
+                    "is unavailable"
+                ),
+            )
+        )
+
+    else:
+        manifest_stage = evaluation_manifest.get("stage")
+
+        audit_items.append(
+            AuditItem(
+                name="manifest stage",
+                status="ok" if manifest_stage == "evaluation" else "error",
+                message=(
+                    "stage is 'evaluation'"
+                    if manifest_stage == "evaluation"
+                    else (
+                        f"stage is {manifest_stage!r}, "
+                        "expected 'evaluation'"
+                    )
+                ),
+            )
+        )
+
+        manifest_status = evaluation_manifest.get("status")
+
+        audit_items.append(
+            AuditItem(
+                name="manifest status",
+                status="ok" if manifest_status == "completed" else "error",
+                message=(
+                    "status is 'completed'"
+                    if manifest_status == "completed"
+                    else (
+                        f"status is {manifest_status!r}, "
+                        "expected 'completed'"
+                    )
+                ),
+            )
+        )
+
+        run_section = evaluation_manifest.get("run")
+
+        if not isinstance(run_section, Mapping):
+            audit_items.append(
+                AuditItem(
+                    name="manifest run output dir",
+                    status="error",
+                    message="manifest is missing mapping section `run`",
+                )
+            )
+
+        else:
+            output_dir_value = run_section.get("output_dir")
+
+            if not isinstance(output_dir_value, str):
+                audit_items.append(
+                    AuditItem(
+                        name="manifest run output dir",
+                        status="error",
+                        message=(
+                            "`run.output_dir` must be a string path, "
+                            f"got {type(output_dir_value).__name__}"
+                        ),
+                    )
+                )
+
+            else:
+                manifest_output_dir = Path(output_dir_value)
+
+                audit_existing_dir(
+                    audit_items=audit_items,
+                    name="manifest run output dir",
+                    path=manifest_output_dir,
+                )
+
+                if manifest_output_dir != run_context.output_dir:
+                    audit_items.append(
+                        AuditItem(
+                            name="manifest run output dir consistency",
+                            status="warning",
+                            message=(
+                                f"`run.output_dir` is "
+                                f"'{manifest_output_dir}', but current run "
+                                f"output directory is "
+                                f"'{run_context.output_dir}'"
+                            ),
+                        )
+                    )
+
+    # -------------------------
+    # Evaluation source provenance
+    # -------------------------
+    audit_existing_file(
+        audit_items=audit_items,
+        name="source embeddings",
+        path=run_spec.input_spec.embeddings_path,
+        expected_suffixes={".h5ad"},
+    )
+
+    prediction_manifest_path = (
+        run_spec.input_spec.prediction_manifest_path
+    )
+
+    if prediction_manifest_path is None:
+        audit_items.append(
+            AuditItem(
+                name="source prediction manifest",
+                status="skipped",
+                message=(
+                    "evaluation used direct source paths and no prediction "
+                    "manifest was required"
+                ),
+            )
+        )
+    else:
+        audit_existing_file(
+            audit_items=audit_items,
+            name="source prediction manifest",
+            path=prediction_manifest_path,
+            expected_suffixes={".yaml", ".yml"},
+        )
+
+    reconstruction_spec = run_spec.input_spec.reconstructions
+
+    if reconstruction_spec is None:
+        audit_items.append(
+            AuditItem(
+                name="reconstruction source",
+                status="skipped",
+                message="no reconstruction inputs were configured",
+            )
+        )
+
+    else:
+        _audit_optional_expected_file(
+            audit_items=audit_items,
+            name="reconstruction input source",
+            path=reconstruction_spec.input_path,
+            expected_suffixes={".pt"},
+            required=True,
+        )
+        _audit_optional_expected_file(
+            audit_items=audit_items,
+            name="reconstruction prediction source",
+            path=reconstruction_spec.reconstruction_path,
+            expected_suffixes={".pt"},
+            required=True,
+        )
+        _audit_optional_expected_file(
+            audit_items=audit_items,
+            name="reconstruction obs source",
+            path=reconstruction_spec.obs_path,
+            expected_suffixes={".pt"},
+            required=True,
+        )
+        _audit_optional_expected_file(
+            audit_items=audit_items,
+            name="reconstruction metadata source",
+            path=reconstruction_spec.metadata_path,
+            expected_suffixes={".pt"},
+            required=False,
+        )
+
+    # -------------------------
+    # Evaluated AnnData runtime outputs
+    # -------------------------
+    if adata.n_obs <= 0 or adata.n_vars <= 0:
+        audit_items.append(
+            AuditItem(
+                name="evaluated AnnData",
+                status="error",
+                message=(
+                    f"evaluated AnnData has invalid shape {adata.shape}"
+                ),
+            )
+        )
+    else:
+        audit_items.append(
+            AuditItem(
+                name="evaluated AnnData",
+                status="ok",
+                message=f"evaluated AnnData has shape {adata.shape}",
+            )
+        )
+
+    step_spec = run_spec.step_spec
+
+    _audit_adata_output_key(
+        audit_items=audit_items,
+        name="PCA output",
+        enabled=step_spec.pca_enabled,
+        key=step_spec.pca_params.get("key_added", "X_pca"),
+        available_keys=adata.obsm,
+        location="adata.obsm",
+    )
+    _audit_adata_output_key(
+        audit_items=audit_items,
+        name="UMAP output",
+        enabled=step_spec.umap_enabled,
+        key=step_spec.umap_params.get("key_added", "X_umap"),
+        available_keys=adata.obsm,
+        location="adata.obsm",
+    )
+    _audit_adata_output_key(
+        audit_items=audit_items,
+        name="t-SNE output",
+        enabled=step_spec.tsne_enabled,
+        key=step_spec.tsne_params.get("key_added", "X_tsne"),
+        available_keys=adata.obsm,
+        location="adata.obsm",
+    )
+    _audit_adata_output_key(
+        audit_items=audit_items,
+        name="K-means output",
+        enabled=step_spec.kmeans_enabled,
+        key=step_spec.kmeans_params.get("key_added", "kmeans"),
+        available_keys=adata.obs,
+        location="adata.obs",
+    )
+    _audit_adata_output_key(
+        audit_items=audit_items,
+        name="Leiden output",
+        enabled=step_spec.leiden_enabled,
+        key=step_spec.leiden_params.get("key_added", "leiden"),
+        available_keys=adata.obs,
+        location="adata.obs",
+    )
+
+    # -------------------------
+    # Reconstruction runtime outputs
+    # -------------------------
+    expected_reconstruction_output_keys: set[str] = set()
+
+    if step_spec.reconstruction_metrics_enabled:
+        expected_reconstruction_output_keys.add(
+            "reconstruction_metrics"
+        )
+
+    if step_spec.reconstruction_tiffs_enabled:
+        expected_reconstruction_output_keys.add("error_maps")
+
+    if reconstruction_outputs is None:
+        if expected_reconstruction_output_keys:
+            audit_items.append(
+                AuditItem(
+                    name="reconstruction pipeline outputs",
+                    status="error",
+                    message=(
+                        "reconstruction pipeline returned no outputs, but "
+                        f"expected keys "
+                        f"{sorted(expected_reconstruction_output_keys)}"
+                    ),
+                )
+            )
+        else:
+            audit_items.append(
+                AuditItem(
+                    name="reconstruction pipeline outputs",
+                    status="skipped",
+                    message=(
+                        "no reconstruction pipeline outputs were expected"
+                    ),
+                )
+            )
+
+    elif not isinstance(reconstruction_outputs, Mapping):
+        audit_items.append(
+            AuditItem(
+                name="reconstruction pipeline outputs",
+                status="error",
+                message=(
+                    "expected reconstruction outputs to be a mapping, "
+                    f"got {type(reconstruction_outputs).__name__}"
+                ),
+            )
+        )
+
+    else:
+        missing_output_keys = (
+            expected_reconstruction_output_keys
+            - set(reconstruction_outputs)
+        )
+
+        audit_items.append(
+            AuditItem(
+                name="reconstruction pipeline outputs",
+                status="error" if missing_output_keys else "ok",
+                message=(
+                    "reconstruction pipeline is missing expected output "
+                    f"keys: {sorted(missing_output_keys)}"
+                    if missing_output_keys
+                    else (
+                        "reconstruction pipeline returned expected output "
+                        f"keys: "
+                        f"{sorted(expected_reconstruction_output_keys)}"
+                    )
+                ),
+            )
+        )
+
+    # -------------------------
+    # Always-written artifacts
+    # -------------------------
+    audit_existing_file(
+        audit_items=audit_items,
+        name="evaluated embeddings artifact",
+        path=export_paths.evaluated_embeddings_path,
+        expected_suffixes={".h5ad"},
+    )
+
+    metrics_path_is_valid = audit_existing_file(
+        audit_items=audit_items,
+        name="evaluation metrics artifact",
+        path=export_paths.metrics_json_path,
+        expected_suffixes={".json"},
+    )
+
+    metrics: Mapping[str, Any] | None = None
+
+    if metrics_path_is_valid:
+        metrics = _load_metrics_json(
+            path=export_paths.metrics_json_path,
+            audit_items=audit_items,
+        )
+
+    # -------------------------
+    # Actual exported metric groups
+    # -------------------------
+    if metrics is not None:
+        _audit_metric_group(
+            audit_items=audit_items,
+            name="internal clustering metrics",
+            metrics=metrics,
+            path=("clustering", "internal"),
+            expected=(
+                step_spec.internal_clustering_metrics_enabled
+            ),
+        )
+
+        external_clustering_metrics_expected = (
+            step_spec.external_clustering_metrics_enabled
+        )
+
+        if external_clustering_metrics_expected is None:
+            external_clustering_metrics_expected = (
+                step_spec.external_clustering_label_key
+                in adata.obs.columns
+            )
+        _audit_metric_group(
+            audit_items=audit_items,
+            name="external clustering metrics",
+            metrics=metrics,
+            path=("clustering", "external"),
+            expected=external_clustering_metrics_expected,
+        )
+        _audit_metric_group(
+            audit_items=audit_items,
+            name="embedding metrics",
+            metrics=metrics,
+            path=("embedding",),
+            expected=step_spec.embedding_metrics_enabled,
+        )
+        _audit_metric_group(
+            audit_items=audit_items,
+            name="predictability metrics",
+            metrics=metrics,
+            path=("predictability",),
+            expected=step_spec.predictability_enabled,
+        )
+        _audit_metric_group(
+            audit_items=audit_items,
+            name="reconstruction metrics",
+            metrics=metrics,
+            path=("reconstruction",),
+            expected=step_spec.reconstruction_metrics_enabled,
+        )
+
+    # -------------------------
+    # Optional artifact groups
+    # -------------------------
+    reductions_expected = (
+        step_spec.plots_enabled
+        and (
+            step_spec.pca_enabled
+            or step_spec.umap_enabled
+            or step_spec.tsne_enabled
+        )
+    )
+
+    clustering_plots_expected = (
+        step_spec.plots_enabled
+        and (
+            step_spec.kmeans_enabled
+            or step_spec.leiden_enabled
+        )
+    )
+
+    reconstruction_grids_expected = (
+        reconstruction_spec is not None
+        and step_spec.plots_enabled
+    )
+
+    _audit_artifact_group(
+        audit_items=audit_items,
+        name="embedding reduction figures",
+        value=export_paths.reduction_plot_paths,
+        expected=reductions_expected,
+        expected_suffixes={".png", ".pdf", ".svg"},
+    )
+    _audit_artifact_group(
+        audit_items=audit_items,
+        name="cluster-size figures",
+        value=export_paths.cluster_size_plot_paths,
+        expected=clustering_plots_expected,
+        expected_suffixes={".png", ".pdf", ".svg"},
+    )
+    _audit_artifact_group(
+        audit_items=audit_items,
+        name="reconstruction TIFF artifacts",
+        value=export_paths.reconstruction_tiff_paths,
+        expected=step_spec.reconstruction_tiffs_enabled,
+        expected_suffixes={".tif", ".tiff"},
+    )
+    _audit_artifact_group(
+        audit_items=audit_items,
+        name="reconstruction grid figures",
+        value=export_paths.reconstruction_grid_paths,
+        expected=reconstruction_grids_expected,
+        expected_suffixes={".png", ".pdf", ".svg"},
+    )
+
+    # -------------------------
+    # Final audit summary
+    # -------------------------
+    log_audit_summary(
+        stage="evaluation",
+        audit_items=audit_items,
+    )
+
+    return audit_items
 
 
 def _load_embeddings_adata(path: Path | str) -> ad.AnnData:
@@ -467,7 +1077,11 @@ def _validate_reconstruction_obs_length(
     obs_length = _infer_obs_length(reconstruction_input.obs)
 
     if obs_length is None:
-        return
+        raise TypeError(
+            "Could not infer the number of reconstruction observations "
+            f"from object of type "
+            f"{type(reconstruction_input.obs).__name__}."
+        )
 
     n_available = int(reconstruction_input.inputs.shape[0])
 
@@ -575,3 +1189,314 @@ def _param(
 ) -> Any:
     value = params.get(key, default)
     return default if value is None else value
+
+
+def _audit_optional_expected_file(
+    *,
+    audit_items: list[AuditItem],
+    name: str,
+    path: Path | str | None,
+    expected_suffixes: set[str],
+    required: bool,
+) -> bool:
+    if path is None:
+        audit_items.append(
+            AuditItem(
+                name=name,
+                status="error" if required else "skipped",
+                message=(
+                    "expected artifact path was not resolved"
+                    if required
+                    else "optional artifact path was not provided"
+                ),
+            )
+        )
+        return False
+
+    return audit_existing_file(
+        audit_items=audit_items,
+        name=name,
+        path=path,
+        expected_suffixes=expected_suffixes,
+    )
+
+
+def _audit_adata_output_key(
+    *,
+    audit_items: list[AuditItem],
+    name: str,
+    enabled: bool,
+    key: Any,
+    available_keys: Any,
+    location: str,
+) -> None:
+    if not enabled:
+        audit_items.append(
+            AuditItem(
+                name=name,
+                status="skipped",
+                message="step was not enabled",
+            )
+        )
+        return
+
+    if not isinstance(key, str):
+        audit_items.append(
+            AuditItem(
+                name=name,
+                status="error",
+                message=(
+                    f"resolved output key must be a string, "
+                    f"got {type(key).__name__}"
+                ),
+            )
+        )
+        return
+
+    if key not in available_keys:
+        audit_items.append(
+            AuditItem(
+                name=name,
+                status="error",
+                message=f"expected output `{location}[{key!r}]` was not found",
+            )
+        )
+        return
+
+    audit_items.append(
+        AuditItem(
+            name=name,
+            status="ok",
+            message=f"found output at `{location}[{key!r}]`",
+        )
+    )
+
+
+def _load_metrics_json(
+    *,
+    path: Path | str,
+    audit_items: list[AuditItem],
+) -> Mapping[str, Any] | None:
+    path = Path(path)
+
+    try:
+        with path.open("r", encoding="utf-8") as handle:
+            value = json.load(handle)
+
+    except Exception as exc:
+        audit_items.append(
+            AuditItem(
+                name="evaluation metrics load",
+                status="error",
+                message=(
+                    f"could not load metrics JSON from '{path}'. "
+                    f"Original error ({type(exc).__name__}): {exc}"
+                ),
+            )
+        )
+        return None
+
+    if not isinstance(value, Mapping):
+        audit_items.append(
+            AuditItem(
+                name="evaluation metrics load",
+                status="error",
+                message=(
+                    "loaded metrics JSON must contain a mapping, "
+                    f"got {type(value).__name__}"
+                ),
+            )
+        )
+        return None
+
+    audit_items.append(
+        AuditItem(
+            name="evaluation metrics load",
+            status="ok",
+            message=f"loaded metrics mapping from '{path}'",
+        )
+    )
+
+    return value
+
+
+def _audit_metric_group(
+    *,
+    audit_items: list[AuditItem],
+    name: str,
+    metrics: Mapping[str, Any],
+    path: tuple[str, ...],
+    expected: bool | None,
+) -> None:
+    value: Any = metrics
+
+    for key in path:
+        if not isinstance(value, Mapping) or key not in value:
+            value = None
+            break
+        value = value[key]
+
+    present = (
+        isinstance(value, Mapping)
+        and bool(value)
+    )
+
+    dotted_path = ".".join(path)
+
+    if expected is True:
+        audit_items.append(
+            AuditItem(
+                name=name,
+                status="ok" if present else "error",
+                message=(
+                    f"found exported metric group `{dotted_path}`"
+                    if present
+                    else (
+                        f"metric group `{dotted_path}` was enabled "
+                        "but was not exported"
+                    )
+                ),
+            )
+        )
+        return
+
+    if expected is False:
+        audit_items.append(
+            AuditItem(
+                name=name,
+                status="warning" if present else "skipped",
+                message=(
+                    f"metric group `{dotted_path}` was exported even "
+                    "though it was disabled"
+                    if present
+                    else f"metric group `{dotted_path}` was not enabled"
+                ),
+            )
+        )
+        return
+
+    # None means runtime auto-resolution.
+    audit_items.append(
+        AuditItem(
+            name=name,
+            status="ok" if present else "skipped",
+            message=(
+                f"auto-resolved metric group `{dotted_path}` was exported"
+                if present
+                else (
+                    f"auto-resolved metric group `{dotted_path}` "
+                    "was not produced"
+                )
+            ),
+        )
+    )
+
+
+def _audit_artifact_group(
+    *,
+    audit_items: list[AuditItem],
+    name: str,
+    value: Any,
+    expected: bool,
+    expected_suffixes: set[str],
+) -> None:
+    paths = _collect_artifact_paths(value)
+
+    if not expected:
+        audit_items.append(
+            AuditItem(
+                name=name,
+                status="warning" if paths else "skipped",
+                message=(
+                    f"found {len(paths)} artifact file(s) even though "
+                    "the export was not expected"
+                    if paths
+                    else "artifact export was not expected"
+                ),
+            )
+        )
+        return
+
+    if not paths:
+        audit_items.append(
+            AuditItem(
+                name=name,
+                status="error",
+                message=(
+                    "artifact export was expected, but no paths "
+                    "were returned"
+                ),
+            )
+        )
+        return
+
+    normalized_suffixes = {
+        suffix.lower()
+        for suffix in expected_suffixes
+    }
+
+    missing = [
+        path
+        for path in paths
+        if not path.exists() or not path.is_file()
+    ]
+    invalid_suffixes = [
+        path
+        for path in paths
+        if path.suffix.lower() not in normalized_suffixes
+    ]
+
+    if missing or invalid_suffixes:
+        details = []
+
+        if missing:
+            details.append(
+                f"{len(missing)} missing/non-file path(s)"
+            )
+        if invalid_suffixes:
+            details.append(
+                f"{len(invalid_suffixes)} path(s) with unexpected suffixes"
+            )
+
+        audit_items.append(
+            AuditItem(
+                name=name,
+                status="error",
+                message="; ".join(details),
+            )
+        )
+        return
+
+    audit_items.append(
+        AuditItem(
+            name=name,
+            status="ok",
+            message=f"found {len(paths)} exported artifact file(s)",
+        )
+    )
+
+
+def _collect_artifact_paths(value: Any) -> list[Path]:
+    if isinstance(value, Path):
+        return [value]
+
+    if isinstance(value, Mapping):
+        paths: list[Path] = []
+
+        for item in value.values():
+            paths.extend(_collect_artifact_paths(item))
+
+        return paths
+
+    if isinstance(value, Sequence) and not isinstance(
+        value,
+        str | bytes,
+    ):
+        paths = []
+
+        for item in value:
+            paths.extend(_collect_artifact_paths(item))
+
+        return paths
+
+    return []
