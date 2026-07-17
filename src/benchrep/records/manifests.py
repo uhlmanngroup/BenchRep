@@ -53,8 +53,8 @@ def write_training_manifest(
 
     configured_dataset = config.dataset.name if config.dataset is not None else None
     configured_transform = (
-        config.dataset.transform.name
-        if config.dataset is not None and config.dataset.transform is not None
+        config.dataset.params.transform.name
+        if config.dataset is not None and config.dataset.params.transform is not None
         else None
     )
     configured_batch_size = (
@@ -226,18 +226,15 @@ def write_prediction_manifest(
         else None
     )
     configured_transform = (
-        run_spec.dataset_config.transform.name
+        run_spec.dataset_config.params.transform.name
         if (
             run_spec.dataset_config is not None
-            and run_spec.dataset_config.transform is not None
+            and run_spec.dataset_config.params.transform is not None
         )
         else None
     )
     configured_batch_size = (
         run_spec.batch_size if not datamodule_is_external else None
-    )
-    configured_split = (
-        run_spec.split if not datamodule_is_external else None
     )
 
     embedding_spec = run_spec.export_spec.embeddings
@@ -259,7 +256,6 @@ def write_prediction_manifest(
         "decoder": None if model_is_external else configured_decoder,
         "dataset": None if datamodule_is_external else configured_dataset,
         "datamodule": datamodule_class_name if datamodule_is_external else None,
-        "data_split": configured_split,
         "batch_size": configured_batch_size,
         "max_batches": run_spec.max_batches,
     }
@@ -319,7 +315,6 @@ def write_prediction_manifest(
                     "configured_dataset": None if datamodule_is_external else configured_dataset,
                     "configured_transform": None if datamodule_is_external else configured_transform,
                     "configured_batch_size": None if datamodule_is_external else configured_batch_size,
-                    "configured_split": configured_split,
                 },
             },
         },

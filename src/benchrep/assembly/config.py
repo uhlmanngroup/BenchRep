@@ -5,6 +5,7 @@ from pathlib import Path
 from types import UnionType
 from typing import (
     Any,
+    Annotated,
     TypeAlias,
     Literal,
     TypeVar,
@@ -29,8 +30,7 @@ from benchrep.assembly.schemas.training_config_schema import (
     DecoderConfig,
     LossTermConfig,
     OptimizerConfig,
-    DataSelectionConfig,
-    DatasetConfig,
+    SupportedDatasetConfig,
     DataModuleConfig,
     TrainerConfig,
     LoggerConfig,
@@ -81,8 +81,7 @@ SupportedTrainingConfigComponent: TypeAlias = (
         | DecoderConfig
         | LossesConfig
         | OptimizerConfig
-        | DataSelectionConfig
-        | DatasetConfig
+        | SupportedDatasetConfig
         | DataModuleConfig
         | TrainerConfig
         | LoggerConfig
@@ -92,6 +91,7 @@ SupportedTrainingConfigComponent: TypeAlias = (
 
 SupportedPredictionConfigComponent: TypeAlias = (
         PredictionSourceConfig
+        | SupportedDatasetConfig
         | PredictionDataConfig
         | PredictionInferenceConfig
         | PredictionExportConfig
@@ -431,6 +431,27 @@ def _strip_none_from_type(annotation: Any) -> Any:
     return annotation
 
 
+def _get_runtime_types(annotation: Any) -> tuple[type, ...]:
+    origin = get_origin(annotation)
+
+    if origin is Annotated:
+        return _get_runtime_types(get_args(annotation)[0])
+
+    if origin in {Union, UnionType}:
+        runtime_types: list[type] = []
+
+        for argument in get_args(annotation):
+            if argument is not type(None):
+                runtime_types.extend(_get_runtime_types(argument))
+
+        return tuple(runtime_types)
+
+    if isinstance(annotation, type):
+        return (annotation,)
+
+    return ()
+
+
 def get_expected_component_types(
     schema: type[BaseModel],
     *,
@@ -478,6 +499,22 @@ def _normalize_config_components(
                     f"{type(component).__name__}."
                 )
             normalized[key] = component
+            continue
+
+        if key == "dataset":
+            dataset_config_types = _get_runtime_types(SupportedDatasetConfig)
+
+            if not isinstance(component, dataset_config_types):
+                expected_names = ", ".join(
+                    config_type.__name__
+                    for config_type in dataset_config_types
+                )
+                raise TypeError(
+                    f"Config component 'dataset' for {schema.__name__} must be "
+                    f"one of ({expected_names}), got {type(component).__name__}."
+                )
+
+            normalized[key] = _config_component_to_raw(component)
             continue
 
         expected_type = expected_component_types[key]

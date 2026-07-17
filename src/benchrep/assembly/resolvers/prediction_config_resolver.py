@@ -10,7 +10,7 @@ from benchrep.assembly.schemas import (
     TrainingConfig,
     PredictionExportConfig,
     parse_training_config,
-    DatasetConfig,
+    SupportedDatasetConfig,
     DataModuleConfig,
     TrainerConfig,
 )
@@ -63,9 +63,8 @@ class PredictionRunSpec:
     training_run_name: str
     training_output_dir: Path
 
-    dataset_config: DatasetConfig | None
+    dataset_config: SupportedDatasetConfig | None
     datamodule_config: DataModuleConfig | None
-    split: str
     batch_size: int | None
     num_workers: int | None
     trainer_config: TrainerConfig
@@ -146,32 +145,45 @@ def resolve_prediction_config(
         datamodule_config = None
         batch_size = None
         num_workers = None
+
     else:
-        if training_config.dataset is None or training_config.datamodule is None:
+        dataset_config = (
+            prediction_config.dataset
+            if prediction_config.dataset is not None
+            else training_config.dataset
+        )
+
+        if dataset_config is None:
             raise ValueError(
-                "Prediction requires a config-reconstructable dataset/datamodule, "
-                "but the training config does not contain `dataset` and `datamodule`. "
-                "Pass a datamodule override to predict()."
+                "Prediction requires a dataset configuration, but none was "
+                "provided in the prediction config or reconstructable from the "
+                "training config. Pass `dataset` in the prediction config or "
+                "provide a datamodule override to predict()."
             )
+
+        base_datamodule_config = (
+            training_config.datamodule
+            if training_config.datamodule is not None
+            else DataModuleConfig()
+        )
 
         batch_size = resolve_optional(
             prediction_config.data.batch_size,
-            training_config.datamodule.batch_size,
+            base_datamodule_config.batch_size,
             field_name="data.batch_size",
         )
 
         num_workers = resolve_optional(
             prediction_config.data.num_workers,
-            training_config.datamodule.num_workers,
+            base_datamodule_config.num_workers,
             field_name="data.num_workers",
         )
 
-        dataset_config = training_config.dataset
-
-        datamodule_config = training_config.datamodule.model_copy(
+        datamodule_config = base_datamodule_config.model_copy(
             update={
                 "batch_size": batch_size,
                 "num_workers": num_workers,
+                "val_fraction": 0.0,
                 "drop_last": False,
             }
         )
@@ -223,7 +235,6 @@ def resolve_prediction_config(
         training_output_dir=training_output_dir,
         dataset_config=dataset_config,
         datamodule_config=datamodule_config,
-        split=prediction_config.data.split,
         batch_size=batch_size,
         num_workers=num_workers,
         trainer_config=trainer_config,

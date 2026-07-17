@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Literal
 
 import torch
 from torch.utils.data import Dataset
@@ -76,7 +76,7 @@ class MNISTDataset(BaseDataset):
     def __init__(
         self,
         root: str,
-        train: bool = True,
+        split: Literal["train", "test"] = "train",
         transform: Any | None = None,
         target_transform: Any | None = None,
         download: bool = False,
@@ -85,7 +85,7 @@ class MNISTDataset(BaseDataset):
 
         self.dataset = MNIST(
             root=root,
-            train=train,
+            train=split == "train",
             transform=transform,
             target_transform=target_transform,
             download=download,

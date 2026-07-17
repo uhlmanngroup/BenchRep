@@ -13,6 +13,10 @@ from pydantic import (
     StringConstraints,
 )
 
+from benchrep.assembly.schemas.training_config_schema import (
+    SupportedDatasetConfig,
+)
+
 
 # -------------------------
 # Source config
@@ -30,7 +34,6 @@ class PredictionSourceConfig(BaseModel):
 
 
 class PredictionDataConfig(BaseModel):
-    split: Literal["predict", "train", "val", "test", "all"] = "predict"
     num_workers: NonNegativeInt | None = None
     batch_size: PositiveInt | None = None
     max_batches: PositiveInt | None = None
@@ -91,6 +94,7 @@ class PredictionConfig(BaseModel):
     stage: Literal["prediction"] = "prediction"
     source: PredictionSourceConfig = Field(
         default_factory=PredictionSourceConfig)
+    dataset: SupportedDatasetConfig | None = None
     data: PredictionDataConfig = Field(default_factory=PredictionDataConfig)
     inference: PredictionInferenceConfig = Field(default_factory=PredictionInferenceConfig)
     exports: PredictionExportConfig = Field(default_factory=PredictionExportConfig)

@@ -13,6 +13,7 @@ from benchrep.assembly.config import (
     SupportedConfigComponent,
 )
 from benchrep.assembly.builders import (
+    build_dataset,
     build_datamodule,
     build_model,
     build_trainer,
@@ -222,18 +223,23 @@ def _predict(
             run_spec.float32_matmul_precision,
         )
 
-    # Build datamodule
+    # Build dataset and datamodule
     if not datamodule_is_external:
-        # Avoid confusing type checker...
-        assert run_spec.dataset_config is not None
-        assert run_spec.datamodule_config is not None
+        dataset_config = run_spec.dataset_config
+        datamodule_config = run_spec.datamodule_config
+
+        assert dataset_config is not None
+        assert datamodule_config is not None
+
+        dataset = build_dataset(
+            dataset_config=dataset_config,
+        )
 
         datamodule = build_datamodule(
-            dataset_config=run_spec.dataset_config,
-            datamodule_config=run_spec.datamodule_config,
+            dataset=dataset,
+            datamodule_config=datamodule_config,
             seed=run_spec.seed,
             stage=run_spec.stage,
-            split=run_spec.split,
         )
     else:
         run_log.info(

@@ -43,7 +43,7 @@ from benchrep.assembly.config import (
     SupportedConfigComponent,
 )
 from benchrep.assembly.schemas import TrainingConfig
-from benchrep.assembly.builders import build_datamodule, build_model, build_trainer
+from benchrep.assembly.builders import build_datamodule, build_dataset, build_model, build_trainer
 from benchrep.assembly.registries.builtins import register_builtins
 
 
@@ -195,12 +195,15 @@ def _train(
         assert dataset_config is not None
         assert datamodule_config is not None
 
-        datamodule = build_datamodule(
+        dataset = build_dataset(
             dataset_config=dataset_config,
+        )
+
+        datamodule = build_datamodule(
+            dataset=dataset,
             datamodule_config=datamodule_config,
             seed=train_config.reproducibility.seed,
             stage=train_config.stage,
-            split=train_config.data.split,
         )
     else:
         run_log.info(

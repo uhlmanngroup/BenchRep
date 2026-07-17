@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Generic, Literal, TypeVar
 
 from pydantic import (
     BaseModel,
@@ -11,6 +11,9 @@ from pydantic import (
     NonNegativeInt,
     model_validator,
     ValidationInfo,
+    Discriminator,
+    Tag,
+    field_validator,
 )
 
 from benchrep.assembly.registries.core import MODELS
@@ -122,24 +125,65 @@ class InspectionConfig(BaseModel):
 # -------------------------
 # Data configuration
 # -------------------------
-class DataSelectionConfig(BaseModel):
-    split: Literal["train"] = "train"
+ParamsT = TypeVar("ParamsT")
 
 
 class TransformConfig(NamedConfig):
     pass
 
 
-class DatasetConfig(BaseModel):
+class DatasetConfig(BaseModel, Generic[ParamsT]):
     name: str
-    root: Path | None = None
-    download: bool | None = None
+    params: ParamsT
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def normalize_dataset_name(cls, value: Any) -> str:
+        return normalize_name(value, field_name="dataset.name")
+
+
+class MNISTDatasetParams(BaseModel):
+    root: Path
+    split: Literal["train", "test"] = "train"
+    download: bool = False
     transform: TransformConfig | None = None
 
 
+class MNISTDatasetConfig(DatasetConfig[MNISTDatasetParams]):
+    name: Literal["mnist"] = "mnist"
+    params: MNISTDatasetParams
+
+
+class CustomDatasetConfig(DatasetConfig[dict[str, Any]]):
+    name: str
+    params: dict[str, Any] = Field(default_factory=dict)
+
+
+def _dataset_config_discriminator(value: Any) -> str:
+    if isinstance(value, dict):
+        name = value.get("name")
+    else:
+        name = getattr(value, "name", None)
+
+    if isinstance(name, str) and name.strip():
+        normalized_name = normalize_name(name, field_name="dataset.name")
+
+        if normalized_name == "mnist":
+            return "mnist"
+
+    return "custom"
+
+
+SupportedDatasetConfig = Annotated[
+    Annotated[MNISTDatasetConfig, Tag("mnist")]
+    | Annotated[CustomDatasetConfig, Tag("custom")],
+    Discriminator(_dataset_config_discriminator),
+]
+
+
 class DataModuleConfig(BaseModel):
-    batch_size: int = 32
-    val_fraction: float = 0.1
+    batch_size: PositiveInt = 32
+    val_fraction: float = Field(default=0.1, ge=0.0, lt=1.0)
     num_workers: NonNegativeInt = 4
     pin_memory: bool | Literal["auto"] = "auto"
     persistent_workers: bool = False
@@ -160,8 +204,7 @@ class TrainingConfig(BaseModel):
     losses: dict[str, dict[str, LossTermConfig]] | None = Field(default_factory=dict)
     optimizer: OptimizerConfig | None = None
 
-    data: DataSelectionConfig = Field(default_factory=DataSelectionConfig)
-    dataset: DatasetConfig | None = None
+    dataset: SupportedDatasetConfig | None = None
     datamodule: DataModuleConfig | None = Field(default_factory=DataModuleConfig)
 
     trainer: TrainerConfig = Field(default_factory=TrainerConfig)

@@ -9,15 +9,14 @@ run:
   output_root: outputs
   project_name: test
 
-data:
-  split: train
-
 dataset:
   name: mnist
-  root: examples/data/mnist
-  download: true
-  transform:
-    name: to_tensor # necessary for mnist
+  params:
+    root: examples/data/mnist
+    split: train
+    download: true
+    transform:
+      name: to_tensor # necessary for mnist
 
 datamodule:
   batch_size: 128

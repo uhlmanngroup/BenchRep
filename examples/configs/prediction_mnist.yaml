@@ -4,8 +4,16 @@ source:
   training_manifest_path: /home/qptero/github/BenchRep/outputs/training/test_vae_conv2d_upsample_conv2d_20260622-161610/records/metadata/training_manifest.yaml
   checkpoint: best              # best | last | checkpoint filename in training checkpoint dir
 
+dataset:
+  name: mnist
+  params:
+    root: examples/data/mnist
+    split: test
+    download: true
+    transform:
+      name: to_tensor # necessary for mnist
+
 data:
-  split: predict                # predict | train | val | test | all
   batch_size: null              # null = reuse training setting
   num_workers: null             # null = reuse training setting
   max_batches: null             # null = all batches; int = diagnostic subset

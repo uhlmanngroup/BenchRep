@@ -1,196 +1,153 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
+
+from pydantic import BaseModel
 
 import torch
-from torch.utils.data import ConcatDataset
 
 from benchrep.records import get_run_logger
-from benchrep.architecture.data import DataModule
+from benchrep.architecture.data import BaseDataset, DataModule
 from benchrep.assembly.schemas import (
     DataModuleConfig,
-    DatasetConfig,
-    TransformConfig
+    TransformConfig,
+    SupportedDatasetConfig,
 )
 from benchrep.assembly.registries.utils import normalize_name
 from benchrep.assembly.registries.core import DATASETS, TRANSFORMS
 
 
 def build_datamodule(
-        *,
-        dataset_config: DatasetConfig,
-        datamodule_config: DataModuleConfig,
-        seed: int | None = None,
-        stage: str,
-        split: str
+    *,
+    dataset: BaseDataset,
+    datamodule_config: DataModuleConfig,
+    seed: int | None = None,
+    stage: Literal["training", "prediction"],
 ) -> DataModule:
-    """Build a BenchRep DataModule for a given workflow stage and data split.
+    """Build a BenchRep datamodule around an instantiated dataset.
 
-    This is the public data builder. It translates the validated dataset and
-    datamodule config sections, together with the requested workflow ``stage`` and
-    data ``split``, into concrete dataset objects and a BenchRep ``DataModule``.
-
-    The ``split`` argument selects which dataset view to instantiate. The ``stage``
-    argument determines which LightningDataModule slot receives that dataset. For
-    example, ``stage="training"`` assigns the requested split to ``train_dataset``,
-    while ``stage="prediction"`` assigns the requested split to
-    ``predict_dataset``.
-
-    For the built-in MNIST toy dataset, BenchRep split names are mapped onto
-    torchvision MNIST's ``train`` boolean flag. For example, ``split="train"``
-    creates ``MNISTDataset(train=True)``, while ``split="test"`` or
-    ``split="predict"`` creates ``MNISTDataset(train=False)``. Future dataset
-    types may implement different split-selection logic internally, but should
-    still return a concrete dataset object through this builder.
+    For training, the dataset is assigned as the training dataset and may be
+    divided into training and validation subsets according to ``val_fraction``.
+    For prediction, the dataset is assigned directly as the prediction dataset.
+    Workflow-specific configuration adjustments must be resolved before calling
+    this builder.
 
     Parameters
     ----------
-    dataset_config:
-        Validated dataset config object describing the dataset family/source and
-        its construction parameters, such as dataset name, root path, download flag,
-        and transform.
+    dataset:
+        Instantiated dataset to expose through the datamodule.
     datamodule_config:
-        Validated datamodule config object describing batching and DataLoader
-        behavior, such as batch size, number of workers, pin-memory behavior,
-        persistent workers, validation fraction, and drop-last behavior.
+        Batching, loading, and optional validation-splitting configuration.
     seed:
-        Optional random seed passed to the DataModule. This is mainly used for
-        reproducible train/validation splitting when the DataModule creates a
-        validation subset from a training dataset.
+        Optional seed used for reproducible train-validation splitting.
     stage:
-        Workflow stage that determines which DataModule dataset slot is populated.
-        Currently supported values are ``"training"`` and ``"prediction"``.
-    split:
-        Dataset split or view to instantiate. For MNIST, currently supported values
-        are ``"train"``, ``"test"``, ``"predict"``, and ``"all"``.
+        Workflow stage determining whether the dataset is assigned for training
+        or prediction.
 
     Returns
     -------
     DataModule
-        Instantiated BenchRep DataModule containing the requested dataset assigned
-        to the appropriate Lightning stage slot.
+        Configured BenchRep datamodule.
 
     Raises
     ------
     ValueError
-        If the dataset name, workflow stage, or requested split is unsupported, or
-        if required dataset construction parameters are missing.
+        If ``stage`` is neither ``"training"`` nor ``"prediction"``.
     """
     run_log = get_run_logger()
 
-    dataset_name = normalize_name(
-        dataset_config.name,
-        field_name="config.dataset.name",
-    )
-
-    run_log.info(
-        "Building datamodule: dataset=%s, stage=%s, split=%s",
-        dataset_name,
-        stage,
-        split,
-    )
-
-    # Build dataset
-    if dataset_name == "mnist":
-        dataset = _build_mnist_dataset(
-            dataset_config=dataset_config,
-            split=split,
-        )
-    else:
+    if stage not in {"training", "prediction"}:
         raise ValueError(
-                f"Unsupported dataset name {dataset_name!r}. "
-                f"Available options: {DATASETS.keys()}."
-            )
-
-    # Build datamodule
-    if stage == "training":
-        dm = _instantiate_datamodule(
-            datamodule_config=datamodule_config,
-            train_dataset=dataset,
-            seed=seed,
-        )
-    elif stage == "prediction":
-        dm_config = datamodule_config.model_copy(
-            update={
-                "val_fraction": 0.0,
-                "drop_last": False,
-            }
-        )
-
-        dm = _instantiate_datamodule(
-            datamodule_config=dm_config,
-            predict_dataset=dataset,
-            seed=seed,
-        )
-    else:
-        raise ValueError(
-            "Unsupported datamodule stage. Expected one of "
-            "{'training', 'prediction'}, "
+            "stage must be either 'training' or 'prediction', "
             f"got {stage!r}."
         )
 
+    dm = _instantiate_datamodule(
+        datamodule_config=datamodule_config,
+        train_dataset=dataset if stage == "training" else None,
+        predict_dataset=dataset if stage == "prediction" else None,
+        seed=seed,
+    )
+
     run_log.info(
-        "Built datamodule: dataset=%s, stage=%s, split=%s, datamodule=%s",
-        dataset_name,
+        "Built datamodule: stage=%s, dataset=%s, datamodule=%s",
         stage,
-        split,
+        type(dataset).__name__,
         type(dm).__name__,
     )
 
     return dm
 
 
-def _build_mnist_dataset(
-        dataset_config: DatasetConfig,
-        split: str,
-) -> Any:
-    # MNIST exposes train/test through a boolean flag; map BenchRep split names
-    # onto that torchvision API.
-    if dataset_config.root is None:
-        raise ValueError("MNIST dataset requires `dataset.root`.")
+def build_dataset(
+    *,
+    dataset_config: SupportedDatasetConfig,
+) -> BaseDataset:
+    """Build a registered BenchRep dataset from validated configuration.
 
-    dataset_class = DATASETS.get("mnist")
+      The dataset name is resolved through the dataset registry. Typed built-in
+      parameters or arbitrary custom parameters are converted to constructor
+      keyword arguments. A configured transform is resolved through the transform
+      registry before the dataset class is instantiated.
 
-    root = dataset_config.root
-    download = bool(dataset_config.download)
-    transform = _build_transform(dataset_config.transform)
+      Parameters
+      ----------
+      dataset_config:
+          Validated built-in or custom dataset configuration containing the
+          registered dataset name and its constructor parameters.
 
-    if split == "train":
-        return dataset_class(
-            root=root,
-            train=True,
-            transform=transform,
-            download=download,
-        )
+      Returns
+      -------
+      BaseDataset
+          Instantiated BenchRep-compatible dataset.
 
-    if split in {"test", "predict"}:
-        return dataset_class(
-            root=root,
-            train=False,
-            transform=transform,
-            download=download,
-        )
+      Raises
+      ------
+      KeyError
+          If the dataset or configured transform is not registered.
+      TypeError
+          If the registered dataset does not produce a ``BaseDataset`` instance.
+      """
+    run_log = get_run_logger()
 
-    if split == "all":
-        train_dataset = dataset_class(
-            root=root,
-            train=True,
-            transform=transform,
-            download=download,
-        )
-        test_dataset = dataset_class(
-            root=root,
-            train=False,
-            transform=transform,
-            download=download,
-        )
-        return ConcatDataset([train_dataset, test_dataset])
-
-    raise ValueError(
-        "Unsupported MNIST split. Expected one of "
-        "{'train', 'test', 'predict', 'all'}, "
-        f"got {split!r}."
+    dataset_name = normalize_name(
+        dataset_config.name,
+        field_name="config.dataset.name",
     )
+    dataset_class = DATASETS.get(dataset_name)
+
+    raw_params = dataset_config.params
+    if isinstance(raw_params, BaseModel):
+        dataset_params = raw_params.model_dump(mode="python")
+    else:
+        dataset_params = dict(raw_params)
+
+    transform_config = dataset_params.get("transform")
+
+    if isinstance(transform_config, dict) and "name" in transform_config:
+        transform_config = TransformConfig.model_validate(transform_config)
+
+    if isinstance(transform_config, TransformConfig):
+        dataset_params["transform"] = _build_transform(transform_config)
+
+    run_log.info("Building dataset: dataset=%s", dataset_name)
+
+    dataset = dataset_class(**dataset_params)
+
+    if not isinstance(dataset, BaseDataset):
+        raise TypeError(
+            f"Registered dataset {dataset_name!r} must produce a BaseDataset "
+            f"instance, got {type(dataset).__name__}."
+        )
+
+    run_log.info(
+        "Built dataset: dataset=%s, class=%s, samples=%d",
+        dataset_name,
+        type(dataset).__name__,
+        len(dataset),
+    )
+
+    return dataset
 
 
 def _instantiate_datamodule(
