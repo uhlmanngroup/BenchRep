@@ -13,6 +13,7 @@ from pydantic import (
     ConfigDict,
     StringConstraints,
     NonNegativeInt,
+    ValidationInfo,
 )
 
 NSplits = Annotated[int, Field(ge=2)]
@@ -454,10 +455,16 @@ class EvaluationConfig(BaseModel):
     plots: EvaluationPlotsConfig = Field(default_factory=EvaluationPlotsConfig)
 
     @model_validator(mode="after")
-    def validate_source(self) -> "EvaluationConfig":
+    def validate_source(self, info: ValidationInfo) -> "EvaluationConfig":
+        prediction_manifest_path_overridden = (info.context or {}).get(
+            "prediction_manifest_path_overridden",
+            False,
+        )
+
         if (
-            self.source.embeddings_path is None
-            and self.source.prediction_manifest_path is None
+                self.source.embeddings_path is None
+                and self.source.prediction_manifest_path is None
+                and not prediction_manifest_path_overridden
         ):
             raise ValueError(
                 "Either source.embeddings_path or source.prediction_manifest_path "
@@ -465,13 +472,21 @@ class EvaluationConfig(BaseModel):
                 "inferred from the prediction manifest."
             )
 
-        if (self.source.embeddings_path is not None
-              and self.source.embeddings_path.suffix.lower() != ".h5ad"
+        if (
+                self.source.embeddings_path is not None
+                and self.source.embeddings_path.suffix.lower() != ".h5ad"
         ):
-            raise ValueError("source.embeddings_path must point to an AnnData .h5ad file.")
+            raise ValueError(
+                "source.embeddings_path must point to an AnnData .h5ad file."
+            )
 
         if self.source.prediction_manifest_path is not None:
-            if self.source.prediction_manifest_path.suffix.lower() not in {".yaml", ".yml"}:
-                raise ValueError("source.prediction_manifest_path must point to a YAML file.")
+            if self.source.prediction_manifest_path.suffix.lower() not in {
+                ".yaml",
+                ".yml",
+            }:
+                raise ValueError(
+                    "source.prediction_manifest_path must point to a YAML file."
+                )
 
         return self

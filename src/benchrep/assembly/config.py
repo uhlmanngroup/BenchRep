@@ -136,6 +136,7 @@ def compose_effective_config(
     external_model: bool = False,
     external_datamodule: bool = False,
     training_manifest_path_overridden: bool = False,
+    prediction_manifest_path_overridden: bool = False,
 ) -> ConfigCompositionResult[TrainingConfig]: ...
 
 
@@ -149,6 +150,7 @@ def compose_effective_config(
     external_model: bool = False,
     external_datamodule: bool = False,
     training_manifest_path_overridden: bool = False,
+    prediction_manifest_path_overridden: bool = False,
 ) -> ConfigCompositionResult[PredictionConfig]: ...
 
 
@@ -162,6 +164,7 @@ def compose_effective_config(
     external_model: bool = False,
     external_datamodule: bool = False,
     training_manifest_path_overridden: bool = False,
+    prediction_manifest_path_overridden: bool = False,
 ) -> ConfigCompositionResult[EvaluationConfig]: ...
 
 
@@ -174,6 +177,7 @@ def compose_effective_config(
     external_model: bool = False,
     external_datamodule: bool = False,
     training_manifest_path_overridden: bool = False,
+    prediction_manifest_path_overridden: bool = False,
 ) -> ConfigCompositionResult[ConfigT]:
     """Compose the effective typed config object for a BenchRep workflow.
 
@@ -370,6 +374,7 @@ def compose_effective_config(
         external_model=external_model,
         external_datamodule=external_datamodule,
         training_manifest_path_overridden=training_manifest_path_overridden,
+        prediction_manifest_path_overridden=prediction_manifest_path_overridden,
     )
 
     return ConfigCompositionResult(
@@ -544,6 +549,7 @@ def _parse_effective_config(
     external_model: bool,
     external_datamodule: bool,
     training_manifest_path_overridden: bool,
+    prediction_manifest_path_overridden: bool,
 ) -> ConfigT:
     if schema is TrainingConfig:
         return parse_training_config(
@@ -559,6 +565,9 @@ def _parse_effective_config(
         )
 
     if schema is EvaluationConfig:
-        return parse_evaluation_config(raw_config=raw_config)
+        return parse_evaluation_config(
+            raw_config=raw_config,
+            prediction_manifest_path_overridden=prediction_manifest_path_overridden,
+        )
 
     raise TypeError(f"Unsupported config schema: {schema.__name__}")

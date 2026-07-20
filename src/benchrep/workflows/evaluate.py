@@ -77,6 +77,7 @@ def evaluate(
         config_path=config_path,
         full_config_object=full_config_object,
         config_components=config_components,
+        prediction_manifest_path_overridden=prediction_manifest_path is not None,
     )
 
     eval_config = config_composition_result.effective_config

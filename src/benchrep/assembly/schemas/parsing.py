@@ -37,6 +37,17 @@ def parse_prediction_config(
     )
 
 
-def parse_evaluation_config(raw_config: dict[str, Any]) -> EvaluationConfig:
+def parse_evaluation_config(
+    raw_config: dict[str, Any],
+    *,
+    prediction_manifest_path_overridden: bool = False,
+) -> EvaluationConfig:
     """Validate a raw config dictionary and return a typed evaluation config."""
-    return EvaluationConfig.model_validate(raw_config)
+    return EvaluationConfig.model_validate(
+        raw_config,
+        context={
+            "prediction_manifest_path_overridden": (
+                prediction_manifest_path_overridden
+            ),
+        },
+    )
