@@ -259,6 +259,9 @@ def compose_effective_config(
     training_manifest_path_overridden
         Whether a training manifest path was supplied to the prediction
         entrypoint outside the config object.
+    prediction_manifest_path_overridden
+        Whether a prediction manifest path was supplied to the evaluation
+        entrypoint outside the config object.
 
     Returns
     -------
