@@ -51,14 +51,14 @@ def write_training_manifest(
     configured_encoder = config.encoder.name if config.encoder is not None else None
     configured_decoder = config.decoder.name if config.decoder is not None else None
 
-    configured_dataset = config.dataset.name if config.dataset is not None else None
-    configured_transform = (
-        config.dataset.params.transform.name
-        if config.dataset is not None and config.dataset.params.transform is not None
+    configured_dataset = (
+        config.dataset.model_dump(mode="json")
+        if not datamodule_is_external and config.dataset is not None
         else None
     )
-    configured_batch_size = (
-        config.datamodule.batch_size
+
+    configured_datamodule = (
+        config.datamodule.model_dump(mode="json")
         if not datamodule_is_external and config.datamodule is not None
         else None
     )
@@ -77,10 +77,17 @@ def write_training_manifest(
         "model": model_class_name if model_is_external else configured_model,
         "encoder": None if model_is_external else configured_encoder,
         "decoder": None if model_is_external else configured_decoder,
-        "dataset": None if datamodule_is_external else configured_dataset,
+        "dataset": (
+            configured_dataset["name"]
+            if configured_dataset is not None
+            else None
+        ),
         "datamodule": datamodule_class_name if datamodule_is_external else None,
-        "transform": None if datamodule_is_external else configured_transform,
-        "batch_size": None if datamodule_is_external else configured_batch_size,
+        "batch_size": (
+            configured_datamodule.get("batch_size")
+            if configured_datamodule is not None
+            else None
+        ),
         "losses": (
             None
             if model_is_external or config.losses is None
@@ -160,13 +167,16 @@ def write_training_manifest(
                 "configured_encoder": None if model_is_external else configured_encoder,
                 "configured_decoder": None if model_is_external else configured_decoder,
             },
+            "dataset": configured_dataset,
             "datamodule": {
                 "source": datamodule_source,
                 "class_name": datamodule_class_name,
-                "config_reconstructable": not datamodule_is_external,
-                "configured_dataset": None if datamodule_is_external else configured_dataset,
-                "configured_transform": None if datamodule_is_external else configured_transform,
-                "configured_batch_size": None if datamodule_is_external else configured_batch_size,
+                "config_reconstructable": (
+                        not datamodule_is_external
+                        and configured_dataset is not None
+                        and configured_datamodule is not None
+                ),
+                "configured_datamodule": configured_datamodule,
             },
         },
         "records": records,
@@ -221,21 +231,20 @@ def write_prediction_manifest(
     )
 
     configured_dataset = (
-        run_spec.dataset_config.name
-        if run_spec.dataset_config is not None
+        run_spec.dataset_config.model_dump(mode="json")
+        if not datamodule_is_external and run_spec.dataset_config is not None
         else None
     )
-    configured_transform = (
-        run_spec.dataset_config.params.transform.name
-        if (
-            run_spec.dataset_config is not None
-            and run_spec.dataset_config.params.transform is not None
-        )
+
+    configured_datamodule = (
+        run_spec.datamodule_config.model_dump(mode="json")
+        if not datamodule_is_external and run_spec.datamodule_config is not None
         else None
     )
-    configured_batch_size = (
-        run_spec.batch_size if not datamodule_is_external else None
-    )
+
+    if configured_datamodule is not None:
+        configured_datamodule["batch_size"] = run_spec.batch_size
+
 
     embedding_spec = run_spec.export_spec.embeddings
     reconstruction_spec = run_spec.export_spec.reconstructions
@@ -254,9 +263,13 @@ def write_prediction_manifest(
         "model": model_class_name if model_is_external else configured_model,
         "encoder": None if model_is_external else configured_encoder,
         "decoder": None if model_is_external else configured_decoder,
-        "dataset": None if datamodule_is_external else configured_dataset,
+        "dataset": (
+            configured_dataset["name"] if configured_dataset is not None else None
+        ),
         "datamodule": datamodule_class_name if datamodule_is_external else None,
-        "batch_size": configured_batch_size,
+        "batch_size": (
+            configured_datamodule.get("batch_size") if configured_datamodule is not None else None
+        ),
         "max_batches": run_spec.max_batches,
     }
 
@@ -304,17 +317,16 @@ def write_prediction_manifest(
                     "configured_encoder": None if model_is_external else configured_encoder,
                     "configured_decoder": None if model_is_external else configured_decoder,
                 },
+                "dataset": configured_dataset,
                 "datamodule": {
                     "source": datamodule_source,
                     "class_name": datamodule_class_name,
                     "config_reconstructable": (
                             not datamodule_is_external
                             and configured_dataset is not None
-                            and run_spec.datamodule_config is not None
+                            and configured_datamodule is not None
                     ),
-                    "configured_dataset": None if datamodule_is_external else configured_dataset,
-                    "configured_transform": None if datamodule_is_external else configured_transform,
-                    "configured_batch_size": None if datamodule_is_external else configured_batch_size,
+                    "configured_datamodule": configured_datamodule,
                 },
             },
         },
