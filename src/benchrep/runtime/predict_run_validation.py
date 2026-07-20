@@ -454,6 +454,25 @@ def audit_predict_outputs(
         )
     )
 
+    if prediction_manifest is None:
+        audit_items.append(
+            AuditItem(
+                name="manifest data provenance",
+                status="skipped",
+                message=(
+                  "could not be checked because the prediction manifest is unavailable."
+                ),
+            )
+        )
+    else:
+        _audit_prediction_data_provenance(
+            audit_items=audit_items,
+            prediction_manifest=prediction_manifest,
+            run_spec=run_spec,
+            datamodule_source=datamodule_source,
+            datamodule_class_name=datamodule_class_name,
+        )
+
     # -------------------------
     # Prediction runtime summary
     # -------------------------
@@ -760,6 +779,173 @@ def audit_predict_outputs(
     )
 
     return audit_items
+
+
+def _audit_prediction_data_provenance(
+    *,
+    audit_items: list[AuditItem],
+    prediction_manifest: Mapping[str, Any],
+    run_spec: PredictionRunSpec,
+    datamodule_source: Literal["config", "external_object"],
+    datamodule_class_name: str,
+) -> None:
+    """Audit dataset/datamodule provenance against the executed prediction run."""
+    provenance = prediction_manifest.get("provenance")
+
+    if not isinstance(provenance, Mapping):
+        audit_items.append(
+            AuditItem(
+                name="manifest data provenance",
+                status="error",
+                message="manifest is missing mapping section `provenance`",
+            )
+        )
+        return
+
+    prediction_provenance = provenance.get("prediction")
+
+    if not isinstance(prediction_provenance, Mapping):
+        audit_items.append(
+            AuditItem(
+                name="manifest prediction provenance",
+                status="error",
+                message=(
+                    "manifest is missing mapping section "
+                    "`provenance.prediction`"
+                ),
+            )
+        )
+        return
+
+    manifest_datamodule = prediction_provenance.get("datamodule")
+
+    if not isinstance(manifest_datamodule, Mapping):
+        audit_items.append(
+            AuditItem(
+                name="manifest datamodule provenance",
+                status="error",
+                message=(
+                    "manifest is missing mapping section "
+                    "`provenance.prediction.datamodule`"
+                ),
+            )
+        )
+        return
+
+    datamodule_is_external = datamodule_source != "config"
+
+    expected_dataset = (
+        run_spec.dataset_config.model_dump(mode="json")
+        if not datamodule_is_external
+        and run_spec.dataset_config is not None
+        else None
+    )
+    expected_datamodule = (
+        run_spec.datamodule_config.model_dump(mode="json")
+        if not datamodule_is_external
+        and run_spec.datamodule_config is not None
+        else None
+    )
+
+    if expected_datamodule is not None:
+        expected_datamodule["batch_size"] = run_spec.batch_size
+
+    expected_reconstructable = (
+        not datamodule_is_external
+        and expected_dataset is not None
+        and expected_datamodule is not None
+    )
+
+    manifest_source = manifest_datamodule.get("source")
+    manifest_class_name = manifest_datamodule.get("class_name")
+
+    if (
+        manifest_source == datamodule_source
+        and manifest_class_name == datamodule_class_name
+    ):
+        audit_items.append(
+            AuditItem(
+                name="manifest datamodule identity",
+                status="ok",
+                message=(
+                    f"source={manifest_source!r}, "
+                    f"class_name={manifest_class_name!r}"
+                ),
+            )
+        )
+    else:
+        audit_items.append(
+            AuditItem(
+                name="manifest datamodule identity",
+                status="error",
+                message=(
+                    "manifest datamodule identity does not match the executed "
+                    f"run: source={manifest_source!r}, "
+                    f"class_name={manifest_class_name!r}; expected "
+                    f"source={datamodule_source!r}, "
+                    f"class_name={datamodule_class_name!r}"
+                ),
+            )
+        )
+
+    manifest_dataset = prediction_provenance.get("dataset")
+    manifest_configured_datamodule = manifest_datamodule.get(
+        "configured_datamodule"
+    )
+
+    if (
+        manifest_dataset == expected_dataset
+        and manifest_configured_datamodule == expected_datamodule
+    ):
+        audit_items.append(
+            AuditItem(
+                name="manifest dataset/datamodule configuration",
+                status="ok",
+                message=(
+                    "configured dataset and datamodule match the executed run"
+                ),
+            )
+        )
+    else:
+        audit_items.append(
+            AuditItem(
+                name="manifest dataset/datamodule configuration",
+                status="error",
+                message=(
+                    "configured dataset or datamodule does not match the "
+                    "executed run"
+                ),
+            )
+        )
+
+    manifest_reconstructable = manifest_datamodule.get(
+        "config_reconstructable"
+    )
+
+    if manifest_reconstructable is expected_reconstructable:
+        audit_items.append(
+            AuditItem(
+                name="manifest datamodule reconstructability",
+                status="ok",
+                message=(
+                    "`config_reconstructable` correctly reports "
+                    f"{expected_reconstructable}"
+                ),
+            )
+        )
+    else:
+        audit_items.append(
+            AuditItem(
+                name="manifest datamodule reconstructability",
+                status="error",
+                message=(
+                    "`provenance.prediction.datamodule."
+                    "config_reconstructable` is "
+                    f"{manifest_reconstructable!r}, expected "
+                    f"{expected_reconstructable!r}"
+                ),
+            )
+        )
 
 
 def _audit_expected_artifact_file(
