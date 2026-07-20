@@ -1,0 +1,78 @@
+stage: training
+
+run:
+  output_root: outputs
+  project_name: integration_test
+
+reproducibility:
+  seed: 137
+  seed_workers: true
+  float32_matmul_precision: highest
+
+dataset:
+  name: tiny_synthetic
+  params:
+    n_samples: 32
+    image_shape: [1, 28, 28]
+    n_classes: 4
+    n_groups: 2
+    signal_strength: 0.8
+    noise_std: 0.05
+    seed: 137
+
+datamodule:
+  batch_size: 8
+  val_fraction: 0.25
+  num_workers: 0
+  pin_memory: false
+  persistent_workers: false
+  drop_last: false
+
+model:
+  name: autoencoder
+
+encoder:
+  name: mlp
+  params:
+    input_shape: [1, 28, 28]
+    output_dim: 8
+    hidden_dims: [32]
+
+decoder:
+  name: mlp
+  params:
+    output_shape: [1, 28, 28]
+    hidden_dims: [32]
+
+losses:
+  reconstruction:
+    mse:
+      weight: 1.0
+      params:
+        reduction: mean
+
+optimizer:
+  name: adam
+  params:
+    lr: 0.001
+
+trainer:
+  max_epochs: 1
+  accelerator: cpu
+  devices: 1
+  log_every_n_steps: 1
+  deterministic: true
+  benchmark: false
+  precision: 32-true
+
+logger: null
+
+checkpointing:
+  monitor: val/loss
+  mode: min
+  save_top_k: 1
+  save_last: true
+
+inspection:
+  torchview:
+    enabled: false

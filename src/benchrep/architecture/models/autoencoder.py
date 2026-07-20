@@ -111,6 +111,7 @@ class Autoencoder(BenchRepAutoencoderModel):
         output = self(x)
         reconstruction = output["reconstruction"]
         total_loss = torch.zeros((), device=x.device, dtype=x.dtype)
+        batch_size = x.shape[0]
 
         # Custom reconstruction losses should inherit from BaseReconstructionLoss,
         # or at least implement forward(reconstruction, target).
@@ -128,6 +129,7 @@ class Autoencoder(BenchRepAutoencoderModel):
                 on_step=stage == "train",
                 on_epoch=True,
                 prog_bar=False,
+                batch_size=batch_size,
             )
 
             self.log(
@@ -136,6 +138,7 @@ class Autoencoder(BenchRepAutoencoderModel):
                 on_step=stage == "train",
                 on_epoch=True,
                 prog_bar=False,
+                batch_size=batch_size,
             )
 
         self.log(
@@ -144,6 +147,7 @@ class Autoencoder(BenchRepAutoencoderModel):
             on_step=stage == "train",
             on_epoch=True,
             prog_bar=True,
+            batch_size=batch_size,
         )
 
         return total_loss

@@ -149,6 +149,7 @@ class VAE(BenchRepVAEModel):
     def _compute_loss_step(self, batch: AutoencoderBatch, stage: str) -> torch.Tensor:
         x = self._get_input_from_batch(batch)
         output = self(x)
+        batch_size = x.shape[0]
 
         total_loss = torch.zeros((), device=x.device, dtype=x.dtype)
 
@@ -169,6 +170,7 @@ class VAE(BenchRepVAEModel):
                 on_step=stage == "train",
                 on_epoch=True,
                 prog_bar=False,
+                batch_size=batch_size,
             )
 
             self.log(
@@ -177,6 +179,7 @@ class VAE(BenchRepVAEModel):
                 on_step=stage == "train",
                 on_epoch=True,
                 prog_bar=False,
+                batch_size=batch_size,
             )
 
         # Standard Gaussian VAE regularization losses should follow the
@@ -195,6 +198,7 @@ class VAE(BenchRepVAEModel):
                 on_step=stage == "train",
                 on_epoch=True,
                 prog_bar=False,
+                batch_size=batch_size,
             )
 
             self.log(
@@ -203,6 +207,7 @@ class VAE(BenchRepVAEModel):
                 on_step=stage == "train",
                 on_epoch=True,
                 prog_bar=False,
+                batch_size=batch_size,
             )
 
         self.log(
@@ -211,6 +216,7 @@ class VAE(BenchRepVAEModel):
             on_step=stage == "train",
             on_epoch=True,
             prog_bar=True,
+            batch_size=batch_size,
         )
 
         return total_loss
