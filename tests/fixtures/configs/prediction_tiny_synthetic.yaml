@@ -1,0 +1,42 @@
+stage: prediction
+
+source:
+  training_manifest_path: null
+  checkpoint: best
+
+dataset:
+  name: tiny_synthetic
+  params:
+    n_samples: 32
+    image_shape: [1, 28, 28]
+    n_classes: 4
+    n_groups: 2
+    signal_strength: 0.8
+    noise_std: 0.05
+    seed: 137
+
+data:
+  batch_size: 8
+  num_workers: 0
+  max_batches: null
+
+inference:
+  seed: 137
+  seed_workers: true
+  deterministic: true
+  float32_matmul_precision: highest
+
+exports:
+  mode: all
+  embeddings:
+    enabled: true
+    keys: auto
+    primary_key: auto
+  reconstructions:
+    enabled: true
+    n_examples: 8
+    selection: random
+    stratify_by: label
+    seed: 137
+    include_input: true
+    include_prediction: true

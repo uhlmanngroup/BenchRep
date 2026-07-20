@@ -1,0 +1,88 @@
+stage: evaluation
+
+source:
+  prediction_manifest_path: null
+  embeddings_path: null
+  reconstructions_path: null
+
+reductions:
+  pca:
+    enabled: true
+    params:
+      n_components: 4
+      key_added: X_pca
+      random_state: 137
+      overwrite: false
+  umap:
+    enabled: false
+  tsne:
+    enabled: false
+
+clustering:
+  kmeans:
+    enabled: true
+    params:
+      n_clusters: 4
+      key_added: kmeans
+      random_state: 137
+      n_init: 10
+      overwrite: false
+  leiden:
+    enabled: false
+
+metrics:
+  clustering:
+    internal:
+      enabled: true
+      selected: [silhouette]
+    external:
+      enabled: true
+      label_key: label
+      selected: [adjusted_rand_index]
+  embedding:
+    enabled: false
+  predictability:
+    enabled: true
+    selected: [dummy, linear]
+    target_key: label
+    task: classification
+    cv:
+      method: stratified_kfold
+      n_splits: 2
+      shuffle: true
+      random_state: 137
+      scoring: balanced_accuracy
+    tuning:
+      enabled: false
+    params:
+      dummy:
+        strategy: most_frequent
+      linear:
+        model: logistic_regression
+        standardize: true
+        C: 1.0
+        class_weight: null
+        max_iter: 500
+  reconstruction:
+    enabled: true
+    selected: [mse, mae]
+    reduction: global
+
+reconstruction:
+  export_tiffs: true
+  n_examples: 4
+  error_maps:
+    kinds: [absolute]
+    denominator_floor: null
+
+plots:
+  enabled: true
+  params:
+    color_by: [label]
+    dpi: 72
+    formats: [png]
+    reconstruction_grid:
+      include_error_maps: true
+      random_state: 137
+      stratify_by: label
+      channel_selection: 0

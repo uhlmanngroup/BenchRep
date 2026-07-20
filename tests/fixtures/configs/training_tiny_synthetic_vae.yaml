@@ -29,7 +29,9 @@ datamodule:
   drop_last: false
 
 model:
-  name: autoencoder
+  name: vae
+  params:
+    latent_dim: 8
 
 encoder:
   name: mlp
@@ -48,6 +50,12 @@ losses:
   reconstruction:
     mse:
       weight: 1.0
+      params:
+        reduction: mean
+
+  regularization:
+    gaussian_kld:
+      weight: 0.0001
       params:
         reduction: mean
 

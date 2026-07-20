@@ -36,6 +36,10 @@ model_graph = [
     "graphviz",
 ]
 xgboost = ["xgboost"]
+test = [
+    "pytest>=8",
+]
+
 
 [tool.setuptools.packages.find]
 where = ["src"]
