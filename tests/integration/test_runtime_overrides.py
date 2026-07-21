@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from collections.abc import Iterable
 
 import pytest
+from pydantic import ValidationError
 import yaml
 
 from benchrep.assembly.registries.core import DATASETS
@@ -364,6 +366,203 @@ def test_private_external_model_with_private_external_datamodule(
     )
 
 
+def test_external_model_allows_missing_model_config_sections(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _register_internal_dataset()
+    monkeypatch.chdir(tmp_path)
+
+    training_config_path = _write_config_without_sections(
+        source_path=TRAINING_CONFIG_PATH,
+        output_path=tmp_path / "training_without_model_config.yaml",
+        sections={
+            "model",
+            "encoder",
+            "decoder",
+            "losses",
+            "optimizer",
+        },
+    )
+
+    training_result = train_ae(
+        config_path=training_config_path,
+        model=CompatibleExternalAutoencoder(),
+        compatibility_policy="error",
+    )
+
+    prediction_result = predict_ae(
+        config_path=PREDICTION_CONFIG_PATH,
+        training_manifest_path=training_result.manifest_path,
+        model=CompatibleExternalAutoencoder(),
+        compatibility_policy="error",
+    )
+
+    assert training_result.config.model is None
+    assert training_result.config.encoder is None
+    assert training_result.config.decoder is None
+    assert training_result.config.losses == {}
+    assert training_result.config.optimizer is None
+
+    _assert_successful_train_predict(
+        training_result=training_result,
+        prediction_result=prediction_result,
+        expected_model_source="external_object",
+        expected_datamodule_source="config",
+    )
+
+
+def test_external_datamodule_allows_missing_data_config_sections(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    training_config_path = _write_config_without_sections(
+        source_path=TRAINING_CONFIG_PATH,
+        output_path=tmp_path / "training_without_data_config.yaml",
+        sections={
+            "dataset",
+            "datamodule",
+        },
+    )
+    prediction_config_path = _write_config_without_sections(
+        source_path=PREDICTION_CONFIG_PATH,
+        output_path=tmp_path / "prediction_without_dataset_config.yaml",
+        sections={
+            "dataset",
+        },
+    )
+
+    datamodule = _make_standard_external_datamodule()
+
+    training_result = train_ae(
+        config_path=training_config_path,
+        datamodule=datamodule,
+        compatibility_policy="error",
+    )
+
+    prediction_result = predict_ae(
+        config_path=prediction_config_path,
+        training_manifest_path=training_result.manifest_path,
+        datamodule=datamodule,
+        compatibility_policy="error",
+    )
+
+    assert training_result.config.dataset is None
+
+    _assert_successful_train_predict(
+        training_result=training_result,
+        prediction_result=prediction_result,
+        expected_model_source="config",
+        expected_datamodule_source="external_object",
+    )
+
+
+def test_external_model_and_datamodule_allow_all_related_sections_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    training_config_path = _write_config_without_sections(
+        source_path=TRAINING_CONFIG_PATH,
+        output_path=tmp_path / "training_without_override_sections.yaml",
+        sections={
+            "model",
+            "encoder",
+            "decoder",
+            "losses",
+            "optimizer",
+            "dataset",
+            "datamodule",
+        },
+    )
+    prediction_config_path = _write_config_without_sections(
+        source_path=PREDICTION_CONFIG_PATH,
+        output_path=tmp_path / "prediction_without_dataset_config.yaml",
+        sections={
+            "dataset",
+        },
+    )
+
+    datamodule = _make_standard_external_datamodule()
+
+    training_result = train_ae(
+        config_path=training_config_path,
+        model=CompatibleExternalAutoencoder(),
+        datamodule=datamodule,
+        compatibility_policy="error",
+    )
+
+    prediction_result = predict_ae(
+        config_path=prediction_config_path,
+        training_manifest_path=training_result.manifest_path,
+        model=CompatibleExternalAutoencoder(),
+        datamodule=datamodule,
+        compatibility_policy="error",
+    )
+
+    assert training_result.config.model is None
+    assert training_result.config.encoder is None
+    assert training_result.config.decoder is None
+    assert training_result.config.losses == {}
+    assert training_result.config.optimizer is None
+    assert training_result.config.dataset is None
+
+    _assert_successful_train_predict(
+        training_result=training_result,
+        prediction_result=prediction_result,
+        expected_model_source="external_object",
+        expected_datamodule_source="external_object",
+    )
+
+
+@pytest.mark.parametrize(
+    ("removed_sections", "expected_missing_field"),
+    [
+        pytest.param(
+            {
+                "model",
+                "encoder",
+                "decoder",
+                "losses",
+                "optimizer",
+            },
+            "model",
+            id="missing-model-without-override",
+        ),
+        pytest.param(
+            {
+                "dataset",
+                "datamodule",
+            },
+            "dataset",
+            id="missing-datamodule-without-override",
+        ),
+    ],
+)
+def test_missing_config_sections_are_rejected_without_override(
+    tmp_path: Path,
+    removed_sections: set[str],
+    expected_missing_field: str,
+) -> None:
+    training_config_path = _write_config_without_sections(
+        source_path=TRAINING_CONFIG_PATH,
+        output_path=tmp_path / "incomplete_training_config.yaml",
+        sections=removed_sections,
+    )
+
+    with pytest.raises(
+        ValidationError,
+        match=rf"{expected_missing_field}.*required",
+    ):
+        train_ae(
+            config_path=training_config_path,
+        )
+
+
+
 def _make_standard_external_datamodule() -> ExternalDataModule:
     return ExternalDataModule(
         train_dataset=CompatibleAutoencoderBatchDataset(
@@ -489,3 +688,24 @@ def _assert_successful_train_predict(
     assert training_audit["summary"]["errors"] == 0
     assert prediction_audit["summary"]["errors"] == 0
 
+
+def _write_config_without_sections(
+    *,
+    source_path: Path,
+    output_path: Path,
+    sections: Iterable[str],
+) -> Path:
+    with source_path.open(encoding="utf-8") as handle:
+        config = yaml.safe_load(handle)
+
+    for section in sections:
+        config.pop(section, None)
+
+    with output_path.open("w", encoding="utf-8") as handle:
+        yaml.safe_dump(
+            config,
+            handle,
+            sort_keys=False,
+        )
+
+    return output_path
