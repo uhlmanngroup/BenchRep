@@ -1,6 +1,7 @@
 from typing import Any
 
 import torch
+from torch.utils.data import Dataset
 
 from benchrep.architecture.data.datasets import BaseDataset
 
@@ -72,3 +73,79 @@ class TinySyntheticDataset(BaseDataset):
         }
 
         return self.validate_sample(sample)
+
+
+class CompatibleAutoencoderBatchDataset(Dataset):
+    """Dataset whose collated samples structurally satisfy AutoencoderBatch."""
+
+    def __init__(
+        self,
+        n_samples: int = 32,
+        image_shape: tuple[int, int, int] = (1, 28, 28),
+        n_classes: int = 4,
+        seed: int = 137,
+    ) -> None:
+        generator = torch.Generator().manual_seed(seed)
+
+        self.images = torch.rand(
+            n_samples,
+            *image_shape,
+            generator=generator,
+        )
+        self.labels = torch.arange(n_samples) % n_classes
+        self.continuous_values = torch.rand(
+            n_samples,
+            generator=generator,
+        )
+
+    def __len__(self) -> int:
+        return len(self.images)
+
+    def __getitem__(self, index: int) -> dict[str, Any]:
+        label = int(self.labels[index])
+
+        return {
+            "x": self.images[index],
+            "label": label,
+            "sample_id": f"external_{index:04d}",
+            "metadata": {
+                "class_name": f"class_{label}",
+                "continuous_value": float(
+                    self.continuous_values[index]
+                ),
+            },
+        }
+
+
+class PrivateImageBatchDataset(Dataset):
+    """Dataset using a private batch contract unrelated to AutoencoderBatch."""
+
+    def __init__(
+        self,
+        n_samples: int = 32,
+        image_shape: tuple[int, int, int] = (1, 28, 28),
+        n_classes: int = 4,
+        seed: int = 137,
+    ) -> None:
+        generator = torch.Generator().manual_seed(seed)
+
+        self.images = torch.rand(
+            n_samples,
+            *image_shape,
+            generator=generator,
+        )
+        self.categories = torch.arange(n_samples) % n_classes
+
+    def __len__(self) -> int:
+        return len(self.images)
+
+    def __getitem__(self, index: int) -> dict[str, Any]:
+        category = int(self.categories[index])
+
+        return {
+            "image": self.images[index],
+            "identifier": f"private_{index:04d}",
+            "attributes": {
+                "category": category,
+            },
+        }
