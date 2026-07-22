@@ -5,9 +5,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal, get_args
 from uuid import uuid4
+import re
 
 
 RunStage = Literal["training", "prediction", "evaluation"]
+_UNSAFE_RUN_NAME_CHARS = re.compile(r"[^A-Za-z0-9._-]+")
 
 
 @dataclass(frozen=True)
@@ -144,16 +146,34 @@ class RunContext:
         timestamp: str | None = None,
     ) -> "RunContext":
         output_root = Path(output_root).expanduser().resolve() / stage
-        timestamp = timestamp or datetime.now().strftime("%Y%m%d-%H%M%S")
+        timestamp_value = (
+            datetime.now().strftime("%Y%m%d-%H%M%S")
+            if timestamp is None
+            else timestamp
+        )
+        timestamp = _sanitize_run_name_component(
+            timestamp_value,
+            field_name="timestamp",
+        )
 
         if run_name_stem is not None:
-            stem = run_name_stem
+            stem = _sanitize_run_name_component(
+                run_name_stem,
+                field_name="run_name_stem",
+            )
         elif model_name is not None:
-            stem = model_name
+            stem = _sanitize_run_name_component(
+                model_name,
+                field_name="model_name",
+            )
         else:
             stem = stage
 
         if project_name is not None:
+            project_name = _sanitize_run_name_component(
+                project_name,
+                field_name="project_name",
+            )
             base_run_name = f"{project_name}_{stem}_{timestamp}"
         else:
             base_run_name = f"{stem}_{timestamp}"
@@ -246,3 +266,24 @@ class RunContext:
             evaluation_reconstruction_predictions_dir=evaluation_reconstruction_predictions_dir,
             evaluation_reconstruction_error_maps_dir=evaluation_reconstruction_error_maps_dir,
         )
+
+
+def _sanitize_run_name_component(
+    value: str,
+    *,
+    field_name: str,
+) -> str:
+    if not isinstance(value, str):
+        raise TypeError(
+            f"{field_name} must be a string, got {type(value).__name__}."
+        )
+
+    sanitized = _UNSAFE_RUN_NAME_CHARS.sub("_", value.strip())
+    sanitized = sanitized.strip("._-")
+
+    if not sanitized:
+        raise ValueError(
+            f"{field_name} must contain at least one ASCII letter or digit."
+        )
+
+    return sanitized
