@@ -41,5 +41,12 @@ test = [
 ]
 
 
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore:GPU available but not used.*:UserWarning",
+    "ignore:.*LeafSpec.*:FutureWarning",
+    "ignore:The '.*_dataloader' does not have many workers.*:UserWarning",
+]
+
 [tool.setuptools.packages.find]
 where = ["src"]

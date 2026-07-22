@@ -213,3 +213,28 @@ class PrivateBatchExternalAutoencoder(BenchRepAutoencoderModel):
             self.parameters(),
             lr=self.lr,
         )
+
+
+@dataclass(slots=True)
+class MissingReconstructionPrediction:
+    """Structurally invalid because reconstruction is required for AEs."""
+
+    embedding: torch.Tensor
+    input: torch.Tensor
+
+
+class MissingReconstructionExternalAutoencoder(
+    CompatibleExternalAutoencoder
+):
+    def predict_step(
+        self,
+        batch: AutoencoderBatch,
+        batch_idx: int,
+    ) -> MissingReconstructionPrediction:
+        image = batch["x"]
+        restored_image, representation = self(image)
+
+        return MissingReconstructionPrediction(
+            embedding=representation,
+            input=image,
+        )
