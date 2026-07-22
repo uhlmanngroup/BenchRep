@@ -84,7 +84,7 @@ trainer:
 
 logger:
   name: wandb # logger backend: wandb, tensorboard, csv, mlflow
-  credential_path: # null = assume user logged in / env var set, otherwise path to api_key txt file
+  wandb_api_key_path: # null = assume user logged in / env var set, otherwise path to api_key txt file
   params: # backend-specific kwargs passed to the lightning logger
     project: benchrep
     name: test

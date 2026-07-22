@@ -115,13 +115,49 @@ trainer:
 
 logger:
   name: wandb # logger backend: wandb, tensorboard, csv, mlflow
-  credential_path: # null = assume user logged in / env var set, otherwise path to api_key txt file
+  wandb_api_key_path: # null = assume user logged in / env var set, otherwise path to api_key txt file
   params: # backend-specific kwargs passed to the lightning logger
     project: benchrep
     name: test
     id: null
     resume: never
     log_model: False
+
+# CSV
+#logger:
+#  name: csv
+#  params:
+#    save_dir: outputs/logger_smoke/csv
+#    name: csv_smoke
+
+# TensorBoard
+#logger:
+#  name: tensorboard
+#  params:
+#    save_dir: outputs/logger_smoke/tensorboard
+#    name: tensorboard_smoke
+
+# MLflow — local SQLite tracking, no server or credentials needed
+#logger:
+#  name: mlflow
+#  params:
+#    experiment_name: benchrep_logger_smoke
+#    run_name: mlflow_smoke
+#    tracking_uri: sqlite:///mlflow.db
+#    log_model: false
+
+
+# Weights & Biases — local/offline test, no credentials needed
+#logger:
+#  name: wandb
+#  wandb_api_key_path: null
+#  params:
+#    project: benchrep_logger_smoke
+#    name: wandb_smoke
+#    save_dir: outputs/logger_smoke/wandb
+#    offline: true
+#    log_model: false
+
 
 checkpointing: #  optional
   monitor: val/loss

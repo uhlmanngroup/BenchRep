@@ -14,8 +14,13 @@ venv/
 # Outputs / logs / checkpoints
 outputs/
 lightning_logs/
-*.ckpt
 wandb/
+mlruns/
+mlartifacts/
+events.out.tfevents.*
+mlflow.db
+mlflow.db-*
+*.ckpt
 
 # Data
 examples/data/

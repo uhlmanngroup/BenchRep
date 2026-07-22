@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from importlib.util import find_spec
 from pathlib import Path
 from typing import Literal
 
@@ -12,6 +13,19 @@ from benchrep.records import get_run_logger
 from benchrep.assembly.registries.core import LOGGERS
 from benchrep.assembly.schemas import TrainerConfig, LoggerConfig, CheckpointConfig
 from benchrep.runtime import RunContext
+
+
+_LOGGER_BACKEND_MODULES: dict[str, tuple[str, ...]] = {
+    "wandb": ("wandb",),
+    "tensorboard": ("tensorboard", "tensorboardX"),
+    "mlflow": ("mlflow",),
+}
+
+_LOGGER_INSTALL_EXTRAS: dict[str, str] = {
+    "wandb": "wandb",
+    "tensorboard": "tensorboard",
+    "mlflow": "mlflow",
+}
 
 
 def build_trainer(
@@ -195,6 +209,24 @@ def build_trainer(
     return trainer, checkpoint_callback
 
 
+def _require_logger_backend(logger_name: str) -> None:
+    modules = _LOGGER_BACKEND_MODULES.get(logger_name)
+
+    if modules is None:
+        return
+
+    if any(find_spec(module) is not None for module in modules):
+        return
+
+    extra = _LOGGER_INSTALL_EXTRAS[logger_name]
+
+    raise ModuleNotFoundError(
+        f"Logger {logger_name!r} requires an optional backend package. "
+        f"Install it with `pip install 'benchrep[{extra}]'` or install the "
+        f"corresponding package in the active environment."
+    )
+
+
 def _build_logger(logger_config: LoggerConfig | None) -> Logger | bool:
     """Build a Lightning logger from a BenchRep logger config.
 
@@ -205,7 +237,11 @@ def _build_logger(logger_config: LoggerConfig | None) -> Logger | bool:
         return False
 
     requested_name = logger_config.name
-    logger_cls = LOGGERS.get(requested_name)
+    canonical_name = LOGGERS.resolve_key(requested_name)
+
+    _require_logger_backend(canonical_name)
+
+    logger_cls = LOGGERS.get(canonical_name)
 
     _prepare_wandb_api_key(logger_cls, logger_config)
 
