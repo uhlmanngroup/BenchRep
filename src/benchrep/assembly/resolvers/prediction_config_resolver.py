@@ -200,10 +200,10 @@ def resolve_prediction_config(
         field_name="inference.seed_workers",
     )
 
-    deterministic = resolve_optional(
-        prediction_config.inference.deterministic,
-        training_config.trainer.deterministic,
-        field_name="inference.deterministic",
+    deterministic = (
+        prediction_config.inference.deterministic
+        if prediction_config.inference.deterministic is not None
+        else training_config.trainer.deterministic
     )
 
     trainer_config = training_config.trainer.model_copy(
