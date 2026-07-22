@@ -276,23 +276,21 @@ def _prepare_wandb_api_key(
 
     if logger_cls is not WandbLogger:
         raise ValueError(
-            "`logger.wandb_api_key_path` can only be used with the "
-            "registered W&B logger."
+            "`logger.wandb_api_key_path` is only valid for the W&B logger; "
+            f"received logger {logger_config.name!r}."
         )
 
-    api_key_path = logger_config.wandb_api_key_path.expanduser()
+    credential_path = logger_config.wandb_api_key_path.expanduser()
 
-    if not api_key_path.is_file():
+    if not credential_path.is_file():
         raise FileNotFoundError(
-            f"W&B API-key file does not exist: {api_key_path}"
+            f"W&B credential file does not exist: {credential_path}"
         )
 
-    api_key = api_key_path.read_text(encoding="utf-8").strip()
+    api_key = credential_path.read_text(encoding="utf-8").strip()
 
     if not api_key:
-        raise ValueError(
-            f"W&B API-key file is empty: {api_key_path}"
-        )
+        raise ValueError(f"W&B credential file is empty: {credential_path}")
 
     os.environ["WANDB_API_KEY"] = api_key
 
