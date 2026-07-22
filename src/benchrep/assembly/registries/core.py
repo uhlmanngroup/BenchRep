@@ -81,6 +81,24 @@ class Registry:
         # Return canonical registered keys in deterministic order.
         return tuple(sorted(set(self._canonical_keys.values())))
 
+    def aliases_by_canonical(self) -> dict[str, tuple[str, ...]]:
+        """Return aliases grouped by canonical registry key."""
+        _ensure_builtins_registered()
+
+        grouped: dict[str, list[str]] = {
+            key: []
+            for key in self.canonical_keys()
+        }
+
+        for key, canonical_key in self._canonical_keys.items():
+            if key != canonical_key:
+                grouped[canonical_key].append(key)
+
+        return {
+            key: tuple(sorted(aliases))
+            for key, aliases in grouped.items()
+        }
+
     @staticmethod
     def _normalize_key(key: str) -> str:
         if not isinstance(key, str):
