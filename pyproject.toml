@@ -28,8 +28,21 @@ scverse = [
     "leidenalg>=0.10,<1",
     "igraph>=0.11,<1",
 ]
+wandb = [
+    "wandb>=0.17,<1",
+]
+tensorboard = [
+    "tensorboard>=2.14,<3",
+]
+mlflow = [
+    "mlflow>=2.10,<4",
+]
+
+# Convenience aggregate for every supported external logger.
 logging = [
     "wandb>=0.17,<1",
+    "tensorboard>=2.14,<3",
+    "mlflow>=2.10,<4",
 ]
 model_graph = [
     "torchview",

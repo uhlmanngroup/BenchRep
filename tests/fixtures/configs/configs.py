@@ -206,7 +206,7 @@ def make_training_logger_config() -> LoggerConfig:
             "save_dir": "overridden_logs",
             "name": "overridden_csv",
         },
-        credential_path=None,
+        wandb_api_key_path=None,
     )
 
 

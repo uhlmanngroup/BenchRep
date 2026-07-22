@@ -1,24 +1,12 @@
 from __future__ import annotations
 
 import os
-
 from pathlib import Path
-
-import warnings
-
 from typing import Literal
 
 import lightning as L
-
-from lightning.pytorch.loggers import (
-    Logger,
-    CSVLogger,
-    MLFlowLogger,
-    TensorBoardLogger,
-    WandbLogger,
-)
-
 from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.loggers import Logger, WandbLogger
 
 from benchrep.records import get_run_logger
 from benchrep.assembly.registries.core import LOGGERS
@@ -211,7 +199,7 @@ def _build_logger(logger_config: LoggerConfig | None) -> Logger | bool:
     """Build a Lightning logger from a BenchRep logger config.
 
     `logger_config.params` is passed directly to the selected Lightning logger.
-    `credential_path` is BenchRep-owned and is handled before instantiation.
+    `wandb_api_key_path` is BenchRep-owned and is handled before instantiation.
     """
     if logger_config is None:
         return False
@@ -219,7 +207,7 @@ def _build_logger(logger_config: LoggerConfig | None) -> Logger | bool:
     requested_name = logger_config.name
     logger_cls = LOGGERS.get(requested_name)
 
-    _prepare_logger_credentials(logger_cls, logger_config)
+    _prepare_wandb_api_key(logger_cls, logger_config)
 
     logger_params = dict(logger_config.params)
 
@@ -243,44 +231,34 @@ def _build_logger(logger_config: LoggerConfig | None) -> Logger | bool:
         ) from exc
 
 
-def _prepare_logger_credentials(
+def _prepare_wandb_api_key(
     logger_cls: type[Logger],
     logger_config: LoggerConfig,
 ) -> None:
-    if logger_config.credential_path is None:
+    if logger_config.wandb_api_key_path is None:
         return
 
-    if logger_cls is WandbLogger:
-        credential_path = logger_config.credential_path.expanduser()
-
-        if not credential_path.is_file():
-            raise FileNotFoundError(
-                f"W&B credential file does not exist: {credential_path}"
-            )
-
-        api_key = credential_path.read_text().strip()
-
-        if not api_key:
-            raise ValueError(f"W&B credential file is empty: {credential_path}")
-
-        os.environ["WANDB_API_KEY"] = api_key
-        return
-
-    if logger_cls in {CSVLogger, TensorBoardLogger}:
-        warnings.warn(
-            f"`credential_path` was provided for {logger_cls.__name__}, "
-            "but this logger does not use credentials. Ignoring it.",
-            UserWarning,
-            stacklevel=2,
-        )
-        return
-
-    if logger_cls is MLFlowLogger:
+    if logger_cls is not WandbLogger:
         raise ValueError(
-            "`credential_path` is not yet supported for MLFlowLogger. "
-            "Pass MLflow auth/tracking settings through environment variables "
-            "or `logger.params` instead."
+            "`logger.wandb_api_key_path` can only be used with the "
+            "registered W&B logger."
         )
+
+    api_key_path = logger_config.wandb_api_key_path.expanduser()
+
+    if not api_key_path.is_file():
+        raise FileNotFoundError(
+            f"W&B API-key file does not exist: {api_key_path}"
+        )
+
+    api_key = api_key_path.read_text(encoding="utf-8").strip()
+
+    if not api_key:
+        raise ValueError(
+            f"W&B API-key file is empty: {api_key_path}"
+        )
+
+    os.environ["WANDB_API_KEY"] = api_key
 
 
 def _build_checkpoint_callback(
