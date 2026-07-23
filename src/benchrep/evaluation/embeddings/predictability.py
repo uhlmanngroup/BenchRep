@@ -23,6 +23,7 @@ from sklearn.model_selection import (
 from benchrep.evaluation.utils import (
     PredictabilityTask,
     validate_adata_x,
+    validate_embedding_matrix,
     validate_obs_key,
 )
 from benchrep.evaluation.embeddings.predictability_probes import PredictabilityProbeSpec
@@ -189,11 +190,7 @@ def resolve_predictability_inputs(
     validate_adata_x(adata)
     validate_obs_key(adata, target_key)
 
-    X = adata.X
-    if hasattr(X, "toarray"):
-        X = X.toarray()
-    else:
-        X = np.asarray(X)
+    X = validate_embedding_matrix(adata.X)
 
     if X.shape[0] != adata.n_obs:
         raise ValueError(

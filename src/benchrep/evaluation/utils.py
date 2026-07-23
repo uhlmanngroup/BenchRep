@@ -22,6 +22,49 @@ def validate_adata_x(adata: ad.AnnData) -> None:
         raise ValueError(f"adata.X must be 2D, got shape {adata.X.shape}.")
 
 
+def validate_embedding_matrix(
+    embeddings: Any,
+) -> np.ndarray:
+    """Return a validated dense embedding matrix."""
+
+    if hasattr(embeddings, "toarray"):
+        embedding_array = np.asarray(embeddings.toarray())
+    else:
+        embedding_array = np.asarray(to_numpy(embeddings))
+
+    if embedding_array.ndim != 2:
+        raise ValueError(
+            "Embeddings must have shape (n_samples, n_dimensions), got "
+            f"{embedding_array.shape}."
+        )
+
+    if embedding_array.shape[0] < 1:
+        raise ValueError(
+            "Embeddings must contain at least one sample."
+        )
+
+    if embedding_array.shape[1] < 1:
+        raise ValueError(
+            "Embeddings must contain at least one dimension."
+        )
+
+    if (
+        not np.issubdtype(embedding_array.dtype, np.number)
+        or np.issubdtype(embedding_array.dtype, np.complexfloating)
+    ):
+        raise TypeError(
+            "Embeddings must contain real numeric values, got dtype "
+            f"{embedding_array.dtype}."
+        )
+
+    if not np.isfinite(embedding_array).all():
+        raise ValueError(
+            "Embeddings contain non-finite values."
+        )
+
+    return embedding_array
+
+
 def validate_obs_key(adata: ad.AnnData, key: str) -> None:
     """Validate that ``key`` exists in ``adata.obs``."""
 

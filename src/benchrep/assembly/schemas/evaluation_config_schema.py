@@ -228,6 +228,30 @@ class EvaluationClusteringMetricsConfig(BaseModel):
     external: ExternalClusteringMetricConfig = Field(default_factory=ExternalClusteringMetricConfig)
 
 
+# Embedding ---
+class EmbeddingMetricConfig(EvalMetricGroupConfig):
+    selected: list[str] = Field(
+        default_factory=lambda: [
+            "mean",
+            "median",
+            "standard_deviation",
+            "minimum",
+            "maximum",
+            "quantiles",
+        ]
+    )
+
+    @model_validator(mode="after")
+    def validate_embedding_metrics(self) -> "EmbeddingMetricConfig":
+        if self.enabled is not False and not self.selected:
+            raise ValueError(
+                "metrics.embedding.selected cannot be empty when "
+                "embedding metrics are enabled."
+            )
+
+        return self
+
+
 # Reconstruction ---
 class ReconstructionMetricConfig(EvalMetricGroupConfig):
     reduction: Literal["global", "per_channel", "both"] = "global"
@@ -404,7 +428,7 @@ class EvaluationPredictabilityConfig(EvalStepConfig):
 # Full evaluation metrics config ---
 class EvaluationMetricsConfig(BaseModel):
     clustering: EvaluationClusteringMetricsConfig = Field(default_factory=EvaluationClusteringMetricsConfig)
-    embedding: EvalMetricGroupConfig = Field(default_factory=EvalMetricGroupConfig)
+    embedding: EmbeddingMetricConfig = Field(default_factory=EmbeddingMetricConfig)
     predictability: EvaluationPredictabilityConfig = Field(default_factory=EvaluationPredictabilityConfig)
     reconstruction: ReconstructionMetricConfig = Field(default_factory=ReconstructionMetricConfig)
 

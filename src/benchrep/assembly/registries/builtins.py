@@ -96,6 +96,14 @@ def register_builtins() -> None:
         )
         from benchrep.evaluation.embeddings.clustering import run_kmeans, run_leiden
         from benchrep.evaluation.embeddings.reductions import run_pca, run_tsne, run_umap
+        from benchrep.evaluation.embeddings.embedding_metrics import (
+            dimensionwise_mean,
+            dimensionwise_median,
+            dimensionwise_standard_deviation,
+            dimensionwise_minimum,
+            dimensionwise_maximum,
+            dimensionwise_quantiles,
+        )
         from benchrep.evaluation.embeddings.predictability_probes import (
             build_dummy_predictability_probe,
             build_linear_predictability_probe,
@@ -243,11 +251,41 @@ def register_builtins() -> None:
             "homogeneity_score",
         )
 
-        def _predictability_probe_not_implemented(*args, **kwargs):
-            raise NotImplementedError(
-                "Predictability probe builders are registered, but the predictability "
-                "backend has not been implemented yet."
-            )
+        # Embedding metrics
+        EVAL_EMBEDDING_METRICS.register(
+            "mean",
+            dimensionwise_mean,
+            "dimensionwise_mean",
+        )
+        EVAL_EMBEDDING_METRICS.register(
+            "median",
+            dimensionwise_median,
+            "dimensionwise_median",
+        )
+        EVAL_EMBEDDING_METRICS.register(
+            "standard_deviation",
+            dimensionwise_standard_deviation,
+            "dimensionwise_standard_deviation",
+            "std",
+        )
+        EVAL_EMBEDDING_METRICS.register(
+            "minimum",
+            dimensionwise_minimum,
+            "dimensionwise_minimum",
+            "min",
+        )
+        EVAL_EMBEDDING_METRICS.register(
+            "maximum",
+            dimensionwise_maximum,
+            "dimensionwise_maximum",
+            "max",
+        )
+        EVAL_EMBEDDING_METRICS.register(
+            "quantiles",
+            dimensionwise_quantiles,
+            "dimensionwise_quantiles",
+            "quantile",
+        )
 
         # Predictability probes
         EVAL_PREDICTABILITY_PROBES.register(

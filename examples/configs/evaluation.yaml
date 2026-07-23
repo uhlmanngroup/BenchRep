@@ -100,9 +100,14 @@ metrics:
       params: null # null = metric/backend defaults
 
   embedding:
-    enabled: true # true = force on; false = off; null = off
-    selected: null # null = all supported embedding metrics
-    params: null # null = metric/backend defaults
+    enabled: true # true = force on; false = off; null = on
+    # omit = default list below; null is invalid
+    selected: [ "mean", "median", "standard_deviation", "minimum", "maximum", "quantiles" ]
+    params:
+      standard_deviation:
+        ddof: 0
+      quantiles:
+        q: [ 0.25, 0.75 ]
 
   predictability:
     enabled: true

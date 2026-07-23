@@ -78,7 +78,7 @@ class EvaluationStepSpec:
     external_clustering_metric_params: dict[str, dict[str, Any]]
 
     embedding_metrics_enabled: bool
-    embedding_metrics: list[str] | None
+    embedding_metrics: list[str]
     embedding_metric_params: dict[str, dict[str, Any]]
 
     predictability_enabled: bool
@@ -527,8 +527,8 @@ def resolve_step_spec(
       runtime information is required.
 
     Most static defaults are resolved immediately. PCA, UMAP, Leiden, internal
-    clustering metrics, and plots default to enabled. t-SNE, KMeans, and
-    embedding metrics default to disabled.
+    clustering metrics, embedding metrics, and plots default to enabled. t-SNE
+    and KMeans default to disabled.
 
     Reconstruction metrics default to enabled when reconstruction artifacts are
     available. Reconstruction TIFF export requires explicit enablement and available
@@ -576,6 +576,17 @@ def resolve_step_spec(
         if clustering_enabled
         else False
     )
+
+    embedding_metrics = resolve_registry_keys(
+        selected=evaluation_config.metrics.embedding.selected,
+        registry=EVAL_EMBEDDING_METRICS,
+        none_policy="preserve",
+    )
+
+    if embedding_metrics is None:
+        raise ValueError(
+            "metrics.embedding.selected cannot be None."
+        )
 
     plot_params = params_to_dict(evaluation_config.plots.params)
     plot_params = _resolve_plot_params(
@@ -717,13 +728,11 @@ def resolve_step_spec(
             registry=EVAL_EXTERNAL_CLUSTERING_METRICS,
         ),
 
-        # None = False
-        embedding_metrics_enabled=disabled_by_default(evaluation_config.metrics.embedding.enabled),
-        embedding_metrics=resolve_registry_keys(
-            selected=evaluation_config.metrics.embedding.selected,
-            registry=EVAL_EMBEDDING_METRICS,
-            none_policy="preserve",
+        # None = True
+        embedding_metrics_enabled=enabled_by_default(
+            evaluation_config.metrics.embedding.enabled
         ),
+        embedding_metrics=embedding_metrics,
         embedding_metric_params=resolve_registry_param_keys(
             params=evaluation_config.metrics.embedding.params,
             registry=EVAL_EMBEDDING_METRICS,

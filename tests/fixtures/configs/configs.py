@@ -33,7 +33,7 @@ from benchrep.assembly.schemas.prediction_config_schema import (
 from benchrep.assembly.schemas.evaluation_config_schema import (
     DummyProbeConfig,
     ErrorMapParams,
-    EvalMetricGroupConfig,
+    EmbeddingMetricConfig,
     EvaluationCVTuningConfig,
     EvaluationClusteringConfig,
     EvaluationClusteringMetricsConfig,
@@ -429,10 +429,8 @@ def make_evaluation_metrics_config() -> EvaluationMetricsConfig:
                 params=None,
             ),
         ),
-        embedding=EvalMetricGroupConfig(
+        embedding=EmbeddingMetricConfig(
             enabled=False,
-            selected=None,
-            params=None,
         ),
         predictability=EvaluationPredictabilityConfig(
             enabled=True,
