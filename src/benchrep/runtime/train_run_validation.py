@@ -16,6 +16,7 @@ from benchrep.runtime.utils import (
     log_audit_summary,
     audit_config_records,
     audit_resolved_config_reconstructability,
+    audit_runtime_environment_record,
 )
 from benchrep.runtime.run_context import RunContext
 from benchrep.interfaces.model_families import ModelFamilySpec
@@ -153,6 +154,7 @@ def audit_train_outputs(
     model_class_name: str,
     datamodule_source: Literal["config", "external_object"],
     datamodule_class_name: str,
+    runtime_environment_path: Path | str,
 ) -> list[AuditItem]:
     audit_items: list[AuditItem] = []
 
@@ -215,6 +217,15 @@ def audit_train_outputs(
                     ),
                 )
             )
+
+    # -------------------------
+    # Runtime environment
+    # -------------------------
+    audit_runtime_environment_record(
+        audit_items=audit_items,
+        runtime_environment_path=runtime_environment_path,
+        manifest=training_manifest,
+    )
 
     # -------------------------
     # Resolved-config reconstructability

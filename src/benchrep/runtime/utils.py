@@ -369,3 +369,133 @@ def audit_resolved_config_reconstructability(
             ),
         )
     )
+
+
+def audit_runtime_environment_record(
+    *,
+    audit_items: list[AuditItem],
+    runtime_environment_path: Path | str,
+    manifest: Mapping[str, Any] | None,
+) -> None:
+    """Audit availability and readability of a runtime-environment record."""
+    runtime_environment_path = Path(runtime_environment_path)
+
+    # Manifest linkage
+    records = (
+        manifest.get("records")
+        if isinstance(manifest, Mapping)
+        else None
+    )
+    recorded_path = (
+        records.get("runtime_environment_path")
+        if isinstance(records, Mapping)
+        else None
+    )
+
+    if manifest is None:
+        audit_items.append(
+            AuditItem(
+                name="manifest runtime environment reference",
+                status="skipped",
+                message="manifest is unavailable",
+            )
+        )
+    elif recorded_path == str(runtime_environment_path):
+        audit_items.append(
+            AuditItem(
+                name="manifest runtime environment reference",
+                status="ok",
+                message=(
+                    "manifest references the runtime environment "
+                    f"at '{runtime_environment_path}'"
+                ),
+            )
+        )
+    else:
+        audit_items.append(
+            AuditItem(
+                name="manifest runtime environment reference",
+                status="error",
+                message=(
+                    f"manifest references {recorded_path!r}, "
+                    f"but the runtime environment was written to "
+                    f"'{runtime_environment_path}'"
+                ),
+            )
+        )
+
+    # File existence
+    environment_exists = audit_existing_file(
+        audit_items=audit_items,
+        name="runtime environment",
+        path=runtime_environment_path,
+        expected_suffixes={".yaml", ".yml"},
+    )
+
+    if not environment_exists:
+        return
+
+    # YAML readability
+    try:
+        environment = load_yaml(runtime_environment_path)
+
+        if not isinstance(environment, Mapping):
+            raise TypeError(
+                "loaded YAML object is not a mapping"
+            )
+
+    except Exception as exc:
+        audit_items.append(
+            AuditItem(
+                name="runtime environment load",
+                status="error",
+                message=(
+                    f"could not load '{runtime_environment_path}': "
+                    f"{type(exc).__name__}: {exc}"
+                ),
+            )
+        )
+        return
+
+    audit_items.append(
+        AuditItem(
+            name="runtime environment load",
+            status="ok",
+            message=(
+                f"loaded YAML mapping from "
+                f"'{runtime_environment_path}'"
+            ),
+        )
+    )
+
+    # Collection warnings
+    collection_warnings = environment.get(
+        "collection_warnings",
+        [],
+    )
+
+    if collection_warnings:
+        warning_values = (
+            collection_warnings
+            if isinstance(collection_warnings, list)
+            else [collection_warnings]
+        )
+
+        audit_items.append(
+            AuditItem(
+                name="runtime environment collection",
+                status="warning",
+                message="; ".join(
+                    str(warning)
+                    for warning in warning_values
+                ),
+            )
+        )
+    else:
+        audit_items.append(
+            AuditItem(
+                name="runtime environment collection",
+                status="ok",
+                message="completed without collection warnings",
+            )
+        )

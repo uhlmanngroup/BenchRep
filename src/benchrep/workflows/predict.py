@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Literal
 
 import lightning as L
 import torch
@@ -35,6 +36,9 @@ from benchrep.records import (
     export_prediction_outputs,
     write_prediction_manifest,
     write_audit_report,
+    get_runtime_environment_filename,
+    collect_prediction_environment_context,
+    write_runtime_environment,
 )
 from benchrep.runtime import RunContext
 from benchrep.runtime.predict_run_validation import (
@@ -124,7 +128,13 @@ def _predict(
         )
 
     model_is_external = model is not None
+    model_source: Literal["config", "external_object"] = (
+        "external_object" if model_is_external else "config"
+    )
     datamodule_is_external = datamodule is not None
+    datamodule_source: Literal["config", "external_object"] = (
+        "external_object" if datamodule_is_external else "config"
+    )
 
     # Training manifest override
     if training_manifest_path is not None:
@@ -286,6 +296,29 @@ def _predict(
         max_batches=run_spec.max_batches,
     )
 
+    prediction_environment_context = (
+        collect_prediction_environment_context(
+            run_spec=run_spec,
+            trainer=trainer,
+            datamodule_source=datamodule_source,
+        )
+    )
+
+    runtime_environment_path = write_runtime_environment(
+        output_path=(
+            run_context.metadata_dir
+            / get_runtime_environment_filename(run_spec.stage)
+        ),
+        stage=run_spec.stage,
+        run_name=run_context.run_name,
+        workflow_context=prediction_environment_context,
+    )
+
+    run_log.info(
+        "Exported runtime environment to: '%s'",
+        runtime_environment_path,
+    )
+
     run_log.info("Starting prediction...")
 
     try:
@@ -376,11 +409,9 @@ def _predict(
         created_at=created_at,
         completed_at=completed_at,
         status="completed",
-        model_source="external_object" if model_is_external else "config",
+        model_source=model_source,
         model_class_name=type(model).__name__,
-        datamodule_source=(
-            "external_object" if datamodule_is_external else "config"
-        ),
+        datamodule_source=datamodule_source,
         datamodule_class_name=type(datamodule).__name__,
     )
 
@@ -395,10 +426,11 @@ def _predict(
         config_composition_result=config_composition_result,
         resolved_config_path=run_context.config_dir / "resolved_config.yaml",
         prediction_manifest_path=manifest_path,
-        model_source="external_object" if model_is_external else "config",
+        model_source=model_source,
         model_class_name=type(model).__name__,
-        datamodule_source="external_object" if datamodule_is_external else "config",
+        datamodule_source=datamodule_source,
         datamodule_class_name=type(datamodule).__name__,
+        runtime_environment_path=runtime_environment_path,
     )
 
     audit_report_path = write_audit_report(

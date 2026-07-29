@@ -24,6 +24,9 @@ from benchrep.records.utils import (
     paths_to_strings,
     count_paths,
 )
+from benchrep.records.runtime_environment import (
+    get_runtime_environment_filename,
+)
 
 
 def write_training_manifest(
@@ -659,6 +662,10 @@ def _build_common_records(
         ),
         "resolved_config_path": str(
             run_context.config_dir / "resolved_config.yaml"
+        ),
+        "runtime_environment_path": str(
+            run_context.metadata_dir
+            / get_runtime_environment_filename(run_context.stage)
         ),
         "log_dir": str(run_context.log_dir),
         "metadata_dir": str(run_context.metadata_dir),

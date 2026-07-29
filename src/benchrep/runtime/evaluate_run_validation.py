@@ -25,6 +25,7 @@ from benchrep.runtime.utils import (
     log_audit_summary,
     audit_config_records,
     audit_resolved_config_reconstructability,
+    audit_runtime_environment_record,
 )
 
 
@@ -194,6 +195,7 @@ def audit_evaluate_outputs(
     config_composition_result: ConfigCompositionResult[Any],
     resolved_config_path: Path | str,
     evaluation_manifest_path: Path | str,
+    runtime_environment_path: Path | str,
 ) -> list[AuditItem]:
     """Audit evaluation runtime results and exported artifacts."""
     audit_items: list[AuditItem] = []
@@ -261,6 +263,15 @@ def audit_evaluate_outputs(
                     ),
                 )
             )
+
+    # -------------------------
+    # Runtime environment
+    # -------------------------
+    audit_runtime_environment_record(
+        audit_items=audit_items,
+        runtime_environment_path=runtime_environment_path,
+        manifest=evaluation_manifest,
+    )
 
     # -------------------------
     # Resolved-config reconstructability

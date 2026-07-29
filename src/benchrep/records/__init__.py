@@ -18,6 +18,13 @@ from benchrep.records.anndata_io import (
     package_matrix_as_anndata,
 )
 from benchrep.records.audit_reports import write_audit_report
+from benchrep.records.runtime_environment import (
+    get_runtime_environment_filename,
+    collect_training_environment_context,
+    collect_prediction_environment_context,
+    collect_evaluation_environment_context,
+    write_runtime_environment,
+)
 
 __all__ = [
     "save_config_records",
@@ -35,4 +42,9 @@ __all__ = [
     "write_h5ad",
     "package_matrix_as_anndata",
     "write_audit_report",
+    "get_runtime_environment_filename",
+    "collect_training_environment_context",
+    "collect_prediction_environment_context",
+    "collect_evaluation_environment_context",
+    "write_runtime_environment",
 ]

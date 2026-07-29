@@ -1,3 +1,11 @@
+from importlib.metadata import PackageNotFoundError, version
+
+
+try:
+    __version__ = version("benchrep")
+except PackageNotFoundError:
+    __version__ = "0+unknown"
+
 from benchrep.workflows.train import train_ae, train_vae
 from benchrep.workflows.predict import predict_ae, predict_vae
 from benchrep.workflows.evaluate import evaluate
@@ -8,6 +16,7 @@ from benchrep.assembly.registries.discovery import (
 
 
 __all__ = [
+    "__version__",
     "train_ae",
     "train_vae",
     "predict_ae",

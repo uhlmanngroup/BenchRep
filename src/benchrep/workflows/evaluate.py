@@ -24,6 +24,9 @@ from benchrep.records import (
     export_evaluation_outputs,
     write_evaluation_manifest,
     write_audit_report,
+    get_runtime_environment_filename,
+    collect_evaluation_environment_context,
+    write_runtime_environment,
 )
 from benchrep.runtime import RunContext
 from benchrep.runtime.evaluate_run_validation import (
@@ -119,6 +122,27 @@ def evaluate(
         original_config_path=config_composition_result.original_config_path,
         resolved_config=run_spec.evaluation_config,
         config_out_dir=run_context.config_dir,
+    )
+
+    evaluation_environment_context = (
+        collect_evaluation_environment_context(
+            run_spec=run_spec,
+        )
+    )
+
+    runtime_environment_path = write_runtime_environment(
+        output_path=(
+            run_context.metadata_dir
+            / get_runtime_environment_filename(run_spec.stage)
+        ),
+        stage=run_spec.stage,
+        run_name=run_context.run_name,
+        workflow_context=evaluation_environment_context,
+    )
+
+    run_log.info(
+        "Exported runtime environment to: '%s'",
+        runtime_environment_path,
     )
 
     # Load and validate evaluation inputs
@@ -241,6 +265,7 @@ def evaluate(
         config_composition_result=config_composition_result,
         resolved_config_path=run_context.config_dir / "resolved_config.yaml",
         evaluation_manifest_path=manifest_path,
+        runtime_environment_path=runtime_environment_path,
     )
 
     audit_report_path = write_audit_report(
