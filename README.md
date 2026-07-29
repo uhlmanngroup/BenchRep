@@ -182,6 +182,7 @@ outputs/<workflow>/<run_name>_<timestamp>/
     │   ├── stderr.log
     │   └── benchrep.run.log
     └── metadata/
+        ├── <workflow>_runtime_environment.yaml
         ├── <workflow>_manifest.yaml
         └── <workflow>_audit_report.yaml
 ```
@@ -251,8 +252,9 @@ Shared run records include:
 2. `resolved_config.yaml`:  Effective config used by BenchRep, harmonized with any supplied config objects; cannot reconstruct externally supplied models or datamodules.
 3. `stderr.log`: Captured console warnings and errors.
 4. `benchrep.run.log`: BenchRep workflow logging with paths and summaries.
-5. `<workflow>_manifest.yaml`: Run provenance, inputs, configuration, outputs, and summary metadata.
-6. `<workflow>_audit_report.yaml`: Final checks that expected metrics, records, and artifacts were produced successfully and saved to disk.
+5. `<workflow>_runtime_environment.yaml`: Runtime hardware, software, accelerator, source-version, and workflow reproducibility provenance.
+6. `<workflow>_manifest.yaml`: Run provenance, inputs, configuration, outputs, and summary metadata.
+7. `<workflow>_audit_report.yaml`: Final checks that expected metrics, records, and artifacts were produced successfully and saved to disk.
 
 
 `metrics.json` includes:
