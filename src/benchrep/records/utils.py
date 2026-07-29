@@ -1,4 +1,5 @@
 from collections.abc import Mapping, Sequence
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -32,3 +33,8 @@ def count_paths(value: Any) -> int:
         return sum(count_paths(item) for item in value)
 
     return 0
+
+
+def now_isoformat() -> str:
+    """Return the current local time as a timezone-aware ISO 8601 string."""
+    return datetime.now().astimezone().isoformat(timespec="seconds")

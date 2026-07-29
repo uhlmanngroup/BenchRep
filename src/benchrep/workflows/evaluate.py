@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Mapping
 
@@ -28,6 +27,7 @@ from benchrep.records import (
     collect_evaluation_environment_context,
     write_runtime_environment,
 )
+from benchrep.records.utils import now_isoformat
 from benchrep.runtime import RunContext
 from benchrep.runtime.evaluate_run_validation import (
     prepare_evaluate_source_inputs,
@@ -98,7 +98,7 @@ def evaluate(
         project_name=run_spec.run_identity.project_name,
         model_name=run_spec.run_identity.model_name,
     )
-    created_at = datetime.now().isoformat(timespec="seconds")
+    created_at = now_isoformat()
 
     # Initiate local run logger
     run_log = setup_run_logger(log_out_dir=run_context.log_dir)
@@ -239,7 +239,7 @@ def evaluate(
 
     run_log.info("Finished evaluation artifact export.")
 
-    completed_at = datetime.now().isoformat(timespec="seconds")
+    completed_at = now_isoformat()
 
     # Export evaluation manifest
     manifest_path = run_context.metadata_dir / "evaluation_manifest.yaml"
@@ -274,7 +274,7 @@ def evaluate(
         output_path=(
                 run_context.metadata_dir / "evaluation_audit_report.yaml"
         ),
-        audited_at=datetime.now().isoformat(timespec="seconds"),
+        audited_at=now_isoformat(),
     )
 
     run_log.info(

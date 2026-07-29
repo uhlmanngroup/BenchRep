@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from collections.abc import Mapping
 from typing import Literal
@@ -32,6 +31,7 @@ from benchrep.records import (
     collect_training_environment_context,
     write_runtime_environment,
 )
+from benchrep.records.utils import now_isoformat
 from benchrep.interfaces.model_families import (
     SupportedModel,
     ModelFamilySpec,
@@ -159,7 +159,7 @@ def _train(
         model_name=model_name,
     )
 
-    created_at = datetime.now().isoformat(timespec="seconds")
+    created_at = now_isoformat()
 
     # Initiate local run logger
     run_log = setup_run_logger(log_out_dir=run_context.log_dir)
@@ -301,7 +301,7 @@ def _train(
         raise
 
     run_log.info("Finished training")
-    completed_at = datetime.now().isoformat(timespec="seconds")
+    completed_at = now_isoformat()
 
     # Export torchview graph if possible
     torchview_graph_path = None
@@ -373,7 +373,7 @@ def _train(
         output_path=(
             run_context.metadata_dir / "training_audit_report.yaml"
         ),
-        audited_at=datetime.now().isoformat(timespec="seconds"),
+        audited_at=now_isoformat(),
     )
 
     run_log.info(

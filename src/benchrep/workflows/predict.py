@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -40,6 +39,7 @@ from benchrep.records import (
     collect_prediction_environment_context,
     write_runtime_environment,
 )
+from benchrep.records.utils import now_isoformat
 from benchrep.runtime import RunContext
 from benchrep.runtime.predict_run_validation import (
     validate_predict_contract_compatibility,
@@ -180,7 +180,7 @@ def _predict(
         project_name=run_spec.training_config.run.project_name,
         model_name=model_name,
     )
-    created_at = datetime.now().isoformat(timespec="seconds")
+    created_at = now_isoformat()
 
     # Initiate local run logger
     run_log = setup_run_logger(log_out_dir=run_context.log_dir)
@@ -396,7 +396,7 @@ def _predict(
 
     run_log.info("Finished exporting prediction outputs")
 
-    completed_at = datetime.now().isoformat(timespec="seconds")
+    completed_at = now_isoformat()
 
     # Export prediction manifest
     manifest_path = run_context.metadata_dir / "prediction_manifest.yaml"
@@ -439,7 +439,7 @@ def _predict(
         output_path=(
                 run_context.metadata_dir / "prediction_audit_report.yaml"
         ),
-        audited_at=datetime.now().isoformat(timespec="seconds"),
+        audited_at=now_isoformat(),
     )
 
     run_log.info(

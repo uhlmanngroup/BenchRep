@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from datetime import datetime, timezone
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import distributions
 from importlib.metadata import version as distribution_version
@@ -15,6 +14,9 @@ from typing import Any, Literal, TYPE_CHECKING
 import torch
 import yaml
 from yaml.nodes import ScalarNode
+
+from benchrep.records.utils import now_isoformat
+
 
 if TYPE_CHECKING:
     import lightning as L
@@ -83,9 +85,7 @@ def collect_runtime_environment(
 
     return {
         "format_version": RUNTIME_ENVIRONMENT_FORMAT_VERSION,
-        "captured_at": datetime.now(timezone.utc).isoformat(
-            timespec="seconds"
-        ),
+        "captured_at": now_isoformat(),
         "run": {
             "stage": stage,
             "run_name": run_name,
