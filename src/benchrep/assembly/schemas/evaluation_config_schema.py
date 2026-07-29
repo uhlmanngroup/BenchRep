@@ -312,7 +312,14 @@ class EvaluationCVTuningConfig(BaseModel):
 
 
 class DummyProbeConfig(BaseModel):
-    strategy: Literal["most_frequent", "stratified", "uniform", "mean", "median"] = "most_frequent"
+    strategy: Literal[
+        "most_frequent",
+        "stratified",
+        "uniform",
+        "mean",
+        "median",
+    ] = "most_frequent"
+    random_state: int | None = 137
 
 
 class LogisticRegressionProbeConfig(BaseModel):

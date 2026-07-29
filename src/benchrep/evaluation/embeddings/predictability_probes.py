@@ -38,6 +38,7 @@ def build_dummy_predictability_probe(
     """
     params = dict(params)
     strategy = params.pop("strategy")
+    random_state = params.pop("random_state", None)
 
     # Dummy probe takes just one parameter
     if params:
@@ -47,7 +48,10 @@ def build_dummy_predictability_probe(
         )
 
     if task == "classification":
-        estimator = DummyClassifier(strategy=strategy)
+        estimator = DummyClassifier(
+            strategy=strategy,
+            random_state=random_state,
+        )
 
     elif task == "regression":
         estimator = DummyRegressor(strategy=strategy)
