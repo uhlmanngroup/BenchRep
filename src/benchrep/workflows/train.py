@@ -47,7 +47,13 @@ from benchrep.assembly.config import (
     SupportedConfigComponent,
 )
 from benchrep.assembly.schemas import TrainingConfig
-from benchrep.assembly.builders import build_datamodule, build_dataset, build_model, build_trainer
+from benchrep.assembly.builders import (
+    build_datamodule,
+    build_dataset,
+    build_transform_pipelines,
+    build_model,
+    build_trainer,
+)
 from benchrep.assembly.registries.builtins import register_builtins
 
 
@@ -205,6 +211,10 @@ def _train(
         assert dataset_config is not None
         assert datamodule_config is not None
 
+        transform_pipelines = build_transform_pipelines(
+            train_config.transforms,
+        )
+
         dataset = build_dataset(
             dataset_config=dataset_config,
         )
@@ -214,12 +224,14 @@ def _train(
             datamodule_config=datamodule_config,
             seed=train_config.reproducibility.seed,
             stage=train_config.stage,
+            training_pipeline=transform_pipelines.training,
+            preprocessing_pipeline=transform_pipelines.preprocessing,
         )
     else:
         run_log.info(
-            "External datamodule was provided; dataset/datamodule config sections "
-            "will be ignored regardless of whether they came from YAML, a full config "
-            "object, or config_components."
+            "External datamodule was provided; dataset, datamodule, and transforms "
+            "config sections will be ignored regardless of whether they came from "
+            "YAML, a full config object, or config_components."
         )
 
     if not model_is_external:

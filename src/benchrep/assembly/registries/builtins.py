@@ -41,7 +41,7 @@ def register_builtins() -> None:
 
     try:
         import torch
-        from torchvision import transforms
+        from torchvision.transforms import v2
 
         from lightning.pytorch.loggers import (
             CSVLogger,
@@ -79,6 +79,9 @@ def register_builtins() -> None:
         )
 
         from benchrep.architecture.data import MNISTDataset
+        from benchrep.architecture.data.transforms import (
+            create_to_dtype_transform,
+        )
         from benchrep.architecture.decoders import MLPDecoder, UpsampleConv2DDecoder
         from benchrep.architecture.encoders import (
             MLPEncoder,
@@ -123,7 +126,46 @@ def register_builtins() -> None:
         # --- Data ---
         DATASETS.register("mnist", MNISTDataset)
 
-        TRANSFORMS.register("to_tensor", transforms.ToTensor)
+        TRANSFORMS.register(
+            "to_dtype",
+            create_to_dtype_transform,
+            "todtype",
+            "convert_dtype",
+            "convert_image_dtype",
+        )
+        TRANSFORMS.register(
+            "normalize",
+            v2.Normalize,
+            "normalise",
+            "normalization",
+            "normalisation",
+        )
+        TRANSFORMS.register(
+            "resize",
+            v2.Resize,
+            "resizing",
+        )
+        TRANSFORMS.register(
+            "random_horizontal_flip",
+            v2.RandomHorizontalFlip,
+            "randomhorizontalflip",
+            "random_hflip",
+            "rand_hflip",
+        )
+        TRANSFORMS.register(
+            "random_vertical_flip",
+            v2.RandomVerticalFlip,
+            "randomverticalflip",
+            "random_vflip",
+            "rand_vflip",
+        )
+        TRANSFORMS.register(
+            "random_rotation",
+            v2.RandomRotation,
+            "randomrotation",
+            "random_rotate",
+            "rand_rotation",
+        )
 
         # --- Architecture and training ---
         ENCODERS.register("mlp", MLPEncoder, "dense", "fully_connected", "fc")

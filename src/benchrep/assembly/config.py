@@ -30,6 +30,7 @@ from benchrep.assembly.schemas.training_config_schema import (
     DecoderConfig,
     LossTermConfig,
     OptimizerConfig,
+    TransformConfig,
     SupportedDatasetConfig,
     DataModuleConfig,
     TrainerConfig,
@@ -73,6 +74,7 @@ ConfigSource: TypeAlias = Literal[
 ]
 
 LossesConfig: TypeAlias = dict[str, dict[str, LossTermConfig]]
+TransformsConfig: TypeAlias = list[TransformConfig]
 SupportedTrainingConfigComponent: TypeAlias = (
         RunConfig
         | ReproducibilityConfig
@@ -81,6 +83,7 @@ SupportedTrainingConfigComponent: TypeAlias = (
         | DecoderConfig
         | LossesConfig
         | OptimizerConfig
+        | TransformsConfig
         | SupportedDatasetConfig
         | DataModuleConfig
         | TrainerConfig
@@ -507,6 +510,28 @@ def _normalize_config_components(
                     f"{type(component).__name__}."
                 )
             normalized[key] = component
+            continue
+
+        if schema is TrainingConfig and key == "transforms":
+            if not isinstance(component, list):
+                raise TypeError(
+                    "Training config component 'transforms' must be a list of "
+                    f"TransformConfig objects, got {type(component).__name__}."
+                )
+
+            if not all(
+                    isinstance(transform, TransformConfig)
+                    for transform in component
+            ):
+                raise TypeError(
+                    "Every item in training config component 'transforms' must be "
+                    "a TransformConfig object."
+                )
+
+            normalized[key] = [
+                transform.model_dump(mode="python")
+                for transform in component
+            ]
             continue
 
         if key == "dataset":

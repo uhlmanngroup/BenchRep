@@ -7,6 +7,7 @@ from typing import Any, Literal
 import torch
 from torch.utils.data import Dataset
 from torchvision.datasets import MNIST
+from torchvision.transforms import v2
 
 from benchrep.architecture.data.transforms import TransformPipeline
 
@@ -113,28 +114,22 @@ class MNISTDataset(BaseDataset):
     split:
         MNIST split to load. ``"train"`` selects the training set and
         ``"test"`` selects the test set.
-    transform:
-        Optional callable passed to torchvision MNIST and applied to each image.
-        It must produce a tensor satisfying the BenchRep sample contract.
-    target_transform:
-        Optional callable passed to torchvision MNIST and applied to each label.
     download:
         Whether torchvision should download MNIST when it is unavailable under
         ``root``.
 
     Notes
     -----
-    Without an image transform, torchvision MNIST returns PIL images, which do
-    not satisfy the current BenchRep requirement that ``sample["x"]`` be a
-    tensor.
+    Torchvision MNIST images are converted from PIL images to tensor images as
+    part of dataset adaptation. This conversion does not scale the original
+    uint8 values. Configured preprocessing and augmentation are applied later
+    through ``TransformedDataset``.
     """
 
     def __init__(
         self,
         root: str,
         split: Literal["train", "test"] = "train",
-        transform: Any | None = None,
-        target_transform: Any | None = None,
         download: bool = False,
     ) -> None:
         super().__init__()
@@ -142,8 +137,7 @@ class MNISTDataset(BaseDataset):
         self.dataset = MNIST(
             root=root,
             train=split == "train",
-            transform=transform,
-            target_transform=target_transform,
+            transform=v2.ToImage(),
             download=download,
         )
 

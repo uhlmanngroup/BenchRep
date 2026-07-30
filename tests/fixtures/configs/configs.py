@@ -168,12 +168,28 @@ def make_training_mnist_dataset_config() -> MNISTDatasetConfig:
             root=Path("overridden_data/mnist"),
             split="test",
             download=False,
-            transform=TransformConfig(
-                name="to_tensor",
-                params={},
-            ),
         ),
     )
+
+
+def make_training_transforms_config() -> list[TransformConfig]:
+    return [
+        TransformConfig(
+            name="to_dtype",
+            category="preprocessing",
+            params={
+                "dtype": "float32",
+                "scale": True,
+            },
+        ),
+        TransformConfig(
+            name="random_horizontal_flip",
+            category="augmentation",
+            params={
+                "p": 0.25,
+            },
+        ),
+    ]
 
 
 def make_training_datamodule_config() -> DataModuleConfig:

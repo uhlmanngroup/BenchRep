@@ -15,8 +15,13 @@ dataset:
     root: examples/data/mnist
     split: train
     download: true
-    transform:
-      name: to_tensor # necessary for mnist
+
+transforms:
+  - name: to_dtype
+    category: preprocessing
+    params:
+      dtype: float32
+      scale: true
 
 datamodule:
   batch_size: 128

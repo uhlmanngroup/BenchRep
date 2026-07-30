@@ -4,6 +4,9 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+import torch
+from torchvision.transforms import v2
+
 
 TransformCallable = Callable[[Any], Any]
 
@@ -83,3 +86,32 @@ class TransformPipeline:
 
     def __len__(self) -> int:
         return len(self.steps)
+
+
+def create_to_dtype_transform(
+    dtype: str | torch.dtype,
+    scale: bool = False,
+) -> v2.ToDtype:
+    """Create a torchvision ToDtype transform from a dtype object or name."""
+
+    if isinstance(dtype, str):
+        dtype_name = dtype.removeprefix("torch.")
+        resolved_dtype = getattr(torch, dtype_name, None)
+
+        if not isinstance(resolved_dtype, torch.dtype):
+            raise ValueError(
+                f"Unknown PyTorch dtype {dtype!r}."
+            )
+
+        dtype = resolved_dtype
+
+    elif not isinstance(dtype, torch.dtype):
+        raise TypeError(
+            "`dtype` must be a PyTorch dtype or dtype name, "
+            f"got {type(dtype).__name__}."
+        )
+
+    return v2.ToDtype(
+        dtype=dtype,
+        scale=scale,
+    )

@@ -621,7 +621,14 @@ ParamsT = TypeVar("ParamsT")
 
 
 class TransformConfig(NamedConfig):
-    pass
+    """Configuration for one transform in an ordered transform sequence."""
+
+    category: Literal["preprocessing", "augmentation"] = Field(
+        description=(
+            "Whether the transform applies to every dataset split or only to "
+            "training samples."
+        ),
+    )
 
 
 class DatasetConfig(BaseModel, Generic[ParamsT]):
@@ -638,7 +645,6 @@ class MNISTDatasetParams(BaseModel):
     root: Path
     split: Literal["train", "test"] = "train"
     download: bool = False
-    transform: TransformConfig | None = None
 
 
 class MNISTDatasetConfig(DatasetConfig[MNISTDatasetParams]):
@@ -697,6 +703,7 @@ class TrainingConfig(BaseModel):
     optimizer: OptimizerConfig | None = None
 
     dataset: SupportedDatasetConfig | None = None
+    transforms: list[TransformConfig] = Field(default_factory=list)
     datamodule: DataModuleConfig | None = Field(default_factory=DataModuleConfig)
 
     trainer: TrainerConfig = Field(default_factory=TrainerConfig)

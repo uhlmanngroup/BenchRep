@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any, Literal
 
 from pydantic import BaseModel
@@ -7,7 +9,12 @@ from pydantic import BaseModel
 import torch
 
 from benchrep.records import get_run_logger
-from benchrep.architecture.data import BaseDataset, DataModule
+from benchrep.architecture.data import (
+    BaseDataset,
+    DataModule,
+    TransformPipeline,
+    TransformStep,
+)
 from benchrep.assembly.schemas import (
     DataModuleConfig,
     TransformConfig,
@@ -17,12 +24,20 @@ from benchrep.assembly.registries.utils import normalize_name
 from benchrep.assembly.registries.core import DATASETS, TRANSFORMS
 
 
+@dataclass(frozen=True)
+class TransformPipelineBundle:
+    training: TransformPipeline
+    preprocessing: TransformPipeline
+
+
 def build_datamodule(
     *,
     dataset: BaseDataset,
     datamodule_config: DataModuleConfig,
     seed: int | None = None,
     stage: Literal["training", "prediction"],
+    training_pipeline: TransformPipeline | None = None,
+    preprocessing_pipeline: TransformPipeline | None = None,
 ) -> DataModule:
     """Build a BenchRep datamodule around an instantiated dataset.
 
@@ -66,6 +81,8 @@ def build_datamodule(
         datamodule_config=datamodule_config,
         train_dataset=dataset if stage == "training" else None,
         predict_dataset=dataset if stage == "prediction" else None,
+        training_pipeline=training_pipeline,
+        preprocessing_pipeline=preprocessing_pipeline,
         seed=seed,
     )
 
@@ -85,29 +102,28 @@ def build_dataset(
 ) -> BaseDataset:
     """Build a registered BenchRep dataset from validated configuration.
 
-      The dataset name is resolved through the dataset registry. Typed built-in
-      parameters or arbitrary custom parameters are converted to constructor
-      keyword arguments. A configured transform is resolved through the transform
-      registry before the dataset class is instantiated.
+    The dataset name is resolved through the dataset registry. Typed built-in
+    parameters or arbitrary custom parameters are converted to constructor
+    keyword arguments before the dataset class is instantiated.
 
-      Parameters
-      ----------
-      dataset_config:
-          Validated built-in or custom dataset configuration containing the
-          registered dataset name and its constructor parameters.
+    Parameters
+    ----------
+    dataset_config:
+      Validated built-in or custom dataset configuration containing the
+      registered dataset name and its constructor parameters.
 
-      Returns
-      -------
-      BaseDataset
-          Instantiated BenchRep-compatible dataset.
+    Returns
+    -------
+    BaseDataset
+      Instantiated BenchRep-compatible dataset.
 
-      Raises
-      ------
-      KeyError
-          If the dataset or configured transform is not registered.
-      TypeError
-          If the registered dataset does not produce a ``BaseDataset`` instance.
-      """
+    Raises
+    ------
+    KeyError
+      If the configured dataset is not registered.
+    TypeError
+      If the registered dataset does not produce a ``BaseDataset`` instance.
+    """
     run_log = get_run_logger()
 
     dataset_name = normalize_name(
@@ -121,14 +137,6 @@ def build_dataset(
         dataset_params = raw_params.model_dump(mode="python")
     else:
         dataset_params = dict(raw_params)
-
-    transform_config = dataset_params.get("transform")
-
-    if isinstance(transform_config, dict) and "name" in transform_config:
-        transform_config = TransformConfig.model_validate(transform_config)
-
-    if isinstance(transform_config, TransformConfig):
-        dataset_params["transform"] = _build_transform(transform_config)
 
     run_log.info("Building dataset: dataset=%s", dataset_name)
 
@@ -150,6 +158,55 @@ def build_dataset(
     return dataset
 
 
+def build_transform_pipelines(
+    transform_configs: Sequence[TransformConfig],
+) -> TransformPipelineBundle:
+    """Build training and preprocessing pipelines from ordered transform configs."""
+
+    indexed_configs = tuple(enumerate(transform_configs))
+
+    training_steps = [
+        _build_transform_step(
+            transform_config,
+            index=index,
+        )
+        for index, transform_config in indexed_configs
+    ]
+
+    preprocessing_steps = [
+        _build_transform_step(
+            transform_config,
+            index=index,
+        )
+        for index, transform_config in indexed_configs
+        if transform_config.category == "preprocessing"
+    ]
+
+    return TransformPipelineBundle(
+        training=TransformPipeline(training_steps),
+        preprocessing=TransformPipeline(preprocessing_steps),
+    )
+
+
+def _build_transform_step(
+    transform_config: TransformConfig,
+    *,
+    index: int,
+) -> TransformStep:
+    transform_name = normalize_name(
+        transform_config.name,
+        field_name=f"config.transforms[{index}].name",
+    )
+
+    transform_factory = TRANSFORMS.get(transform_name)
+    transform = transform_factory(**dict(transform_config.params))
+
+    return TransformStep(
+        name=transform_name,
+        transform=transform,
+    )
+
+
 def _instantiate_datamodule(
     *,
     datamodule_config: DataModuleConfig,
@@ -158,6 +215,8 @@ def _instantiate_datamodule(
     val_dataset: Any | None = None,
     test_dataset: Any | None = None,
     predict_dataset: Any | None = None,
+    training_pipeline: TransformPipeline | None = None,
+    preprocessing_pipeline: TransformPipeline | None = None,
 ) -> DataModule:
     datamodule_params = datamodule_config.model_dump()
 
@@ -170,21 +229,8 @@ def _instantiate_datamodule(
         val_dataset=val_dataset,
         test_dataset=test_dataset,
         predict_dataset=predict_dataset,
+        training_pipeline=training_pipeline,
+        preprocessing_pipeline=preprocessing_pipeline,
         seed=seed,
         **datamodule_params,
     )
-
-
-def _build_transform(transform_config: TransformConfig | None) -> Any:
-    if transform_config is None:
-        return None
-
-    transform_name = normalize_name(
-        transform_config.name,
-        field_name="config.dataset.transform.name",
-    )
-
-    transform_class = TRANSFORMS.get(transform_name)
-    transform_params = dict(transform_config.params)
-
-    return transform_class(**transform_params)

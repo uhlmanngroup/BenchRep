@@ -42,6 +42,7 @@ from tests.fixtures.configs.configs import (
     make_training_reproducibility_config,
     make_training_run_config,
     make_training_trainer_config,
+    make_training_transforms_config,
 )
 
 
@@ -169,6 +170,14 @@ CONFIG_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "configs"
             make_training_inspection_config,
             {},
             id="training-inspection",
+        ),
+        pytest.param(
+            TrainingConfig,
+            "training_tiny_synthetic_ae.yaml",
+            "transforms",
+            make_training_transforms_config,
+            {},
+            id="training-transforms",
         ),
 
         # Prediction

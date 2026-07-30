@@ -15,6 +15,7 @@ from benchrep.assembly.config import (
 from benchrep.assembly.builders import (
     build_dataset,
     build_datamodule,
+    build_transform_pipelines,
     build_model,
     build_trainer,
 )
@@ -241,6 +242,10 @@ def _predict(
         assert dataset_config is not None
         assert datamodule_config is not None
 
+        transform_pipelines = build_transform_pipelines(
+            run_spec.training_config.transforms,
+        )
+
         dataset = build_dataset(
             dataset_config=dataset_config,
         )
@@ -250,10 +255,12 @@ def _predict(
             datamodule_config=datamodule_config,
             seed=run_spec.seed,
             stage=run_spec.stage,
+            preprocessing_pipeline=transform_pipelines.preprocessing,
         )
     else:
         run_log.info(
-            "External datamodule was provided; resolved dataset/datamodule config sections will be ignored."
+            "External datamodule was provided; resolved dataset, datamodule, and "
+            "training preprocessing config will be ignored."
         )
 
     # Build or use model

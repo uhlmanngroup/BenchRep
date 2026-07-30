@@ -10,8 +10,6 @@ dataset:
     root: examples/data/mnist
     split: test
     download: true
-    transform:
-      name: to_tensor # necessary for mnist
 
 data:
   batch_size: null              # null = reuse training setting
