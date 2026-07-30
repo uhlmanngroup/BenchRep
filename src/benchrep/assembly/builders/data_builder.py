@@ -11,7 +11,7 @@ import torch
 from benchrep.records import get_run_logger
 from benchrep.architecture.data import (
     BaseDataset,
-    DataModule,
+    BenchRepDataModule,
     TransformPipeline,
     TransformStep,
 )
@@ -38,7 +38,7 @@ def build_datamodule(
     stage: Literal["training", "prediction"],
     training_pipeline: TransformPipeline | None = None,
     preprocessing_pipeline: TransformPipeline | None = None,
-) -> DataModule:
+) -> BenchRepDataModule:
     """Build a BenchRep datamodule around an instantiated dataset.
 
     For training, the dataset is assigned as the training dataset and may be
@@ -61,7 +61,7 @@ def build_datamodule(
 
     Returns
     -------
-    DataModule
+    BenchRepDataModule
         Configured BenchRep datamodule.
 
     Raises
@@ -217,14 +217,14 @@ def _instantiate_datamodule(
     predict_dataset: Any | None = None,
     training_pipeline: TransformPipeline | None = None,
     preprocessing_pipeline: TransformPipeline | None = None,
-) -> DataModule:
+) -> BenchRepDataModule:
     datamodule_params = datamodule_config.model_dump()
 
     # Resolve "auto" to pin CPU memory only when CUDA is available.
     if datamodule_params.get("pin_memory") == "auto":
         datamodule_params["pin_memory"] = torch.cuda.is_available()
 
-    return DataModule(
+    return BenchRepDataModule(
         train_dataset=train_dataset,
         val_dataset=val_dataset,
         test_dataset=test_dataset,

@@ -4,7 +4,7 @@ from benchrep.architecture.data import (
     TransformPipeline,
     TransformStep,
     TransformedDataset,
-    DataModule,
+    BenchRepDataModule,
 )
 from tests.fixtures.datasets import TinySyntheticDataset
 
@@ -99,7 +99,7 @@ def test_datamodule_applies_split_specific_pipelines() -> None:
         ]
     )
 
-    datamodule = DataModule(
+    datamodule = BenchRepDataModule(
         train_dataset=source_dataset,
         training_pipeline=training_pipeline,
         preprocessing_pipeline=preprocessing_pipeline,

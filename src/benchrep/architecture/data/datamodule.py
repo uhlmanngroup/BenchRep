@@ -11,13 +11,13 @@ from benchrep.architecture.data.datasets import TransformedDataset
 from benchrep.architecture.data.transforms import TransformPipeline
 
 
-class DataModule(L.LightningDataModule):
-    """Generic LightningDataModule for BenchRep-compatible datasets.
+class BenchRepDataModule(L.LightningDataModule):
+    """LightningDataModule for BenchRep-compatible datasets.
 
     Datasets are expected to return dictionary samples following the internal
     contract used by BenchRep models and enforced by BaseDataset, with at least key ``"x"``.
 
-    The DataModule supports training-only runs, training with an explicit validation
+    The BenchRepDataModule supports training-only runs, training with an explicit validation
     dataset, training with a validation split from the training dataset, test-only
     runs, prediction-only runs, and combined test/prediction use.
 
@@ -138,7 +138,7 @@ class DataModule(L.LightningDataModule):
         if self.train_dataset is not None:
             return
 
-        # train_dataset is optional so the same DataModule can support test-only or
+        # train_dataset is optional so the same BenchRepDataModule can support test-only or
         # predict-only runs. In that case, there is no train/val setup to perform.
         if self._original_train_dataset is None:
             return
