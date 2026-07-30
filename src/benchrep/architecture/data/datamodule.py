@@ -1,8 +1,14 @@
 from __future__ import annotations
 
+from collections.abc import Sized
+from typing import Any
+
 import lightning as L
 from torch import Generator
 from torch.utils.data import DataLoader, Dataset, random_split
+
+from benchrep.architecture.data.datasets import TransformedDataset
+from benchrep.architecture.data.transforms import TransformPipeline
 
 
 class DataModule(L.LightningDataModule):
@@ -27,6 +33,12 @@ class DataModule(L.LightningDataModule):
         Optional test dataset.
     predict_dataset:
         Optional dataset used for prediction/inference with ``Trainer.predict()``.
+    training_pipeline:
+        Complete ordered transform pipeline applied to training samples. It may
+        contain both preprocessing and augmentation steps.
+    preprocessing_pipeline:
+        Ordered preprocessing-only pipeline applied to validation, testing, and
+        prediction samples.
     batch_size:
         Number of samples per batch.
     val_fraction:
@@ -47,10 +59,12 @@ class DataModule(L.LightningDataModule):
 
     def __init__(
         self,
-        train_dataset: Dataset | None = None,
-        val_dataset: Dataset | None = None,
-        test_dataset: Dataset | None = None,
-        predict_dataset: Dataset | None = None,
+        train_dataset: Dataset[dict[str, Any]] | None = None,
+        val_dataset: Dataset[dict[str, Any]] | None = None,
+        test_dataset: Dataset[dict[str, Any]] | None = None,
+        predict_dataset: Dataset[dict[str, Any]] | None = None,
+        training_pipeline: TransformPipeline | None = None,
+        preprocessing_pipeline: TransformPipeline | None = None,
         batch_size: int = 64,
         val_fraction: float = 0.1,
         num_workers: int = 0,
@@ -90,8 +104,22 @@ class DataModule(L.LightningDataModule):
 
         self._original_train_dataset = train_dataset
         self._provided_val_dataset = val_dataset
-        self.test_dataset = test_dataset
-        self.predict_dataset = predict_dataset
+
+        self.preprocessing_pipeline = preprocessing_pipeline
+        self.training_pipeline = (
+            training_pipeline
+            if training_pipeline is not None
+            else preprocessing_pipeline
+        )
+
+        self.test_dataset = _wrap_with_pipeline(
+            test_dataset,
+            preprocessing_pipeline,
+        )
+        self.predict_dataset = _wrap_with_pipeline(
+            predict_dataset,
+            preprocessing_pipeline,
+        )
 
         self.batch_size = batch_size
         self.val_fraction = val_fraction
@@ -101,8 +129,8 @@ class DataModule(L.LightningDataModule):
         self.drop_last = drop_last
         self.seed = seed
 
-        self.train_dataset: Dataset | None = None
-        self.val_dataset: Dataset | None = None
+        self.train_dataset: Dataset[dict[str, Any]] | None = None
+        self.val_dataset: Dataset[dict[str, Any]] | None = None
 
     def setup(self, stage: str | None = None) -> None:
         # Lightning may call setup multiple times. If setup already prepared the final
@@ -127,6 +155,8 @@ class DataModule(L.LightningDataModule):
 
         # Validation requested as a fraction of the provided training dataset.
         else:
+            assert isinstance(self._original_train_dataset, Sized)
+
             dataset_size = len(self._original_train_dataset)
             val_size = int(dataset_size * self.val_fraction)
             train_size = dataset_size - val_size
@@ -141,11 +171,21 @@ class DataModule(L.LightningDataModule):
             if self.seed is not None:
                 generator = Generator().manual_seed(self.seed)
 
+            assert isinstance(self._original_train_dataset, Dataset)
             self.train_dataset, self.val_dataset = random_split(
                 self._original_train_dataset,
                 [train_size, val_size],
                 generator=generator,
             )
+
+        self.train_dataset = _wrap_with_pipeline(
+            self.train_dataset,
+            self.training_pipeline,
+        )
+        self.val_dataset = _wrap_with_pipeline(
+            self.val_dataset,
+            self.preprocessing_pipeline,
+        )
 
     def train_dataloader(self) -> DataLoader:
         if self.train_dataset is None:
@@ -205,3 +245,16 @@ class DataModule(L.LightningDataModule):
             persistent_workers=self.persistent_workers,
             drop_last=False,
         )
+
+
+def _wrap_with_pipeline(
+    dataset: Dataset[dict[str, Any]] | None,
+    pipeline: TransformPipeline | None,
+) -> Dataset[dict[str, Any]] | None:
+    if dataset is None or pipeline is None or len(pipeline) == 0:
+        return dataset
+
+    return TransformedDataset(
+        dataset=dataset,
+        pipeline=pipeline,
+    )

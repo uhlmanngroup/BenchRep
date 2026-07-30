@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Sized
 from typing import Any, Literal
 
 import torch
 from torch.utils.data import Dataset
 from torchvision.datasets import MNIST
 
+from benchrep.architecture.data.transforms import TransformPipeline
 
-class BaseDataset(Dataset, ABC):
+
+class BaseDataset(Dataset[dict[str, Any]], ABC):
     """Base interface for BenchRep-compatible datasets.
 
     Subclasses should follow the standard PyTorch Dataset API and implement
@@ -56,21 +59,74 @@ class BaseDataset(Dataset, ABC):
         return sample
 
 
+class TransformedDataset(BaseDataset):
+    """Wrap a dataset and transform each sample's ``"x"`` tensor.
+
+    The wrapped dataset must return samples following the BenchRep sample
+    contract. Only ``sample["x"]`` is transformed; all other sample fields are
+    preserved unchanged.
+
+    Notes
+    -----
+    The sample dictionary is shallow-copied, but ``sample["x"]`` is not cloned.
+    An in-place transform may therefore modify tensor storage owned by the
+    wrapped dataset.
+    """
+
+    def __init__(
+        self,
+        dataset: Dataset[dict[str, Any]],
+        pipeline: TransformPipeline,
+    ) -> None:
+        super().__init__()
+
+        self.dataset = dataset
+        self.pipeline = pipeline
+
+    def __len__(self) -> int:
+        assert isinstance(self.dataset, Sized)
+
+        return len(self.dataset)
+
+    def __getitem__(self, index: int) -> dict[str, Any]:
+        sample = self.validate_sample(self.dataset[index])
+
+        transformed_sample = {
+            **sample,
+            "x": self.pipeline(sample["x"]),
+        }
+
+        return self.validate_sample(transformed_sample)
+
+
 class MNISTDataset(BaseDataset):
-    """Wrapper around torchvision MNIST using the BenchRep dataset contract.
+    """Adapt torchvision MNIST to the BenchRep sample contract.
+
+    Each item is returned as a dictionary containing the image under ``"x"``,
+    the digit class under ``"label"``, and the split-local integer index under
+    ``"sample_id"``.
 
     Parameters
     ----------
     root:
-        Directory where MNIST data is stored or downloaded.
-    train:
-        Whether to use the training split.
+        Directory containing or receiving the MNIST files.
+    split:
+        MNIST split to load. ``"train"`` selects the training set and
+        ``"test"`` selects the test set.
     transform:
-        Optional transform applied to the image.
+        Optional callable passed to torchvision MNIST and applied to each image.
+        It must produce a tensor satisfying the BenchRep sample contract.
     target_transform:
-        Optional transform applied to the label.
+        Optional callable passed to torchvision MNIST and applied to each label.
     download:
-        Whether to download MNIST if it is not already present.
+        Whether torchvision should download MNIST when it is unavailable under
+        ``root``.
+
+    Notes
+    -----
+    Without an image transform, torchvision MNIST returns PIL images, which do
+    not satisfy the current BenchRep requirement that ``sample["x"]`` be a
+    tensor.
     """
 
     def __init__(
