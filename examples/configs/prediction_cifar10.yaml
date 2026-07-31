@@ -1,0 +1,45 @@
+stage: prediction
+
+source:
+  training_manifest_path: null
+  checkpoint: best              # best | last | checkpoint filename in training checkpoint dir
+
+dataset:
+  name: cifar10
+  params:
+    root: examples/data/cifar10
+    split: test
+    download: true
+
+# null/omitted = inherit training preprocessing
+# explicit list = replace inherited transforms
+# [] = apply no configured transforms
+transforms: null
+
+data:
+  batch_size: null              # null = reuse training setting
+  num_workers: null             # null = reuse training setting
+  max_batches: null             # null = all batches; int = diagnostic subset
+
+inference:
+  seed: null                    # null = reuse training seed
+  seed_workers: null            # null = reuse training setting
+  deterministic: null           # deterministic algs (Trainer param)
+  float32_matmul_precision: null # null = reuse training setting
+
+exports:
+  mode: all                # standard | all | custom
+
+  embeddings:
+    enabled: true
+    keys: auto                  # auto or list of output fields
+    primary_key: auto           # auto or one output field
+
+  reconstructions:
+    enabled: true
+    n_examples: 32              # int | all
+    selection: random           # first | random
+    stratify_by: label          # null | prediction observation/metadata key; requires selection: random
+    seed: null                  # null = reuse inference seed
+    include_input: true
+    include_prediction: true

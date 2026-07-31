@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 import torch
 from torch.utils.data import Dataset
-from torchvision.datasets import MNIST
+from torchvision.datasets import CIFAR10, MNIST, STL10
 from torchvision.transforms import v2
 
 from benchrep.architecture.data.transforms import TransformPipeline
@@ -100,48 +100,24 @@ class TransformedDataset(BaseDataset):
         return self.validate_sample(transformed_sample)
 
 
-class MNISTDataset(BaseDataset):
-    """Adapt torchvision MNIST to the BenchRep sample contract.
+class _TorchvisionClassificationDataset(BaseDataset):
+    """Adapt a torchvision-style classification dataset to BenchRep.
 
-    Each item is returned as a dictionary containing the image under ``"x"``,
-    the digit class under ``"label"``, and the split-local integer index under
-    ``"sample_id"``.
-
-    Parameters
-    ----------
-    root:
-        Directory containing or receiving the MNIST files.
-    split:
-        MNIST split to load. ``"train"`` selects the training set and
-        ``"test"`` selects the test set.
-    download:
-        Whether torchvision should download MNIST when it is unavailable under
-        ``root``.
-
-    Notes
-    -----
-    Torchvision MNIST images are converted from PIL images to tensor images as
-    part of dataset adaptation. This conversion does not scale the original
-    uint8 values. Configured preprocessing and augmentation are applied later
-    through ``TransformedDataset``.
+    The wrapped dataset must return each sample as an ``(image, label)`` tuple,
+    with the image already converted to a tensor.
     """
 
     def __init__(
         self,
-        root: str,
-        split: Literal["train", "test"] = "train",
-        download: bool = False,
+        dataset: Dataset[tuple[Any, int]],
     ) -> None:
         super().__init__()
 
-        self.dataset = MNIST(
-            root=root,
-            train=split == "train",
-            transform=v2.ToImage(),
-            download=download,
-        )
+        self.dataset = dataset
 
     def __len__(self) -> int:
+        assert isinstance(self.dataset, Sized)
+
         return len(self.dataset)
 
     def __getitem__(self, index: int) -> dict[str, Any]:
@@ -154,3 +130,128 @@ class MNISTDataset(BaseDataset):
         }
 
         return self.validate_sample(sample)
+
+
+class MNISTDataset(_TorchvisionClassificationDataset):
+    """Adapt torchvision MNIST to the BenchRep sample contract.
+
+    Each item contains the image under ``"x"``, the digit class under
+    ``"label"``, and the split-local integer index under ``"sample_id"``.
+
+    Parameters
+    ----------
+    root:
+        Directory containing or receiving the MNIST files.
+    split:
+        Dataset split to load. ``"train"`` selects the training set and
+        ``"test"`` selects the test set.
+    download:
+        Whether torchvision should download the dataset when it is unavailable
+        under ``root``.
+
+    Notes
+    -----
+    Images are converted from PIL images to tensor images without scaling their
+    original uint8 values. Configured transforms are applied later.
+    """
+
+    def __init__(
+        self,
+        root: str,
+        split: Literal["train", "test"] = "train",
+        download: bool = False,
+    ) -> None:
+        dataset = MNIST(
+            root=root,
+            train=split == "train",
+            transform=v2.ToImage(),
+            download=download,
+        )
+
+        super().__init__(dataset)
+
+
+class CIFAR10Dataset(_TorchvisionClassificationDataset):
+    """Adapt torchvision CIFAR-10 to the BenchRep sample contract.
+
+    Each item contains the RGB image under ``"x"``, the object class under
+    ``"label"``, and the split-local integer index under ``"sample_id"``.
+
+    Parameters
+    ----------
+    root:
+        Directory containing or receiving the CIFAR-10 files.
+    split:
+        Dataset split to load. ``"train"`` selects the training set and
+        ``"test"`` selects the test set.
+    download:
+        Whether torchvision should download the dataset when it is unavailable
+        under ``root``.
+
+    Notes
+    -----
+    Images are converted from PIL images to tensor images without scaling their
+    original uint8 values. Configured transforms are applied later.
+    """
+
+    def __init__(
+        self,
+        root: str,
+        split: Literal["train", "test"] = "train",
+        download: bool = False,
+    ) -> None:
+        dataset = CIFAR10(
+            root=root,
+            train=split == "train",
+            transform=v2.ToImage(),
+            download=download,
+        )
+
+        super().__init__(dataset)
+
+
+class STL10Dataset(_TorchvisionClassificationDataset):
+    """Adapt torchvision STL-10 to the BenchRep sample contract.
+
+    Each item contains the RGB image under ``"x"``, the object class under
+    ``"label"``, and the split-local integer index under ``"sample_id"``.
+    Samples from the unlabeled set use ``-1`` as their label.
+
+    Parameters
+    ----------
+    root:
+        Directory containing or receiving the STL-10 files.
+    split:
+        Dataset split to load. ``"train"`` and ``"test"`` select the labeled
+        splits, ``"unlabeled"`` selects the unlabeled set, and
+        ``"train+unlabeled"`` combines the training and unlabeled sets.
+    download:
+        Whether torchvision should download the dataset when it is unavailable
+        under ``root``.
+
+    Notes
+    -----
+    Images are converted from PIL images to tensor images without scaling their
+    original uint8 values. Configured transforms are applied later. Unlabeled
+    samples retain torchvision's ``-1`` target.
+    """
+
+    def __init__(
+        self,
+        root: str,
+        split: Literal[
+            "train",
+            "test",
+            "unlabeled",
+            "train+unlabeled",
+        ] = "train",
+        download: bool = False,
+    ) -> None:
+        dataset = STL10(
+            root=root,
+            split=split,
+            transform=v2.ToImage(),
+            download=download,
+        )
+
+        super().__init__(dataset)

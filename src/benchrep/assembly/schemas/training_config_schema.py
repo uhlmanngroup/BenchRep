@@ -652,6 +652,33 @@ class MNISTDatasetConfig(DatasetConfig[MNISTDatasetParams]):
     params: MNISTDatasetParams
 
 
+class CIFAR10DatasetParams(BaseModel):
+    root: Path
+    split: Literal["train", "test"] = "train"
+    download: bool = False
+
+
+class CIFAR10DatasetConfig(DatasetConfig[CIFAR10DatasetParams]):
+    name: Literal["cifar10", "cifar_10"] = "cifar10"
+    params: CIFAR10DatasetParams
+
+
+class STL10DatasetParams(BaseModel):
+    root: Path
+    split: Literal[
+        "train",
+        "test",
+        "unlabeled",
+        "train+unlabeled",
+    ] = "train"
+    download: bool = False
+
+
+class STL10DatasetConfig(DatasetConfig[STL10DatasetParams]):
+    name: Literal["stl10", "stl_10"] = "stl10"
+    params: STL10DatasetParams
+
+
 class CustomDatasetConfig(DatasetConfig[dict[str, Any]]):
     name: str
     params: dict[str, Any] = Field(default_factory=dict)
@@ -666,6 +693,12 @@ def _dataset_config_discriminator(value: Any) -> str:
     if isinstance(name, str) and name.strip():
         normalized_name = normalize_name(name, field_name="dataset.name")
 
+        if normalized_name in {"cifar10", "cifar_10"}:
+            return "cifar10"
+
+        if normalized_name in {"stl10", "stl_10"}:
+            return "stl10"
+
         if normalized_name == "mnist":
             return "mnist"
 
@@ -673,7 +706,9 @@ def _dataset_config_discriminator(value: Any) -> str:
 
 
 SupportedDatasetConfig = Annotated[
-    Annotated[MNISTDatasetConfig, Tag("mnist")]
+    Annotated[CIFAR10DatasetConfig, Tag("cifar10")]
+    | Annotated[MNISTDatasetConfig, Tag("mnist")]
+    | Annotated[STL10DatasetConfig, Tag("stl10")]
     | Annotated[CustomDatasetConfig, Tag("custom")],
     Discriminator(_dataset_config_discriminator),
 ]

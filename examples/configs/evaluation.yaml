@@ -206,4 +206,4 @@ plots:
       include_error_maps: true
       random_state: 137 # controls random example/stratum selection
       stratify_by: label # null = single random page; otherwise one example per unique value
-      channel_selection: null # null = channel 0; int | list[int] | all
+      channel_selection: all # null = channel 0; int | list[int] | all

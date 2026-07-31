@@ -78,7 +78,11 @@ def register_builtins() -> None:
             EVAL_RECONSTRUCTION_METRICS,
         )
 
-        from benchrep.architecture.data import MNISTDataset
+        from benchrep.architecture.data import (
+            MNISTDataset,
+            CIFAR10Dataset,
+            STL10Dataset,
+        )
         from benchrep.architecture.data.transforms import (
             create_to_dtype_transform,
         )
@@ -125,6 +129,8 @@ def register_builtins() -> None:
 
         # --- Data ---
         DATASETS.register("mnist", MNISTDataset)
+        DATASETS.register("cifar10", CIFAR10Dataset, "cifar_10")
+        DATASETS.register("stl10", STL10Dataset, "stl_10")
 
         TRANSFORMS.register(
             "to_dtype",
