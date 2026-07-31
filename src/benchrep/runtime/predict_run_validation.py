@@ -800,7 +800,7 @@ def _audit_prediction_data_provenance(
     datamodule_source: Literal["config", "external_object"],
     datamodule_class_name: str,
 ) -> None:
-    """Audit dataset/datamodule provenance against the executed prediction run."""
+    """Audit dataset, transform, and datamodule provenance against the executed prediction run."""
     provenance = prediction_manifest.get("provenance")
 
     if not isinstance(provenance, Mapping):
@@ -851,6 +851,15 @@ def _audit_prediction_data_provenance(
         and run_spec.dataset_config is not None
         else None
     )
+    expected_transforms = (
+        [
+            transform.model_dump(mode="json")
+            for transform in run_spec.transform_configs
+        ]
+        if not datamodule_is_external
+        and run_spec.transform_configs is not None
+        else None
+    )
     expected_datamodule = (
         run_spec.datamodule_config.model_dump(mode="json")
         if not datamodule_is_external
@@ -860,6 +869,41 @@ def _audit_prediction_data_provenance(
 
     if expected_datamodule is not None:
         expected_datamodule["batch_size"] = run_spec.batch_size
+
+    manifest_transform_source = prediction_provenance.get(
+        "transform_source"
+    )
+    manifest_transforms = prediction_provenance.get("transforms")
+
+    if (
+        manifest_transform_source == run_spec.transform_source
+        and manifest_transforms == expected_transforms
+    ):
+        audit_items.append(
+            AuditItem(
+                name="manifest transform configuration",
+                status="ok",
+                message=(
+                    "transform source and effective transform config match "
+                    "the resolved prediction run"
+                ),
+            )
+        )
+    else:
+        audit_items.append(
+            AuditItem(
+                name="manifest transform configuration",
+                status="error",
+                message=(
+                    "manifest transform configuration does not match the "
+                    "resolved prediction run: "
+                    f"source={manifest_transform_source!r}, "
+                    f"transforms={manifest_transforms!r}; expected "
+                    f"source={run_spec.transform_source!r}, "
+                    f"transforms={expected_transforms!r}"
+                ),
+            )
+        )
 
     expected_reconstructable = (
         not datamodule_is_external

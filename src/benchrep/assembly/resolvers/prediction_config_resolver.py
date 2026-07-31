@@ -13,6 +13,7 @@ from benchrep.assembly.schemas import (
     SupportedDatasetConfig,
     DataModuleConfig,
     TrainerConfig,
+    TransformConfig,
 )
 from benchrep.assembly.resolvers.utils import (
     resolve_optional,
@@ -24,6 +25,14 @@ from benchrep.assembly.resolvers.utils import (
 # -------------------------
 # Resolved specs
 # -------------------------
+PredictionTransformSource = Literal[
+    "training_config",
+    "prediction_config",
+    "default_identity",
+    "external_datamodule",
+]
+
+
 @dataclass(frozen=True)
 class PredictionEmbeddingsExportSpec:
     enabled: bool
@@ -64,6 +73,8 @@ class PredictionRunSpec:
     training_output_dir: Path
 
     dataset_config: SupportedDatasetConfig | None
+    transform_configs: tuple[TransformConfig, ...] | None
+    transform_source: PredictionTransformSource
     datamodule_config: DataModuleConfig | None
     batch_size: int | None
     num_workers: int | None
@@ -142,6 +153,8 @@ def resolve_prediction_config(
 
     if datamodule_overridden:
         dataset_config = None
+        transform_configs = None
+        transform_source: PredictionTransformSource = "external_datamodule"
         datamodule_config = None
         batch_size = None
         num_workers = None
@@ -160,6 +173,12 @@ def resolve_prediction_config(
                 "training config. Pass `dataset` in the prediction config or "
                 "provide a datamodule override to predict()."
             )
+
+        transform_configs, transform_source = _resolve_prediction_transforms(
+            prediction_config=prediction_config,
+            training_config=training_config,
+            training_datamodule_external=training_datamodule_external,
+        )
 
         base_datamodule_config = (
             training_config.datamodule
@@ -234,6 +253,8 @@ def resolve_prediction_config(
         training_run_name=training_run_name,
         training_output_dir=training_output_dir,
         dataset_config=dataset_config,
+        transform_configs=transform_configs,
+        transform_source=transform_source,
         datamodule_config=datamodule_config,
         batch_size=batch_size,
         num_workers=num_workers,
@@ -244,56 +265,6 @@ def resolve_prediction_config(
         float32_matmul_precision=float32_matmul_precision,
         export_spec=export_spec,
     )
-
-
-def _resolve_checkpoint_path(
-    *,
-    checkpoint: str,
-    training_manifest: dict[str, Any],
-    manifest_path: Path,
-) -> Path:
-    if checkpoint == "best":
-        checkpoint_path = get_required_nested_path(
-            training_manifest,
-            "checkpoints",
-            "best_checkpoint_path",
-            base_dir=manifest_path.parent,
-        )
-    elif checkpoint == "last":
-        checkpoint_path = get_required_nested_path(
-            training_manifest,
-            "checkpoints",
-            "last_checkpoint_path",
-            base_dir=manifest_path.parent,
-        )
-    else:
-        checkpoint_name = Path(checkpoint)
-
-        if checkpoint_name.is_absolute() or checkpoint_name.parent != Path("."):
-            raise ValueError(
-                "Explicit checkpoint selection must be a checkpoint filename from "
-                "the training checkpoint directory, not an absolute or relative path. "
-                f"Got: {checkpoint!r}"
-            )
-
-        checkpoint_dir = get_required_nested_path(
-            training_manifest,
-            "checkpoints",
-            "checkpoint_dir",
-            base_dir=manifest_path.parent,
-        )
-        checkpoint_path = (checkpoint_dir / checkpoint_name).resolve()
-
-    if not checkpoint_path.exists():
-        raise FileNotFoundError(f"Checkpoint file does not exist: {checkpoint_path}")
-
-    if not checkpoint_path.is_file():
-        raise ValueError(f"Checkpoint path must point to a file, got: {checkpoint_path}")
-
-    if checkpoint_path.suffix != ".ckpt":
-        raise ValueError(f"Checkpoint file must end with '.ckpt', got: {checkpoint_path}")
-
-    return checkpoint_path
 
 
 def resolve_prediction_exports(
@@ -364,6 +335,80 @@ def resolve_prediction_exports(
             include_prediction=export_config.reconstructions.include_prediction,
         ),
     )
+
+
+def _resolve_checkpoint_path(
+    *,
+    checkpoint: str,
+    training_manifest: dict[str, Any],
+    manifest_path: Path,
+) -> Path:
+    if checkpoint == "best":
+        checkpoint_path = get_required_nested_path(
+            training_manifest,
+            "checkpoints",
+            "best_checkpoint_path",
+            base_dir=manifest_path.parent,
+        )
+    elif checkpoint == "last":
+        checkpoint_path = get_required_nested_path(
+            training_manifest,
+            "checkpoints",
+            "last_checkpoint_path",
+            base_dir=manifest_path.parent,
+        )
+    else:
+        checkpoint_name = Path(checkpoint)
+
+        if checkpoint_name.is_absolute() or checkpoint_name.parent != Path("."):
+            raise ValueError(
+                "Explicit checkpoint selection must be a checkpoint filename from "
+                "the training checkpoint directory, not an absolute or relative path. "
+                f"Got: {checkpoint!r}"
+            )
+
+        checkpoint_dir = get_required_nested_path(
+            training_manifest,
+            "checkpoints",
+            "checkpoint_dir",
+            base_dir=manifest_path.parent,
+        )
+        checkpoint_path = (checkpoint_dir / checkpoint_name).resolve()
+
+    if not checkpoint_path.exists():
+        raise FileNotFoundError(f"Checkpoint file does not exist: {checkpoint_path}")
+
+    if not checkpoint_path.is_file():
+        raise ValueError(f"Checkpoint path must point to a file, got: {checkpoint_path}")
+
+    if checkpoint_path.suffix != ".ckpt":
+        raise ValueError(f"Checkpoint file must end with '.ckpt', got: {checkpoint_path}")
+
+    return checkpoint_path
+
+
+def _resolve_prediction_transforms(
+    *,
+    prediction_config: PredictionConfig,
+    training_config: TrainingConfig,
+    training_datamodule_external: bool,
+) -> tuple[
+    tuple[TransformConfig, ...],
+    PredictionTransformSource,
+]:
+    if prediction_config.transforms is not None:
+        return tuple(prediction_config.transforms), "prediction_config"
+
+    if training_datamodule_external:
+        return (), "default_identity"
+
+    inherited_transforms = tuple(
+        transform
+        for transform in training_config.transforms
+        if transform.category == "preprocessing"
+    )
+
+    return inherited_transforms, "training_config"
 
 
 def _resolve_training_manifest_path(

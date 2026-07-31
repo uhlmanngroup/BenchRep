@@ -11,6 +11,11 @@ dataset:
     split: test
     download: true
 
+# null/omitted = inherit training preprocessing
+# explicit list = replace inherited transforms
+# [] = apply no configured transforms
+transforms: null
+
 data:
   batch_size: null              # null = reuse training setting
   num_workers: null             # null = reuse training setting

@@ -14,6 +14,7 @@ from pydantic import (
 )
 
 from benchrep.assembly.schemas.training_config_schema import (
+    TransformConfig,
     SupportedDatasetConfig,
 )
 
@@ -44,6 +45,21 @@ class PredictionInferenceConfig(BaseModel):
     seed_workers: bool | None = None
     deterministic: bool | Literal["warn"] | None = None
     float32_matmul_precision: Literal["medium", "high", "highest"] | None = None
+
+
+# -------------------------
+# Transforms config
+# -------------------------
+class PredictionTransformConfig(TransformConfig):
+    """Configuration for one transform in an ordered prediction sequence."""
+
+    category: Literal["preprocessing"] = Field(
+        default="preprocessing",
+        description=(
+            "Prediction transform category. Defaults to preprocessing because "
+            "all configured prediction transforms are applied to prediction samples."
+        ),
+    )
 
 
 # -------------------------
@@ -97,6 +113,27 @@ class PredictionConfig(BaseModel):
     dataset: SupportedDatasetConfig | None = None
     data: PredictionDataConfig = Field(default_factory=PredictionDataConfig)
     inference: PredictionInferenceConfig = Field(default_factory=PredictionInferenceConfig)
+    transforms: list[PredictionTransformConfig] | None = Field(
+        default=None,
+        description=(
+            "Ordered transforms applied during prediction. If omitted or null, "
+            "preprocessing transforms are inherited from the resolved training "
+            "config when available; if training used an external datamodule, "
+            "no configured transforms are applied. An explicit list replaces "
+            "the inherited transforms, and an empty list applies no configured "
+            "transforms."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Inherits available training preprocessing transforms; otherwise "
+                "uses no configured transforms."
+            ),
+            "null_behavior": (
+                "Inherits available training preprocessing transforms; otherwise "
+                "uses no configured transforms."
+            ),
+        },
+    )
     exports: PredictionExportConfig = Field(default_factory=PredictionExportConfig)
 
     @model_validator(mode="after")

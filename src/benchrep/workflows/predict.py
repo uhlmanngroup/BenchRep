@@ -210,6 +210,21 @@ def _predict(
         run_spec.export_spec.reconstructions.selection,
         run_spec.export_spec.reconstructions.seed,
     )
+    if run_spec.transform_source == "default_identity":
+        run_log.warning(
+            "Training used an external datamodule, so preprocessing transforms "
+            "could not be inherited. No prediction transforms were configured; "
+            "using an identity transform pipeline."
+        )
+
+    elif run_spec.transform_source != "external_datamodule":
+        assert run_spec.transform_configs is not None
+
+        run_log.info(
+            "Resolved prediction transforms: source=%s, transforms=%s",
+            run_spec.transform_source,
+            [transform.name for transform in run_spec.transform_configs],
+        )
 
     # Bookkeeping --- config
     save_config_records(
@@ -243,7 +258,7 @@ def _predict(
         assert datamodule_config is not None
 
         transform_pipelines = build_transform_pipelines(
-            run_spec.training_config.transforms,
+            run_spec.transform_configs,
         )
 
         dataset = build_dataset(
@@ -259,8 +274,8 @@ def _predict(
         )
     else:
         run_log.info(
-            "External datamodule was provided; resolved dataset, datamodule, and "
-            "training preprocessing config will be ignored."
+            "External datamodule was provided; dataset config, resolved "
+            "datamodule settings, and all config-driven transforms will be ignored."
         )
 
     # Build or use model

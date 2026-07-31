@@ -23,6 +23,7 @@ from benchrep.assembly.schemas.training_config_schema import (
 from benchrep.assembly.schemas.prediction_config_schema import (
     PredictionConfig,
     PredictionDataConfig,
+    PredictionTransformConfig,
     PredictionEmbeddingsExportConfig,
     PredictionExportConfig,
     PredictionInferenceConfig,
@@ -310,6 +311,18 @@ def make_prediction_inference_config() -> PredictionInferenceConfig:
     )
 
 
+def make_prediction_transforms_config() -> list[PredictionTransformConfig]:
+    return [
+        PredictionTransformConfig(
+            name="normalize",
+            params={
+                "mean": [0.5],
+                "std": [0.5],
+            },
+        ),
+    ]
+
+
 def make_prediction_exports_config() -> PredictionExportConfig:
     return PredictionExportConfig(
         mode="custom",
@@ -339,6 +352,7 @@ def make_prediction_config() -> PredictionConfig:
         dataset=make_prediction_dataset_config(),
         data=make_prediction_data_config(),
         inference=make_prediction_inference_config(),
+        transforms=make_prediction_transforms_config(),
         exports=make_prediction_exports_config(),
     )
 

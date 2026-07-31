@@ -43,6 +43,7 @@ from benchrep.assembly.schemas.prediction_config_schema import (
     PredictionSourceConfig,
     PredictionDataConfig,
     PredictionInferenceConfig,
+    PredictionTransformConfig,
     PredictionExportConfig,
 )
 from benchrep.assembly.schemas.evaluation_config_schema import (
@@ -74,7 +75,10 @@ ConfigSource: TypeAlias = Literal[
 ]
 
 LossesConfig: TypeAlias = dict[str, dict[str, LossTermConfig]]
+
 TransformsConfig: TypeAlias = list[TransformConfig]
+PredictionTransformsConfig: TypeAlias = list[PredictionTransformConfig]
+
 SupportedTrainingConfigComponent: TypeAlias = (
         RunConfig
         | ReproducibilityConfig
@@ -97,6 +101,7 @@ SupportedPredictionConfigComponent: TypeAlias = (
         | SupportedDatasetConfig
         | PredictionDataConfig
         | PredictionInferenceConfig
+        | PredictionTransformsConfig
         | PredictionExportConfig
 )
 
@@ -512,20 +517,27 @@ def _normalize_config_components(
             normalized[key] = component
             continue
 
-        if schema is TrainingConfig and key == "transforms":
+        if key == "transforms" and schema in {TrainingConfig, PredictionConfig}:
+            transform_config_type = (
+                TransformConfig
+                if schema is TrainingConfig
+                else PredictionTransformConfig
+            )
+
             if not isinstance(component, list):
                 raise TypeError(
-                    "Training config component 'transforms' must be a list of "
-                    f"TransformConfig objects, got {type(component).__name__}."
+                    f"{schema.__name__} component 'transforms' must be a list of "
+                    f"{transform_config_type.__name__} objects, got "
+                    f"{type(component).__name__}."
                 )
 
             if not all(
-                    isinstance(transform, TransformConfig)
+                    isinstance(transform, transform_config_type)
                     for transform in component
             ):
                 raise TypeError(
-                    "Every item in training config component 'transforms' must be "
-                    "a TransformConfig object."
+                    f"Every item in {schema.__name__} component 'transforms' "
+                    f"must be a {transform_config_type.__name__} object."
                 )
 
             normalized[key] = [

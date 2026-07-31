@@ -254,6 +254,16 @@ def write_prediction_manifest(
         else None
     )
 
+    configured_transforms = (
+        [
+            transform.model_dump(mode="json")
+            for transform in run_spec.transform_configs
+        ]
+        if not datamodule_is_external
+        and run_spec.transform_configs is not None
+        else None
+    )
+
     configured_datamodule = (
         run_spec.datamodule_config.model_dump(mode="json")
         if not datamodule_is_external and run_spec.datamodule_config is not None
@@ -283,6 +293,12 @@ def write_prediction_manifest(
         "decoder": None if model_is_external else configured_decoder,
         "dataset": (
             configured_dataset["name"] if configured_dataset is not None else None
+        ),
+        "transform_source": run_spec.transform_source,
+        "transforms": (
+            [transform["name"] for transform in configured_transforms]
+            if configured_transforms is not None
+            else None
         ),
         "datamodule": datamodule_class_name if datamodule_is_external else None,
         "batch_size": (
@@ -336,6 +352,8 @@ def write_prediction_manifest(
                     "configured_decoder": None if model_is_external else configured_decoder,
                 },
                 "dataset": configured_dataset,
+                "transform_source": run_spec.transform_source,
+                "transforms": configured_transforms,
                 "datamodule": {
                     "source": datamodule_source,
                     "class_name": datamodule_class_name,
