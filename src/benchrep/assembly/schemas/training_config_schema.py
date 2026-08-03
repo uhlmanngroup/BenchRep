@@ -625,15 +625,44 @@ class TransformConfig(NamedConfig):
 
     category: Literal["preprocessing", "augmentation"] = Field(
         description=(
-            "Whether the transform applies to every dataset split or only to "
-            "training samples."
+            "Transform category. `preprocessing` applies to every available dataset "
+            "split, whereas `augmentation` applies only to training samples."
         ),
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+        },
     )
 
 
-class DatasetConfig(BaseModel, Generic[ParamsT]):
-    name: str
-    params: ParamsT
+class DatasetConfig(_TrainingConfigBaseModel, Generic[ParamsT]):
+    """Selects a registered dataset and configures its construction.
+
+    Built-in datasets use dataset-specific parameter schemas. Other registered
+    dataset names use `CustomDatasetConfig`, whose parameters are passed directly
+    to the registered dataset constructor.
+    """
+
+    name: str = Field(
+        description=(
+            "Name of the registered dataset to build. Names are normalized before "
+            "registry lookup."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+    params: ParamsT = Field(
+        description=(
+            "Parameters used to construct the selected dataset. The accepted "
+            "fields depend on the dataset name."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Determined by the concrete dataset configuration.",
+            "null_behavior": "Not allowed.",
+        },
+    )
 
     @field_validator("name", mode="before")
     @classmethod
@@ -641,47 +670,198 @@ class DatasetConfig(BaseModel, Generic[ParamsT]):
         return normalize_name(value, field_name="dataset.name")
 
 
-class MNISTDatasetParams(BaseModel):
-    root: Path
-    split: Literal["train", "test"] = "train"
-    download: bool = False
+class MNISTDatasetParams(_TrainingConfigBaseModel):
+    """Parameters for the built-in MNIST dataset."""
+
+    root: Path = Field(
+        description="Directory containing or receiving the MNIST dataset files.",
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+    split: Literal["train", "test"] = Field(
+        default="train",
+        description="MNIST split to load.",
+        json_schema_extra={
+            "omit_behavior": "Uses the training split.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+    download: bool = Field(
+        default=False,
+        description=(
+            "Whether torchvision should download the dataset when it is not "
+            "available under `root`."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Does not download the dataset.",
+            "null_behavior": "Not allowed.",
+        },
+    )
 
 
 class MNISTDatasetConfig(DatasetConfig[MNISTDatasetParams]):
-    name: Literal["mnist"] = "mnist"
-    params: MNISTDatasetParams
+    """Configuration selecting BenchRep's built-in MNIST dataset."""
+
+    name: Literal["mnist"] = Field(
+        default="mnist",
+        description="Registered name of the built-in MNIST dataset.",
+        json_schema_extra={
+            "omit_behavior": "Uses `mnist`.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+    params: MNISTDatasetParams = Field(
+        description="Parameters used to construct the MNIST dataset.",
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+        },
+    )
 
 
-class CIFAR10DatasetParams(BaseModel):
-    root: Path
-    split: Literal["train", "test"] = "train"
-    download: bool = False
+class CIFAR10DatasetParams(_TrainingConfigBaseModel):
+    """Parameters for the built-in CIFAR-10 dataset."""
+
+    root: Path = Field(
+        description="Directory containing or receiving the CIFAR-10 dataset files.",
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+    split: Literal["train", "test"] = Field(
+        default="train",
+        description="CIFAR-10 split to load.",
+        json_schema_extra={
+            "omit_behavior": "Uses the training split.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+    download: bool = Field(
+        default=False,
+        description=(
+            "Whether torchvision should download the dataset when it is not "
+            "available under `root`."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Does not download the dataset.",
+            "null_behavior": "Not allowed.",
+        },
+    )
 
 
 class CIFAR10DatasetConfig(DatasetConfig[CIFAR10DatasetParams]):
-    name: Literal["cifar10", "cifar_10"] = "cifar10"
-    params: CIFAR10DatasetParams
+    """Configuration selecting BenchRep's built-in CIFAR-10 dataset."""
+
+    name: Literal["cifar10", "cifar_10"] = Field(
+        default="cifar10",
+        description=(
+            "Registered name of the built-in CIFAR-10 dataset. `cifar_10` is "
+            "accepted as an alias."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses `cifar10`.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+    params: CIFAR10DatasetParams = Field(
+        description="Parameters used to construct the CIFAR-10 dataset.",
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+        },
+    )
 
 
-class STL10DatasetParams(BaseModel):
-    root: Path
+class STL10DatasetParams(_TrainingConfigBaseModel):
+    """Parameters for the built-in STL-10 dataset."""
+
+    root: Path = Field(
+        description="Directory containing or receiving the STL-10 dataset files.",
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+        },
+    )
     split: Literal[
         "train",
         "test",
         "unlabeled",
         "train+unlabeled",
-    ] = "train"
-    download: bool = False
+    ] = Field(
+        default="train",
+        description=(
+            "STL-10 split to load. Unlabeled samples have the label `-1`; "
+            "`train+unlabeled` combines the training and unlabeled splits."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses the training split.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+    download: bool = Field(
+        default=False,
+        description=(
+            "Whether torchvision should download the dataset when it is not "
+            "available under `root`."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Does not download the dataset.",
+            "null_behavior": "Not allowed.",
+        },
+    )
 
 
 class STL10DatasetConfig(DatasetConfig[STL10DatasetParams]):
-    name: Literal["stl10", "stl_10"] = "stl10"
-    params: STL10DatasetParams
+    """Configuration selecting BenchRep's built-in STL-10 dataset."""
+
+    name: Literal["stl10", "stl_10"] = Field(
+        default="stl10",
+        description=(
+            "Registered name of the built-in STL-10 dataset. `stl_10` is accepted "
+            "as an alias."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses `stl10`.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+    params: STL10DatasetParams = Field(
+        description="Parameters used to construct the STL-10 dataset.",
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+        },
+    )
 
 
 class CustomDatasetConfig(DatasetConfig[dict[str, Any]]):
-    name: str
-    params: dict[str, Any] = Field(default_factory=dict)
+    """Configuration for a user-registered dataset.
+
+    The dataset must be registered before the training workflow builds it
+    and must produce a `BaseDataset` instance. `params` are passed as keyword
+    arguments to its constructor.
+    """
+
+    name: str = Field(
+        description="Registered name of the custom dataset to build.",
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+    params: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Keyword arguments passed to the registered dataset constructor."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses an empty parameter mapping.",
+            "null_behavior": "Not allowed; use an empty mapping instead.",
+        },
+    )
 
 
 def _dataset_config_discriminator(value: Any) -> str:
@@ -714,37 +894,273 @@ SupportedDatasetConfig = Annotated[
 ]
 
 
-class DataModuleConfig(BaseModel):
-    batch_size: PositiveInt = 32
-    val_fraction: float = Field(default=0.1, ge=0.0, lt=1.0)
-    num_workers: NonNegativeInt = 4
-    pin_memory: bool | Literal["auto"] = "auto"
-    persistent_workers: bool = False
-    drop_last: bool = False
+class DataModuleConfig(_TrainingConfigBaseModel):
+    """Configures batching, data loading, and train-validation splitting."""
+
+    batch_size: PositiveInt = Field(
+        default=32,
+        description="Number of samples loaded in each batch.",
+        json_schema_extra={
+            "omit_behavior": "Uses a batch size of 32.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+    val_fraction: float = Field(
+        default=0.1,
+        ge=0.0,
+        lt=1.0,
+        description=(
+            "Fraction of the configured dataset reserved for validation. A value "
+            "of `0.0` disables validation splitting."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Reserves 10% of the dataset for validation.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+    num_workers: NonNegativeInt = Field(
+        default=4,
+        description="Number of worker processes used by each DataLoader.",
+        json_schema_extra={
+            "omit_behavior": "Uses four worker processes.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+    pin_memory: bool | Literal["auto"] = Field(
+        default="auto",
+        description=(
+            "Whether DataLoaders use pinned CPU memory. `auto` enables it when "
+            "CUDA is available and disables it otherwise."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Automatically selects based on CUDA availability.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+    persistent_workers: bool = Field(
+        default=False,
+        description=(
+            "Whether DataLoader worker processes remain alive between epochs. "
+            "Enabling this requires `num_workers` to be greater than zero."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Workers are shut down after each epoch.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+    drop_last: bool = Field(
+        default=False,
+        description=(
+            "Whether the final incomplete training batch is discarded. Validation, "
+            "test, and prediction loaders never discard their final batch."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Keeps the final incomplete training batch.",
+            "null_behavior": "Not allowed.",
+        },
+    )
 
 
 # -------------------------
 # Full experiment configuration
 # -------------------------
-class TrainingConfig(BaseModel):
-    stage: Literal["training"] = "training"
-    run: RunConfig = Field(default_factory=RunConfig)
-    reproducibility: ReproducibilityConfig = Field(default_factory=ReproducibilityConfig)
+class TrainingConfig(_TrainingConfigBaseModel):
+    """Complete configuration for a BenchRep training workflow.
 
-    model: ModelConfig | None = None
-    encoder: EncoderConfig | None = None
-    decoder: DecoderConfig | None = None
-    losses: dict[str, dict[str, LossTermConfig]] | None = Field(default_factory=dict)
-    optimizer: OptimizerConfig | None = None
+    Requirements for model and data configuration depend on whether external
+    model or datamodule objects are supplied at runtime.
 
-    dataset: SupportedDatasetConfig | None = None
-    transforms: list[TransformConfig] = Field(default_factory=list)
-    datamodule: DataModuleConfig | None = Field(default_factory=DataModuleConfig)
+    Use `TrainingConfig.model_json_schema()` to inspect the complete generated
+    schema. For a focused view of a nested section, call `model_json_schema()`
+    on its concrete configuration type, for example
+    `TrainerConfig.model_json_schema()` or
+    `MNISTDatasetConfig.model_json_schema()`. Public configuration models are
+    available from `benchrep.assembly.schemas`.
+    """
 
-    trainer: TrainerConfig = Field(default_factory=TrainerConfig)
-    logger: LoggerConfig | None = None
-    checkpointing: CheckpointConfig = Field(default_factory=CheckpointConfig)
-    inspection: InspectionConfig = Field(default_factory=InspectionConfig)
+    stage: Literal["training"] = Field(
+        default="training",
+        description="Identifies this configuration as a training workflow.",
+        json_schema_extra={
+            "omit_behavior": "Uses `training`.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+    run: RunConfig = Field(
+        default_factory=RunConfig,
+        description="Output location and run-identification settings.",
+        json_schema_extra={
+            "omit_behavior": "Uses the defaults defined by `RunConfig`.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+    reproducibility: ReproducibilityConfig = Field(
+        default_factory=ReproducibilityConfig,
+        description="Training randomness and numerical reproducibility settings.",
+        json_schema_extra={
+            "omit_behavior": "Uses the defaults defined by `ReproducibilityConfig`.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+    model: ModelConfig | None = Field(
+        default=None,
+        description=(
+            "Model to assemble for training. This section is ignored when an "
+            "external model object is supplied."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Allowed when an external model is supplied; otherwise a model "
+                "configuration is required."
+            ),
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    encoder: EncoderConfig | None = Field(
+        default=None,
+        description=(
+            "Encoder to use when assembling the configured model. This section "
+            "is ignored when an external model object is supplied."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Allowed when an external model is supplied; otherwise an encoder "
+                "configuration is required."
+            ),
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    decoder: DecoderConfig | None = Field(
+        default=None,
+        description=(
+            "Decoder to use when required by the configured model. This section "
+            "is ignored when an external model object is supplied."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "No decoder is configured. Config-built autoencoders and VAEs "
+                "require this section."
+            ),
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    losses: dict[str, dict[str, LossTermConfig]] | None = Field(
+        default_factory=dict,
+        description=(
+            "Losses grouped first by loss role and then by registered loss name. "
+            "Built-in autoencoders require `reconstruction`; built-in VAEs require "
+            "both `reconstruction` and `regularization`. This section is ignored "
+            "when an external model object is supplied."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Uses an empty loss mapping, which does not satisfy the loss "
+                "requirements of config-built autoencoders or VAEs."
+            ),
+            "null_behavior": (
+                "Allowed when an external model is supplied; otherwise a loss "
+                "configuration is required."
+            ),
+        },
+    )
+    optimizer: OptimizerConfig | None = Field(
+        default=None,
+        description=(
+            "Optimizer used to train the config-built model. This section is "
+            "ignored when an external model object is supplied."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Allowed when an external model is supplied; otherwise an optimizer "
+                "configuration is required."
+            ),
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    dataset: SupportedDatasetConfig | None = Field(
+        default=None,
+        description=(
+            "Dataset to build for training. Use "
+            "`benchrep.list_registered_components(\"dataset\", "
+            "include_aliases=True)` to inspect available dataset names. Parameters for "
+            "built-in datasets are documented in their corresponding dataset-specific "
+            "configuration schemas. Parameters for user-registered datasets must match "
+            "the registered dataset constructor. This section is ignored when an "
+            "external datamodule object is supplied."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Allowed when an external datamodule is supplied; otherwise a "
+                "dataset configuration is required."
+            ),
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    transforms: list[TransformConfig] = Field(
+        default_factory=list,
+        description=(
+            "Ordered transforms applied to each dataset sample's `x` tensor. "
+            "Preprocessing transforms apply to every available split, while "
+            "augmentation transforms apply only during training. This section is "
+            "ignored when an external datamodule object is supplied."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses an empty transform sequence.",
+            "null_behavior": "Not allowed; use an empty list instead.",
+        },
+    )
+    datamodule: DataModuleConfig | None = Field(
+        default_factory=DataModuleConfig,
+        description=(
+            "Batching, data-loading, and train-validation splitting settings for "
+            "BenchRep's internal datamodule. This section is ignored when an "
+            "external datamodule object is supplied."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses the defaults defined by `DataModuleConfig`.",
+            "null_behavior": (
+                "Allowed when an external datamodule is supplied; otherwise a "
+                "datamodule configuration is required."
+            ),
+        },
+    )
+    trainer: TrainerConfig = Field(
+        default_factory=TrainerConfig,
+        description=(
+            "Lightning Trainer settings used for training and inherited as defaults by "
+            "linked prediction runs. Declared fields and additional non-null fields are "
+            "passed as keyword arguments to `lightning.Trainer`, except for arguments "
+            "managed internally by BenchRep."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses the defaults defined by `TrainerConfig`.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+    logger: LoggerConfig | None = Field(
+        default=None,
+        description="Optional experiment logger used during training.",
+        json_schema_extra={
+            "omit_behavior": "Disables experiment logging.",
+            "null_behavior": "Equivalent to omission; experiment logging is disabled.",
+        },
+    )
+    checkpointing: CheckpointConfig = Field(
+        default_factory=CheckpointConfig,
+        description="Checkpoint creation and selection settings for training.",
+        json_schema_extra={
+            "omit_behavior": "Uses the defaults defined by `CheckpointConfig`.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+    inspection: InspectionConfig = Field(
+        default_factory=InspectionConfig,
+        description="Optional best-effort torchview model-graph export settings.",
+        json_schema_extra={
+            "omit_behavior": "Uses the defaults defined by `InspectionConfig`.",
+            "null_behavior": "Not allowed.",
+        },
+    )
 
     @model_validator(mode="after")
     def validate_override_requirements(self, info: ValidationInfo) -> "TrainingConfig":
