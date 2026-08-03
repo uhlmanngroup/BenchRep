@@ -54,6 +54,7 @@ from benchrep.assembly.builders import (
     build_model,
     build_trainer,
 )
+from benchrep.assembly.registries.utils import normalize_name
 from benchrep.assembly.registries.builtins import register_builtins
 
 
@@ -150,6 +151,20 @@ def _train(
     if not model_is_external:
         assert train_config.model is not None
         assert train_config.encoder is not None
+
+        configured_model_name = normalize_name(
+            train_config.model.name,
+            field_name="config.model.name",
+        )
+
+        if configured_model_name not in model_family.config_model_names:
+            raise ValueError(
+                "Configured model is incompatible with the selected training "
+                "model family: "
+                f"family={model_family.name!r}, "
+                f"configured_model={configured_model_name!r}, "
+                f"expected one of {model_family.config_model_names!r}."
+            )
 
         # Setup paths
         model_name = f"{train_config.model.name}_{train_config.encoder.name}"
@@ -350,6 +365,7 @@ def _train(
     write_training_manifest(
         config_composition_result=config_composition_result,
         output_path=manifest_path,
+        model_family=model_family,
         run_context=run_context,
         checkpoint_callback=checkpoint_callback,
         torchview_graph_path=torchview_graph_path,

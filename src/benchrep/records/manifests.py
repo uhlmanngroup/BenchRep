@@ -27,12 +27,14 @@ from benchrep.records.utils import (
 from benchrep.records.runtime_environment import (
     get_runtime_environment_filename,
 )
+from benchrep.interfaces.model_families import ModelFamilySpec, VAE_FAMILY
 
 
 def write_training_manifest(
     *,
     config_composition_result: ConfigCompositionResult[TrainingConfig],
     output_path: Path,
+    model_family: ModelFamilySpec,
     run_context: RunContext,
     checkpoint_callback: ModelCheckpoint,
     torchview_graph_path: Path | None = None,
@@ -87,6 +89,7 @@ def write_training_manifest(
         "model_source": model_source,
         "datamodule_source": datamodule_source,
         "model": model_class_name if model_is_external else configured_model,
+        "model_family": model_family.name,
         "encoder": None if model_is_external else configured_encoder,
         "decoder": None if model_is_external else configured_decoder,
         "dataset": (
@@ -178,6 +181,7 @@ def write_training_manifest(
             },
             "model": {
                 "source": model_source,
+                "family": model_family.name,
                 "class_name": model_class_name,
                 "config_reconstructable": not model_is_external,
                 "configured_model": None if model_is_external else configured_model,
@@ -210,6 +214,7 @@ def write_prediction_manifest(
     config_composition_result: ConfigCompositionResult[PredictionConfig],
     output_path: Path,
     run_spec: PredictionRunSpec,
+    model_family: ModelFamilySpec,
     run_context: RunContext,
     export_paths: PredictionExportPaths,
     created_at: str,
@@ -231,6 +236,19 @@ def write_prediction_manifest(
 
     model_is_external = model_source != "config"
     datamodule_is_external = datamodule_source != "config"
+
+    configured_reconstruction_latent_source = (
+        run_spec.prediction_config.inference.reconstruction_latent_source
+    )
+
+    if model_family != VAE_FAMILY:
+        reconstruction_latent_source_resolution = "not_applicable"
+    elif model_is_external:
+        reconstruction_latent_source_resolution = "external_model"
+    elif configured_reconstruction_latent_source is None:
+        reconstruction_latent_source_resolution = "benchrep_default"
+    else:
+        reconstruction_latent_source_resolution = "prediction_config"
 
     configured_model = (
         run_spec.training_config.model.name
@@ -289,6 +307,7 @@ def write_prediction_manifest(
         "model_source": model_source,
         "datamodule_source": datamodule_source,
         "model": model_class_name if model_is_external else configured_model,
+        "model_family": model_family.name,
         "encoder": None if model_is_external else configured_encoder,
         "decoder": None if model_is_external else configured_decoder,
         "dataset": (
@@ -343,6 +362,7 @@ def write_prediction_manifest(
                 },
                 "model": {
                     "source": model_source,
+                    "family": model_family.name,
                     "class_name": model_class_name,
                     "config_reconstructable": (
                             not model_is_external and configured_model is not None
@@ -350,6 +370,17 @@ def write_prediction_manifest(
                     "configured_model": None if model_is_external else configured_model,
                     "configured_encoder": None if model_is_external else configured_encoder,
                     "configured_decoder": None if model_is_external else configured_decoder,
+                },
+                "inference": {
+                    "reconstruction_latent_source": {
+                        "configured": (
+                            configured_reconstruction_latent_source
+                        ),
+                        "effective": run_spec.reconstruction_latent_source,
+                        "resolution": (
+                            reconstruction_latent_source_resolution
+                        ),
+                    },
                 },
                 "dataset": configured_dataset,
                 "transform_source": run_spec.transform_source,

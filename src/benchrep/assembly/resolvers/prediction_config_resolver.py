@@ -20,6 +20,7 @@ from benchrep.assembly.resolvers.utils import (
     get_required_nested_path,
     get_required_nested_str,
 )
+from benchrep.assembly.registries.utils import normalize_name
 from benchrep.interfaces.model_families import ModelFamilySpec, VAE_FAMILY
 
 
@@ -116,6 +117,11 @@ def resolve_prediction_config(
         training_datamodule_provenance.get("source") != "config"
     )
 
+    _validate_prediction_model_source(
+        training_model_external=training_model_external,
+        model_overridden=model_overridden,
+    )
+
     resolved_training_config_path = get_required_nested_path(
         training_manifest,
         "records",
@@ -128,6 +134,13 @@ def resolve_prediction_config(
         raw_training_config,
         model_overridden=training_model_external,
         datamodule_overridden=training_datamodule_external,
+    )
+
+    _validate_prediction_model_family(
+        training_model_provenance=training_model_provenance,
+        training_config=training_config,
+        model_family=model_family,
+        model_overridden=model_overridden,
     )
 
     checkpoint_path = _resolve_checkpoint_path(
@@ -148,13 +161,6 @@ def resolve_prediction_config(
         "output_dir",
         base_dir=training_manifest_path.parent,
     )
-
-    if training_model_external and not model_overridden:
-        raise ValueError(
-            "Training manifest indicates that the trained model came from an external "
-            "Python object, but no model override was provided to predict(). "
-            "Pass a compatible model instance that can load the recorded checkpoint."
-        )
 
     if datamodule_overridden:
         dataset_config = None
@@ -481,6 +487,55 @@ def _load_training_manifest(path: Path) -> dict[str, Any]:
         )
 
     return training_manifest
+
+
+def _validate_prediction_model_source(
+    *,
+    training_model_external: bool,
+    model_overridden: bool,
+) -> None:
+    if training_model_external and not model_overridden:
+        raise ValueError(
+            "Training manifest indicates that the trained model came from an external "
+            "Python object, but no model override was provided to predict(). "
+            "Pass a compatible model instance that can load the recorded checkpoint."
+        )
+
+
+def _validate_prediction_model_family(
+    *,
+    training_model_provenance: dict[str, Any],
+    training_config: TrainingConfig,
+    model_family: ModelFamilySpec,
+    model_overridden: bool,
+) -> None:
+    recorded_family = training_model_provenance.get("family")
+
+    if recorded_family is not None and recorded_family != model_family.name:
+        raise ValueError(
+            "Prediction model family does not match the training run: "
+            f"training family={recorded_family!r}, "
+            f"prediction family={model_family.name!r}."
+        )
+
+    if model_overridden:
+        return
+
+    assert training_config.model is not None
+
+    configured_model_name = normalize_name(
+        training_config.model.name,
+        field_name="config.model.name",
+    )
+
+    if configured_model_name not in model_family.config_model_names:
+        raise ValueError(
+            "Configured model is incompatible with the selected prediction "
+            "model family: "
+            f"family={model_family.name!r}, "
+            f"configured_model={configured_model_name!r}, "
+            f"expected one of {model_family.config_model_names!r}."
+        )
 
 
 def _resolve_reconstruction_latent_source(

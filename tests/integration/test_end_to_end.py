@@ -18,6 +18,8 @@ from benchrep.workflows import (
 )
 from tests.fixtures.datasets import TinySyntheticDataset
 from benchrep.assembly.registries.core import DATASETS
+from benchrep.architecture.models import VAE
+from benchrep.assembly.schemas import PredictionInferenceConfig
 
 
 CONFIG_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "configs"
@@ -81,6 +83,37 @@ def test_internal_end_to_end(
 
     assert prediction_result.manifest_path.is_file()
     assert prediction_result.audit_report_path.is_file()
+
+    if training_config_name == "training_tiny_synthetic_vae.yaml":
+        model = prediction_result.model
+        assert isinstance(model, VAE)
+        assert prediction_result.run_spec.reconstruction_latent_source == "mean"
+        assert model.prediction_reconstruction_latent_source == "mean"
+
+        with torch.no_grad():
+            for prediction in prediction_result.predictions:
+                torch.testing.assert_close(
+                    prediction.reconstruction,
+                    model.decode(prediction.z_mu),
+                )
+
+            forward_output = model(
+                prediction_result.predictions[0].input
+            )
+            torch.testing.assert_close(
+                forward_output["reconstruction"],
+                model.decode(forward_output["z_sample"]),
+            )
+
+        _assert_vae_reconstruction_provenance(
+            prediction_result,
+            configured_source=None,
+            effective_source="mean",
+            resolution="benchrep_default",
+            uses_randomness=False,
+        )
+
+
     assert len(prediction_result.predictions) == 4
     _assert_completed_manifest(prediction_result.manifest_path, "prediction")
     _assert_audit_has_no_errors(prediction_result.audit_report_path)
@@ -149,6 +182,50 @@ def test_internal_end_to_end(
     assert "reconstruction" in metrics
 
 
+def test_internal_vae_prediction_can_reconstruct_from_sample(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if "tiny_synthetic" not in DATASETS.keys():
+        DATASETS.register("tiny_synthetic", TinySyntheticDataset)
+
+    monkeypatch.chdir(tmp_path)
+
+    training_result = train_vae(
+        config_path=CONFIG_DIR / "training_tiny_synthetic_vae.yaml",
+    )
+
+    prediction_result = predict_vae(
+        config_path=CONFIG_DIR / "prediction_tiny_synthetic.yaml",
+        config_components={
+            "inference": PredictionInferenceConfig(
+                reconstruction_latent_source="sample",
+            ),
+        },
+        training_manifest_path=training_result.manifest_path,
+    )
+
+    model = prediction_result.model
+    assert isinstance(model, VAE)
+    assert prediction_result.run_spec.reconstruction_latent_source == "sample"
+    assert model.prediction_reconstruction_latent_source == "sample"
+
+    with torch.no_grad():
+        for prediction in prediction_result.predictions:
+            torch.testing.assert_close(
+                prediction.reconstruction,
+                model.decode(prediction.z_sample),
+            )
+
+    _assert_vae_reconstruction_provenance(
+        prediction_result,
+        configured_source="sample",
+        effective_source="sample",
+        resolution="prediction_config",
+        uses_randomness=True,
+    )
+
+
 def _assert_completed_manifest(path: Path, expected_stage: str) -> None:
     with path.open(encoding="utf-8") as handle:
         manifest = yaml.safe_load(handle)
@@ -175,3 +252,60 @@ def _count_paths(value: Any) -> int:
         return sum(_count_paths(item) for item in value)
 
     return 0
+
+
+def _assert_vae_reconstruction_provenance(
+    prediction_result: Any,
+    *,
+    configured_source: str | None,
+    effective_source: str,
+    resolution: str,
+    uses_randomness: bool,
+) -> None:
+    with prediction_result.manifest_path.open(
+        encoding="utf-8"
+    ) as handle:
+        manifest = yaml.safe_load(handle)
+
+    recorded_source = (
+        manifest["provenance"]["prediction"]["inference"]
+        ["reconstruction_latent_source"]
+    )
+
+    assert recorded_source == {
+        "configured": configured_source,
+        "effective": effective_source,
+        "resolution": resolution,
+    }
+
+    runtime_environment_path = (
+        prediction_result.run_context.metadata_dir
+        / "prediction_runtime_environment.yaml"
+    )
+
+    with runtime_environment_path.open(encoding="utf-8") as handle:
+        runtime_environment = yaml.safe_load(handle)
+
+    reproducibility = runtime_environment["workflow"]["reproducibility"]
+
+    assert (
+        reproducibility["requested_overrides"]
+        ["reconstruction_latent_source"]
+        == configured_source
+    )
+    assert (
+        reproducibility["resolved"]["reconstruction_latent_source"]
+        == effective_source
+    )
+
+    assert reproducibility["components"]["vae_reconstruction"] == {
+        "applicable": True,
+        "model_source": "config",
+        "latent_source": effective_source,
+        "uses_randomness": uses_randomness,
+        "seed": (
+            prediction_result.run_spec.seed
+            if uses_randomness
+            else None
+        ),
+    }

@@ -357,6 +357,8 @@ def _predict(
         collect_prediction_environment_context(
             run_spec=run_spec,
             trainer=trainer,
+            model_family=model_family,
+            model_source=model_source,
             datamodule_source=datamodule_source,
         )
     )
@@ -461,6 +463,7 @@ def _predict(
         config_composition_result=config_composition_result,
         output_path=manifest_path,
         run_spec=run_spec,
+        model_family=model_family,
         run_context=run_context,
         export_paths=export_paths,
         created_at=created_at,

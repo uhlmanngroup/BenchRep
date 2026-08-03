@@ -16,7 +16,7 @@ import yaml
 from yaml.nodes import ScalarNode
 
 from benchrep.records.utils import now_isoformat
-
+from benchrep.interfaces.model_families import VAE_FAMILY
 
 if TYPE_CHECKING:
     import lightning as L
@@ -26,6 +26,7 @@ if TYPE_CHECKING:
         EvaluationRunSpec,
     )
     from benchrep.assembly.schemas import TrainingConfig
+    from benchrep.interfaces.model_families import ModelFamilySpec
 
 
 RuntimeEnvironmentStage = Literal[
@@ -181,16 +182,26 @@ def collect_prediction_environment_context(
     *,
     run_spec: PredictionRunSpec,
     trainer: L.Trainer,
+    model_family: ModelFamilySpec,
+    model_source: Literal["config", "external_object"],
     datamodule_source: Literal["config", "external_object"],
 ) -> dict[str, Any]:
     """Collect runtime and reproducibility context for prediction."""
     prediction_config = run_spec.prediction_config
     reconstruction_spec = run_spec.export_spec.reconstructions
 
-    reconstruction_uses_randomness = (
+    reconstruction_export_uses_randomness = (
         reconstruction_spec.enabled
         and reconstruction_spec.selection == "random"
         and reconstruction_spec.n_examples != "all"
+    )
+
+    vae_reconstruction_applicable = model_family == VAE_FAMILY
+
+    vae_reconstruction_uses_randomness = (
+        run_spec.reconstruction_latent_source == "sample"
+        if vae_reconstruction_applicable and model_source == "config"
+        else None
     )
 
     return {
@@ -231,6 +242,9 @@ def collect_prediction_environment_context(
                     prediction_config.inference
                     .float32_matmul_precision
                 ),
+                "reconstruction_latent_source": (
+                    prediction_config.inference.reconstruction_latent_source
+                ),
             },
             "resolved": {
                 "global_seed": run_spec.seed,
@@ -242,17 +256,41 @@ def collect_prediction_environment_context(
                 "float32_matmul_precision": (
                     run_spec.float32_matmul_precision
                 ),
+                "reconstruction_latent_source": (
+                    run_spec.reconstruction_latent_source
+                ),
             },
             "components": {
-                "reconstruction_sampling": {
+                "reconstruction_export_selection": {
                     "enabled": reconstruction_spec.enabled,
                     "selection": reconstruction_spec.selection,
                     "uses_randomness": (
-                        reconstruction_uses_randomness
+                        reconstruction_export_uses_randomness
                     ),
                     "seed": (
                         reconstruction_spec.seed
-                        if reconstruction_uses_randomness
+                        if reconstruction_export_uses_randomness
+                        else None
+                    ),
+                },
+                "vae_reconstruction": {
+                    "applicable": vae_reconstruction_applicable,
+                    "model_source": (
+                        model_source
+                        if vae_reconstruction_applicable
+                        else None
+                    ),
+                    "latent_source": (
+                        run_spec.reconstruction_latent_source
+                        if vae_reconstruction_applicable
+                        else None
+                    ),
+                    "uses_randomness": (
+                        vae_reconstruction_uses_randomness
+                    ),
+                    "seed": (
+                        run_spec.seed
+                        if vae_reconstruction_uses_randomness
                         else None
                     ),
                 },
