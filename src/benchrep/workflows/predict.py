@@ -70,7 +70,7 @@ class PredictionWorkflowResult:
 
 # Model-specific wrappers
 def predict_ae(
-        config_path: Path | str,
+        config_path: Path | str | None = None,
         full_config_object: PredictionConfig | None = None,
         config_components: Mapping[str, SupportedConfigComponent] | None = None,
         training_manifest_path: Path | str | None = None,
@@ -91,7 +91,7 @@ def predict_ae(
 
 
 def predict_vae(
-        config_path: Path | str,
+        config_path: Path | str | None = None,
         full_config_object: PredictionConfig | None = None,
         config_components: Mapping[str, SupportedConfigComponent] | None = None,
         training_manifest_path: Path | str | None = None,
