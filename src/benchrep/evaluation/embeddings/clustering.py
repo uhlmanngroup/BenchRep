@@ -157,7 +157,7 @@ def run_leiden(
         n_neighbors=n_neighbors,
         n_pcs=n_pcs,
         metric=metric,
-        key_added=neighbors_key,
+        key_added=None if neighbors_key == "neighbors" else neighbors_key,
         random_state=random_state,
         **neighbors_kwargs,
     )
