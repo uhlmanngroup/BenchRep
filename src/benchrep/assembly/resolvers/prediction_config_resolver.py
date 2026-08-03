@@ -20,6 +20,7 @@ from benchrep.assembly.resolvers.utils import (
     get_required_nested_path,
     get_required_nested_str,
 )
+from benchrep.interfaces.model_families import ModelFamilySpec, VAE_FAMILY
 
 
 # -------------------------
@@ -31,6 +32,8 @@ PredictionTransformSource = Literal[
     "default_identity",
     "external_datamodule",
 ]
+
+ReconstructionLatentSource = Literal["mean", "sample"]
 
 
 @dataclass(frozen=True)
@@ -84,12 +87,14 @@ class PredictionRunSpec:
     seed: int | None
     seed_workers: bool | None
     float32_matmul_precision: str | None
+    reconstruction_latent_source: ReconstructionLatentSource | None
 
     export_spec: PredictionExportSpec
 
 
 def resolve_prediction_config(
     prediction_config: PredictionConfig,
+    model_family: ModelFamilySpec,
     training_manifest_path_override: Path | str | None = None,
     model_overridden: bool = False,
     datamodule_overridden: bool = False,
@@ -237,6 +242,14 @@ def resolve_prediction_config(
         field_name="inference.float32_matmul_precision",
     )
 
+    reconstruction_latent_source = _resolve_reconstruction_latent_source(
+        configured_source=(
+            prediction_config.inference.reconstruction_latent_source
+        ),
+        model_family=model_family,
+        model_overridden=model_overridden,
+    )
+
     export_spec = resolve_prediction_exports(
         export_config=prediction_config.exports,
         seed=seed,
@@ -263,6 +276,7 @@ def resolve_prediction_config(
         seed=seed,
         seed_workers=seed_workers,
         float32_matmul_precision=float32_matmul_precision,
+        reconstruction_latent_source=reconstruction_latent_source,
         export_spec=export_spec,
     )
 
@@ -467,3 +481,36 @@ def _load_training_manifest(path: Path) -> dict[str, Any]:
         )
 
     return training_manifest
+
+
+def _resolve_reconstruction_latent_source(
+    *,
+    configured_source: ReconstructionLatentSource | None,
+    model_family: ModelFamilySpec,
+    model_overridden: bool,
+) -> ReconstructionLatentSource | None:
+    """Resolve the latent source used for prediction-time VAE reconstruction."""
+    if configured_source is None:
+        if model_overridden:
+            return None
+
+        if model_family == VAE_FAMILY:
+            return "mean"
+
+        return None
+
+    if model_overridden:
+        if model_family == VAE_FAMILY:
+            raise ValueError(
+                "`inference.reconstruction_latent_source` cannot be set when "
+                "prediction uses an external model. BenchRep cannot control how "
+                "the external VAE model's `predict_step()` produces reconstructions."
+            )
+
+    if model_family != VAE_FAMILY:
+        raise ValueError(
+            "`inference.reconstruction_latent_source` is only supported for "
+            "prediction using internal VAE models."
+        )
+
+    return configured_source

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
+from typing import Literal
 
 import inspect
 
@@ -37,7 +38,13 @@ from benchrep.assembly.registries.core import (
 )
 
 
-def build_model(config: TrainingConfig) -> L.LightningModule:
+def build_model(
+    config: TrainingConfig,
+    *,
+    prediction_reconstruction_latent_source: (
+        Literal["mean", "sample"] | None
+    ) = None,
+) -> L.LightningModule:
     """Build a model from config.
 
     This is the public model-builder entry point. It reads ``config.model.name``
@@ -73,6 +80,11 @@ def build_model(config: TrainingConfig) -> L.LightningModule:
     if model_cls is Autoencoder:
         if config.decoder is None:
             raise ValueError("Autoencoder requires a decoder config section.")
+        if prediction_reconstruction_latent_source is not None:
+            raise ValueError(
+                "`prediction_reconstruction_latent_source` is only supported "
+                "when building a VAE."
+            )
 
         model = build_autoencoder(
             encoder=config.encoder,
@@ -88,6 +100,8 @@ def build_model(config: TrainingConfig) -> L.LightningModule:
     elif model_cls is VAE:
         if config.decoder is None:
             raise ValueError("VAE requires a decoder config section.")
+        if prediction_reconstruction_latent_source is None:
+            prediction_reconstruction_latent_source = "mean"
 
         model = build_vae(
             encoder=config.encoder,
@@ -96,6 +110,9 @@ def build_model(config: TrainingConfig) -> L.LightningModule:
             latent_dim=config.model.params["latent_dim"],
             reconstruction_losses=config.losses["reconstruction"],
             regularization_losses=config.losses["regularization"],
+            prediction_reconstruction_latent_source=(
+                prediction_reconstruction_latent_source
+            ),
         )
 
         run_log.info("Assembled model: %s", type(model).__name__)
@@ -192,6 +209,9 @@ def build_vae(
     latent_dim: int,
     reconstruction_losses: dict[str, LossTermConfig | LossTerm],
     regularization_losses: dict[str, LossTermConfig | LossTerm],
+    prediction_reconstruction_latent_source: (
+            Literal["mean", "sample"]
+    ) = "mean",
 ) -> VAE:
     run_log = get_run_logger()
 
@@ -304,6 +324,9 @@ def build_vae(
         reconstruction_losses=reconstruction_losses,
         regularization_losses=regularization_losses,
         optimizer_factory=optimizer_factory,
+        prediction_reconstruction_latent_source=(
+            prediction_reconstruction_latent_source
+        ),
     )
 
 

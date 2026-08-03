@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
+from typing import Literal
 
 import torch
 from torch import nn
@@ -28,7 +29,11 @@ class VAE(BenchRepVAEModel):
     The encoder produces deterministic features. The variational head maps those
     features to a diagonal Gaussian posterior, samples a latent vector with the
     reparameterization trick, and the decoder reconstructs the input from the
-    sampled latent vector.
+    latent vector.
+
+    During training, the decoder reconstructs the input from the sampled latent.
+    During prediction, reconstruction can use either the posterior mean or the
+    sampled latent, with the posterior mean used by default.
 
     The deterministic embedding exposed for downstream evaluation is ``z_mu``.
     """
@@ -41,8 +46,17 @@ class VAE(BenchRepVAEModel):
         reconstruction_losses: dict[str, LossTerm],
         regularization_losses: dict[str, LossTerm],
         optimizer_factory: Callable[[Iterable[nn.Parameter]], torch.optim.Optimizer],
+        prediction_reconstruction_latent_source: Literal["mean", "sample"] = "mean",
     ) -> None:
         super().__init__()
+
+        if prediction_reconstruction_latent_source not in {"mean", "sample"}:
+            raise ValueError(
+                "prediction_reconstruction_latent_source must be 'mean' or 'sample', "
+                f"got {prediction_reconstruction_latent_source!r}."
+            )
+
+        self.prediction_reconstruction_latent_source = prediction_reconstruction_latent_source
 
         if encoder.input_shape is not None and decoder.output_shape is not None:
             if encoder.input_shape != decoder.output_shape:
@@ -96,13 +110,27 @@ class VAE(BenchRepVAEModel):
                 "reconstruction_losses",
                 "regularization_losses",
                 "optimizer_factory",
+                "prediction_reconstruction_latent_source",
             ]
         )
 
-    def forward(self, x: torch.Tensor) -> VAEForwardOutput:
+    def forward(
+            self,
+            x: torch.Tensor,
+            *,
+            reconstruction_latent_source: Literal["mean", "sample"] = "sample",
+    ) -> VAEForwardOutput:
         encoder_features = self.encode(x)
         latent = self.variational_head(encoder_features)
-        reconstruction = self.decode(latent.z_sample)
+        if reconstruction_latent_source == "mean":
+            reconstruction = self.decode(latent.z_mu)
+        elif reconstruction_latent_source == "sample":
+            reconstruction = self.decode(latent.z_sample)
+        else:
+            raise ValueError(
+                "reconstruction_latent_source must be 'mean' or 'sample', "
+                f"got {reconstruction_latent_source!r}."
+            )
 
         return {
             "embedding": latent.z_mu,
@@ -115,8 +143,8 @@ class VAE(BenchRepVAEModel):
     def encode(self, x: torch.Tensor) -> torch.Tensor:
         return self.encoder(x)
 
-    def decode(self, z_sample: torch.Tensor) -> torch.Tensor:
-        return self.decoder(z_sample)
+    def decode(self, latent: torch.Tensor) -> torch.Tensor:
+        return self.decoder(latent)
 
     def training_step(self, batch: AutoencoderBatch, batch_idx: int) -> torch.Tensor:
         return self._compute_loss_step(batch, stage="train")
@@ -129,7 +157,10 @@ class VAE(BenchRepVAEModel):
 
     def predict_step(self, batch: AutoencoderBatch, batch_idx: int) -> VAEPredictionOutput:
         x = self._get_input_from_batch(batch)
-        output = self(x)
+        output = self(
+            x,
+            reconstruction_latent_source=self.prediction_reconstruction_latent_source,
+        )
 
         return VAEPredictionOutput(
             input=x,

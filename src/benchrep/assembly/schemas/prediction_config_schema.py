@@ -45,6 +45,7 @@ class PredictionInferenceConfig(BaseModel):
     seed_workers: bool | None = None
     deterministic: bool | Literal["warn"] | None = None
     float32_matmul_precision: Literal["medium", "high", "highest"] | None = None
+    reconstruction_latent_source: Literal["mean", "sample"] | None = None
 
 
 # -------------------------

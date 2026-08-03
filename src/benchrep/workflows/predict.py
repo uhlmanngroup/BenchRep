@@ -163,6 +163,7 @@ def _predict(
 
     run_spec = resolve_prediction_config(
         prediction_config=pred_config,
+        model_family=model_family,
         training_manifest_path_override=training_manifest_path,
         model_overridden=model_is_external,
         datamodule_overridden=datamodule_is_external,
@@ -210,6 +211,37 @@ def _predict(
         run_spec.export_spec.reconstructions.selection,
         run_spec.export_spec.reconstructions.seed,
     )
+    if model_is_external and model_family == VAE_FAMILY:
+        run_log.warning(
+            "External VAE controls its own prediction logic. BenchRep cannot "
+            "determine whether reconstructions are generated from the posterior "
+            "mean, a sampled latent, or another model-specific path. Verify the "
+            "external model's `predict_step()` implementation if deterministic "
+            "reconstruction is required."
+        )
+
+    elif model_family == VAE_FAMILY:
+        configured_source = (
+            run_spec.prediction_config.inference.reconstruction_latent_source
+        )
+        effective_source = run_spec.reconstruction_latent_source
+        assert effective_source is not None
+
+        if configured_source is None:
+            run_log.info(
+                "`inference.reconstruction_latent_source` was not configured; "
+                "defaulting to the posterior mean (`z_mu`)."
+            )
+        elif effective_source == "mean":
+            run_log.info(
+                "VAE reconstructions will be decoded from the posterior mean "
+                "(`z_mu`)."
+            )
+        else:
+            run_log.info(
+                "VAE reconstructions will be decoded from the sampled latent "
+                "(`z_sample`)."
+            )
     if run_spec.transform_source == "default_identity":
         run_log.warning(
             "Training used an external datamodule, so preprocessing transforms "
@@ -285,7 +317,10 @@ def _predict(
         assert run_spec.training_config.losses is not None
         assert run_spec.training_config.optimizer is not None
 
-        model = build_model(config=run_spec.training_config)
+        model = build_model(
+            config=run_spec.training_config,
+            prediction_reconstruction_latent_source=run_spec.reconstruction_latent_source,
+        )
     else:
         run_log.info(
             "External model was provided; resolved model/encoder/decoder/losses/optimizer "
