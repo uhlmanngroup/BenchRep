@@ -106,37 +106,47 @@ class RunConfig(_TrainingConfigBaseModel):
 class ModelConfig(NamedConfig):
     """Selects the BenchRep model family and its assembly parameters.
 
-    Use `benchrep.list_registered_components("model", include_aliases=True)`
-    to inspect available model names. Supported parameters and required
-    encoder, decoder, and loss sections depend on the selected model.
-    For supported models assembled from configuration, this configuration is
-    recorded during training and reused to reconstruct the model for linked
-    prediction runs.
+    Use `benchrep.inspect_registry("model")` to inspect available model names
+    and aliases, and `benchrep.inspect_registry("model", "<name>")` for details
+    about a specific registered implementation.
+
+    Supported parameters and required encoder, decoder, and loss sections depend
+    on the selected model. For supported models assembled from configuration,
+    this configuration is recorded during training and reused to reconstruct the
+    model for linked prediction runs.
     """
 
 
 class EncoderConfig(NamedConfig):
     """Selects and configures an encoder from the encoder registry.
 
-    Use `benchrep.list_registered_components("encoder", include_aliases=True)`
-    to inspect available names. `params` are passed as keyword arguments to the
-    selected encoder constructor. User-registered encoders must satisfy
-    BenchRep's encoder interface and must be registered again when reconstructing
-    the model in a linked prediction process.
+    Use `benchrep.inspect_registry("encoder")` to inspect available names and
+    aliases, and `benchrep.inspect_registry("encoder", "<name>")` for the
+    registered constructor signature and documentation.
+
+    `params` are passed as keyword arguments to the selected encoder constructor.
+    User-registered encoders must satisfy BenchRep's encoder interface and must
+    be registered again when reconstructing the model in a linked prediction
+    process.
     """
 
 
 class DecoderConfig(NamedConfig):
     """Selects and configures a decoder from the decoder registry.
 
-    Use `benchrep.list_registered_components("decoder", include_aliases=True)`
-    to inspect available names. `params` are passed as keyword arguments to the
-    selected decoder constructor, except for model-dependent dimensions supplied
-    by BenchRep. `input_dim` is overridden by BenchRep and derived from the encoder
-    output or VAE latent dimension. When required, `initial_shape` is inferred from
-    `encoder.feature_shape` and must not be configured manually. User-registered
-    decoders must satisfy BenchRep's decoder interface and must be registered
-    again when reconstructing the model in a linked prediction process.
+    Use `benchrep.inspect_registry("decoder")` to inspect available names and
+    aliases, and `benchrep.inspect_registry("decoder", "<name>")` for the
+    registered constructor signature and documentation.
+
+    `params` are passed as keyword arguments to the selected decoder constructor,
+    except for model-dependent dimensions supplied by BenchRep. `input_dim` is
+    overridden by BenchRep and derived from the encoder output or VAE latent
+    dimension. When required, `initial_shape` is inferred from
+    `encoder.feature_shape` and must not be configured manually.
+
+    User-registered decoders must satisfy BenchRep's decoder interface and must
+    be registered again when reconstructing the model in a linked prediction
+    process.
     """
 
 
@@ -149,13 +159,16 @@ class LossTermConfig(_TrainingConfigBaseModel):
     The surrounding mapping key is the registered loss name. Its parent role
     determines the registry and calling convention: reconstruction losses receive
     `reconstruction` and `target`, while regularization losses currently receive
-    `z_mu` and `z_logvar`. Use
-    `benchrep.list_registered_components("reconstruction_loss", include_aliases=True)`
-    or
-    `benchrep.list_registered_components("regularization_loss", include_aliases=True)`
-    to inspect available names. User-registered losses must satisfy the relevant
-    calling convention and must be registered again when reconstructing an
-    internally assembled model for linked prediction.
+    `z_mu` and `z_logvar`.
+
+    Use `benchrep.inspect_registry("reconstruction_loss")` or
+    `benchrep.inspect_registry("regularization_loss")` to inspect available names
+    and aliases. Pass a component name as the second argument to inspect its
+    registered constructor and documentation.
+
+    User-registered losses must satisfy the relevant calling convention and must
+    be registered again when reconstructing an internally assembled model for
+    linked prediction.
     """
 
     weight: float = Field(
@@ -190,12 +203,14 @@ class LossTermConfig(_TrainingConfigBaseModel):
 class OptimizerConfig(NamedConfig):
     """Selects and configures an optimizer from the optimizer registry.
 
-    Use `benchrep.list_registered_components("optimizer", include_aliases=True)`
-    to inspect available names. `params` are keyword arguments for the selected
-    optimizer constructor, excluding the model parameters. BenchRep stores the
-    optimizer choice and arguments until Lightning calls
-    `configure_optimizers()`, at which point the model parameters are supplied
-    and the optimizer is instantiated.
+    Use `benchrep.inspect_registry("optimizer")` to inspect available names and
+    aliases, and `benchrep.inspect_registry("optimizer", "<name>")` for the
+    registered constructor signature and documentation.
+
+    `params` are keyword arguments for the selected optimizer constructor,
+    excluding the model parameters. BenchRep stores the optimizer choice and
+    arguments until Lightning calls `configure_optimizers()`, at which point the
+    model parameters are supplied and the optimizer is instantiated.
 
     User-registered optimizers must follow the standard PyTorch optimizer
     interface. BenchRep supplies the model parameters as the first argument and
@@ -378,10 +393,12 @@ class TrainerConfig(_TrainingConfigBaseModel):
 class LoggerConfig(NamedConfig):
     """Selects and configures a training logger from the logger registry.
 
-    Use `benchrep.list_registered_components("logger", include_aliases=True)`
-    to inspect available names. `params` are passed unchanged as keyword
-    arguments to the selected Lightning logger constructor, equivalent to
-    `SelectedLogger(**params)`.
+    Use `benchrep.inspect_registry("logger")` to inspect available names and
+    aliases, and `benchrep.inspect_registry("logger", "<name>")` for the
+    registered constructor signature and documentation.
+
+    `params` are passed unchanged as keyword arguments to the selected Lightning
+    logger constructor, equivalent to `SelectedLogger(**params)`.
 
     CSV logging is available with the core installation. W&B, TensorBoard, and
     MLflow require the corresponding `wandb`, `tensorboard`, or `mlflow`
@@ -621,7 +638,12 @@ ParamsT = TypeVar("ParamsT")
 
 
 class TransformConfig(NamedConfig):
-    """Configuration for one transform in an ordered transform sequence."""
+    """Configuration for one transform in an ordered transform sequence.
+
+    Use `benchrep.inspect_registry("transform")` to inspect available names and
+    aliases, and `benchrep.inspect_registry("transform", "<name>")` for the
+    registered constructor signature and documentation.
+    """
 
     category: Literal["preprocessing", "augmentation"] = Field(
         description=(
@@ -638,9 +660,13 @@ class TransformConfig(NamedConfig):
 class DatasetConfig(_TrainingConfigBaseModel, Generic[ParamsT]):
     """Selects a registered dataset and configures its construction.
 
-    Built-in datasets use dataset-specific parameter schemas. Other registered
-    dataset names use `CustomDatasetConfig`, whose parameters are passed directly
-    to the registered dataset constructor.
+    Use `benchrep.inspect_registry("dataset")` to inspect registered dataset
+    names and aliases. Built-in datasets use dataset-specific configuration and
+    parameter types, which can be explored by passing the concrete type to
+    `benchrep.inspect_config()`.
+
+    Other registered dataset names use `CustomDatasetConfig`, whose parameters
+    are passed directly to the registered dataset constructor.
     """
 
     name: str = Field(
@@ -970,12 +996,19 @@ class TrainingConfig(_TrainingConfigBaseModel):
     Requirements for model and data configuration depend on whether external
     model or datamodule objects are supplied at runtime.
 
-    Use `TrainingConfig.model_json_schema()` to inspect the complete generated
-    schema. For a focused view of a nested section, call `model_json_schema()`
-    on its concrete configuration type, for example
-    `TrainerConfig.model_json_schema()` or
-    `MNISTDatasetConfig.model_json_schema()`. Public configuration models are
-    available from `benchrep.assembly.schemas`.
+    Use `benchrep.inspect_config(TrainingConfig)` to inspect this configuration.
+    Nested configuration types shown in the output can be inspected the same
+    way, for example `benchrep.inspect_config(TrainerConfig)` or
+    `benchrep.inspect_config(MNISTDatasetConfig)`. Public configuration classes
+    are available from `benchrep.assembly.schemas`.
+
+    Use `benchrep.inspect_registry()` to discover component registries and
+    `benchrep.inspect_registry("<registry>", "<component>")` to inspect a
+    registered implementation.
+
+    For machine-readable discovery, `TrainingConfig.model_json_schema()` returns
+    standard JSON Schema, while `benchrep.list_registries()` and
+    `benchrep.list_registered_components()` return structured registry data.
     """
 
     stage: Literal["training"] = Field(
@@ -1081,12 +1114,12 @@ class TrainingConfig(_TrainingConfigBaseModel):
         default=None,
         description=(
             "Dataset to build for training. Use "
-            "`benchrep.list_registered_components(\"dataset\", "
-            "include_aliases=True)` to inspect available dataset names. Parameters for "
-            "built-in datasets are documented in their corresponding dataset-specific "
-            "configuration schemas. Parameters for user-registered datasets must match "
-            "the registered dataset constructor. This section is ignored when an "
-            "external datamodule object is supplied."
+            "`benchrep.inspect_registry(\"dataset\")` to inspect registered "
+            "dataset names and aliases. The concrete built-in dataset config "
+            "types shown in this field's annotation can be explored by passing "
+            "the concrete type to `benchrep.inspect_config()`. Parameters for "
+            "user-registered datasets must match the registered dataset constructor. "
+            "This section is ignored when an external datamodule object is supplied."
         ),
         json_schema_extra={
             "omit_behavior": (

@@ -9,10 +9,12 @@ except PackageNotFoundError:
 from benchrep.workflows.train import train_ae, train_vae
 from benchrep.workflows.predict import predict_ae, predict_vae
 from benchrep.workflows.evaluate import evaluate
-from benchrep.assembly.registries.discovery import (
+from benchrep.discovery.registry import (
     list_registries,
     list_registered_components,
+    inspect_registry,
 )
+from benchrep.discovery.config import inspect_config
 
 
 __all__ = [
@@ -24,4 +26,6 @@ __all__ = [
     "evaluate",
     "list_registries",
     "list_registered_components",
+    "inspect_registry",
+    "inspect_config",
 ]
