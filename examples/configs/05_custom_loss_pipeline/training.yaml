@@ -2,7 +2,7 @@ stage: training
 
 run:
   output_root: outputs
-  project_name: 01_yaml_pipeline
+  project_name: 05_custom_loss_pipeline
 
 reproducibility:
   seed: 137
