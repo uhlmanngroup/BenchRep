@@ -1,0 +1,42 @@
+stage: prediction
+
+source:
+  training_manifest_path: null
+  checkpoint: best
+
+dataset:
+  name: fashion_mnist
+  params:
+    root: examples/data/fashion_mnist
+    split: test
+    download: true
+
+# Inherit the preprocessing transforms recorded during training.
+transforms: null
+
+data:
+  batch_size: null
+  num_workers: null
+  max_batches: null
+
+inference:
+  seed: null
+  seed_workers: null
+  deterministic: null
+  float32_matmul_precision: null
+  reconstruction_latent_source: mean
+
+exports:
+  mode: standard
+
+  embeddings:
+    enabled: true
+
+  reconstructions:
+    enabled: true
+    n_examples: 32
+    selection: random
+    stratify_by: label
+    seed: null
+    include_input: true
+    include_prediction: true

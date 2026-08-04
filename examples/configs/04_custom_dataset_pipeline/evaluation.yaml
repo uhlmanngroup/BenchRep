@@ -1,0 +1,128 @@
+stage: evaluation
+
+source:
+  prediction_manifest_path: null
+  embeddings_path: null
+  reconstructions_path: null
+
+run:
+  output_root: null
+  run_name: null
+
+reductions:
+  pca:
+    enabled: true
+    params:
+      n_components: 30
+      random_state: 137
+
+  umap:
+    enabled: true
+    params:
+      n_neighbors: 15
+      n_pcs: 30
+      min_dist: 0.1
+      metric: euclidean
+      random_state: 137
+
+  tsne:
+    enabled: false
+
+clustering:
+  kmeans:
+    enabled: true
+    params:
+      n_clusters: 10
+      random_state: 137
+
+  leiden:
+    enabled: false
+
+metrics:
+  clustering:
+    internal:
+      enabled: true
+      selected:
+        - calinski_harabasz
+        - davies_bouldin
+
+    external:
+      enabled: true
+      label_key: label
+      selected:
+        - adjusted_mutual_info
+        - adjusted_rand_index
+        - homogeneity
+
+  embedding:
+    enabled: true
+    selected:
+      - mean
+      - median
+      - standard_deviation
+      - minimum
+      - maximum
+      - quantiles
+
+  predictability:
+    enabled: true
+    selected:
+      - dummy
+      - linear
+    target_key: label
+    task: classification
+
+    cv:
+      method: stratified_kfold
+      n_splits: 5
+      shuffle: true
+      random_state: 137
+      scoring: balanced_accuracy
+
+    tuning:
+      enabled: false
+
+    params:
+      dummy:
+        strategy: most_frequent
+        random_state: 137
+
+      linear:
+        model: logistic_regression
+        standardize: true
+        C: 1.0
+        class_weight: balanced
+        max_iter: 5000
+
+  reconstruction:
+    enabled: true
+    selected:
+      - mae
+      - mse
+      - rmse
+      - max_absolute_error
+    reduction: global
+
+reconstruction:
+  export_tiffs: false
+  n_examples: null
+  error_maps:
+    kinds:
+      - absolute
+    denominator_floor: null
+
+plots:
+  enabled: true
+  params:
+    color_by:
+      - label
+      - kmeans
+    dpi: 150
+    formats:
+      - png
+
+    reconstruction_grid:
+      include_error_maps: true
+      random_state: 137
+      stratify_by: label
+      channel_selection: 0
