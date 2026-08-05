@@ -70,7 +70,7 @@ def test_transformed_dataset_replaces_only_x() -> None:
 def test_datamodule_applies_split_specific_pipelines() -> None:
     source_dataset = TinySyntheticDataset(n_samples=8)
 
-    preprocessing_pipeline = TransformPipeline(
+    validation_pipeline = TransformPipeline(
         steps=[
             TransformStep(
                 name="add_one",
@@ -102,7 +102,7 @@ def test_datamodule_applies_split_specific_pipelines() -> None:
     datamodule = BenchRepDataModule(
         train_dataset=source_dataset,
         training_pipeline=training_pipeline,
-        preprocessing_pipeline=preprocessing_pipeline,
+        validation_pipeline=validation_pipeline,
         batch_size=2,
         val_fraction=0.25,
         num_workers=0,

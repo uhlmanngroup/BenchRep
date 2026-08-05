@@ -11,7 +11,7 @@ dataset:
     split: test
     download: true
 
-# Inherit the preprocessing transforms recorded during training.
+# Inherit the validation transforms recorded during training.
 transforms: null
 
 data:

@@ -63,7 +63,7 @@ dataset:
 
 transforms:
   - name: to_dtype
-    category: preprocessing
+    apply_to: [ training, validation ]
     params:
       dtype: float32
       scale: true

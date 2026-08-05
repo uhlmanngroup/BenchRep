@@ -177,7 +177,7 @@ def make_training_transforms_config() -> list[TransformConfig]:
     return [
         TransformConfig(
             name="to_dtype",
-            category="preprocessing",
+            apply_to=["validation"],
             params={
                 "dtype": "float32",
                 "scale": True,
@@ -185,7 +185,7 @@ def make_training_transforms_config() -> list[TransformConfig]:
         ),
         TransformConfig(
             name="random_horizontal_flip",
-            category="augmentation",
+            apply_to=["training"],
             params={
                 "p": 0.25,
             },

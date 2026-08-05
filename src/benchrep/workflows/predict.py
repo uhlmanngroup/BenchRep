@@ -15,7 +15,7 @@ from benchrep.assembly.config import (
 from benchrep.assembly.builders import (
     build_dataset,
     build_datamodule,
-    build_transform_pipelines,
+    build_transform_pipeline,
     build_model,
     build_trainer,
 )
@@ -244,9 +244,9 @@ def _predict(
             )
     if run_spec.transform_source == "default_identity":
         run_log.warning(
-            "Training used an external datamodule, so preprocessing transforms "
-            "could not be inherited. No prediction transforms were configured; "
-            "using an identity transform pipeline."
+            "Training used an external datamodule, so validation-targeted "
+            "transforms could not be inherited. No prediction transforms were "
+            "configured; using an identity transform pipeline."
         )
 
     elif run_spec.transform_source != "external_datamodule":
@@ -289,7 +289,7 @@ def _predict(
         assert dataset_config is not None
         assert datamodule_config is not None
 
-        transform_pipelines = build_transform_pipelines(
+        prediction_pipeline = build_transform_pipeline(
             run_spec.transform_configs,
         )
 
@@ -302,7 +302,7 @@ def _predict(
             datamodule_config=datamodule_config,
             seed=run_spec.seed,
             stage=run_spec.stage,
-            preprocessing_pipeline=transform_pipelines.preprocessing,
+            prediction_pipeline=prediction_pipeline,
         )
     else:
         run_log.info(

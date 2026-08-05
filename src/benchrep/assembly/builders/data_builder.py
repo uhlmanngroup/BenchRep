@@ -20,14 +20,17 @@ from benchrep.assembly.schemas import (
     TransformConfig,
     SupportedDatasetConfig,
 )
+from benchrep.assembly.schemas.training_config_schema import NamedConfig
 from benchrep.assembly.registries.utils import normalize_name
 from benchrep.assembly.registries.core import DATASETS, TRANSFORMS
 
 
 @dataclass(frozen=True)
 class TransformPipelineBundle:
+    """Split-specific pipelines derived from one ordered training config."""
+
     training: TransformPipeline
-    preprocessing: TransformPipeline
+    validation: TransformPipeline
 
 
 def build_datamodule(
@@ -37,27 +40,38 @@ def build_datamodule(
     seed: int | None = None,
     stage: Literal["training", "prediction"],
     training_pipeline: TransformPipeline | None = None,
-    preprocessing_pipeline: TransformPipeline | None = None,
+    validation_pipeline: TransformPipeline | None = None,
+    prediction_pipeline: TransformPipeline | None = None,
 ) -> BenchRepDataModule:
     """Build a BenchRep datamodule around an instantiated dataset.
 
-    For training, the dataset is assigned as the training dataset and may be
-    divided into training and validation subsets according to ``val_fraction``.
-    For prediction, the dataset is assigned directly as the prediction dataset.
-    Workflow-specific configuration adjustments must be resolved before calling
-    this builder.
+    During training, ``dataset`` becomes the training dataset and may be
+    divided into training and validation subsets according to
+    ``datamodule_config.val_fraction``. The resulting subsets receive
+    ``training_pipeline`` and ``validation_pipeline`` respectively.
+
+    During prediction, ``dataset`` becomes the prediction dataset and receives
+    ``prediction_pipeline``. If no explicit prediction pipeline is supplied,
+    ``BenchRepDataModule`` falls back to ``validation_pipeline``.
 
     Parameters
     ----------
     dataset:
-        Instantiated dataset to expose through the datamodule.
+        Instantiated dataset assigned according to ``stage``.
     datamodule_config:
-        Batching, loading, and optional validation-splitting configuration.
+        Batching, data-loading, and optional validation-splitting settings.
     seed:
         Optional seed used for reproducible train-validation splitting.
     stage:
-        Workflow stage determining whether the dataset is assigned for training
-        or prediction.
+        Whether the dataset is assigned for training or prediction.
+    training_pipeline:
+        Ordered transforms applied to training samples.
+    validation_pipeline:
+        Ordered transforms applied to validation samples. Also used for test
+        samples and as the prediction fallback when no explicit prediction
+        pipeline is supplied.
+    prediction_pipeline:
+        Optional explicit transforms applied to prediction samples.
 
     Returns
     -------
@@ -82,7 +96,8 @@ def build_datamodule(
         train_dataset=dataset if stage == "training" else None,
         predict_dataset=dataset if stage == "prediction" else None,
         training_pipeline=training_pipeline,
-        preprocessing_pipeline=preprocessing_pipeline,
+        validation_pipeline=validation_pipeline,
+        prediction_pipeline=prediction_pipeline,
         seed=seed,
     )
 
@@ -104,7 +119,7 @@ def build_dataset(
 
     The dataset name is resolved through the dataset registry. Typed built-in
     parameters or arbitrary custom parameters are converted to constructor
-    keyword arguments before the dataset class is instantiated.
+    keyword arguments before the registered dataset callable is invoked.
 
     Parameters
     ----------
@@ -130,7 +145,7 @@ def build_dataset(
         dataset_config.name,
         field_name="config.dataset.name",
     )
-    dataset_class = DATASETS.get(dataset_name)
+    dataset_factory = DATASETS.get(dataset_name)
 
     raw_params = dataset_config.params
     if isinstance(raw_params, BaseModel):
@@ -140,7 +155,7 @@ def build_dataset(
 
     run_log.info("Building dataset: dataset=%s", dataset_name)
 
-    dataset = dataset_class(**dataset_params)
+    dataset = dataset_factory(**dataset_params)
 
     if not isinstance(dataset, BaseDataset):
         raise TypeError(
@@ -161,8 +176,13 @@ def build_dataset(
 def build_transform_pipelines(
     transform_configs: Sequence[TransformConfig],
 ) -> TransformPipelineBundle:
-    """Build training and preprocessing pipelines from ordered transform configs."""
+    """Build ordered training and validation transform pipelines.
 
+    Each configuration is included in every pipeline named by its ``apply_to``
+    field. The configurations retain their original relative order within each
+    resulting pipeline. A split with no targeted transforms receives an empty
+    pipeline.
+    """
     indexed_configs = tuple(enumerate(transform_configs))
 
     training_steps = [
@@ -171,28 +191,50 @@ def build_transform_pipelines(
             index=index,
         )
         for index, transform_config in indexed_configs
+        if "training" in transform_config.apply_to
     ]
 
-    preprocessing_steps = [
+    validation_steps = [
         _build_transform_step(
             transform_config,
             index=index,
         )
         for index, transform_config in indexed_configs
-        if transform_config.category == "preprocessing"
+        if "validation" in transform_config.apply_to
     ]
 
     return TransformPipelineBundle(
         training=TransformPipeline(training_steps),
-        preprocessing=TransformPipeline(preprocessing_steps),
+        validation=TransformPipeline(validation_steps),
     )
 
 
+def build_transform_pipeline(
+    transform_configs: Sequence[NamedConfig],
+) -> TransformPipeline:
+    """Build one ordered pipeline containing every supplied transform.
+
+    This is used for contexts such as explicit prediction configuration, where
+    every transform in the sequence applies and split-routing metadata is
+    unnecessary.
+    """
+    steps = [
+        _build_transform_step(
+            transform_config,
+            index=index,
+        )
+        for index, transform_config in enumerate(transform_configs)
+    ]
+
+    return TransformPipeline(steps)
+
+
 def _build_transform_step(
-    transform_config: TransformConfig,
+    transform_config: NamedConfig,
     *,
     index: int,
 ) -> TransformStep:
+    """Resolve and instantiate one registered transform configuration."""
     transform_name = normalize_name(
         transform_config.name,
         field_name=f"config.transforms[{index}].name",
@@ -216,7 +258,8 @@ def _instantiate_datamodule(
     test_dataset: Any | None = None,
     predict_dataset: Any | None = None,
     training_pipeline: TransformPipeline | None = None,
-    preprocessing_pipeline: TransformPipeline | None = None,
+    validation_pipeline: TransformPipeline | None = None,
+    prediction_pipeline: TransformPipeline | None = None,
 ) -> BenchRepDataModule:
     datamodule_params = datamodule_config.model_dump()
 
@@ -230,7 +273,8 @@ def _instantiate_datamodule(
         test_dataset=test_dataset,
         predict_dataset=predict_dataset,
         training_pipeline=training_pipeline,
-        preprocessing_pipeline=preprocessing_pipeline,
+        validation_pipeline=validation_pipeline,
+        prediction_pipeline=prediction_pipeline,
         seed=seed,
         **datamodule_params,
     )

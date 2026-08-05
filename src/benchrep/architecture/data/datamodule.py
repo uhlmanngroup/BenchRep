@@ -34,11 +34,14 @@ class BenchRepDataModule(L.LightningDataModule):
     predict_dataset:
         Optional dataset used for prediction/inference with ``Trainer.predict()``.
     training_pipeline:
-        Complete ordered transform pipeline applied to training samples. It may
-        contain both preprocessing and augmentation steps.
-    preprocessing_pipeline:
-        Ordered preprocessing-only pipeline applied to validation, testing, and
-        prediction samples.
+        Ordered transform pipeline applied to training samples.
+    validation_pipeline:
+        Ordered transform pipeline applied to validation and test samples. It
+        also acts as the prediction fallback when no explicit prediction
+        pipeline is supplied.
+    prediction_pipeline:
+        Optional explicit transform pipeline applied to prediction samples.
+        When omitted, ``validation_pipeline`` is used.
     batch_size:
         Number of samples per batch.
     val_fraction:
@@ -64,7 +67,8 @@ class BenchRepDataModule(L.LightningDataModule):
         test_dataset: Dataset[dict[str, Any]] | None = None,
         predict_dataset: Dataset[dict[str, Any]] | None = None,
         training_pipeline: TransformPipeline | None = None,
-        preprocessing_pipeline: TransformPipeline | None = None,
+        validation_pipeline: TransformPipeline | None = None,
+        prediction_pipeline: TransformPipeline | None = None,
         batch_size: int = 64,
         val_fraction: float = 0.1,
         num_workers: int = 0,
@@ -105,20 +109,22 @@ class BenchRepDataModule(L.LightningDataModule):
         self._original_train_dataset = train_dataset
         self._provided_val_dataset = val_dataset
 
-        self.preprocessing_pipeline = preprocessing_pipeline
-        self.training_pipeline = (
-            training_pipeline
-            if training_pipeline is not None
-            else preprocessing_pipeline
+        self.training_pipeline = training_pipeline
+        self.validation_pipeline = validation_pipeline
+        self.prediction_pipeline = (
+            prediction_pipeline
+            if prediction_pipeline is not None
+            else validation_pipeline
         )
 
+        # Test inputs follow validation-time processing by default.
         self.test_dataset = _wrap_with_pipeline(
             test_dataset,
-            preprocessing_pipeline,
+            validation_pipeline,
         )
         self.predict_dataset = _wrap_with_pipeline(
             predict_dataset,
-            preprocessing_pipeline,
+            self.prediction_pipeline,
         )
 
         self.batch_size = batch_size
@@ -184,7 +190,7 @@ class BenchRepDataModule(L.LightningDataModule):
         )
         self.val_dataset = _wrap_with_pipeline(
             self.val_dataset,
-            self.preprocessing_pipeline,
+            self.validation_pipeline,
         )
 
     def train_dataloader(self) -> DataLoader:

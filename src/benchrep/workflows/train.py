@@ -226,6 +226,24 @@ def _train(
         assert dataset_config is not None
         assert datamodule_config is not None
 
+        validation_transform_names = tuple(
+            transform.name
+            for transform in train_config.transforms
+            if "validation" in transform.apply_to
+        )
+
+        if (
+            datamodule_config.val_fraction == 0
+            and validation_transform_names
+        ):
+            run_log.warning(
+                "Validation-targeted transforms are configured, but "
+                "`datamodule.val_fraction` is 0. No validation split will be "
+                "created, so these transforms will not run during training. "
+                "They remain available for inheritance by linked prediction: %s",
+                validation_transform_names,
+            )
+
         transform_pipelines = build_transform_pipelines(
             train_config.transforms,
         )
@@ -240,7 +258,7 @@ def _train(
             seed=train_config.reproducibility.seed,
             stage=train_config.stage,
             training_pipeline=transform_pipelines.training,
-            preprocessing_pipeline=transform_pipelines.preprocessing,
+            validation_pipeline=transform_pipelines.validation,
         )
     else:
         run_log.info(

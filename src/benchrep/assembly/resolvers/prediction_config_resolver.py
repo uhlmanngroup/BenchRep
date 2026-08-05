@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from benchrep.assembly.config import load_yaml
 from benchrep.assembly.schemas import (
+    PredictionTransformConfig,
     PredictionConfig,
     TrainingConfig,
     PredictionExportConfig,
@@ -13,7 +14,6 @@ from benchrep.assembly.schemas import (
     SupportedDatasetConfig,
     DataModuleConfig,
     TrainerConfig,
-    TransformConfig,
 )
 from benchrep.assembly.resolvers.utils import (
     resolve_optional,
@@ -77,7 +77,7 @@ class PredictionRunSpec:
     training_output_dir: Path
 
     dataset_config: SupportedDatasetConfig | None
-    transform_configs: tuple[TransformConfig, ...] | None
+    transform_configs: tuple[PredictionTransformConfig, ...] | None
     transform_source: PredictionTransformSource
     datamodule_config: DataModuleConfig | None
     batch_size: int | None
@@ -413,9 +413,10 @@ def _resolve_prediction_transforms(
     training_config: TrainingConfig,
     training_datamodule_external: bool,
 ) -> tuple[
-    tuple[TransformConfig, ...],
+    tuple[PredictionTransformConfig, ...],
     PredictionTransformSource,
 ]:
+    """Resolve the ordered transforms applied during prediction."""
     if prediction_config.transforms is not None:
         return tuple(prediction_config.transforms), "prediction_config"
 
@@ -423,9 +424,14 @@ def _resolve_prediction_transforms(
         return (), "default_identity"
 
     inherited_transforms = tuple(
-        transform
+        PredictionTransformConfig.model_validate(
+            transform.model_dump(
+                mode="python",
+                exclude={"apply_to"},
+            )
+        )
         for transform in training_config.transforms
-        if transform.category == "preprocessing"
+        if "validation" in transform.apply_to
     )
 
     return inherited_transforms, "training_config"

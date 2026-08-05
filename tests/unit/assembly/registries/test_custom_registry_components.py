@@ -99,7 +99,7 @@ def test_custom_registered_components_work_end_to_end(
             "transforms": [
                 TransformConfig(
                     name="custom_test_transform",
-                    category="preprocessing",
+                    apply_to=["validation"],
                     params={"scale": 1.0},
                 ),
             ],

@@ -71,6 +71,23 @@ def write_training_manifest(
         else None
     )
 
+    transform_names_by_split = (
+        {
+            "training": [
+                transform.name
+                for transform in config.transforms
+                if "training" in transform.apply_to
+            ],
+            "validation": [
+                transform.name
+                for transform in config.transforms
+                if "validation" in transform.apply_to
+            ],
+        }
+        if not datamodule_is_external
+        else None
+    )
+
     configured_datamodule = (
         config.datamodule.model_dump(mode="json")
         if not datamodule_is_external and config.datamodule is not None
@@ -97,11 +114,7 @@ def write_training_manifest(
             if configured_dataset is not None
             else None
         ),
-        "transforms": (
-            [transform["name"] for transform in configured_transforms]
-            if configured_transforms is not None
-            else None
-        ),
+        "transforms": transform_names_by_split,
         "datamodule": datamodule_class_name if datamodule_is_external else None,
         "batch_size": (
             configured_datamodule.get("batch_size")
@@ -315,7 +328,12 @@ def write_prediction_manifest(
         ),
         "transform_source": run_spec.transform_source,
         "transforms": (
-            [transform["name"] for transform in configured_transforms]
+            {
+                "prediction": [
+                    transform["name"]
+                    for transform in configured_transforms
+                ],
+            }
             if configured_transforms is not None
             else None
         ),

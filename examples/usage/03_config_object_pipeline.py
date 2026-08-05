@@ -95,7 +95,7 @@ def build_training_config() -> TrainingConfig:
         transforms=[
             TransformConfig(
                 name="to_dtype",
-                category="preprocessing",
+                apply_to=["training", "validation"],
                 params={
                     "dtype": "float32",
                     "scale": True,

@@ -645,16 +645,38 @@ class TransformConfig(NamedConfig):
     registered constructor signature and documentation.
     """
 
-    category: Literal["preprocessing", "augmentation"] = Field(
+    apply_to: list[Literal["training", "validation"]] = Field(
+        min_length=1,
         description=(
-            "Transform category. `preprocessing` applies to every available dataset "
-            "split, whereas `augmentation` applies only to training samples."
+            "Split pipelines that include this transform. The transform's "
+            "position in the surrounding sequence determines its order within "
+            "each targeted pipeline. Validation-targeted transforms are also "
+            "inherited by linked prediction runs when prediction transforms "
+            "are omitted or null."
         ),
         json_schema_extra={
             "omit_behavior": "Required; omission raises a validation error.",
             "null_behavior": "Not allowed.",
+            "notes": [
+                "If `datamodule.val_fraction` is 0, validation-targeted "
+                "transforms do not run during training but remain available "
+                "for inheritance by linked prediction."
+            ],
         },
     )
+
+    @field_validator("apply_to")
+    @classmethod
+    def validate_unique_transform_targets(
+        cls,
+        value: list[Literal["training", "validation"]],
+    ) -> list[Literal["training", "validation"]]:
+        if len(value) != len(set(value)):
+            raise ValueError(
+                "apply_to must not contain duplicate split targets."
+            )
+
+        return value
 
 
 class DatasetConfig(_TrainingConfigBaseModel, Generic[ParamsT]):
@@ -1132,14 +1154,22 @@ class TrainingConfig(_TrainingConfigBaseModel):
     transforms: list[TransformConfig] = Field(
         default_factory=list,
         description=(
-            "Ordered transforms applied to each dataset sample's `x` tensor. "
-            "Preprocessing transforms apply to every available split, while "
-            "augmentation transforms apply only during training. This section is "
-            "ignored when an external datamodule object is supplied."
+            "Ordered transform definitions applied to each dataset sample's "
+            "`x` tensor before batching. Each transform's `apply_to` field "
+            "determines whether it is included in the training pipeline, "
+            "validation pipeline, or both. Relative ordering is preserved "
+            "independently within each resulting pipeline. Validation-targeted "
+            "transforms are also inherited by linked prediction runs when "
+            "prediction transforms are omitted or null. This section is ignored "
+            "when an external datamodule object is supplied."
         ),
         json_schema_extra={
-            "omit_behavior": "Uses an empty transform sequence.",
-            "null_behavior": "Not allowed; use an empty list instead.",
+            "omit_behavior": (
+                "Uses empty training and validation transform sequences."
+            ),
+            "null_behavior": (
+                "Not allowed; use an empty list instead."
+            ),
         },
     )
     datamodule: DataModuleConfig | None = Field(

@@ -23,6 +23,7 @@ _CONFIG_REGISTRY_ROUTES: Final[dict[str, tuple[str, ...]]] = {
     # Training and prediction
     "DatasetConfig": ("dataset",),
     "TransformConfig": ("transform",),
+    "PredictionTransformConfig": ("transform",),
     "EncoderConfig": ("encoder",),
     "DecoderConfig": ("decoder",),
     "ModelConfig": ("model",),

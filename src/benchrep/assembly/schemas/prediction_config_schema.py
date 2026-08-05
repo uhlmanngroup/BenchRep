@@ -14,7 +14,7 @@ from pydantic import (
 )
 
 from benchrep.assembly.schemas.training_config_schema import (
-    TransformConfig,
+    NamedConfig,
     SupportedDatasetConfig,
 )
 
@@ -51,16 +51,15 @@ class PredictionInferenceConfig(BaseModel):
 # -------------------------
 # Transforms config
 # -------------------------
-class PredictionTransformConfig(TransformConfig):
-    """Configuration for one transform in an ordered prediction sequence."""
+class PredictionTransformConfig(NamedConfig):
+    """Configuration for one transform in an ordered prediction sequence.
 
-    category: Literal["preprocessing"] = Field(
-        default="preprocessing",
-        description=(
-            "Prediction transform category. Defaults to preprocessing because "
-            "all configured prediction transforms are applied to prediction samples."
-        ),
-    )
+    Every transform declared here applies during prediction, so split-targeting
+    metadata is unnecessary. Use `benchrep.inspect_registry("transform")` to
+    inspect available names and aliases, and
+    `benchrep.inspect_registry("transform", "<name>")` for the registered
+    constructor signature and documentation.
+    """
 
 
 # -------------------------
@@ -118,20 +117,20 @@ class PredictionConfig(BaseModel):
         default=None,
         description=(
             "Ordered transforms applied during prediction. If omitted or null, "
-            "preprocessing transforms are inherited from the resolved training "
-            "config when available; if training used an external datamodule, "
-            "no configured transforms are applied. An explicit list replaces "
-            "the inherited transforms, and an empty list applies no configured "
-            "transforms."
+            "validation-targeted transforms are inherited from the resolved "
+            "training config when available. If training used an external "
+            "datamodule, no configured transforms are inherited. An explicit "
+            "list replaces the inherited transforms, and an empty list applies "
+            "no configured transforms."
         ),
         json_schema_extra={
             "omit_behavior": (
-                "Inherits available training preprocessing transforms; otherwise "
-                "uses no configured transforms."
+                "Inherits available validation-targeted training transforms; "
+                "otherwise uses no configured transforms."
             ),
             "null_behavior": (
-                "Inherits available training preprocessing transforms; otherwise "
-                "uses no configured transforms."
+                "Inherits available validation-targeted training transforms; "
+                "otherwise uses no configured transforms."
             ),
         },
     )
