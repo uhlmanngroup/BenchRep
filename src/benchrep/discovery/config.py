@@ -6,6 +6,7 @@ from types import UnionType
 from typing import (
     Annotated,
     Any,
+    Final,
     Literal,
     Union,
     get_args,
@@ -14,6 +15,51 @@ from typing import (
 
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
+
+from benchrep.discovery.registry import _resolve_registry, _support_label
+
+
+_CONFIG_REGISTRY_ROUTES: Final[dict[str, tuple[str, ...]]] = {
+    # Training and prediction
+    "DatasetConfig": ("dataset",),
+    "TransformConfig": ("transform",),
+    "EncoderConfig": ("encoder",),
+    "DecoderConfig": ("decoder",),
+    "ModelConfig": ("model",),
+    "LossTermConfig": (
+        "reconstruction_loss",
+        "regularization_loss",
+    ),
+    "OptimizerConfig": ("optimizer",),
+    "LoggerConfig": ("logger",),
+
+    # Evaluation reductions
+    "EvaluationReductionsConfig": ("reduction",),
+    "PCAConfig": ("reduction",),
+    "UMAPConfig": ("reduction",),
+    "TSNEConfig": ("reduction",),
+
+    # Evaluation clustering
+    "EvaluationClusteringConfig": ("clustering_method",),
+    "KMeansConfig": ("clustering_method",),
+    "LeidenConfig": ("clustering_method",),
+
+    # Evaluation metrics
+    "InternalClusteringMetricConfig": ("internal_clustering_metric",),
+    "ExternalClusteringMetricConfig": ("external_clustering_metric",),
+    "EmbeddingMetricConfig": ("embedding_metric",),
+    "ReconstructionMetricConfig": ("reconstruction_metric",),
+
+    # Evaluation predictability
+    "EvaluationPredictabilityConfig": ("predictability_probe",),
+    "DummyProbeConfig": ("predictability_probe",),
+    "LogisticRegressionProbeConfig": ("predictability_probe",),
+    "RidgeProbeConfig": ("predictability_probe",),
+    "KNNProbeConfig": ("predictability_probe",),
+    "RandomForestProbeConfig": ("predictability_probe",),
+    "XGBoostProbeConfig": ("predictability_probe",),
+    "SVMRBFProbeConfig": ("predictability_probe",),
+}
 
 
 def inspect_config(
@@ -47,6 +93,8 @@ def inspect_config(
     if docstring is not None:
         print("\nDescription:")
         print(indent(docstring, "  "))
+
+    _print_config_customization(config)
 
     print("\nFields:")
 
@@ -91,6 +139,86 @@ def inspect_config(
 
                 for note in notes:
                     print(f"      - {note}")
+
+
+def _print_config_customization(
+    config: type[BaseModel],
+) -> None:
+    registry_names = _find_config_registries(config)
+
+    if registry_names:
+        print("\nCustomization:")
+
+        for index, requested_registry_name in enumerate(registry_names):
+            registry_name, registry_info = _resolve_registry(
+                requested_registry_name
+            )
+
+            if index > 0:
+                print()
+
+            print(f"  registry: {registry_name}")
+            print(
+                "  custom registration: "
+                f"{_support_label(registry_info.custom_registration_supported)}"
+            )
+            print(
+                "  runtime instance override: "
+                f"{_support_label(registry_info.runtime_instance_override_supported)}"
+            )
+
+            if registry_info.runtime_override is not None:
+                print("  runtime override:")
+                print(indent(registry_info.runtime_override, "    "))
+
+            print(
+                "  details: "
+                f'benchrep.inspect_registry("{registry_name}")'
+            )
+
+        return
+
+    if _is_benchrep_schema_type(config, "DataModuleConfig"):
+        print("\nCustomization:")
+        print("  registry: none")
+        print("  custom registration: not supported")
+        print("  runtime instance override: supported")
+        print("  runtime override:")
+        print(
+            indent(
+                "Pass a compatible LightningDataModule instance through the "
+                "`datamodule` argument of a training or prediction workflow.",
+                "    ",
+            )
+        )
+
+
+def _find_config_registries(
+    config: type[BaseModel],
+) -> tuple[str, ...]:
+    for base in config.__mro__:
+        if not base.__module__.startswith(
+            "benchrep.assembly.schemas"
+        ):
+            continue
+
+        registry_names = _CONFIG_REGISTRY_ROUTES.get(base.__name__)
+
+        if registry_names is not None:
+            return registry_names
+
+    return ()
+
+
+def _is_benchrep_schema_type(
+    config: type[BaseModel],
+    expected_name: str,
+) -> bool:
+    return any(
+        base.__name__ == expected_name
+        and base.__module__.startswith("benchrep.assembly.schemas")
+        for base in config.__mro__
+    )
 
 
 def _format_annotation(annotation: Any) -> str:
