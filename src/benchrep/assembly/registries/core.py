@@ -10,24 +10,75 @@ class Registry:
     callables that can be instantiated by builders.
     """
 
-    def __init__(self, name: str) -> None:
+    def __init__(
+        self,
+        name: str,
+        *,
+        custom_registration_supported: bool = True,
+    ) -> None:
         self.name = name
+        self._custom_registration_supported = (
+            custom_registration_supported
+        )
         self._items: dict[str, Any] = {}
         self._canonical_keys: dict[str, str] = {}
 
-    def register(self, key: str, item: Any, *aliases: str) -> None:
+    @property
+    def custom_registration_supported(self) -> bool:
+        """Whether users may register custom components."""
+        return self._custom_registration_supported
+
+    def register(
+        self,
+        key: str,
+        item: Any,
+        *aliases: str,
+    ) -> None:
+        """Register a user-provided component."""
+        if not self.custom_registration_supported:
+            raise RuntimeError(
+                "Custom registration is not supported for the "
+                f"{self.name} registry. This registry exposes BenchRep's "
+                "built-in components for discovery and configuration only."
+            )
+
+        # Register built-ins first so custom components cannot claim a built-in
+        # name merely because registration has not yet been initialized.
+        _ensure_builtins_registered()
+        self._register(key, item, *aliases)
+
+    def _register_builtin(
+        self,
+        key: str,
+        item: Any,
+        *aliases: str,
+    ) -> None:
+        """Register a BenchRep-owned built-in component."""
+        self._register(key, item, *aliases)
+
+    def _register(
+        self,
+        key: str,
+        item: Any,
+        *aliases: str,
+    ) -> None:
         canonical_key = self._normalize_key(key)
-        # Silently collapse duplicates
+
+        # Silently collapse duplicate names within one registration call.
         names = tuple(
-            dict.fromkeys(self._normalize_key(name) for name in (key, *aliases))
+            dict.fromkeys(
+                self._normalize_key(name)
+                for name in (key, *aliases)
+            )
         )
 
-        # Refuse overwrites
+        # Refuse overwrites.
         for name in names:
             if name in self._items:
                 raise KeyError(
                     f"{self.name} registry already contains key {name!r}. "
-                    "Choose a different name or remove the existing registration."
+                    "Choose a different name or remove the existing "
+                    "registration."
                 )
 
         for name in names:
@@ -126,16 +177,28 @@ TRANSFORMS = Registry("transform")
 # Architecture and training
 ENCODERS = Registry("encoder")
 DECODERS = Registry("decoder")
-MODELS = Registry("model")
+MODELS = Registry(
+    "model",
+    custom_registration_supported=False,
+)
 RECONSTRUCTION_LOSSES = Registry("reconstruction loss")
 REGULARIZATION_LOSSES = Registry("regularization loss")
 OPTIMIZERS = Registry("optimizer")
 LOGGERS = Registry("logger")
 # Evaluation
-EVAL_REDUCTIONS = Registry("reduction")
-EVAL_CLUSTERING_METHODS = Registry("clustering method")
+EVAL_REDUCTIONS = Registry(
+    "reduction",
+    custom_registration_supported=False,
+)
+EVAL_CLUSTERING_METHODS = Registry(
+    "clustering method",
+    custom_registration_supported=False,
+)
 EVAL_INTERNAL_CLUSTERING_METRICS = Registry("internal clustering metric")
 EVAL_EXTERNAL_CLUSTERING_METRICS = Registry("external clustering metric")
 EVAL_EMBEDDING_METRICS = Registry("embedding metric")
-EVAL_PREDICTABILITY_PROBES = Registry("predictability probe")
+EVAL_PREDICTABILITY_PROBES = Registry(
+    "predictability probe",
+    custom_registration_supported=False,
+)
 EVAL_RECONSTRUCTION_METRICS = Registry("reconstruction metric")

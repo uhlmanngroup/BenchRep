@@ -1,7 +1,7 @@
 _BUILTINS_REGISTERED = False
 _BUILTINS_REGISTERING = False
 
-
+# noinspection PyProtectedMember
 def register_builtins() -> None:
     """Register BenchRep's built-in components exactly once.
 
@@ -128,44 +128,44 @@ def register_builtins() -> None:
 
 
         # --- Data ---
-        DATASETS.register("mnist", MNISTDataset)
-        DATASETS.register("cifar10", CIFAR10Dataset, "cifar_10")
-        DATASETS.register("stl10", STL10Dataset, "stl_10")
+        DATASETS._register_builtin("mnist", MNISTDataset)
+        DATASETS._register_builtin("cifar10", CIFAR10Dataset, "cifar_10")
+        DATASETS._register_builtin("stl10", STL10Dataset, "stl_10")
 
-        TRANSFORMS.register(
+        TRANSFORMS._register_builtin(
             "to_dtype",
             create_to_dtype_transform,
             "todtype",
             "convert_dtype",
             "convert_image_dtype",
         )
-        TRANSFORMS.register(
+        TRANSFORMS._register_builtin(
             "normalize",
             v2.Normalize,
             "normalise",
             "normalization",
             "normalisation",
         )
-        TRANSFORMS.register(
+        TRANSFORMS._register_builtin(
             "resize",
             v2.Resize,
             "resizing",
         )
-        TRANSFORMS.register(
+        TRANSFORMS._register_builtin(
             "random_horizontal_flip",
             v2.RandomHorizontalFlip,
             "randomhorizontalflip",
             "random_hflip",
             "rand_hflip",
         )
-        TRANSFORMS.register(
+        TRANSFORMS._register_builtin(
             "random_vertical_flip",
             v2.RandomVerticalFlip,
             "randomverticalflip",
             "random_vflip",
             "rand_vflip",
         )
-        TRANSFORMS.register(
+        TRANSFORMS._register_builtin(
             "random_rotation",
             v2.RandomRotation,
             "randomrotation",
@@ -174,9 +174,9 @@ def register_builtins() -> None:
         )
 
         # --- Architecture and training ---
-        ENCODERS.register("mlp", MLPEncoder, "dense", "fully_connected", "fc")
-        ENCODERS.register("conv2d", Conv2DEncoder, "conv", "cnn", "convolutional")
-        ENCODERS.register(
+        ENCODERS._register_builtin("mlp", MLPEncoder, "dense", "fully_connected", "fc")
+        ENCODERS._register_builtin("conv2d", Conv2DEncoder, "conv", "cnn", "convolutional")
+        ENCODERS._register_builtin(
             "torchvision_resnet",
             TorchvisionResNet,
             "torchvision_resnets",
@@ -186,8 +186,8 @@ def register_builtins() -> None:
             "tv_resnets",
         )
 
-        DECODERS.register("mlp", MLPDecoder, "dense", "fully_connected", "fc")
-        DECODERS.register(
+        DECODERS._register_builtin("mlp", MLPDecoder, "dense", "fully_connected", "fc")
+        DECODERS._register_builtin(
             "upsample_conv2d",
             UpsampleConv2DDecoder,
             "upsampleconv2d",
@@ -196,8 +196,8 @@ def register_builtins() -> None:
             "resize_conv",
         )
 
-        MODELS.register("autoencoder", Autoencoder, "ae")
-        MODELS.register(
+        MODELS._register_builtin("autoencoder", Autoencoder, "ae")
+        MODELS._register_builtin(
             "vae",
             VAE,
             "variational_autoencoder",
@@ -205,10 +205,10 @@ def register_builtins() -> None:
             "gaussian_vae",
         )
 
-        RECONSTRUCTION_LOSSES.register("mse", MSEReconstructionLoss, "l2")
-        RECONSTRUCTION_LOSSES.register("mae", MAEReconstructionLoss, "l1")
+        RECONSTRUCTION_LOSSES._register_builtin("mse", MSEReconstructionLoss, "l2")
+        RECONSTRUCTION_LOSSES._register_builtin("mae", MAEReconstructionLoss, "l1")
 
-        REGULARIZATION_LOSSES.register(
+        REGULARIZATION_LOSSES._register_builtin(
             "gaussian_kl",
             GaussianKLDivergenceLoss,
             "kl",
@@ -220,50 +220,50 @@ def register_builtins() -> None:
             "gaussian_kl_div",
         )
 
-        OPTIMIZERS.register("adam", torch.optim.Adam)
-        OPTIMIZERS.register("adamw", torch.optim.AdamW)
-        OPTIMIZERS.register("sgd", torch.optim.SGD)
+        OPTIMIZERS._register_builtin("adam", torch.optim.Adam)
+        OPTIMIZERS._register_builtin("adamw", torch.optim.AdamW)
+        OPTIMIZERS._register_builtin("sgd", torch.optim.SGD)
 
-        LOGGERS.register("csv", CSVLogger, "csvlogger")
-        LOGGERS.register("wandb", WandbLogger, "wandblogger")
-        LOGGERS.register(
+        LOGGERS._register_builtin("csv", CSVLogger, "csvlogger")
+        LOGGERS._register_builtin("wandb", WandbLogger, "wandblogger")
+        LOGGERS._register_builtin(
             "tensorboard",
             TensorBoardLogger,
             "tensorboardlogger",
             "tb",
             "tblogger",
         )
-        LOGGERS.register("mlflow", MLFlowLogger, "mlflowlogger")
+        LOGGERS._register_builtin("mlflow", MLFlowLogger, "mlflowlogger")
 
         # --- Evaluation ---
         # Reductions
-        EVAL_REDUCTIONS.register(
+        EVAL_REDUCTIONS._register_builtin(
             "pca",
             run_pca,
             "principal_component_analysis",
             "principal_components",
         )
-        EVAL_REDUCTIONS.register("umap", run_umap)
-        EVAL_REDUCTIONS.register("tsne", run_tsne, "t_sne")
+        EVAL_REDUCTIONS._register_builtin("umap", run_umap)
+        EVAL_REDUCTIONS._register_builtin("tsne", run_tsne, "t_sne")
 
         # Clustering
-        EVAL_CLUSTERING_METHODS.register("kmeans", run_kmeans, "k_means")
-        EVAL_CLUSTERING_METHODS.register("leiden", run_leiden)
+        EVAL_CLUSTERING_METHODS._register_builtin("kmeans", run_kmeans, "k_means")
+        EVAL_CLUSTERING_METHODS._register_builtin("leiden", run_leiden)
 
         # Internal clustering metrics
-        EVAL_INTERNAL_CLUSTERING_METRICS.register(
+        EVAL_INTERNAL_CLUSTERING_METRICS._register_builtin(
             "silhouette",
             silhouette_score,
             "silhouette_score",
         )
-        EVAL_INTERNAL_CLUSTERING_METRICS.register(
+        EVAL_INTERNAL_CLUSTERING_METRICS._register_builtin(
             "calinski_harabasz",
             calinski_harabasz_score,
             "calinski_harabasz_score",
             "ch",
             "ch_score",
         )
-        EVAL_INTERNAL_CLUSTERING_METRICS.register(
+        EVAL_INTERNAL_CLUSTERING_METRICS._register_builtin(
             "davies_bouldin",
             davies_bouldin_score,
             "davies_bouldin_score",
@@ -272,7 +272,7 @@ def register_builtins() -> None:
         )
 
         # External clustering metrics
-        EVAL_EXTERNAL_CLUSTERING_METRICS.register(
+        EVAL_EXTERNAL_CLUSTERING_METRICS._register_builtin(
             "adjusted_mutual_info",
             adjusted_mutual_info_score,
             "adjusted_mutual_info_score",
@@ -283,7 +283,7 @@ def register_builtins() -> None:
             "ami",
             "ami_score",
         )
-        EVAL_EXTERNAL_CLUSTERING_METRICS.register(
+        EVAL_EXTERNAL_CLUSTERING_METRICS._register_builtin(
             "adjusted_rand_index",
             adjusted_rand_score,
             "adjusted_rand_score",
@@ -293,42 +293,42 @@ def register_builtins() -> None:
             "ari",
             "ari_score",
         )
-        EVAL_EXTERNAL_CLUSTERING_METRICS.register(
+        EVAL_EXTERNAL_CLUSTERING_METRICS._register_builtin(
             "homogeneity",
             homogeneity_score,
             "homogeneity_score",
         )
 
         # Embedding metrics
-        EVAL_EMBEDDING_METRICS.register(
+        EVAL_EMBEDDING_METRICS._register_builtin(
             "mean",
             dimensionwise_mean,
             "dimensionwise_mean",
         )
-        EVAL_EMBEDDING_METRICS.register(
+        EVAL_EMBEDDING_METRICS._register_builtin(
             "median",
             dimensionwise_median,
             "dimensionwise_median",
         )
-        EVAL_EMBEDDING_METRICS.register(
+        EVAL_EMBEDDING_METRICS._register_builtin(
             "standard_deviation",
             dimensionwise_standard_deviation,
             "dimensionwise_standard_deviation",
             "std",
         )
-        EVAL_EMBEDDING_METRICS.register(
+        EVAL_EMBEDDING_METRICS._register_builtin(
             "minimum",
             dimensionwise_minimum,
             "dimensionwise_minimum",
             "min",
         )
-        EVAL_EMBEDDING_METRICS.register(
+        EVAL_EMBEDDING_METRICS._register_builtin(
             "maximum",
             dimensionwise_maximum,
             "dimensionwise_maximum",
             "max",
         )
-        EVAL_EMBEDDING_METRICS.register(
+        EVAL_EMBEDDING_METRICS._register_builtin(
             "quantiles",
             dimensionwise_quantiles,
             "dimensionwise_quantiles",
@@ -336,33 +336,33 @@ def register_builtins() -> None:
         )
 
         # Predictability probes
-        EVAL_PREDICTABILITY_PROBES.register(
+        EVAL_PREDICTABILITY_PROBES._register_builtin(
             "dummy",
             build_dummy_predictability_probe,
             "baseline",
         )
-        EVAL_PREDICTABILITY_PROBES.register(
+        EVAL_PREDICTABILITY_PROBES._register_builtin(
             "linear",
             build_linear_predictability_probe,
             "linear_probe",
         )
-        EVAL_PREDICTABILITY_PROBES.register(
+        EVAL_PREDICTABILITY_PROBES._register_builtin(
             "knn",
             build_knn_predictability_probe,
             "k_nearest_neighbors",
         )
-        EVAL_PREDICTABILITY_PROBES.register(
+        EVAL_PREDICTABILITY_PROBES._register_builtin(
             "random_forest",
             build_random_forest_predictability_probe,
             "rf",
             "forest",
         )
-        EVAL_PREDICTABILITY_PROBES.register(
+        EVAL_PREDICTABILITY_PROBES._register_builtin(
             "xgboost",
             build_xgboost_predictability_probe,
             "xgb",
         )
-        EVAL_PREDICTABILITY_PROBES.register(
+        EVAL_PREDICTABILITY_PROBES._register_builtin(
             "svm_rbf",
             build_svm_rbf_predictability_probe,
             "support_vector_machine_rbf",
@@ -372,25 +372,25 @@ def register_builtins() -> None:
         )
 
         # Reconstruction metrics
-        EVAL_RECONSTRUCTION_METRICS.register(
+        EVAL_RECONSTRUCTION_METRICS._register_builtin(
             "mae",
             mean_absolute_error,
             "mean_absolute_error",
             "mean_abs_error",
         )
-        EVAL_RECONSTRUCTION_METRICS.register(
+        EVAL_RECONSTRUCTION_METRICS._register_builtin(
             "mse",
             mean_squared_error,
             "mean_squared_error",
             "mean_sq_error",
         )
-        EVAL_RECONSTRUCTION_METRICS.register(
+        EVAL_RECONSTRUCTION_METRICS._register_builtin(
             "rmse",
             root_mean_squared_error,
             "root_mean_squared_error",
             "root_mean_sq_error",
         )
-        EVAL_RECONSTRUCTION_METRICS.register(
+        EVAL_RECONSTRUCTION_METRICS._register_builtin(
             "max_absolute_error",
             max_absolute_error,
             "max_abs_error",
