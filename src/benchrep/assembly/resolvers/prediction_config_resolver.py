@@ -201,7 +201,10 @@ def resolve_prediction_config(
 
         base_datamodule_config = (
             training_config.datamodule
-            if training_config.datamodule is not None
+            if (
+                    not training_datamodule_external
+                    and training_config.datamodule is not None
+            )
             else DataModuleConfig()
         )
 
@@ -222,6 +225,11 @@ def resolve_prediction_config(
                 "batch_size": batch_size,
                 "num_workers": num_workers,
                 "val_fraction": 0.0,
+                "persistent_workers": (
+                    base_datamodule_config.persistent_workers
+                    if num_workers > 0
+                    else False
+                ),
                 "drop_last": False,
             }
         )
