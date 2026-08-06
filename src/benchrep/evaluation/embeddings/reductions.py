@@ -3,10 +3,9 @@ from __future__ import annotations
 from typing import Any
 
 import anndata as ad
-import scanpy as sc
 from sklearn.decomposition import PCA
 
-from benchrep.evaluation.utils import validate_adata_x
+from benchrep.evaluation.utils import validate_adata_x, load_scanpy_backend
 
 
 DEFAULT_PCA_N_COMPONENTS = 30
@@ -52,6 +51,7 @@ def run_pca(
     AnnData
        The input AnnData object, modified in place and returned for convenience.
     """
+
     validate_adata_x(adata)
 
     if key_added in adata.obsm and not overwrite:
@@ -164,6 +164,9 @@ def run_umap(
     AnnData
         The input AnnData object, modified in place and returned for convenience.
     """
+
+    sc = load_scanpy_backend(feature="UMAP")
+
     validate_adata_x(adata)
 
     if key_added in adata.obsm and not overwrite:
@@ -263,6 +266,9 @@ def run_tsne(
     AnnData
         The input AnnData object, modified in place and returned for convenience.
     """
+
+    sc = load_scanpy_backend(feature="t-SNE")
+
     validate_adata_x(adata)
 
     if key_added in adata.obsm and not overwrite:

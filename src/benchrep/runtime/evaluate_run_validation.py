@@ -18,7 +18,7 @@ from benchrep.evaluation.reconstructions.data import (
     ReconstructionEvaluationInput,
     load_reconstruction_evaluation_input,
 )
-from benchrep.evaluation.utils import validate_adata_x
+from benchrep.evaluation.utils import validate_adata_x, load_scanpy_backend
 from benchrep.assembly.config import load_yaml, ConfigCompositionResult
 from benchrep.runtime.run_context import RunContext
 from benchrep.runtime.utils import (
@@ -891,6 +891,23 @@ def _validate_enabled_step_preconditions(
     """Fail early on obvious enabled-step issues before mutating AnnData."""
 
     step_spec = run_spec.step_spec
+
+    scanpy_steps = []
+
+    if step_spec.umap_enabled:
+        scanpy_steps.append("UMAP")
+
+    if step_spec.tsne_enabled:
+        scanpy_steps.append("t-SNE")
+
+    if step_spec.leiden_enabled:
+        scanpy_steps.append("Leiden clustering")
+
+    if scanpy_steps:
+        load_scanpy_backend(
+            feature=", ".join(scanpy_steps),
+            require_leiden=step_spec.leiden_enabled,
+        )
 
     if step_spec.pca_enabled:
         params = step_spec.pca_params

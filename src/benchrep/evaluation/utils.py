@@ -2,6 +2,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Literal
 import inspect
+from importlib.util import find_spec
 
 import anndata as ad
 import numpy as np
@@ -10,6 +11,42 @@ import torch
 
 ArrayLike = np.ndarray | torch.Tensor
 PredictabilityTask = Literal["classification", "regression"]
+
+
+def load_scanpy_backend(
+    *,
+    feature: str,
+    require_leiden: bool = False,
+) -> Any:
+    """Import Scanpy after validating optional scverse dependencies."""
+
+    required_modules = ["scanpy"]
+
+    if require_leiden:
+        required_modules.extend(["igraph", "leidenalg"])
+
+    missing_modules = [
+        module
+        for module in required_modules
+        if find_spec(module) is None
+    ]
+
+    if missing_modules:
+        raise ImportError(
+            f"{feature} requires optional scverse dependencies that are not "
+            f"installed: {missing_modules}. Install `benchrep[scverse]` to use "
+            "this evaluation step."
+        )
+
+    try:
+        import scanpy
+    except ImportError as error:
+        raise ImportError(
+            f"{feature} requires Scanpy, but Scanpy could not be imported. "
+            "Install or repair `benchrep[scverse]`."
+        ) from error
+
+    return scanpy
 
 
 def validate_adata_x(adata: ad.AnnData) -> None:
