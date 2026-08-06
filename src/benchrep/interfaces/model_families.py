@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from typing import TypeAlias, Any
 
 from benchrep.interfaces.contracts import (
@@ -53,3 +53,22 @@ VAE_FAMILY = ModelFamilySpec(
     expected_prediction_output_type=VAEPredictionOutput,
     expected_prediction_output_contract_kind="dataclass",
 )
+
+
+def model_family_supports_reconstruction(
+    model_family: ModelFamilySpec,
+) -> bool:
+    """Return whether a model family declares reconstruction output."""
+
+    if model_family.expected_prediction_output_contract_kind != "dataclass":
+        raise TypeError(
+            "Reconstruction support detection requires a dataclass "
+            "prediction-output contract."
+        )
+
+    return any(
+        field.name == "reconstruction"
+        for field in fields(
+            model_family.expected_prediction_output_type
+        )
+    )
