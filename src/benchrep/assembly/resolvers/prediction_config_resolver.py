@@ -27,6 +27,13 @@ from benchrep.interfaces.model_families import ModelFamilySpec, VAE_FAMILY
 # -------------------------
 # Resolved specs
 # -------------------------
+PredictionCheckpointSource = Literal[
+    "training_manifest_best",
+    "training_manifest_last",
+    "training_checkpoint_filename",
+    "explicit_path",
+]
+
 PredictionTransformSource = Literal[
     "training_config",
     "prediction_config",
@@ -72,6 +79,7 @@ class PredictionRunSpec:
     training_manifest_path: Path
     resolved_training_config_path: Path
     checkpoint_path: Path
+    checkpoint_source: PredictionCheckpointSource
 
     training_run_name: str
     training_output_dir: Path
@@ -143,7 +151,7 @@ def resolve_prediction_config(
         model_overridden=model_overridden,
     )
 
-    checkpoint_path = _resolve_checkpoint_path(
+    checkpoint_path, checkpoint_source = _resolve_checkpoint_path(
         checkpoint=prediction_config.source.checkpoint,
         training_manifest=training_manifest,
         manifest_path=training_manifest_path,
@@ -269,6 +277,7 @@ def resolve_prediction_config(
         training_manifest_path=training_manifest_path,
         resolved_training_config_path=resolved_training_config_path,
         checkpoint_path=checkpoint_path,
+        checkpoint_source=checkpoint_source,
         training_run_name=training_run_name,
         training_output_dir=training_output_dir,
         dataset_config=dataset_config,
@@ -359,10 +368,10 @@ def resolve_prediction_exports(
 
 def _resolve_checkpoint_path(
     *,
-    checkpoint: str,
+    checkpoint: Literal["best", "last"] | Path,
     training_manifest: dict[str, Any],
     manifest_path: Path,
-) -> Path:
+) -> tuple[Path, PredictionCheckpointSource]:
     if checkpoint == "best":
         checkpoint_path = get_required_nested_path(
             training_manifest,
@@ -370,6 +379,10 @@ def _resolve_checkpoint_path(
             "best_checkpoint_path",
             base_dir=manifest_path.parent,
         )
+        checkpoint_source: PredictionCheckpointSource = (
+            "training_manifest_best"
+        )
+
     elif checkpoint == "last":
         checkpoint_path = get_required_nested_path(
             training_manifest,
@@ -377,34 +390,49 @@ def _resolve_checkpoint_path(
             "last_checkpoint_path",
             base_dir=manifest_path.parent,
         )
+        checkpoint_source = "training_manifest_last"
+
     else:
-        checkpoint_name = Path(checkpoint)
+        assert isinstance(checkpoint, Path)
 
-        if checkpoint_name.is_absolute() or checkpoint_name.parent != Path("."):
-            raise ValueError(
-                "Explicit checkpoint selection must be a checkpoint filename from "
-                "the training checkpoint directory, not an absolute or relative path. "
-                f"Got: {checkpoint!r}"
+        checkpoint = checkpoint.expanduser()
+
+        if checkpoint.is_absolute():
+            checkpoint_path = checkpoint.resolve()
+            checkpoint_source = "explicit_path"
+
+        else:
+            if checkpoint.parent != Path("."):
+                raise ValueError(
+                    "Relative checkpoint selections must be bare filenames, "
+                    f"got: {checkpoint}"
+                )
+
+            checkpoint_dir = get_required_nested_path(
+                training_manifest,
+                "checkpoints",
+                "checkpoint_dir",
+                base_dir=manifest_path.parent,
             )
-
-        checkpoint_dir = get_required_nested_path(
-            training_manifest,
-            "checkpoints",
-            "checkpoint_dir",
-            base_dir=manifest_path.parent,
-        )
-        checkpoint_path = (checkpoint_dir / checkpoint_name).resolve()
+            checkpoint_path = (checkpoint_dir / checkpoint).resolve()
+            checkpoint_source = "training_checkpoint_filename"
 
     if not checkpoint_path.exists():
-        raise FileNotFoundError(f"Checkpoint file does not exist: {checkpoint_path}")
+        raise FileNotFoundError(
+            f"Checkpoint file does not exist: {checkpoint_path}"
+        )
 
     if not checkpoint_path.is_file():
-        raise ValueError(f"Checkpoint path must point to a file, got: {checkpoint_path}")
+        raise ValueError(
+            f"Checkpoint path must point to a file, got: {checkpoint_path}"
+        )
 
     if checkpoint_path.suffix != ".ckpt":
-        raise ValueError(f"Checkpoint file must end with '.ckpt', got: {checkpoint_path}")
+        raise ValueError(
+            f"Checkpoint file must end with '.ckpt', got: {checkpoint_path}"
+        )
 
-    return checkpoint_path
+    return checkpoint_path, checkpoint_source
 
 
 def _resolve_prediction_transforms(

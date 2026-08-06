@@ -4,11 +4,13 @@ from pathlib import Path
 from typing import Literal, Annotated
 
 from pydantic import (
+    ConfigDict,
     BaseModel,
     Field,
     PositiveInt,
     NonNegativeInt,
     model_validator,
+    field_validator,
     ValidationInfo,
     StringConstraints,
 )
@@ -20,27 +22,68 @@ from benchrep.assembly.schemas.training_config_schema import (
 
 
 # -------------------------
+# Generic reusable blocks
+# -------------------------
+class _PredictionConfigBaseModel(BaseModel):
+    """Base model for strict prediction configuration schemas."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+# -------------------------
 # Source config
 # -------------------------
-class PredictionSourceConfig(BaseModel):
+class PredictionSourceConfig(_PredictionConfigBaseModel):
     training_manifest_path: Path | None = None
-    checkpoint: str = Field(
+    checkpoint: Literal["best", "last"] | Path = Field(
         default="best",
         description=(
-            '"best", "last", or an explicit checkpoint filename from the training '
-            'checkpoint directory. Explicit checkpoint filenames must include the '
-            '".ckpt" extension, e.g. "epoch=012-step=5473.ckpt".'
+            '"best", "last", a checkpoint filename (e.g. "epoch=042-step=5698.ckpt") '
+            'from the training checkpoint directory, or an absolute checkpoint path.'
         ),
     )
 
+    @field_validator("checkpoint")
+    @classmethod
+    def validate_checkpoint(
+        cls,
+        value: Literal["best", "last"] | Path,
+    ) -> Literal["best", "last"] | Path:
+        if value in {"best", "last"}:
+            return value
 
-class PredictionDataConfig(BaseModel):
+        assert isinstance(value, Path)
+
+        checkpoint_path = value.expanduser()
+
+        if (
+            not checkpoint_path.is_absolute()
+            and checkpoint_path.parent != Path(".")
+        ):
+            raise ValueError(
+                "checkpoint must be 'best', 'last', a checkpoint filename, "
+                "or an absolute checkpoint path; directory-containing relative "
+                "paths are not supported."
+            )
+
+        if checkpoint_path.suffix != ".ckpt":
+            raise ValueError(
+                "checkpoint filenames and paths must end with '.ckpt'."
+            )
+
+        if checkpoint_path.is_absolute():
+            return checkpoint_path.resolve()
+
+        return checkpoint_path
+
+
+class PredictionDataConfig(_PredictionConfigBaseModel):
     num_workers: NonNegativeInt | None = None
     batch_size: PositiveInt | None = None
     max_batches: PositiveInt | None = None
 
 
-class PredictionInferenceConfig(BaseModel):
+class PredictionInferenceConfig(_PredictionConfigBaseModel):
     seed: int | None = None
     seed_workers: bool | None = None
     deterministic: bool | Literal["warn"] | None = None
@@ -65,13 +108,13 @@ class PredictionTransformConfig(NamedConfig):
 # -------------------------
 # Exports config
 # -------------------------
-class PredictionEmbeddingsExportConfig(BaseModel):
+class PredictionEmbeddingsExportConfig(_PredictionConfigBaseModel):
     enabled: bool = True
     keys: list[str] | Literal["auto"] = "auto"
     primary_key: str | Literal["auto"] = "auto"
 
 
-class PredictionReconstructionsExportConfig(BaseModel):
+class PredictionReconstructionsExportConfig(_PredictionConfigBaseModel):
     enabled: bool = True
     n_examples: Literal["all"] | PositiveInt = 32
     selection: Literal["first", "random"] = "first"
@@ -94,7 +137,7 @@ class PredictionReconstructionsExportConfig(BaseModel):
         return self
 
 
-class PredictionExportConfig(BaseModel):
+class PredictionExportConfig(_PredictionConfigBaseModel):
     mode: Literal["standard", "all", "custom"] = "standard"
     embeddings: PredictionEmbeddingsExportConfig = Field(
         default_factory=PredictionEmbeddingsExportConfig)
@@ -106,7 +149,7 @@ class PredictionExportConfig(BaseModel):
 # -------------------------
 # Full prediction configuration
 # -------------------------
-class PredictionConfig(BaseModel):
+class PredictionConfig(_PredictionConfigBaseModel):
     stage: Literal["prediction"] = "prediction"
     source: PredictionSourceConfig = Field(
         default_factory=PredictionSourceConfig)
@@ -144,8 +187,6 @@ class PredictionConfig(BaseModel):
             False,
         )
 
-        checkpoint = self.source.checkpoint
-
         if self.source.training_manifest_path is None:
             if not training_manifest_path_overridden:
                 raise ValueError(
@@ -154,11 +195,5 @@ class PredictionConfig(BaseModel):
                 )
         elif self.source.training_manifest_path.suffix.lower() not in {".yaml", ".yml"}:
             raise ValueError("source.training_manifest_path must point to a YAML file.")
-
-        if checkpoint not in {"best", "last"} and not checkpoint.endswith(".ckpt"):
-            raise ValueError(
-                'source.checkpoint must be "best", "last", or a checkpoint '
-                'filename ending in ".ckpt".'
-            )
 
         return self

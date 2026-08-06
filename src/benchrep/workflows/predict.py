@@ -197,7 +197,12 @@ def _predict(
     run_log.info("Resolved training manifest: '%s'", run_spec.training_manifest_path)
     run_log.info("Prediction effective config source: '%s'", config_composition_result.effective_source)
     run_log.info("Prediction outputs will be saved to: '%s'", run_context.output_dir)
-    run_log.info("Resolved checkpoint: '%s'", run_spec.checkpoint_path)
+    run_log.info(
+        "Resolved checkpoint: source=%s, selection=%s, path='%s'",
+        run_spec.checkpoint_source,
+        run_spec.prediction_config.source.checkpoint,
+        run_spec.checkpoint_path,
+    )
     run_log.info(
         "Resolved prediction exports: mode=%s, embeddings_enabled=%s, "
         "embedding_keys=%s, primary_key=%s, reconstructions_enabled=%s, "

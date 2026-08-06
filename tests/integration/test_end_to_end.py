@@ -116,6 +116,17 @@ def test_internal_end_to_end(
 
     assert len(prediction_result.predictions) == 4
     _assert_completed_manifest(prediction_result.manifest_path, "prediction")
+    with prediction_result.manifest_path.open(encoding="utf-8") as handle:
+        prediction_manifest = yaml.safe_load(handle)
+
+    assert prediction_manifest["source"]["checkpoint_selection"] == "best"
+    assert (
+            prediction_manifest["source"]["checkpoint_source"]
+            == "training_manifest_best"
+    )
+    assert Path(
+        prediction_manifest["source"]["checkpoint_path"]
+    ) == prediction_result.run_spec.checkpoint_path
     _assert_audit_has_no_errors(prediction_result.audit_report_path)
 
     embedding_export = prediction_result.export_paths.embedding_export

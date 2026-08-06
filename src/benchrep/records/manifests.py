@@ -358,6 +358,8 @@ def write_prediction_manifest(
             "training_run_name": run_spec.training_run_name,
             "training_output_dir": str(run_spec.training_output_dir),
             "resolved_training_config_path": str(run_spec.resolved_training_config_path),
+            "checkpoint_selection": str(run_spec.prediction_config.source.checkpoint),
+            "checkpoint_source": run_spec.checkpoint_source,
             "checkpoint_path": str(run_spec.checkpoint_path),
         },
         "provenance": {
