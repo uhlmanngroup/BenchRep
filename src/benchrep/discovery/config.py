@@ -44,6 +44,7 @@ _CONFIG_REGISTRY_ROUTES: Final[dict[str, tuple[str, ...]]] = {
     "EvaluationClusteringConfig": ("clustering_method",),
     "KMeansConfig": ("clustering_method",),
     "LeidenConfig": ("clustering_method",),
+    "HDBSCANConfig": ("clustering_method",),
 
     # Evaluation metrics
     "InternalClusteringMetricConfig": ("internal_clustering_metric",),

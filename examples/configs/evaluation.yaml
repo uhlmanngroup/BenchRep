@@ -86,6 +86,19 @@ clustering:
       leiden_kwargs:
         directed: false
 
+  hdbscan:
+    enabled: true # true = force on; false = off; null = off
+    params:
+      min_cluster_size: 5 # minimum observations required to form a cluster
+      min_samples: null # null = use min_cluster_size
+      cluster_selection_epsilon: 0.0 # minimum distance threshold for merging clusters
+      metric: euclidean # distance metric passed to sklearn.cluster.HDBSCAN
+      cluster_selection_method: eom # eom | leaf
+      allow_single_cluster: false # whether one non-noise cluster is permitted
+      key_added: hdbscan # obs column for labels; probabilities use hdbscan_probability
+      overwrite: false # true = replace existing label and probability columns
+      # Extra params here are passed to sklearn.cluster.HDBSCAN
+
 metrics:
   clustering:
     internal:

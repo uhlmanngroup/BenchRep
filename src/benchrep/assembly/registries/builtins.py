@@ -101,7 +101,7 @@ def register_builtins() -> None:
             Autoencoder,
             VAE,
         )
-        from benchrep.evaluation.embeddings.clustering import run_kmeans, run_leiden
+        from benchrep.evaluation.embeddings.clustering import run_kmeans, run_leiden, run_hdbscan
         from benchrep.evaluation.embeddings.reductions import run_pca, run_tsne, run_umap
         from benchrep.evaluation.embeddings.embedding_metrics import (
             dimensionwise_mean,
@@ -249,6 +249,7 @@ def register_builtins() -> None:
         # Clustering
         EVAL_CLUSTERING_METHODS._register_builtin("kmeans", run_kmeans, "k_means")
         EVAL_CLUSTERING_METHODS._register_builtin("leiden", run_leiden)
+        EVAL_CLUSTERING_METHODS._register_builtin("hdbscan", run_hdbscan)
 
         # Internal clustering metrics
         EVAL_INTERNAL_CLUSTERING_METRICS._register_builtin(

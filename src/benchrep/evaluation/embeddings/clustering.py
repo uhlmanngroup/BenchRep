@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import anndata as ad
-import scanpy as sc
-from sklearn.cluster import KMeans
+import numpy as np
+import pandas as pd
+from sklearn.cluster import KMeans, HDBSCAN
 
-from benchrep.evaluation.utils import validate_adata_x
+from benchrep.evaluation.utils import validate_adata_x, load_scanpy_backend
 
 
 def run_kmeans(
@@ -134,6 +135,11 @@ def run_leiden(
     AnnData
         The input AnnData object, modified in place and returned for convenience.
     """
+    sc = load_scanpy_backend(
+        feature="Leiden clustering",
+        require_leiden=True,
+    )
+
     validate_adata_x(adata)
     _check_obs_key_available(adata, key_added=key_added, overwrite=overwrite)
 
@@ -194,6 +200,176 @@ def run_leiden(
             "neighbors_params": dict(neighbors_kwargs),
             "leiden_params": dict(leiden_kwargs),
         },
+    )
+
+    return adata
+
+
+def run_hdbscan(
+    adata: ad.AnnData,
+    *,
+    min_cluster_size: int = 5,
+    min_samples: int | None = None,
+    cluster_selection_epsilon: float = 0.0,
+    metric: str = "euclidean",
+    cluster_selection_method: Literal["eom", "leaf"] = "eom",
+    allow_single_cluster: bool = False,
+    key_added: str = "hdbscan",
+    overwrite: bool = False,
+    **hdbscan_kwargs: Any,
+) -> ad.AnnData:
+    """Run HDBSCAN clustering on ``adata.X``.
+
+    Cluster labels are stored in ``adata.obs[key_added]``. The label ``-1``
+    identifies density noise. If scikit-learn returns labels below ``-1``,
+    indicating non-finite input values, this function raises an error.
+
+    Per-sample cluster-membership strengths are stored in
+    ``adata.obs[f"{key_added}_probability"]``.
+
+    Parameters
+    ----------
+    adata:
+        AnnData object whose ``X`` matrix contains the representation to cluster.
+    min_cluster_size:
+        Minimum number of samples required for a grouping to be considered a
+        cluster.
+    min_samples:
+        Number of neighboring samples required for a point to be considered a
+        core point. If ``None``, scikit-learn uses ``min_cluster_size``.
+    cluster_selection_epsilon:
+        Distance threshold below which clusters are merged.
+    metric:
+        Distance metric passed to scikit-learn HDBSCAN.
+    cluster_selection_method:
+        Method used to select clusters from the condensed tree.
+    allow_single_cluster:
+        Whether HDBSCAN may return a single non-noise cluster.
+    key_added:
+        Key under which cluster labels are stored in ``adata.obs``.
+    overwrite:
+        If ``False``, raise when either output key already exists. If ``True``,
+        replace existing outputs.
+    **hdbscan_kwargs:
+        Additional keyword arguments passed to ``sklearn.cluster.HDBSCAN``.
+
+    Returns
+    -------
+    AnnData
+        The input AnnData object, modified in place and returned for convenience.
+    """
+    validate_adata_x(adata)
+
+    probability_key = f"{key_added}_probability"
+
+    _check_obs_key_available(
+        adata,
+        key_added=key_added,
+        overwrite=overwrite,
+    )
+    _check_obs_key_available(
+        adata,
+        key_added=probability_key,
+        overwrite=overwrite,
+    )
+
+    if min_cluster_size < 2:
+        raise ValueError(
+            "min_cluster_size must be >= 2, "
+            f"got {min_cluster_size}."
+        )
+
+    if min_samples is not None and min_samples < 1:
+        raise ValueError(
+            f"min_samples must be >= 1 or None, got {min_samples}."
+        )
+
+    if cluster_selection_epsilon < 0:
+        raise ValueError(
+            "cluster_selection_epsilon must be >= 0, "
+            f"got {cluster_selection_epsilon}."
+        )
+
+    # Preserve scikit-learn's original HDBSCAN behavior and suppress its
+    # copy-default transition warning while still allowing an explicit override.
+    hdbscan_kwargs.setdefault("copy", False)
+
+    hdbscan = HDBSCAN(
+        min_cluster_size=min_cluster_size,
+        min_samples=min_samples,
+        cluster_selection_epsilon=cluster_selection_epsilon,
+        metric=metric,
+        cluster_selection_method=cluster_selection_method,
+        allow_single_cluster=allow_single_cluster,
+        **hdbscan_kwargs,
+    )
+
+    labels: np.ndarray = np.asarray(
+        hdbscan.fit_predict(adata.X)
+    )
+    probabilities = np.asarray(hdbscan.probabilities_, dtype=float)
+
+    invalid_input_mask = labels < -1
+
+    if np.any(invalid_input_mask):
+        invalid_labels, invalid_counts = np.unique(
+            labels[invalid_input_mask],
+            return_counts=True,
+        )
+        invalid_label_counts = {
+            int(label): int(count)
+            for label, count in zip(
+                invalid_labels,
+                invalid_counts,
+                strict=True,
+            )
+        }
+
+        raise ValueError(
+            "HDBSCAN returned labels indicating non-finite input values: "
+            f"{invalid_label_counts}. Evaluation embeddings must contain only "
+            "finite values."
+        )
+
+    clustered_mask = labels >= 0
+    n_samples = int(labels.size)
+    n_clusters = int(np.unique(labels[clustered_mask]).size)
+    n_noise = int(np.count_nonzero(labels == -1))
+
+    adata.obs[key_added] = pd.Categorical(labels.astype(str))
+    adata.obs[probability_key] = probabilities
+
+    params = {
+        "min_cluster_size": min_cluster_size,
+        "min_samples": min_samples,
+        "cluster_selection_epsilon": cluster_selection_epsilon,
+        "metric": metric,
+        "cluster_selection_method": cluster_selection_method,
+        "allow_single_cluster": allow_single_cluster,
+        **hdbscan_kwargs,
+    }
+
+    metadata: dict[str, Any] = {
+        "method": "hdbscan",
+        "cluster_key": key_added,
+        "probability_key": probability_key,
+        "n_clusters": n_clusters,
+        "n_noise": n_noise,
+        "noise_fraction": n_noise / n_samples,
+        "input_shape": list(adata.X.shape),
+        "params": params,
+    }
+
+    if hasattr(hdbscan, "centroids_"):
+        metadata["centroids"] = hdbscan.centroids_
+
+    if hasattr(hdbscan, "medoids_"):
+        metadata["medoids"] = hdbscan.medoids_
+
+    _store_clustering_metadata(
+        adata,
+        key_added=key_added,
+        metadata=metadata,
     )
 
     return adata

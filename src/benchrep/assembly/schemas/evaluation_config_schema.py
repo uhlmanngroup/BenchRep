@@ -153,6 +153,20 @@ class KMeansParams(BaseModel):
     overwrite: bool | None = False
 
 
+class KMeansConfig(EvalStepConfig):
+    params: KMeansParams | None = Field(default_factory=KMeansParams)
+
+    @model_validator(mode="after")
+    def validate_kmeans(self) -> "KMeansConfig":
+        if self.enabled is True and (
+                self.params is None or self.params.n_clusters is None
+        ):
+            raise ValueError(
+                "clustering.kmeans.params.n_clusters is required when KMeans is enabled."
+            )
+        return self
+
+
 class LeidenParams(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -168,27 +182,33 @@ class LeidenParams(BaseModel):
     leiden_kwargs: dict[str, Any] | None = None
 
 
-class KMeansConfig(EvalStepConfig):
-    params: KMeansParams | None = Field(default_factory=KMeansParams)
-
-    @model_validator(mode="after")
-    def validate_kmeans(self) -> "KMeansConfig":
-        if self.enabled is True and (
-                self.params is None or self.params.n_clusters is None
-        ):
-            raise ValueError(
-                "clustering.kmeans.params.n_clusters is required when KMeans is enabled."
-            )
-        return self
-
-
 class LeidenConfig(EvalStepConfig):
     params: LeidenParams | None = Field(default_factory=LeidenParams)
+
+
+class HDBSCANParams(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    min_cluster_size: Annotated[int, Field(ge=2)] | None = 5
+    min_samples: PositiveInt | None = None
+    cluster_selection_epsilon: NonNegativeFloat | None = 0.0
+    metric: str | None = "euclidean"
+    cluster_selection_method: Literal["eom", "leaf"] | None = "eom"
+    allow_single_cluster: bool | None = False
+    key_added: str | None = "hdbscan"
+    overwrite: bool | None = False
+
+
+class HDBSCANConfig(EvalStepConfig):
+    params: HDBSCANParams | None = Field(
+        default_factory=HDBSCANParams
+    )
 
 
 class EvaluationClusteringConfig(BaseModel):
     kmeans: KMeansConfig = Field(default_factory=KMeansConfig)
     leiden: LeidenConfig = Field(default_factory=LeidenConfig)
+    hdbscan: HDBSCANConfig = Field(default_factory=HDBSCANConfig)
 
 
 # -------------------------

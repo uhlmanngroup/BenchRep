@@ -209,6 +209,12 @@ def create_anndata_evaluation_pipeline(
             params=step_spec.leiden_params,
             enabled=step_spec.leiden_enabled,
         ),
+        AnnDataEvaluationStep(
+            name="hdbscan",
+            fn=EVAL_CLUSTERING_METHODS.get("hdbscan"),
+            params=step_spec.hdbscan_params,
+            enabled=step_spec.hdbscan_enabled,
+        ),
     ]
 
     cluster_keys = _resolve_enabled_cluster_keys(run_spec)
@@ -324,15 +330,18 @@ def _resolve_enabled_cluster_keys(
     """Return cluster-label obs keys for enabled clustering steps."""
 
     step_spec = run_spec.step_spec
-    cluster_keys: list[str] = []
 
-    if step_spec.kmeans_enabled:
-        cluster_keys.append(step_spec.kmeans_params.get("key_added", "kmeans"))
+    clustering_methods = (
+        ("kmeans", step_spec.kmeans_enabled, step_spec.kmeans_params),
+        ("leiden", step_spec.leiden_enabled, step_spec.leiden_params),
+        ("hdbscan", step_spec.hdbscan_enabled, step_spec.hdbscan_params),
+    )
 
-    if step_spec.leiden_enabled:
-        cluster_keys.append(step_spec.leiden_params.get("key_added", "leiden"))
-
-    return cluster_keys
+    return [
+        params.get("key_added", method)
+        for method, enabled, params in clustering_methods
+        if enabled
+    ]
 
 
 def _compute_external_clustering_metrics_if_possible(

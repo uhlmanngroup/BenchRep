@@ -68,6 +68,9 @@ class EvaluationStepSpec:
     leiden_enabled: bool
     leiden_params: dict[str, Any]
 
+    hdbscan_enabled: bool
+    hdbscan_params: dict[str, Any]
+
     internal_clustering_metrics_enabled: bool
     internal_clustering_metrics: list[str] | None
     internal_clustering_metric_params: dict[str, dict[str, Any]]
@@ -526,9 +529,13 @@ def resolve_step_spec(
     - ``None`` means automatic/default behavior, resolved here unless later
       runtime information is required.
 
-    Most static defaults are resolved immediately. PCA, UMAP, Leiden, internal
-    clustering metrics, embedding metrics, and plots default to enabled. t-SNE
-    and KMeans default to disabled.
+    Most static defaults are resolved immediately. PCA, embedding metrics,
+    and plots default to enabled. UMAP, t-SNE, KMeans, Leiden, HDBSCAN,
+    and predictability probes default to disabled.
+
+    Clustering metrics require at least one clustering method to be enabled.
+    When KMeans, Leiden, and HDBSCAN are all disabled, both internal and
+    external clustering metrics are forced off during resolution.
 
     Reconstruction metrics default to enabled when reconstruction artifacts are
     available. Reconstruction TIFF export requires explicit enablement and available
@@ -556,7 +563,7 @@ def resolve_step_spec(
     pca_enabled = enabled_by_default(evaluation_config.reductions.pca.enabled)
     pca_params = params_to_dict(evaluation_config.reductions.pca.params)
 
-    umap_enabled = enabled_by_default(evaluation_config.reductions.umap.enabled)
+    umap_enabled = disabled_by_default(evaluation_config.reductions.umap.enabled)
     umap_params = params_to_dict(evaluation_config.reductions.umap.params)
 
     tsne_enabled = disabled_by_default(evaluation_config.reductions.tsne.enabled)
@@ -565,11 +572,14 @@ def resolve_step_spec(
     kmeans_enabled = disabled_by_default(evaluation_config.clustering.kmeans.enabled)
     kmeans_params = params_to_dict(evaluation_config.clustering.kmeans.params)
 
-    leiden_enabled = enabled_by_default(evaluation_config.clustering.leiden.enabled)
+    leiden_enabled = disabled_by_default(evaluation_config.clustering.leiden.enabled)
     leiden_params = params_to_dict(evaluation_config.clustering.leiden.params)
 
+    hdbscan_enabled = disabled_by_default(evaluation_config.clustering.hdbscan.enabled)
+    hdbscan_params = params_to_dict(evaluation_config.clustering.hdbscan.params)
+
     # Prep for guard to prevent clustering metric computation if no clustering is enabled.
-    clustering_enabled = kmeans_enabled or leiden_enabled
+    clustering_enabled = kmeans_enabled or leiden_enabled or hdbscan_enabled
 
     external_clustering_metrics_enabled = (
         evaluation_config.metrics.clustering.external.enabled
@@ -595,6 +605,8 @@ def resolve_step_spec(
         kmeans_params=kmeans_params,
         leiden_enabled=leiden_enabled,
         leiden_params=leiden_params,
+        hdbscan_enabled=hdbscan_enabled,
+        hdbscan_params=hdbscan_params,
         external_clustering_metrics_enabled=external_clustering_metrics_enabled,
         external_clustering_label_key=evaluation_config.metrics.clustering.external.label_key,
     )
@@ -681,7 +693,7 @@ def resolve_step_spec(
         pca_enabled=pca_enabled,
         pca_params=pca_params,
 
-        # None = True
+        # None = False
         umap_enabled=umap_enabled,
         umap_params=umap_params,
 
@@ -693,9 +705,13 @@ def resolve_step_spec(
         kmeans_enabled=kmeans_enabled,
         kmeans_params=kmeans_params,
 
-        # None = True
+        # None = False
         leiden_enabled=leiden_enabled,
         leiden_params=leiden_params,
+
+        # None = False
+        hdbscan_enabled=hdbscan_enabled,
+        hdbscan_params=hdbscan_params,
 
         # None = True
         # Force disable if not clustering_enabled
@@ -783,6 +799,8 @@ def _resolve_plot_params(
     kmeans_params: dict[str, Any],
     leiden_enabled: bool,
     leiden_params: dict[str, Any],
+    hdbscan_enabled: bool,
+    hdbscan_params: dict[str, Any],
     external_clustering_metrics_enabled: bool | None,
     external_clustering_label_key: str,
 ) -> dict[str, Any]:
@@ -796,6 +814,11 @@ def _resolve_plot_params(
 
     if leiden_enabled:
         color_by.append(leiden_params.get("key_added", "leiden"))
+
+    if hdbscan_enabled:
+        color_by.append(
+            hdbscan_params.get("key_added", "hdbscan")
+        )
 
     if external_clustering_metrics_enabled is not False:
         color_by.append(external_clustering_label_key)

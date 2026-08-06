@@ -4,6 +4,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 import anndata as ad
+import numpy as np
 
 from benchrep.assembly.registries.core import (
     EVAL_EXTERNAL_CLUSTERING_METRICS,
@@ -64,6 +65,21 @@ def compute_external_clustering_metrics(
     labels = adata.obs[label_key]
     clusters = adata.obs[cluster_key]
 
+    non_noise_mask = _hdbscan_non_noise_mask(
+        adata,
+        cluster_key=cluster_key,
+    )
+
+    if non_noise_mask is not None:
+        labels = labels.iloc[non_noise_mask]
+        clusters = clusters.iloc[non_noise_mask]
+
+        if clusters.empty:
+            raise ValueError(
+                "External clustering metrics require at least one non-noise "
+                "HDBSCAN observation."
+            )
+
     metric_names = resolve_registry_keys(
         selected=selected,
         registry=EVAL_EXTERNAL_CLUSTERING_METRICS,
@@ -108,7 +124,7 @@ def compute_external_clustering_metrics(
             "cluster_key": cluster_key,
             "n_labels": int(labels.nunique()),
             "n_clusters": int(clusters.nunique()),
-            "n_obs": int(adata.n_obs),
+            "n_obs": int(len(clusters)),
         },
     )
 
@@ -155,6 +171,18 @@ def compute_internal_clustering_metrics(
     )
 
     clusters = adata.obs[cluster_key]
+    metric_input = adata.X
+
+    non_noise_mask = _hdbscan_non_noise_mask(
+        adata,
+        cluster_key=cluster_key,
+    )
+
+    if non_noise_mask is not None:
+        clusters = clusters.iloc[non_noise_mask]
+        metric_input = adata.X[non_noise_mask]
+
+    n_observations = len(clusters)
     n_clusters = int(clusters.nunique())
 
     if n_clusters < 2:
@@ -163,10 +191,10 @@ def compute_internal_clustering_metrics(
             f"{n_clusters}."
         )
 
-    if n_clusters >= adata.n_obs:
+    if n_clusters >= n_observations:
         raise ValueError(
             "Internal clustering metrics require fewer clusters than observations, "
-            f"got {n_clusters} clusters for {adata.n_obs} observations."
+            f"got {n_clusters} clusters for {n_observations} observations."
         )
 
     metric_names = resolve_registry_keys(
@@ -193,7 +221,7 @@ def compute_internal_clustering_metrics(
         )
 
         try:
-            value = metric_fn(adata.X, clusters, **params)
+            value = metric_fn(metric_input, clusters, **params)
         except Exception as error:
             raise RuntimeError(
                 f"Failed to compute internal clustering metric {metric_name!r}. "
@@ -211,11 +239,35 @@ def compute_internal_clustering_metrics(
             "params": metric_params,
             "cluster_key": cluster_key,
             "n_clusters": n_clusters,
-            "n_obs": int(adata.n_obs),
+            "n_obs": int(n_observations),
         },
     )
 
     return adata
+
+
+def _hdbscan_non_noise_mask(
+    adata: ad.AnnData,
+    *,
+    cluster_key: str,
+) -> np.ndarray | None:
+    """Return the non-noise mask when the cluster output came from HDBSCAN."""
+
+    metadata = (
+        adata.uns
+        .get("benchrep", {})
+        .get("clustering", {})
+        .get(cluster_key, {})
+    )
+
+    if (
+        not isinstance(metadata, Mapping)
+        or metadata.get("method") != "hdbscan"
+    ):
+        return None
+
+    clusters = adata.obs[cluster_key]
+    return np.asarray(clusters.astype(str) != "-1")
 
 
 def _check_metric_result_available(
