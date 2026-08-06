@@ -10,6 +10,9 @@ from typing import TYPE_CHECKING, Any
 import anndata as ad
 import numpy as np
 import pandas as pd
+from scipy import sparse
+
+
 from benchrep.records.logs import get_run_logger
 from benchrep.evaluation.reconstructions.data import (
     ReconstructionEvaluationInput,
@@ -835,6 +838,49 @@ def _validate_embedding_adata_basic_contract(adata: ad.AnnData) -> None:
             "adata.X must be numeric for evaluation, "
             f"got dtype {adata.X.dtype}."
         )
+
+    _validate_finite_embedding_values(adata)
+
+
+def _validate_finite_embedding_values(adata: ad.AnnData) -> None:
+    """Require every value in the evaluation embedding matrix to be finite."""
+
+    if sparse.issparse(adata.X):
+        matrix = adata.X.tocoo()
+        values = matrix.data
+
+        nan_mask = np.isnan(values)
+        infinite_mask = np.isinf(values)
+        nonfinite_mask = nan_mask | infinite_mask
+
+        if not nonfinite_mask.any():
+            return
+
+        affected_rows = np.unique(matrix.row[nonfinite_mask])
+
+    else:
+        values = np.asarray(adata.X)
+
+        nan_mask = np.isnan(values)
+        infinite_mask = np.isinf(values)
+        nonfinite_mask = nan_mask | infinite_mask
+
+        if not nonfinite_mask.any():
+            return
+
+        affected_rows = np.flatnonzero(
+            nonfinite_mask.any(axis=1)
+        )
+
+    preview_rows = affected_rows[:10].tolist()
+
+    raise ValueError(
+        "Evaluation embeddings must contain only finite values. "
+        f"Found {int(nan_mask.sum())} NaN values and "
+        f"{int(infinite_mask.sum())} infinite values across "
+        f"{len(affected_rows)} observations. First affected observation "
+        f"positions: {preview_rows}."
+    )
 
 
 def _validate_enabled_step_preconditions(
