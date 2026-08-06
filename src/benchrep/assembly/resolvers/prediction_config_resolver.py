@@ -9,6 +9,7 @@ from benchrep.assembly.schemas import (
     PredictionTransformConfig,
     PredictionConfig,
     TrainingConfig,
+    PredictionReconstructionsExportConfig,
     PredictionExportConfig,
     parse_training_config,
     SupportedDatasetConfig,
@@ -21,7 +22,11 @@ from benchrep.assembly.resolvers.utils import (
     get_required_nested_str,
 )
 from benchrep.assembly.registries.utils import normalize_name
-from benchrep.interfaces.model_families import ModelFamilySpec, VAE_FAMILY
+from benchrep.interfaces.model_families import (
+    ModelFamilySpec,
+    VAE_FAMILY,
+    model_family_supports_reconstruction,
+)
 
 
 # -------------------------
@@ -108,7 +113,13 @@ def resolve_prediction_config(
     model_overridden: bool = False,
     datamodule_overridden: bool = False,
 ) -> PredictionRunSpec:
-    """Resolve prediction config values that depend on the training run."""
+    """Resolve prediction configuration against its linked training run.
+
+      Loads and validates the training manifest and resolved training config,
+      verifies model provenance and family compatibility, resolves the checkpoint
+      and prediction data settings, inherits applicable runtime settings, and
+      returns the complete runtime specification used by the prediction workflow.
+      """
     prediction_config, training_manifest_path = _resolve_training_manifest_path(
         prediction_config=prediction_config,
         training_manifest_path_override=training_manifest_path_override,
@@ -179,18 +190,19 @@ def resolve_prediction_config(
         num_workers = None
 
     else:
-        dataset_config = (
-            prediction_config.dataset
-            if prediction_config.dataset is not None
-            else training_config.dataset
-        )
+        if prediction_config.dataset is not None:
+            dataset_config = prediction_config.dataset
+        elif training_datamodule_external:
+            dataset_config = None
+        else:
+            dataset_config = training_config.dataset
 
         if dataset_config is None:
             raise ValueError(
                 "Prediction requires a dataset configuration, but none was "
                 "provided in the prediction config or reconstructable from the "
                 "training config. Pass `dataset` in the prediction config or "
-                "provide a datamodule override to predict()."
+                "provide a datamodule override to the prediction entrypoint."
             )
 
         transform_configs, transform_source = _resolve_prediction_transforms(
@@ -275,6 +287,7 @@ def resolve_prediction_config(
     export_spec = resolve_prediction_exports(
         export_config=prediction_config.exports,
         seed=seed,
+        model_family=model_family,
     )
 
     return PredictionRunSpec(
@@ -304,10 +317,40 @@ def resolve_prediction_config(
     )
 
 
+def _resolve_reconstruction_export_enabled(
+    *,
+    reconstruction_config: PredictionReconstructionsExportConfig,
+    model_family: ModelFamilySpec,
+) -> bool:
+    """Resolve tri-state reconstruction export against model-family support.
+
+    An explicit true value enables export and errors if the model family does
+    not declare returned reconstructions. An explicit false value disables export.
+    A null value enables export automatically only for model families whose
+    expected prediction output contains a reconstruction field.
+    """
+    supports_reconstruction = model_family_supports_reconstruction(
+        model_family
+    )
+
+    if reconstruction_config.enabled is True and not supports_reconstruction:
+        raise ValueError(
+            f"Model family {model_family.name!r} does not support "
+            "reconstruction export. Set "
+            "`exports.reconstructions.enabled=False` or null."
+        )
+
+    if reconstruction_config.enabled is None:
+        return supports_reconstruction
+
+    return reconstruction_config.enabled
+
+
 def resolve_prediction_exports(
     *,
     export_config: PredictionExportConfig,
     seed: int | None,
+    model_family: ModelFamilySpec,
 ) -> PredictionExportSpec:
     """Resolve prediction export settings into a runtime export spec.
 
@@ -318,6 +361,33 @@ def resolve_prediction_exports(
     ``seed`` is the already-resolved prediction/inference seed. It should already
     reflect the prediction config seed if provided, otherwise the training run seed.
     """
+
+    reconstruction_config = export_config.reconstructions
+    reconstruction_enabled = _resolve_reconstruction_export_enabled(
+        reconstruction_config=reconstruction_config,
+        model_family=model_family,
+    )
+
+    if reconstruction_enabled:
+        if (
+            not reconstruction_config.include_input
+            and not reconstruction_config.include_prediction
+        ):
+            raise ValueError(
+                "Enabled reconstruction export requires at least one of "
+                "`include_input` or `include_prediction` to be true."
+            )
+
+        if (
+            reconstruction_config.n_examples != "all"
+            and reconstruction_config.stratify_by is not None
+            and reconstruction_config.selection != "random"
+        ):
+            raise ValueError(
+                "`exports.reconstructions.selection` must be 'random' when "
+                "stratifying a reconstruction subset."
+            )
+
     mode = export_config.mode
 
     if mode == "standard":
@@ -339,15 +409,16 @@ def resolve_prediction_exports(
         )
 
     reconstruction_seed = (
-        export_config.reconstructions.seed
-        if export_config.reconstructions.seed is not None
+        reconstruction_config.seed
+        if reconstruction_config.seed is not None
         else seed
     )
 
     if (
-        export_config.reconstructions.enabled
-        and export_config.reconstructions.selection == "random"
-        and reconstruction_seed is None
+            reconstruction_enabled
+            and reconstruction_config.n_examples != "all"
+            and reconstruction_config.selection == "random"
+            and reconstruction_seed is None
     ):
         raise ValueError(
             "Random reconstruction export requires a seed. Set "
@@ -363,13 +434,13 @@ def resolve_prediction_exports(
             primary_key=primary_key,
         ),
         reconstructions=PredictionReconstructionsExportSpec(
-            enabled=export_config.reconstructions.enabled,
-            n_examples=export_config.reconstructions.n_examples,
-            selection=export_config.reconstructions.selection,
-            stratify_by=export_config.reconstructions.stratify_by,
+            enabled=reconstruction_enabled,
+            n_examples=reconstruction_config.n_examples,
+            selection=reconstruction_config.selection,
+            stratify_by=reconstruction_config.stratify_by,
             seed=reconstruction_seed,
-            include_input=export_config.reconstructions.include_input,
-            include_prediction=export_config.reconstructions.include_prediction,
+            include_input=reconstruction_config.include_input,
+            include_prediction=reconstruction_config.include_prediction,
         ),
     )
 
@@ -380,6 +451,12 @@ def _resolve_checkpoint_path(
     training_manifest: dict[str, Any],
     manifest_path: Path,
 ) -> tuple[Path, PredictionCheckpointSource]:
+    """Resolve a checkpoint selection and record how it was selected.
+
+    Supports the training run's best or last checkpoint, a bare filename within
+    its checkpoint directory, or an explicit absolute checkpoint path.
+    """
+
     if checkpoint == "best":
         checkpoint_path = get_required_nested_path(
             training_manifest,
@@ -478,6 +555,12 @@ def _resolve_training_manifest_path(
     prediction_config: PredictionConfig,
     training_manifest_path_override: Path | str | None,
 ) -> tuple[PredictionConfig, Path]:
+    """Resolve and validate the effective training-manifest path.
+
+    An entrypoint-provided path overrides the path stored in the prediction
+    config and is written into the returned config copy.
+    """
+
     if training_manifest_path_override is not None:
         training_manifest_path = Path(training_manifest_path_override).resolve()
 
@@ -539,7 +622,7 @@ def _validate_prediction_model_source(
     if training_model_external and not model_overridden:
         raise ValueError(
             "Training manifest indicates that the trained model came from an external "
-            "Python object, but no model override was provided to predict(). "
+            "Python object, but no model override was provided to the prediction entrypoint. "
             "Pass a compatible model instance that can load the recorded checkpoint."
         )
 

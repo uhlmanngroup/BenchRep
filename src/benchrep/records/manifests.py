@@ -441,6 +441,9 @@ def write_prediction_manifest(
                 ),
             },
             "reconstructions": {
+                "configured_enabled": (
+                    run_spec.prediction_config.exports.reconstructions.enabled
+                ),
                 "enabled": reconstruction_spec.enabled,
                 "n_examples_requested": reconstruction_spec.n_examples,
                 "n_examples_exported": (
