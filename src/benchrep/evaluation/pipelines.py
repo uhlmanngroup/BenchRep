@@ -519,8 +519,8 @@ def _compute_external_clustering_metrics_if_possible(
 
     if label_key not in adata.obs.columns:
         if external_metrics_enabled is True:
-            raise KeyError(
-                f"External clustering metrics were explicitly enabled, but "
+            raise RecoverableEvaluationStepError(
+                "External clustering metrics were explicitly enabled, but "
                 f"adata.obs does not contain label_key={label_key!r}."
             )
 

@@ -6,6 +6,7 @@ from typing import Any
 from dataclasses import dataclass, asdict
 
 import numpy as np
+import pandas as pd
 
 import anndata as ad
 
@@ -22,6 +23,7 @@ from sklearn.model_selection import (
 
 from benchrep.evaluation.utils import (
     PredictabilityTask,
+    RecoverableEvaluationStepError,
     validate_adata_x,
     validate_embedding_matrix,
     validate_obs_key,
@@ -301,6 +303,116 @@ def evaluate_predictability_probe(
     )
 
 
+def _validate_predictability_data_preconditions(
+    *,
+    adata: ad.AnnData,
+    target_key: str,
+    task: PredictabilityTask,
+    cv_params: Mapping[str, Any],
+    tuning_params: Mapping[str, Any],
+) -> None:
+    """Validate data-dependent predictability requirements."""
+
+    if target_key not in adata.obs.columns:
+        raise RecoverableEvaluationStepError(
+            "Predictability metrics require "
+            f"adata.obs[{target_key!r}], but that column is unavailable."
+        )
+
+    target = adata.obs[target_key]
+
+    if target.isna().any():
+        raise RecoverableEvaluationStepError(
+            f"Predictability target adata.obs[{target_key!r}] "
+            "contains missing values."
+        )
+
+    class_counts = None
+
+    if task == "classification":
+        class_counts = target.value_counts(dropna=False)
+        class_counts = class_counts[class_counts > 0]
+
+        if class_counts.shape[0] < 2:
+            raise RecoverableEvaluationStepError(
+                "Classification predictability requires at least two "
+                f"observed target classes, got {class_counts.shape[0]}."
+            )
+
+    else:
+        if not pd.api.types.is_numeric_dtype(target):
+            raise RecoverableEvaluationStepError(
+                "Regression predictability requires a numeric target column. "
+                f"adata.obs[{target_key!r}] has dtype {target.dtype}."
+            )
+
+        if not np.isfinite(target.to_numpy(dtype=float)).all():
+            raise RecoverableEvaluationStepError(
+                f"Regression target adata.obs[{target_key!r}] contains "
+                "non-finite values."
+            )
+
+    method = cv_params.get("method", "stratified_kfold")
+    n_splits = int(cv_params.get("n_splits", 5))
+
+    if n_splits > adata.n_obs:
+        raise RecoverableEvaluationStepError(
+            "Predictability cv.n_splits cannot exceed adata.n_obs, got "
+            f"n_splits={n_splits} and n_obs={adata.n_obs}."
+        )
+
+    if method in {"group_kfold", "stratified_group_kfold"}:
+        group_key = cv_params.get("group_key")
+
+        if group_key is None:
+            raise ValueError(
+                "Grouped predictability CV requires cv.group_key."
+            )
+
+        if group_key not in adata.obs.columns:
+            raise RecoverableEvaluationStepError(
+                "Grouped predictability CV requires "
+                f"adata.obs[{group_key!r}], but that column is unavailable."
+            )
+
+        groups = adata.obs[group_key]
+
+        if groups.isna().any():
+            raise RecoverableEvaluationStepError(
+                f"Predictability group column adata.obs[{group_key!r}] "
+                "contains missing values."
+            )
+
+        n_groups = int(groups.nunique(dropna=False))
+
+        if n_splits > n_groups:
+            raise RecoverableEvaluationStepError(
+                "Predictability grouped CV n_splits cannot exceed the number "
+                f"of groups, got n_splits={n_splits} and n_groups={n_groups}."
+            )
+
+    if method in {"stratified_kfold", "stratified_group_kfold"}:
+        min_class_count = int(class_counts.min())
+
+        if n_splits > min_class_count:
+            raise RecoverableEvaluationStepError(
+                "Stratified predictability CV n_splits cannot exceed the "
+                "smallest observed class count, got "
+                f"n_splits={n_splits} and min_class_count={min_class_count}."
+            )
+
+    if tuning_params.get("enabled", False):
+        inner_cv = tuning_params.get("inner_cv", {})
+        inner_n_splits = int(inner_cv.get("n_splits", 3))
+
+        if inner_n_splits > adata.n_obs:
+            raise RecoverableEvaluationStepError(
+                "Predictability tuning inner_cv.n_splits cannot exceed "
+                "adata.n_obs, got "
+                f"inner_n_splits={inner_n_splits} and n_obs={adata.n_obs}."
+            )
+
+
 def compute_predictability_metrics(
         adata: ad.AnnData,
         *,
@@ -332,6 +444,14 @@ def compute_predictability_metrics(
         task=task,
         cv_params=cv_params,
         tuning_enabled=tuning_enabled,
+        tuning_params=tuning_params,
+    )
+
+    _validate_predictability_data_preconditions(
+        adata=adata,
+        target_key=target_key,
+        task=task,
+        cv_params=cv_params,
         tuning_params=tuning_params,
     )
 

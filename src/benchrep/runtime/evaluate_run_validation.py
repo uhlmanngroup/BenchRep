@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Any
 
 import anndata as ad
 import numpy as np
-import pandas as pd
 from scipy import sparse
 
 
@@ -55,7 +54,6 @@ def prepare_evaluate_source_inputs(
     adata = _load_embeddings_adata(run_spec.input_spec.embeddings_path)
     _validate_embedding_adata_basic_contract(adata)
     _validate_enabled_step_preconditions(
-        adata=adata,
         run_spec=run_spec,
     )
 
@@ -885,7 +883,6 @@ def _validate_finite_embedding_values(adata: ad.AnnData) -> None:
 
 def _validate_enabled_step_preconditions(
     *,
-    adata: ad.AnnData,
     run_spec: EvaluationRunSpec,
 ) -> None:
     """Fail early on obvious enabled-step issues before mutating AnnData."""
@@ -917,134 +914,37 @@ def _validate_enabled_step_preconditions(
                 "KMeans n_clusters is required when KMeans is enabled."
             )
 
-    if (
-        step_spec.external_clustering_metrics_enabled is True
-        and step_spec.external_clustering_label_key not in adata.obs.columns
-    ):
-        raise KeyError(
-            "External clustering metrics were explicitly enabled, but "
-            "the loaded AnnData object does not contain "
-            f"adata.obs[{step_spec.external_clustering_label_key!r}]."
-        )
-
     if step_spec.predictability_enabled:
-        _validate_predictability_preconditions(
-            adata=adata,
-            target_key=step_spec.predictability_target_key,
+        _validate_predictability_configuration_preconditions(
             task=step_spec.predictability_task,
             probes=step_spec.predictability_probes,
             cv_params=step_spec.predictability_cv_params,
-            tuning_params=step_spec.predictability_tuning_params,
         )
 
 
-def _validate_predictability_preconditions(
+def _validate_predictability_configuration_preconditions(
     *,
-    adata: ad.AnnData,
-    target_key: str,
     task: str,
     probes: list[str],
     cv_params: Mapping[str, Any],
-    tuning_params: Mapping[str, Any],
 ) -> None:
-    if target_key not in adata.obs.columns:
-        raise KeyError(
-            "Predictability metrics were enabled, but the loaded AnnData object "
-            f"does not contain adata.obs[{target_key!r}]."
-        )
+    """Validate predictability requirements independent of runtime data."""
 
-    target = adata.obs[target_key]
+    method = cv_params.get("method", "stratified_kfold")
 
-    if target.isna().any():
+    if (
+        method in {"stratified_kfold", "stratified_group_kfold"}
+        and task != "classification"
+    ):
         raise ValueError(
-            f"Predictability target adata.obs[{target_key!r}] contains missing values."
+            f"Predictability cv.method={method!r} is only valid for "
+            "classification."
         )
-
-    class_counts = None
-
-    if task == "classification":
-        class_counts = target.value_counts(dropna=False)
-
-        if class_counts.shape[0] < 2:
-            raise ValueError(
-                "Classification predictability requires at least two target classes. "
-                f"Got {class_counts.shape[0]} class(es)."
-            )
-
-    elif task == "regression":
-        if not pd.api.types.is_numeric_dtype(target):
-            raise TypeError(
-                "Regression predictability requires a numeric target column. "
-                f"adata.obs[{target_key!r}] has dtype {target.dtype}."
-            )
-
-    else:
-        raise ValueError(
-            "Predictability task must be either 'classification' or 'regression', "
-            f"got {task!r}."
-        )
-
-    method = _param(cv_params, "method", "stratified_kfold")
-    n_splits = _param(cv_params, "n_splits", 5)
-
-    if n_splits > adata.n_obs:
-        raise ValueError(
-            "Predictability cv.n_splits cannot exceed adata.n_obs. "
-            f"Got n_splits={n_splits}, n_obs={adata.n_obs}."
-        )
-
-    if method in {"group_kfold", "stratified_group_kfold"}:
-        group_key = cv_params.get("group_key")
-
-        if group_key not in adata.obs.columns:
-            raise KeyError(
-                "Predictability grouped CV was enabled, but the loaded AnnData "
-                f"object does not contain adata.obs[{group_key!r}]."
-            )
-
-        groups = adata.obs[group_key]
-
-        if groups.isna().any():
-            raise ValueError(
-                f"Predictability group column adata.obs[{group_key!r}] "
-                "contains missing values."
-            )
-
-        n_groups = int(groups.nunique(dropna=False))
-        if n_splits > n_groups:
-            raise ValueError(
-                "Predictability grouped CV n_splits cannot exceed the number "
-                f"of groups. Got n_splits={n_splits}, n_groups={n_groups}."
-            )
-
-    if method in {"stratified_kfold", "stratified_group_kfold"}:
-        if task != "classification":
-            raise ValueError(
-                f"Predictability cv.method={method!r} is only valid for classification."
-            )
-
-        min_class_count = int(class_counts.min())
-        if n_splits > min_class_count:
-            raise ValueError(
-                "Stratified predictability CV n_splits cannot exceed the "
-                "smallest class count. "
-                f"Got n_splits={n_splits}, min_class_count={min_class_count}."
-            )
-
-    if tuning_params.get("enabled", False):
-        inner_cv = tuning_params.get("inner_cv", {})
-        inner_n_splits = _param(inner_cv, "n_splits", 3)
-
-        if inner_n_splits > adata.n_obs:
-            raise ValueError(
-                "Predictability tuning inner_cv.n_splits cannot exceed adata.n_obs. "
-                f"Got inner_n_splits={inner_n_splits}, n_obs={adata.n_obs}."
-            )
 
     if "xgboost" in probes and find_spec("xgboost") is None:
         raise ImportError(
-            "The xgboost predictability probe was selected, but xgboost is not "
-            "installed. Install xgboost or remove 'xgboost' from "
+            "The xgboost predictability probe was selected, but xgboost is "
+            "not installed. Install xgboost or remove 'xgboost' from "
             "metrics.predictability.selected."
         )
 
@@ -1109,15 +1009,6 @@ def _infer_obs_length(obs: Any) -> int | None:
         return len(obs)
     except TypeError:
         return None
-
-
-def _param(
-    params: Mapping[str, Any],
-    key: str,
-    default: Any,
-) -> Any:
-    value = params.get(key, default)
-    return default if value is None else value
 
 
 def _audit_optional_expected_file(
