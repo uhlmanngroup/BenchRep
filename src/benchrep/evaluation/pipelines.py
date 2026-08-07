@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Literal, TYPE_CHECKING, TypeVar
+from typing import Any, TYPE_CHECKING, TypeVar
 import warnings
 
 import anndata as ad
@@ -24,6 +24,11 @@ from benchrep.evaluation.reconstructions.error_maps import compute_error_maps
 from benchrep.evaluation.reconstructions.reconstruction_metrics import (
     compute_reconstruction_metrics,
 )
+from benchrep.evaluation.status import (
+    EvaluationOutcome,
+    EvaluationOutcomeStatus,
+)
+
 
 if TYPE_CHECKING:
     from benchrep.assembly.resolvers.evaluation_config_resolver import (
@@ -34,16 +39,6 @@ if TYPE_CHECKING:
 # -------------------------
 # Step specs
 # -------------------------
-EvaluationStepStatus = Literal[
-    "pending",
-    "running",
-    "disabled",
-    "completed",
-    "completed_with_warnings",
-    "skipped",
-    "failed",
-]
-
 StepResultT = TypeVar("StepResultT")
 
 
@@ -60,7 +55,7 @@ class EvaluationStep:
         repr=False,
         compare=False,
     )
-    status: EvaluationStepStatus = field(
+    status: EvaluationOutcomeStatus = field(
         default="pending",
         init=False,
     )
@@ -97,6 +92,7 @@ class EvaluationStep:
 
         try:
             with warnings.catch_warnings(record=True) as captured_warnings:
+                warnings.simplefilter("always")
                 result = operation()
 
         except RecoverableEvaluationStepError as error:
@@ -188,6 +184,13 @@ class EvaluationStep:
             for dependency in dependencies
         )
 
+    def to_outcome(self) -> EvaluationOutcome:
+        return EvaluationOutcome(
+            name=self.name,
+            status=self.status,
+            issues=tuple(self.issues),
+        )
+
 
 @dataclass
 class AnnDataEvaluationStep(EvaluationStep):
@@ -260,6 +263,10 @@ class AnnDataEvaluationPipeline:
     ) -> None:
         self.steps = list(steps)
 
+    @property
+    def outcomes(self) -> tuple[EvaluationOutcome, ...]:
+        return tuple(step.to_outcome() for step in self.steps)
+
     def run(self, adata: ad.AnnData) -> ad.AnnData:
         """Run all enabled AnnData evaluation steps."""
 
@@ -281,6 +288,10 @@ class ReconstructionEvaluationPipeline:
         steps: Sequence[ReconstructionEvaluationStep],
     ) -> None:
         self.steps = list(steps)
+
+    @property
+    def outcomes(self) -> tuple[EvaluationOutcome, ...]:
+        return tuple(step.to_outcome() for step in self.steps)
 
     def run(self, reconstruction_input: Any | None) -> dict[str, Any]:
         """Run all enabled reconstruction evaluation steps."""
