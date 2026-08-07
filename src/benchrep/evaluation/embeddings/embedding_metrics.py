@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from typing import Any
+import warnings
 
 import anndata as ad
 import numpy as np
@@ -13,6 +14,7 @@ from benchrep.assembly.registries.utils import (
 )
 from benchrep.evaluation.utils import (
     ArrayLike,
+    RecoverableEvaluationStepError,
     validate_adata_x,
     validate_embedding_matrix,
     validate_metric_params,
@@ -70,6 +72,7 @@ def compute_embedding_metrics(
         str,
         list[float] | dict[str, list[float]],
     ] = {}
+    failures: dict[str, str] = {}
 
     for metric_name in metric_names:
         metric_fn = EVAL_EMBEDDING_METRICS.get(metric_name)
@@ -87,19 +90,30 @@ def compute_embedding_metrics(
                 embedding_array,
                 **params,
             )
+        except RecoverableEvaluationStepError as error:
+            failures[metric_name] = str(error)
+            continue
         except Exception as error:
             raise RuntimeError(
                 f"Failed to compute embedding metric {metric_name!r}. "
                 f"Original error ({type(error).__name__}): {error}"
             ) from error
 
-        results[metric_name] = (
-            _normalize_dimensionwise_metric_result(
-                value,
-                metric_name=metric_name,
-                n_dimensions=embedding_array.shape[1],
+        try:
+            results[metric_name] = (
+                _normalize_dimensionwise_metric_result(
+                    value,
+                    metric_name=metric_name,
+                    n_dimensions=embedding_array.shape[1],
+                )
             )
-        )
+        except RecoverableEvaluationStepError as error:
+            failures[metric_name] = str(error)
+
+    _finalize_recoverable_embedding_metric_failures(
+        results=results,
+        failures=failures,
+    )
 
     _store_embedding_metric_result(
         adata,
@@ -116,6 +130,35 @@ def compute_embedding_metrics(
     )
 
     return adata
+
+
+def _finalize_recoverable_embedding_metric_failures(
+    *,
+    results: Mapping[str, Any],
+    failures: Mapping[str, str],
+) -> None:
+    """Warn for partial failures or fail when no metric succeeded."""
+
+    if not failures:
+        return
+
+    failure_details = "; ".join(
+        f"{metric_name}: {reason}"
+        for metric_name, reason in failures.items()
+    )
+
+    if not results:
+        raise RecoverableEvaluationStepError(
+            "All selected embedding metrics failed recoverably. "
+            f"{failure_details}"
+        )
+
+    for metric_name, reason in failures.items():
+        warnings.warn(
+            f"Skipped embedding metric {metric_name!r}: {reason}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
 
 
 def _normalize_dimensionwise_metric_result(
@@ -208,7 +251,7 @@ def _normalize_dimensionwise_vector(
         )
 
     if not np.isfinite(result_array).all():
-        raise ValueError(
+        raise RecoverableEvaluationStepError(
             f"Embedding metric result {result_location!r} contains "
             "non-finite values."
         )
@@ -295,7 +338,7 @@ def dimensionwise_standard_deviation(
         raise ValueError(f"ddof must be non-negative, got {ddof}.")
 
     if ddof >= embedding_array.shape[0]:
-        raise ValueError(
+        raise RecoverableEvaluationStepError(
             "ddof must be smaller than the number of samples, got "
             f"ddof={ddof} and n_samples={embedding_array.shape[0]}."
         )
