@@ -31,7 +31,6 @@ from benchrep.records.utils import now_isoformat
 from benchrep.runtime import RunContext
 from benchrep.runtime.evaluate_run_validation import (
     prepare_evaluate_source_inputs,
-    log_clustering_count_warnings,
     audit_evaluate_outputs,
 )
 from benchrep.assembly.registries.builtins import register_builtins
@@ -42,8 +41,6 @@ if TYPE_CHECKING:
         EvaluationRunSpec,
     )
     from benchrep.records.evaluation_exports import EvaluationExportPaths
-
-DEFAULT_MAX_CLUSTERS_WARN = 50
 
 
 @dataclass
@@ -181,11 +178,6 @@ def evaluate(
         capture_stdout=False,
     ):
         adata = embeddings_pipeline.run(adata)
-
-    log_clustering_count_warnings(
-        adata,
-        max_clusters_warn=DEFAULT_MAX_CLUSTERS_WARN,
-    )
 
     run_log.info("Finished AnnData evaluation pipeline.")
     run_log.info("Final obsm keys: %s", tuple(adata.obsm.keys()))

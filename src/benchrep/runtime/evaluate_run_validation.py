@@ -12,7 +12,6 @@ import numpy as np
 from scipy import sparse
 
 
-from benchrep.records.logs import get_run_logger
 from benchrep.evaluation.reconstructions.data import (
     ReconstructionEvaluationInput,
     load_reconstruction_evaluation_input,
@@ -84,106 +83,6 @@ def prepare_evaluate_source_inputs(
         adata_input=adata,
         reconstruction_input=reconstruction_input,
     )
-
-
-def log_clustering_count_warnings(
-    adata: ad.AnnData,
-    *,
-    max_clusters_warn: int | None,
-) -> None:
-    """Log warnings for clustering outputs with high cluster count.
-
-    Expects clustering metadata at:
-
-        adata.uns["benchrep"]["clustering"][key_added]
-
-    Each metadata record should contain ``n_clusters``. If missing, the count is
-    inferred from ``adata.obs[key_added]`` when possible.
-    """
-
-    if max_clusters_warn is None:
-        return
-
-    run_log = get_run_logger()
-
-    benchrep_uns = adata.uns.get("benchrep")
-
-    if benchrep_uns is None:
-        return
-
-    if not isinstance(benchrep_uns, Mapping):
-        run_log.warning(
-            "Expected adata.uns['benchrep'] to be a mapping, but found %s. "
-            "Skipping clustering count warnings.",
-            type(benchrep_uns).__name__,
-        )
-        return
-
-    clustering_uns = benchrep_uns.get("clustering")
-
-    if clustering_uns is None:
-        return
-
-    if not isinstance(clustering_uns, Mapping):
-        run_log.warning(
-            "Expected adata.uns['benchrep']['clustering'] to be a mapping, "
-            "but found %s. Skipping clustering count warnings.",
-            type(clustering_uns).__name__,
-        )
-        return
-
-    if not clustering_uns:
-        return
-
-    for key_added, metadata in clustering_uns.items():
-        if not isinstance(metadata, Mapping):
-            run_log.warning(
-                "Expected clustering metadata for key '%s' to be a mapping, "
-                "but found %s. Skipping this clustering result.",
-                key_added,
-                type(metadata).__name__,
-            )
-            continue
-
-        n_clusters = metadata.get("n_clusters")
-
-        if n_clusters is None:
-            if key_added in adata.obs_keys():
-                n_clusters = int(adata.obs[key_added].nunique(dropna=True))
-                run_log.warning(
-                    "Clustering metadata for key '%s' is missing required field "
-                    "'n_clusters'. Computed it from adata.obs instead.",
-                    key_added,
-                )
-            else:
-                run_log.warning(
-                    "Clustering metadata for key '%s' is missing required field "
-                    "'n_clusters'. Cannot check whether this clustering result has "
-                    "too many clusters.",
-                    key_added,
-                )
-                continue
-
-        try:
-            n_clusters = int(n_clusters)
-        except (TypeError, ValueError):
-            run_log.warning(
-                "Clustering metadata for key '%s' has invalid n_clusters=%r. "
-                "Cannot check whether this clustering result has too many clusters.",
-                key_added,
-                n_clusters,
-            )
-            continue
-
-        if n_clusters > max_clusters_warn:
-            run_log.warning(
-                "Clustering key '%s' produced %d clusters, exceeding the "
-                "configured warning threshold of %d. Cluster-colored reduction "
-                "plots and cluster-size plots may be difficult to interpret.",
-                key_added,
-                n_clusters,
-                max_clusters_warn,
-            )
 
 
 def audit_evaluate_outputs(

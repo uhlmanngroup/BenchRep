@@ -14,6 +14,8 @@ from benchrep.evaluation.utils import (
     load_scanpy_backend,
 )
 
+MAX_CLUSTERS_WARN = 50
+
 
 def run_kmeans(
     adata: ad.AnnData,
@@ -110,6 +112,11 @@ def run_kmeans(
             RuntimeWarning,
             stacklevel=2,
         )
+
+    _warn_if_many_clusters(
+        cluster_key=key_added,
+        n_clusters=n_clusters,
+    )
 
     return adata
 
@@ -254,6 +261,11 @@ def run_leiden(
             RuntimeWarning,
             stacklevel=2,
         )
+
+    _warn_if_many_clusters(
+        cluster_key=key_added,
+        n_clusters=n_clusters,
+    )
 
     return adata
 
@@ -464,7 +476,32 @@ def run_hdbscan(
             stacklevel=2,
         )
 
+    _warn_if_many_clusters(
+        cluster_key=key_added,
+        n_clusters=n_clusters,
+    )
+
     return adata
+
+
+def _warn_if_many_clusters(
+    *,
+    cluster_key: str,
+    n_clusters: int,
+) -> None:
+    """Warn when a clustering result may be difficult to interpret."""
+
+    if n_clusters <= MAX_CLUSTERS_WARN:
+        return
+
+    warnings.warn(
+        f"Clustering key {cluster_key!r} produced {n_clusters} clusters, "
+        f"exceeding the warning threshold of {MAX_CLUSTERS_WARN}. "
+        "Cluster-colored reduction plots and cluster-size plots may be "
+        "difficult to interpret.",
+        RuntimeWarning,
+        stacklevel=2,
+    )
 
 
 def _validate_clustering_labels(
