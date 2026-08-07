@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from typing import Any
+from numbers import Real
+import warnings
 
 import anndata as ad
 import numpy as np
@@ -91,7 +93,13 @@ def compute_external_clustering_metrics(
         registry=EVAL_EXTERNAL_CLUSTERING_METRICS,
     )
 
+    if not metric_names:
+        raise ValueError(
+            "At least one external clustering metric must be selected."
+        )
+
     results: dict[str, Any] = {}
+    failures: dict[str, str] = {}
 
     for metric_name in metric_names:
         metric_fn = EVAL_EXTERNAL_CLUSTERING_METRICS.get(metric_name)
@@ -106,13 +114,28 @@ def compute_external_clustering_metrics(
 
         try:
             value = metric_fn(labels, clusters, **params)
+        except RecoverableEvaluationStepError as error:
+            failures[metric_name] = str(error)
+            continue
         except Exception as error:
             raise RuntimeError(
                 f"Failed to compute external clustering metric {metric_name!r}. "
                 "The metric callable was found, but execution failed."
             ) from error
 
-        results[metric_name] = to_python_scalar(value)
+        try:
+            results[metric_name] = _validate_clustering_metric_value(
+                value,
+                metric_name=metric_name,
+            )
+        except RecoverableEvaluationStepError as error:
+            failures[metric_name] = str(error)
+
+    _finalize_recoverable_metric_failures(
+        metric_kind="external clustering",
+        results=results,
+        failures=failures,
+    )
 
     _store_clustering_metric_result(
         adata,
@@ -209,7 +232,13 @@ def compute_internal_clustering_metrics(
         registry=EVAL_INTERNAL_CLUSTERING_METRICS,
     )
 
+    if not metric_names:
+        raise ValueError(
+            "At least one internal clustering metric must be selected."
+        )
+
     results: dict[str, Any] = {}
+    failures: dict[str, str] = {}
 
     for metric_name in metric_names:
         metric_fn = EVAL_INTERNAL_CLUSTERING_METRICS.get(metric_name)
@@ -224,13 +253,28 @@ def compute_internal_clustering_metrics(
 
         try:
             value = metric_fn(metric_input, clusters, **params)
+        except RecoverableEvaluationStepError as error:
+            failures[metric_name] = str(error)
+            continue
         except Exception as error:
             raise RuntimeError(
                 f"Failed to compute internal clustering metric {metric_name!r}. "
                 "The metric callable was found, but execution failed."
             ) from error
 
-        results[metric_name] = to_python_scalar(value)
+        try:
+            results[metric_name] = _validate_clustering_metric_value(
+                value,
+                metric_name=metric_name,
+            )
+        except RecoverableEvaluationStepError as error:
+            failures[metric_name] = str(error)
+
+    _finalize_recoverable_metric_failures(
+        metric_kind="internal clustering",
+        results=results,
+        failures=failures,
+    )
 
     _store_clustering_metric_result(
         adata,
@@ -246,6 +290,65 @@ def compute_internal_clustering_metrics(
     )
 
     return adata
+
+
+def _validate_clustering_metric_value(
+    value: Any,
+    *,
+    metric_name: str,
+) -> Real:
+    """Validate and return one clustering metric scalar."""
+
+    try:
+        scalar = to_python_scalar(value)
+    except Exception as error:
+        raise TypeError(
+            f"Clustering metric {metric_name!r} must return a scalar."
+        ) from error
+
+    if isinstance(scalar, bool) or not isinstance(scalar, Real):
+        raise TypeError(
+            f"Clustering metric {metric_name!r} must return a real numeric "
+            f"scalar, got {type(scalar).__name__}."
+        )
+
+    if not np.isfinite(float(scalar)):
+        raise RecoverableEvaluationStepError(
+            f"Clustering metric {metric_name!r} returned a non-finite value: "
+            f"{scalar!r}."
+        )
+
+    return scalar
+
+
+def _finalize_recoverable_metric_failures(
+    *,
+    metric_kind: str,
+    results: Mapping[str, Any],
+    failures: Mapping[str, str],
+) -> None:
+    """Warn for partial failures or fail when no metric succeeded."""
+
+    if not failures:
+        return
+
+    failure_details = "; ".join(
+        f"{metric_name}: {reason}"
+        for metric_name, reason in failures.items()
+    )
+
+    if not results:
+        raise RecoverableEvaluationStepError(
+            f"All selected {metric_kind} metrics failed recoverably. "
+            f"{failure_details}"
+        )
+
+    for metric_name, reason in failures.items():
+        warnings.warn(
+            f"Skipped {metric_kind} metric {metric_name!r}: {reason}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
 
 
 def _hdbscan_non_noise_mask(
