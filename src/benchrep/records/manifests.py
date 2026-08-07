@@ -506,7 +506,7 @@ def write_evaluation_manifest(
     status_report: EvaluationStatusReport,
     created_at: str,
     completed_at: str,
-) -> None:
+) -> dict[str, Any]:
     """Write the evaluation workflow manifest."""
     config = run_spec.evaluation_config
     step_spec = run_spec.step_spec
@@ -719,6 +719,8 @@ def write_evaluation_manifest(
     }
 
     write_yaml_record(manifest, output_path)
+
+    return manifest
 
 
 def _build_evaluation_runtime_summary(

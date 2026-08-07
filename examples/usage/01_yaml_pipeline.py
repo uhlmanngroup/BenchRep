@@ -4,8 +4,8 @@ Run from the repository root:
 
     python examples/usage/01_yaml_pipeline.py
 
-Each workflow writes its own outputs, manifest, runtime-environment record,
-and audit report. The generated manifests connect the three stages.
+Each workflow writes its own outputs, manifest, and runtime-environment record.
+The generated manifests connect the three stages.
 """
 
 from pathlib import Path

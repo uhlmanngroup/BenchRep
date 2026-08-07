@@ -23,17 +23,13 @@ from benchrep.records import (
     setup_run_logger,
     export_evaluation_outputs,
     write_evaluation_manifest,
-    write_audit_report,
     get_runtime_environment_filename,
     collect_evaluation_environment_context,
     write_runtime_environment,
 )
 from benchrep.records.utils import now_isoformat
 from benchrep.runtime import RunContext
-from benchrep.runtime.evaluate_run_validation import (
-    prepare_evaluate_source_inputs,
-    audit_evaluate_outputs,
-)
+from benchrep.runtime.evaluate_run_validation import prepare_evaluate_source_inputs
 from benchrep.assembly.registries.builtins import register_builtins
 from benchrep.evaluation.status import (
     EvaluationOutcome,
@@ -58,7 +54,6 @@ class EvaluationWorkflowResult:
     export_paths: EvaluationExportPaths
     status_report: EvaluationStatusReport
     manifest_path: Path
-    audit_report_path: Path
 
 
 def evaluate(
@@ -248,6 +243,9 @@ def evaluate(
         export_outcomes=export_result.outcomes,
     )
 
+    run_log.info("")
+    run_log.info("--- Evaluation status report ---")
+
     _log_evaluation_status_report(
         run_log=run_log,
         status_report=status_report,
@@ -257,7 +255,7 @@ def evaluate(
 
     # Export evaluation manifest
     manifest_path = run_context.metadata_dir / "evaluation_manifest.yaml"
-    write_evaluation_manifest(
+    evaluation_manifest = write_evaluation_manifest(
         config_composition_result=config_composition_result,
         output_path=manifest_path,
         run_spec=run_spec,
@@ -271,30 +269,16 @@ def evaluate(
 
     run_log.info("Exported evaluation manifest to: '%s'", manifest_path)
 
-    audit_items = audit_evaluate_outputs(
-        run_context=run_context,
-        run_spec=run_spec,
-        adata=adata,
-        reconstruction_outputs=reconstruction_outputs,
-        export_paths=export_paths,
-        config_composition_result=config_composition_result,
-        resolved_config_path=run_context.config_dir / "resolved_config.yaml",
-        evaluation_manifest_path=manifest_path,
-        runtime_environment_path=runtime_environment_path,
-    )
-
-    audit_report_path = write_audit_report(
-        stage="evaluation",
-        audit_items=audit_items,
-        output_path=(
-                run_context.metadata_dir / "evaluation_audit_report.yaml"
-        ),
-        audited_at=now_isoformat(),
-    )
+    summary = evaluation_manifest["summary"]
 
     run_log.info(
-        "Exported evaluation audit report to: '%s'",
-        audit_report_path,
+        "Evaluation outcome summary: total=%d, ok=%d, warnings=%d, "
+        "errors=%d, skipped=%d",
+        summary["total"],
+        summary["ok"],
+        summary["warnings"],
+        summary["errors"],
+        summary["skipped"],
     )
 
     return EvaluationWorkflowResult(
@@ -306,7 +290,6 @@ def evaluate(
         export_paths=export_paths,
         status_report=status_report,
         manifest_path=manifest_path,
-        audit_report_path=audit_report_path,
     )
 
 
