@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from typing import Any
+from numbers import Real
+import warnings
 
 from dataclasses import dataclass, asdict
 
@@ -229,20 +231,42 @@ def evaluate_predictability_probe(
     tuning_enabled: bool,
 ) -> PredictabilityProbeResult:
     """Evaluate one predictability probe across outer CV folds."""
+
     X = input_spec.X
     y = input_spec.y
     groups = input_spec.groups
 
     scorer = get_scorer(scoring)
 
-    if cv_spec.use_groups:
-        if groups is None:
-            raise ValueError(
-                "Grouped predictability CV requires group labels, but groups=None."
+    if cv_spec.use_groups and groups is None:
+        raise ValueError(
+            "Grouped predictability CV requires group labels, but groups=None."
+        )
+
+    if tuning_enabled and cv_spec.inner_cv is None:
+        raise ValueError(
+            "Predictability tuning is enabled, but inner_cv is None."
+        )
+
+    try:
+        if cv_spec.use_groups:
+            outer_splits = list(
+                cv_spec.outer_cv.split(X, y, groups)
             )
-        outer_splits = cv_spec.outer_cv.split(X, y, groups)
-    else:
-        outer_splits = cv_spec.outer_cv.split(X, y)
+        else:
+            outer_splits = list(
+                cv_spec.outer_cv.split(X, y)
+            )
+    except ValueError as error:
+        raise RecoverableEvaluationStepError(
+            "Predictability cross-validation could not split the available "
+            f"data. Original error: {error}"
+        ) from error
+
+    if not outer_splits:
+        raise RecoverableEvaluationStepError(
+            "Predictability cross-validation produced no outer folds."
+        )
 
     fold_scores: list[float] = []
     best_params_by_fold: dict[str, dict[str, Any]] = {}
@@ -251,11 +275,6 @@ def evaluate_predictability_probe(
         estimator = clone(probe_spec.estimator)
 
         if tuning_enabled:
-            if cv_spec.inner_cv is None:
-                raise ValueError(
-                    "Predictability tuning is enabled, but inner_cv is None."
-                )
-
             search = GridSearchCV(
                 estimator=estimator,
                 param_grid=probe_spec.param_grid,
@@ -263,17 +282,23 @@ def evaluate_predictability_probe(
                 cv=cv_spec.inner_cv,
             )
 
-            if cv_spec.use_groups:
-                search.fit(
-                    X[train_idx],
-                    y[train_idx],
-                    groups=groups[train_idx],
-                )
-            else:
-                search.fit(
-                    X[train_idx],
-                    y[train_idx],
-                )
+            try:
+                if cv_spec.use_groups:
+                    search.fit(
+                        X[train_idx],
+                        y[train_idx],
+                        groups=groups[train_idx],
+                    )
+                else:
+                    search.fit(
+                        X[train_idx],
+                        y[train_idx],
+                    )
+            except (ValueError, np.linalg.LinAlgError) as error:
+                raise RecoverableEvaluationStepError(
+                    "Predictability probe tuning failed in outer fold "
+                    f"{fold_idx}. Original error: {error}"
+                ) from error
 
             fitted_estimator = search.best_estimator_
             best_params_by_fold[f"fold_{fold_idx}"] = {
@@ -282,23 +307,55 @@ def evaluate_predictability_probe(
             }
 
         else:
-            fitted_estimator = estimator.fit(
-                X[train_idx],
-                y[train_idx],
-            )
+            try:
+                fitted_estimator = estimator.fit(
+                    X[train_idx],
+                    y[train_idx],
+                )
+            except (ValueError, np.linalg.LinAlgError) as error:
+                raise RecoverableEvaluationStepError(
+                    "Predictability probe fitting failed in outer fold "
+                    f"{fold_idx}. Original error: {error}"
+                ) from error
 
         fold_score = scorer(
             fitted_estimator,
             X[test_idx],
             y[test_idx],
         )
-        fold_scores.append(float(fold_score))
+
+        if (
+            isinstance(fold_score, bool)
+            or not isinstance(fold_score, Real)
+        ):
+            raise TypeError(
+                "Predictability scorer must return a real numeric scalar, "
+                f"got {type(fold_score).__name__}."
+            )
+
+        normalized_score = float(fold_score)
+
+        if not np.isfinite(normalized_score):
+            raise RecoverableEvaluationStepError(
+                "Predictability scorer returned a non-finite value in outer "
+                f"fold {fold_idx}: {normalized_score!r}."
+            )
+
+        fold_scores.append(normalized_score)
 
     return PredictabilityProbeResult(
         fold_scores=fold_scores,
         mean_score=float(np.mean(fold_scores)),
-        std_score=float(np.std(fold_scores, ddof=1)) if len(fold_scores) > 1 else 0.0,
-        best_params_by_fold=best_params_by_fold if tuning_enabled else None,
+        std_score=(
+            float(np.std(fold_scores, ddof=1))
+            if len(fold_scores) > 1
+            else 0.0
+        ),
+        best_params_by_fold=(
+            best_params_by_fold
+            if tuning_enabled
+            else None
+        ),
         tuned=tuning_enabled,
     )
 
@@ -463,19 +520,42 @@ def compute_predictability_metrics(
     )
 
     probe_results: dict[str, PredictabilityProbeResult] = {}
+    probe_failures: dict[str, str] = {}
+
     for probe_name in selected:
         probe_builder = EVAL_PREDICTABILITY_PROBES.get(probe_name)
-        probe_spec = probe_builder(
-            task=task,
-            params=probe_params[probe_name],
-        )
-        probe_results[probe_name] = evaluate_predictability_probe(
-            input_spec=input_spec,
-            cv_spec=cv_spec,
-            probe_spec=probe_spec,
-            scoring=scoring,
-            tuning_enabled=tuning_enabled,
-        )
+
+        try:
+            probe_spec = probe_builder(
+                task=task,
+                params=probe_params[probe_name],
+            )
+        except Exception as error:
+            raise RuntimeError(
+                f"Failed to build predictability probe {probe_name!r}. "
+                f"Original error ({type(error).__name__}): {error}"
+            ) from error
+
+        try:
+            probe_results[probe_name] = evaluate_predictability_probe(
+                input_spec=input_spec,
+                cv_spec=cv_spec,
+                probe_spec=probe_spec,
+                scoring=scoring,
+                tuning_enabled=tuning_enabled,
+            )
+        except RecoverableEvaluationStepError as error:
+            probe_failures[probe_name] = str(error)
+        except Exception as error:
+            raise RuntimeError(
+                f"Failed to evaluate predictability probe {probe_name!r}. "
+                f"Original error ({type(error).__name__}): {error}"
+            ) from error
+
+    _finalize_recoverable_predictability_probe_failures(
+        probe_results=probe_results,
+        probe_failures=probe_failures,
+    )
 
     result = {
         "target_key": target_key,
@@ -496,6 +576,35 @@ def compute_predictability_metrics(
     )
 
     return adata
+
+
+def _finalize_recoverable_predictability_probe_failures(
+    *,
+    probe_results: Mapping[str, PredictabilityProbeResult],
+    probe_failures: Mapping[str, str],
+) -> None:
+    """Warn for partial probe failures or fail when no probe succeeded."""
+
+    if not probe_failures:
+        return
+
+    failure_details = "; ".join(
+        f"{probe_name}: {reason}"
+        for probe_name, reason in probe_failures.items()
+    )
+
+    if not probe_results:
+        raise RecoverableEvaluationStepError(
+            "All selected predictability probes failed recoverably. "
+            f"{failure_details}"
+        )
+
+    for probe_name, reason in probe_failures.items():
+        warnings.warn(
+            f"Skipped predictability probe {probe_name!r}: {reason}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
 
 
 def _store_predictability_metric_result(
