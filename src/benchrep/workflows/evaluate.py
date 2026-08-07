@@ -262,10 +262,11 @@ def evaluate(
         output_path=manifest_path,
         run_spec=run_spec,
         run_context=run_context,
+        adata=adata,
         export_paths=export_paths,
+        status_report=status_report,
         created_at=created_at,
         completed_at=completed_at,
-        status="completed",
     )
 
     run_log.info("Exported evaluation manifest to: '%s'", manifest_path)

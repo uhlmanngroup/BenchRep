@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 import yaml
 
@@ -28,6 +28,15 @@ from benchrep.records.runtime_environment import (
     get_runtime_environment_filename,
 )
 from benchrep.interfaces.model_families import ModelFamilySpec, VAE_FAMILY
+from benchrep.evaluation.status import (
+    EvaluationOutcome,
+    EvaluationSectionStatus,
+    EvaluationStatusReport,
+)
+
+
+if TYPE_CHECKING:
+    import anndata as ad
 
 
 def write_training_manifest(
@@ -492,10 +501,11 @@ def write_evaluation_manifest(
     output_path: Path,
     run_spec: EvaluationRunSpec,
     run_context: RunContext,
+    adata: ad.AnnData,
     export_paths: EvaluationExportPaths,
+    status_report: EvaluationStatusReport,
     created_at: str,
     completed_at: str,
-    status: str = "completed",
 ) -> None:
     """Write the evaluation workflow manifest."""
     config = run_spec.evaluation_config
@@ -574,9 +584,14 @@ def write_evaluation_manifest(
         run_context,
     )
 
+    anndata_output_locations = _build_evaluation_anndata_output_locations(
+        adata=adata,
+        run_spec=run_spec,
+    )
+
     manifest = {
         "stage": run_spec.stage,
-        "status": status,
+        "status": status_report.status,
         "created_at": created_at,
         "completed_at": completed_at,
         "run": {
@@ -633,6 +648,8 @@ def write_evaluation_manifest(
         "exports": {
             "embeddings": {
                 "path": str(export_paths.evaluated_embeddings_path),
+                "n_obs": int(adata.n_obs),
+                "n_vars": int(adata.n_vars),
             },
             "metrics": {
                 "path": str(export_paths.metrics_json_path),
@@ -658,7 +675,6 @@ def write_evaluation_manifest(
             "reconstructions": {
                 "error_map_params": step_spec.error_map_params,
                 "tiffs": {
-                    "enabled": step_spec.reconstruction_tiffs_enabled,
                     "n_examples_requested": (
                         config.reconstruction.n_examples
                     ),
@@ -674,10 +690,6 @@ def write_evaluation_manifest(
                     "output_dir": common_parent_path(tiff_paths),
                 },
                 "grids": {
-                    "enabled": (
-                        reconstruction_spec is not None
-                        and step_spec.plots_enabled
-                    ),
                     "include_error_maps": grid_params.get(
                         "include_error_maps",
                         True,
@@ -691,6 +703,10 @@ def write_evaluation_manifest(
                 },
             },
         },
+        "status_report": _evaluation_status_report_to_manifest(
+            status_report,
+            anndata_output_locations=anndata_output_locations,
+        ),
         "summary": {
             "project_name": prediction_summary.get("project_name"),
             "model": prediction_summary.get("model"),
@@ -698,36 +714,365 @@ def write_evaluation_manifest(
             "decoder": prediction_summary.get("decoder"),
             "source_mode": source_mode,
             "has_reconstructions": reconstruction_spec is not None,
-            "reductions": {
-                "pca": step_spec.pca_enabled,
-                "umap": step_spec.umap_enabled,
-                "tsne": step_spec.tsne_enabled,
-            },
-            "clustering": {
-                "kmeans": step_spec.kmeans_enabled,
-                "leiden": step_spec.leiden_enabled,
-            },
-            "metrics": {
-                "clustering_internal": (
-                    step_spec.internal_clustering_metrics_enabled
-                ),
-                "clustering_external": (
-                    step_spec.external_clustering_metrics_enabled
-                ),
-                "embedding": step_spec.embedding_metrics_enabled,
-                "predictability": step_spec.predictability_enabled,
-                "reconstruction": (
-                    step_spec.reconstruction_metrics_enabled
-                ),
-            },
-            "plots_enabled": step_spec.plots_enabled,
-            "reconstruction_tiffs_enabled": (
-                step_spec.reconstruction_tiffs_enabled
-            ),
+            **_build_evaluation_runtime_summary(status_report),
         },
     }
 
     write_yaml_record(manifest, output_path)
+
+
+def _build_evaluation_runtime_summary(
+    status_report: EvaluationStatusReport,
+) -> dict[str, Any]:
+    """Summarize active evaluation outcomes by status and category."""
+
+    outcomes = _active_evaluation_outcomes(status_report)
+    bucket_by_status = {
+        "completed": "ok",
+        "completed_with_warnings": "warnings",
+        "failed": "errors",
+        "skipped": "skipped",
+    }
+    counts = {
+        "ok": 0,
+        "warnings": 0,
+        "errors": 0,
+        "skipped": 0,
+    }
+    grouped_outcomes: dict[str, dict[str, list[str]]] = {}
+
+    for outcome in outcomes:
+        bucket = bucket_by_status.get(outcome.status)
+
+        if bucket is None:
+            raise RuntimeError(
+                "Cannot summarize evaluation outcome "
+                f"{outcome.name!r} with status {outcome.status!r}."
+            )
+
+        counts[bucket] += 1
+
+        bucket_outcomes = grouped_outcomes.setdefault(bucket, {})
+        bucket_outcomes.setdefault(
+            outcome.category,
+            [],
+        ).append(outcome.name)
+
+    result: dict[str, Any] = {
+        "total": len(outcomes),
+        **counts,
+    }
+
+    if grouped_outcomes:
+        result["outcomes"] = grouped_outcomes
+
+    return result
+
+
+def _active_evaluation_outcomes(
+    status_report: EvaluationStatusReport,
+) -> tuple[EvaluationOutcome, ...]:
+    """Return all non-disabled outcomes in report order."""
+
+    return tuple(
+        outcome
+        for section in (
+            status_report.embeddings,
+            status_report.reconstructions,
+            status_report.exports,
+        )
+        for outcome in section.outcomes
+        if outcome.status != "disabled"
+    )
+
+
+def _evaluation_status_report_to_manifest(
+    status_report: EvaluationStatusReport,
+    *,
+    anndata_output_locations: Mapping[str, Mapping[str, str]],
+) -> dict[str, Any]:
+    """Convert active evaluation outcomes to a YAML-safe mapping."""
+
+    result: dict[str, Any] = {}
+
+    section_specs = (
+        (
+            "embeddings",
+            status_report.embeddings,
+            anndata_output_locations,
+        ),
+        (
+            "reconstructions",
+            status_report.reconstructions,
+            None,
+        ),
+        (
+            "exports",
+            status_report.exports,
+            None,
+        ),
+    )
+
+    for section_name, section, output_locations in section_specs:
+        section_record = _status_section_to_manifest(
+            section,
+            output_locations=output_locations,
+        )
+
+        if section_record is not None:
+            result[section_name] = section_record
+
+    if status_report.fatal_issue is not None:
+        result["fatal_issue"] = status_report.fatal_issue
+
+    return result
+
+
+def _status_section_to_manifest(
+    section: EvaluationSectionStatus,
+    *,
+    output_locations: Mapping[str, Mapping[str, str]] | None = None,
+) -> dict[str, Any] | None:
+    """Convert one active evaluation status section to a mapping."""
+
+    outcomes: dict[str, Any] = {}
+    seen_names: set[str] = set()
+
+    for outcome in section.outcomes:
+        if outcome.name in seen_names:
+            raise ValueError(
+                "Evaluation status section contains duplicate outcome "
+                f"name {outcome.name!r}."
+            )
+
+        seen_names.add(outcome.name)
+
+        if outcome.status == "disabled":
+            continue
+
+        outcome_record: dict[str, Any] = {
+            "status": outcome.status,
+        }
+
+        if outcome.issues:
+            outcome_record["issues"] = list(outcome.issues)
+
+        if outcome.status in {
+            "completed",
+            "completed_with_warnings",
+        }:
+            outputs = (
+                output_locations.get(outcome.name)
+                if output_locations is not None
+                else None
+            )
+
+            if outputs:
+                outcome_record["outputs"] = dict(outputs)
+
+        outcomes[outcome.name] = outcome_record
+
+    if not outcomes:
+        return None
+
+    return {
+        "status": section.status,
+        "outcomes": outcomes,
+    }
+
+
+def _build_evaluation_anndata_output_locations(
+    *,
+    adata: ad.AnnData,
+    run_spec: EvaluationRunSpec,
+) -> dict[str, dict[str, str]]:
+    """Map evaluation outcomes to outputs present in the final AnnData."""
+
+    step_spec = run_spec.step_spec
+    reduction_keys = {
+        "pca": step_spec.pca_params.get("key_added", "X_pca"),
+        "umap": step_spec.umap_params.get("key_added", "X_umap"),
+        "tsne": step_spec.tsne_params.get("key_added", "X_tsne"),
+    }
+    clustering_keys = {
+        "kmeans": step_spec.kmeans_params.get("key_added", "kmeans"),
+        "leiden": step_spec.leiden_params.get("key_added", "leiden"),
+        "hdbscan": step_spec.hdbscan_params.get(
+            "key_added",
+            "hdbscan",
+        ),
+    }
+    current_cluster_keys = set(clustering_keys.values())
+
+    benchrep = adata.uns.get("benchrep", {})
+    if not isinstance(benchrep, Mapping):
+        return {}
+
+    output_locations: dict[str, dict[str, str]] = {}
+
+    reductions = benchrep.get("reductions", {})
+    if isinstance(reductions, Mapping):
+        for key_added, metadata in reductions.items():
+            if (
+                not isinstance(key_added, str)
+                or not isinstance(metadata, Mapping)
+                or key_added not in adata.obsm
+            ):
+                continue
+
+            method = metadata.get("method")
+            if (
+                not isinstance(method, str)
+                or reduction_keys.get(method) != key_added
+            ):
+                continue
+
+            outputs = {
+                "coordinates": _anndata_location("obsm", key_added),
+                "metadata": _anndata_location(
+                    "uns",
+                    "benchrep",
+                    "reductions",
+                    key_added,
+                ),
+            }
+
+            neighbors_key = metadata.get("neighbors_key")
+            if isinstance(neighbors_key, str):
+                outputs.update(
+                    _neighbor_output_locations(adata, neighbors_key)
+                )
+
+            output_locations[method] = outputs
+
+    clustering = benchrep.get("clustering", {})
+    if isinstance(clustering, Mapping):
+        for cluster_key, metadata in clustering.items():
+            if (
+                not isinstance(cluster_key, str)
+                or not isinstance(metadata, Mapping)
+                or cluster_key not in adata.obs
+            ):
+                continue
+
+            method = metadata.get("method")
+            if (
+                not isinstance(method, str)
+                or clustering_keys.get(method) != cluster_key
+            ):
+                continue
+
+            outputs = {
+                "clusters": _anndata_location("obs", cluster_key),
+                "metadata": _anndata_location(
+                    "uns",
+                    "benchrep",
+                    "clustering",
+                    cluster_key,
+                ),
+            }
+
+            probability_key = metadata.get("probability_key")
+            if (
+                isinstance(probability_key, str)
+                and probability_key in adata.obs
+            ):
+                outputs["probabilities"] = _anndata_location(
+                    "obs",
+                    probability_key,
+                )
+
+            neighbors_key = metadata.get("neighbors_key")
+            if isinstance(neighbors_key, str):
+                outputs.update(
+                    _neighbor_output_locations(adata, neighbors_key)
+                )
+
+            output_locations[method] = outputs
+
+    metrics = benchrep.get("metrics", {})
+    if not isinstance(metrics, Mapping):
+        return output_locations
+
+    if "embedding" in metrics:
+        output_locations["embedding_metrics"] = {
+            "metrics": _anndata_location(
+                "uns",
+                "benchrep",
+                "metrics",
+                "embedding",
+            )
+        }
+
+    predictability = metrics.get("predictability", {})
+    if isinstance(predictability, Mapping):
+        for target_key in predictability:
+            if target_key == step_spec.predictability_target_key:
+                output_locations[
+                    f"predictability_metrics_{target_key}"
+                ] = {
+                    "metrics": _anndata_location(
+                        "uns",
+                        "benchrep",
+                        "metrics",
+                        "predictability",
+                        target_key,
+                    )
+                }
+
+    clustering_metrics = metrics.get("clustering", {})
+    if isinstance(clustering_metrics, Mapping):
+        for metric_group in ("internal", "external"):
+            group_results = clustering_metrics.get(metric_group, {})
+            if not isinstance(group_results, Mapping):
+                continue
+
+            for cluster_key in group_results:
+                if cluster_key in current_cluster_keys:
+                    output_locations[
+                        f"{metric_group}_clustering_metrics_{cluster_key}"
+                    ] = {
+                        "metrics": _anndata_location(
+                            "uns",
+                            "benchrep",
+                            "metrics",
+                            "clustering",
+                            metric_group,
+                            cluster_key,
+                        )
+                    }
+
+    return output_locations
+
+
+def _neighbor_output_locations(
+    adata: ad.AnnData,
+    neighbors_key: str,
+) -> dict[str, str]:
+    outputs: dict[str, str] = {}
+
+    if neighbors_key in adata.uns:
+        outputs["neighbor_metadata"] = _anndata_location(
+            "uns",
+            neighbors_key,
+        )
+
+    prefix = "" if neighbors_key == "neighbors" else f"{neighbors_key}_"
+
+    for output_name in ("distances", "connectivities"):
+        key = f"{prefix}{output_name}"
+
+        if key in adata.obsp:
+            outputs[output_name] = _anndata_location("obsp", key)
+
+    return outputs
+
+
+def _anndata_location(attribute: str, *keys: str) -> str:
+    return f"adata.{attribute}" + "".join(
+        f"[{key!r}]"
+        for key in keys
+    )
 
 
 def _build_common_records(
