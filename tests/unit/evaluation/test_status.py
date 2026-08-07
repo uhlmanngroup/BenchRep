@@ -35,6 +35,7 @@ def test_summarize_evaluation_outcomes(
     outcomes = tuple(
         EvaluationOutcome(
             name=f"outcome_{index}",
+            category="test",
             status=status,
         )
         for index, status in enumerate(statuses)
@@ -47,6 +48,7 @@ def test_summarize_evaluation_outcomes_rejects_unfinished() -> None:
     outcomes = (
         EvaluationOutcome(
             name="unfinished",
+            category="test",
             status="running",
         ),
     )
@@ -63,10 +65,12 @@ def test_build_evaluation_status_report_aggregates_sections() -> None:
         embedding_outcomes=(
             EvaluationOutcome(
                 name="pca",
+                category="reductions",
                 status="completed",
             ),
             EvaluationOutcome(
                 name="umap",
+                category="reductions",
                 status="failed",
             ),
         ),
@@ -74,6 +78,7 @@ def test_build_evaluation_status_report_aggregates_sections() -> None:
         export_outcomes=(
             EvaluationOutcome(
                 name="evaluated_embeddings",
+                category="exports",
                 status="completed",
             ),
         ),
@@ -96,6 +101,7 @@ def test_evaluation_step_always_captures_relevant_warnings() -> None:
 
     step = AnnDataEvaluationStep(
         name="warning_step",
+        category="test",
         fn=warn_and_return,
     )
 
@@ -105,3 +111,4 @@ def test_evaluation_step_always_captures_relevant_warnings() -> None:
 
     assert step.status == "completed_with_warnings"
     assert step.issues == ["Warning (RuntimeWarning): record me"]
+    assert step.to_outcome().category == "test"

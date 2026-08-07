@@ -27,6 +27,7 @@ EvaluationSummaryStatus = Literal[
 @dataclass(frozen=True)
 class EvaluationOutcome:
     name: str
+    category: str
     status: EvaluationOutcomeStatus
     issues: tuple[str, ...] = ()
 

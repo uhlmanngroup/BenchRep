@@ -150,6 +150,7 @@ def export_evaluation_outputs(
     outcomes.append(
         EvaluationOutcome(
             name="evaluated_embeddings",
+            category="exports",
             status=embedding_status,
             issues=embedding_issues,
         )
@@ -191,6 +192,7 @@ def export_evaluation_outputs(
         outcomes.append(
             EvaluationOutcome(
                 name="reduction_plots",
+                category="exports",
                 status="disabled",
             )
         )
@@ -222,6 +224,7 @@ def export_evaluation_outputs(
         outcomes.append(
             EvaluationOutcome(
                 name="cluster_size_plots",
+                category="exports",
                 status="disabled",
             )
         )
@@ -253,6 +256,7 @@ def export_evaluation_outputs(
             outcomes.append(
                 EvaluationOutcome(
                     name="reconstruction_tiffs",
+                    category="exports",
                     status="failed",
                     issues=(f"Error (RuntimeError): {issue}",),
                 )
@@ -286,6 +290,7 @@ def export_evaluation_outputs(
         outcomes.append(
             EvaluationOutcome(
                 name="reconstruction_tiffs",
+                category="exports",
                 status="disabled",
             )
         )
@@ -317,6 +322,7 @@ def export_evaluation_outputs(
         outcomes.append(
             EvaluationOutcome(
                 name="reconstruction_grids",
+                category="exports",
                 status="disabled",
             )
         )
@@ -378,6 +384,7 @@ def _run_recoverable_export(
 
             return None, EvaluationOutcome(
                 name=name,
+                category="exports",
                 status="failed",
                 issues=issues,
             )
@@ -387,6 +394,7 @@ def _run_recoverable_export(
     if skip_when_no_paths and count_paths(result) == 0:
         return result, EvaluationOutcome(
             name=name,
+            category="exports",
             status="skipped",
             issues=(
                 *issues,
@@ -403,6 +411,7 @@ def _run_recoverable_export(
 
     return result, EvaluationOutcome(
         name=name,
+        category="exports",
         status=status,
         issues=issues,
     )

@@ -47,6 +47,7 @@ class EvaluationStep:
     """Shared configuration and runtime state for an evaluation step."""
 
     name: str
+    category: str
     fn: Callable[..., Any]
     params: Mapping[str, Any] = field(default_factory=dict)
     enabled: bool = True
@@ -187,6 +188,7 @@ class EvaluationStep:
     def to_outcome(self) -> EvaluationOutcome:
         return EvaluationOutcome(
             name=self.name,
+            category=self.category,
             status=self.status,
             issues=tuple(self.issues),
         )
@@ -336,6 +338,7 @@ def create_anndata_evaluation_pipeline(
 
     kmeans_step = AnnDataEvaluationStep(
         name="kmeans",
+        category="clustering",
         fn=EVAL_CLUSTERING_METHODS.get("kmeans"),
         params=step_spec.kmeans_params,
         enabled=step_spec.kmeans_enabled,
@@ -343,6 +346,7 @@ def create_anndata_evaluation_pipeline(
 
     leiden_step = AnnDataEvaluationStep(
         name="leiden",
+        category="clustering",
         fn=EVAL_CLUSTERING_METHODS.get("leiden"),
         params=step_spec.leiden_params,
         enabled=step_spec.leiden_enabled,
@@ -350,6 +354,7 @@ def create_anndata_evaluation_pipeline(
 
     hdbscan_step = AnnDataEvaluationStep(
         name="hdbscan",
+        category="clustering",
         fn=EVAL_CLUSTERING_METHODS.get("hdbscan"),
         params=step_spec.hdbscan_params,
         enabled=step_spec.hdbscan_enabled,
@@ -358,18 +363,21 @@ def create_anndata_evaluation_pipeline(
     steps: list[AnnDataEvaluationStep] = [
         AnnDataEvaluationStep(
             name="pca",
+            category="reductions",
             fn=EVAL_REDUCTIONS.get("pca"),
             params=step_spec.pca_params,
             enabled=step_spec.pca_enabled,
         ),
         AnnDataEvaluationStep(
             name="umap",
+            category="reductions",
             fn=EVAL_REDUCTIONS.get("umap"),
             params=step_spec.umap_params,
             enabled=step_spec.umap_enabled,
         ),
         AnnDataEvaluationStep(
             name="tsne",
+            category="reductions",
             fn=EVAL_REDUCTIONS.get("tsne"),
             params=step_spec.tsne_params,
             enabled=step_spec.tsne_enabled,
@@ -401,6 +409,7 @@ def create_anndata_evaluation_pipeline(
         steps.append(
             AnnDataEvaluationStep(
                 name=f"internal_clustering_metrics_{cluster_key}",
+                category="metrics",
                 fn=compute_internal_clustering_metrics,
                 dependencies=(clustering_step,),
                 params={
@@ -417,6 +426,7 @@ def create_anndata_evaluation_pipeline(
         steps.append(
             AnnDataEvaluationStep(
                 name=f"external_clustering_metrics_{cluster_key}",
+                category="metrics",
                 fn=_compute_external_clustering_metrics_if_possible,
                 dependencies=(clustering_step,),
                 params={
@@ -440,6 +450,7 @@ def create_anndata_evaluation_pipeline(
     steps.append(
         AnnDataEvaluationStep(
             name="embedding_metrics",
+            category="metrics",
             fn=compute_embedding_metrics,
             params={
                 "selected": step_spec.embedding_metrics,
@@ -453,6 +464,7 @@ def create_anndata_evaluation_pipeline(
     steps.append(
         AnnDataEvaluationStep(
             name=f"predictability_metrics_{predictability_target_key}",
+            category="metrics",
             fn=compute_predictability_metrics,
             params={
                 "target_key": predictability_target_key,
@@ -485,6 +497,7 @@ def create_reconstruction_evaluation_pipeline(
     steps: list[ReconstructionEvaluationStep] = [
         ReconstructionEvaluationStep(
             name="reconstruction_metrics",
+            category="metrics",
             fn=compute_reconstruction_metrics,
             params={
                 "selected": step_spec.reconstruction_metrics,
@@ -495,6 +508,7 @@ def create_reconstruction_evaluation_pipeline(
         ),
         ReconstructionEvaluationStep(
             name="error_maps",
+            category="reconstruction",
             fn=compute_error_maps,
             params={
                 **step_spec.error_map_params,
