@@ -2,11 +2,15 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from typing import Any
+import warnings
 
 import numpy as np
 
 from benchrep.evaluation.reconstructions.data import ReconstructionEvaluationInput
-from benchrep.evaluation.utils import validate_reconstruction_arrays
+from benchrep.evaluation.utils import (
+    RecoverableEvaluationStepError,
+    validate_reconstruction_arrays,
+)
 
 
 SUPPORTED_ERROR_MAP_KINDS = {
@@ -76,15 +80,28 @@ def compute_error_maps(
         inputs = inputs[:resolved_n_examples]
         reconstructions = reconstructions[:resolved_n_examples]
 
-    error_maps_dict = {}
+    error_maps_dict: dict[str, dict[str, Any]] = {}
+    failures: dict[str, str] = {}
+
     for error_kind in kinds:
-        error_maps = _compute_error_map_array(
-            inputs=inputs,
-            reconstructions=reconstructions,
-            kind=error_kind,
-            denominator_floor=denominator_floor,
-            data_range=data_range,
-        )
+        try:
+            error_maps = _compute_error_map_array(
+                inputs=inputs,
+                reconstructions=reconstructions,
+                kind=error_kind,
+                denominator_floor=denominator_floor,
+                data_range=data_range,
+            )
+
+            error_maps = _validate_error_map_array(
+                error_maps,
+                error_kind=error_kind,
+                expected_shape=inputs.shape,
+            )
+
+        except RecoverableEvaluationStepError as error:
+            failures[error_kind] = str(error)
+            continue
 
         error_maps_dict[error_kind] = {
             "error_maps": error_maps,
@@ -96,8 +113,81 @@ def compute_error_maps(
             },
         }
 
+    _finalize_recoverable_error_map_failures(
+        results=error_maps_dict,
+        failures=failures,
+    )
+
 
     return error_maps_dict
+
+
+def _validate_error_map_array(
+    value: Any,
+    *,
+    error_kind: str,
+    expected_shape: tuple[int, ...],
+) -> np.ndarray:
+    """Validate and return one error-map array."""
+
+    try:
+        error_maps = np.asarray(value)
+    except (TypeError, ValueError) as error:
+        raise TypeError(
+            f"Error map kind {error_kind!r} returned a value that could not "
+            "be converted to a NumPy array."
+        ) from error
+
+    if error_maps.shape != expected_shape:
+        raise ValueError(
+            f"Error map kind {error_kind!r} must preserve the reconstruction "
+            f"shape. Expected {expected_shape}, got {error_maps.shape}."
+        )
+
+    if (
+        not np.issubdtype(error_maps.dtype, np.number)
+        or np.issubdtype(error_maps.dtype, np.complexfloating)
+    ):
+        raise TypeError(
+            f"Error map kind {error_kind!r} must return real numeric values, "
+            f"got dtype {error_maps.dtype}."
+        )
+
+    if not np.isfinite(error_maps).all():
+        raise RecoverableEvaluationStepError(
+            f"Error map kind {error_kind!r} produced non-finite values."
+        )
+
+    return error_maps
+
+
+def _finalize_recoverable_error_map_failures(
+    *,
+    results: Mapping[str, Any],
+    failures: Mapping[str, str],
+) -> None:
+    """Warn for partial failures or fail when no error map succeeded."""
+
+    if not failures:
+        return
+
+    failure_details = "; ".join(
+        f"{error_kind}: {reason}"
+        for error_kind, reason in failures.items()
+    )
+
+    if not results:
+        raise RecoverableEvaluationStepError(
+            "All requested error map kinds failed recoverably. "
+            f"{failure_details}"
+        )
+
+    for error_kind, reason in failures.items():
+        warnings.warn(
+            f"Skipped error map kind {error_kind!r}: {reason}",
+            RuntimeWarning,
+            stacklevel=2,
+        )
 
 
 def _compute_error_map_array(
