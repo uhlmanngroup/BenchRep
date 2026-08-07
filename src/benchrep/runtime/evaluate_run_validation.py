@@ -909,63 +909,6 @@ def _validate_enabled_step_preconditions(
             require_leiden=step_spec.leiden_enabled,
         )
 
-    if step_spec.pca_enabled:
-        params = step_spec.pca_params
-
-        _validate_obsm_key_available(
-            adata=adata,
-            key=_param(params, "key_added", "X_pca"),
-            overwrite=_param(params, "overwrite", False),
-            step_name="PCA",
-        )
-
-        n_components = _param(params, "n_components", 2)
-        max_components = min(adata.n_obs, adata.n_vars)
-
-        if n_components > max_components:
-            raise ValueError(
-                "PCA n_components cannot exceed min(adata.n_obs, adata.n_vars). "
-                f"Got n_components={n_components}, max={max_components}."
-            )
-
-    if step_spec.umap_enabled:
-        params = step_spec.umap_params
-
-        _validate_obsm_key_available(
-            adata=adata,
-            key=_param(params, "key_added", "X_umap"),
-            overwrite=_param(params, "overwrite", False),
-            step_name="UMAP",
-        )
-        _validate_uns_key_available(
-            adata=adata,
-            key=_param(params, "neighbors_key", "neighbors"),
-            overwrite=_param(params, "overwrite", False),
-            step_name="UMAP neighbors",
-        )
-        _validate_n_neighbors(
-            n_neighbors=_param(params, "n_neighbors", 15),
-            n_obs=adata.n_obs,
-            step_name="UMAP",
-        )
-
-    if step_spec.tsne_enabled:
-        params = step_spec.tsne_params
-
-        _validate_obsm_key_available(
-            adata=adata,
-            key=_param(params, "key_added", "X_tsne"),
-            overwrite=_param(params, "overwrite", False),
-            step_name="t-SNE",
-        )
-
-        perplexity = _param(params, "perplexity", 30.0)
-        if perplexity >= adata.n_obs:
-            raise ValueError(
-                "t-SNE perplexity must be smaller than adata.n_obs. "
-                f"Got perplexity={perplexity}, n_obs={adata.n_obs}."
-            )
-
     if step_spec.kmeans_enabled:
         params = step_spec.kmeans_params
 

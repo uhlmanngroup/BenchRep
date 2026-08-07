@@ -5,7 +5,11 @@ from typing import Any
 import anndata as ad
 from sklearn.decomposition import PCA
 
-from benchrep.evaluation.utils import validate_adata_x, load_scanpy_backend
+from benchrep.evaluation.utils import (
+    RecoverableEvaluationStepError,
+    validate_adata_x,
+    load_scanpy_backend,
+)
 
 
 DEFAULT_PCA_N_COMPONENTS = 30
@@ -55,7 +59,7 @@ def run_pca(
     validate_adata_x(adata)
 
     if key_added in adata.obsm and not overwrite:
-        raise KeyError(
+        raise RecoverableEvaluationStepError(
             f"adata.obsm already contains {key_added!r}. "
             "Pass overwrite=True to replace it."
         )
@@ -73,7 +77,7 @@ def run_pca(
         )
 
     if resolved_n_components > max_components:
-        raise ValueError(
+        raise RecoverableEvaluationStepError(
             "n_components cannot exceed min(adata.n_obs, adata.n_vars), "
             f"got n_components={resolved_n_components} and max={max_components}."
         )
@@ -170,15 +174,24 @@ def run_umap(
     validate_adata_x(adata)
 
     if key_added in adata.obsm and not overwrite:
-        raise KeyError(
+        raise RecoverableEvaluationStepError(
             f"adata.obsm already contains {key_added!r}. "
             "Pass overwrite=True to replace it."
         )
 
     if neighbors_key in adata.uns and not overwrite:
-        raise KeyError(
+        raise RecoverableEvaluationStepError(
             f"adata.uns already contains {neighbors_key!r}. "
             "Pass overwrite=True to replace it."
+        )
+
+    if n_neighbors < 1:
+        raise ValueError(f"n_neighbors must be >= 1, got {n_neighbors}.")
+
+    if n_neighbors >= adata.n_obs:
+        raise RecoverableEvaluationStepError(
+            "n_neighbors must be smaller than adata.n_obs, got "
+            f"n_neighbors={n_neighbors} and n_obs={adata.n_obs}."
         )
 
     neighbors_kwargs = {} if neighbors_kwargs is None else dict(neighbors_kwargs)
@@ -272,7 +285,7 @@ def run_tsne(
     validate_adata_x(adata)
 
     if key_added in adata.obsm and not overwrite:
-        raise KeyError(
+        raise RecoverableEvaluationStepError(
             f"adata.obsm already contains {key_added!r}. "
             "Pass overwrite=True to replace it."
         )
@@ -281,7 +294,7 @@ def run_tsne(
         raise ValueError(f"perplexity must be > 0, got {perplexity}.")
 
     if perplexity >= adata.n_obs:
-        raise ValueError(
+        raise RecoverableEvaluationStepError(
             "perplexity must be smaller than adata.n_obs, got "
             f"perplexity={perplexity} and n_obs={adata.n_obs}."
         )
