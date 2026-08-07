@@ -70,7 +70,19 @@ def run_kmeans(
         **kmeans_kwargs,
     )
 
-    labels = kmeans.fit_predict(adata.X)
+    labels = _validate_clustering_labels(
+        kmeans.fit_predict(adata.X),
+        method_name="KMeans",
+        n_observations=adata.n_obs,
+        require_integer=True,
+    )
+
+    if np.any(labels < 0):
+        raise RuntimeError(
+            "KMeans returned negative cluster labels."
+        )
+
+    n_clusters = int(np.unique(labels).size)
 
     adata.obs[key_added] = labels.astype(str)
     adata.obs[key_added] = adata.obs[key_added].astype("category")
@@ -81,7 +93,7 @@ def run_kmeans(
         metadata={
             "method": "kmeans",
             "cluster_key": key_added,
-            "n_clusters": int(adata.obs[key_added].nunique()),
+            "n_clusters": n_clusters,
             "requested_n_clusters": n_clusters,
             "random_state": random_state,
             "n_init": n_init,
@@ -90,6 +102,14 @@ def run_kmeans(
             "params": dict(kmeans_kwargs),
         },
     )
+
+    if n_clusters == 1:
+        warnings.warn(
+            "KMeans produced only one cluster. Internal clustering metrics "
+            "requiring at least two clusters will be unavailable.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
 
     return adata
 
@@ -199,6 +219,15 @@ def run_leiden(
         **leiden_kwargs,
     )
 
+    labels = _validate_clustering_labels(
+        adata.obs[key_added].to_numpy(),
+        method_name="Leiden",
+        n_observations=adata.n_obs,
+        require_integer=False,
+    )
+
+    n_clusters = int(pd.unique(labels).size)
+
     _store_clustering_metadata(
         adata,
         key_added=key_added,
@@ -212,11 +241,19 @@ def run_leiden(
             "neighbors_key": neighbors_key,
             "random_state": random_state,
             "input_shape": list(adata.X.shape),
-            "n_clusters": int(adata.obs[key_added].nunique()),
+            "n_clusters": n_clusters,
             "neighbors_params": dict(neighbors_kwargs),
             "leiden_params": dict(leiden_kwargs),
         },
     )
+
+    if n_clusters == 1:
+        warnings.warn(
+            "Leiden produced only one cluster. Internal clustering metrics "
+            "requiring at least two clusters will be unavailable.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
 
     return adata
 
@@ -338,8 +375,11 @@ def run_hdbscan(
         **hdbscan_kwargs,
     )
 
-    labels: np.ndarray = np.asarray(
-        hdbscan.fit_predict(adata.X)
+    labels = _validate_clustering_labels(
+        hdbscan.fit_predict(adata.X),
+        method_name="HDBSCAN",
+        n_observations=adata.n_obs,
+        require_integer=True,
     )
     probabilities = np.asarray(hdbscan.probabilities_, dtype=float)
 
@@ -425,6 +465,46 @@ def run_hdbscan(
         )
 
     return adata
+
+
+def _validate_clustering_labels(
+    labels: Any,
+    *,
+    method_name: str,
+    n_observations: int,
+    require_integer: bool,
+) -> np.ndarray:
+    """Return labels after validating the clustering output contract."""
+
+    label_array = np.asarray(labels)
+
+    if label_array.ndim != 1:
+        raise RuntimeError(
+            f"{method_name} must return a one-dimensional label array, got "
+            f"shape {label_array.shape}."
+        )
+
+    if label_array.shape[0] != n_observations:
+        raise RuntimeError(
+            f"{method_name} returned {label_array.shape[0]} labels for "
+            f"{n_observations} observations."
+        )
+
+    if pd.isna(label_array).any():
+        raise RuntimeError(
+            f"{method_name} returned missing cluster labels."
+        )
+
+    if (
+        require_integer
+        and not np.issubdtype(label_array.dtype, np.integer)
+    ):
+        raise RuntimeError(
+            f"{method_name} must return integer cluster labels, got dtype "
+            f"{label_array.dtype}."
+        )
+
+    return label_array
 
 
 def _check_obs_key_available(
