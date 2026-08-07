@@ -167,6 +167,14 @@ def test_internal_end_to_end(
     _assert_completed_manifest(evaluation_result.manifest_path, "evaluation")
     _assert_audit_has_no_errors(evaluation_result.audit_report_path)
 
+    assert evaluation_result.status_report.status == "completed"
+    assert evaluation_result.status_report.embeddings.status == "completed"
+    assert (
+        evaluation_result.status_report.reconstructions.status
+        == "completed"
+    )
+    assert evaluation_result.status_report.exports.status == "completed"
+
     assert evaluation_result.adata.n_obs == 32
     assert evaluation_result.adata.obsm["X_pca"].shape == (32, 4)
     assert "kmeans" in evaluation_result.adata.obs.columns

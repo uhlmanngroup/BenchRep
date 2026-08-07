@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Mapping
+import logging
 
 import anndata as ad
 
@@ -34,7 +35,11 @@ from benchrep.runtime.evaluate_run_validation import (
     audit_evaluate_outputs,
 )
 from benchrep.assembly.registries.builtins import register_builtins
-
+from benchrep.evaluation.status import (
+    EvaluationOutcome,
+    EvaluationStatusReport,
+    build_evaluation_status_report,
+)
 
 if TYPE_CHECKING:
     from benchrep.assembly.resolvers.evaluation_config_resolver import (
@@ -51,6 +56,7 @@ class EvaluationWorkflowResult:
     adata: ad.AnnData
     reconstruction_outputs: dict[str, Any] | None
     export_paths: EvaluationExportPaths
+    status_report: EvaluationStatusReport
     manifest_path: Path
     audit_report_path: Path
 
@@ -185,6 +191,7 @@ def evaluate(
 
     # Create and run reconstruction evaluation pipeline
     reconstruction_outputs = None
+    reconstruction_outcomes: tuple[EvaluationOutcome, ...] = ()
 
     if reconstruction_input is not None:
         run_log.info("Starting reconstruction evaluation pipeline...")
@@ -211,10 +218,12 @@ def evaluate(
                 "Finished reconstruction evaluation pipeline with no outputs."
             )
 
+        reconstruction_outcomes = reconstruction_pipeline.outcomes
+
     # Export evaluation artifacts
     run_log.info("Starting evaluation artifact export...")
 
-    export_paths = export_evaluation_outputs(
+    export_result = export_evaluation_outputs(
         adata=adata,
         reconstruction_input=reconstruction_input,
         reconstruction_outputs=reconstruction_outputs,
@@ -229,7 +238,20 @@ def evaluate(
         overwrite=False,
     )
 
+    export_paths = export_result.paths
+
     run_log.info("Finished evaluation artifact export.")
+
+    status_report = build_evaluation_status_report(
+        embedding_outcomes=embeddings_pipeline.outcomes,
+        reconstruction_outcomes=reconstruction_outcomes,
+        export_outcomes=export_result.outcomes,
+    )
+
+    _log_evaluation_status_report(
+        run_log=run_log,
+        status_report=status_report,
+    )
 
     completed_at = now_isoformat()
 
@@ -281,6 +303,48 @@ def evaluate(
         adata=adata,
         reconstruction_outputs=reconstruction_outputs,
         export_paths=export_paths,
+        status_report=status_report,
         manifest_path=manifest_path,
         audit_report_path=audit_report_path,
+    )
+
+
+def _log_evaluation_status_report(
+    *,
+    run_log: logging.Logger,
+    status_report: EvaluationStatusReport,
+) -> None:
+    """Log evaluation section statuses and their recorded issues."""
+
+    sections = (
+        ("embeddings", status_report.embeddings),
+        ("reconstructions", status_report.reconstructions),
+        ("exports", status_report.exports),
+    )
+
+    for section_name, section in sections:
+        run_log.info(
+            "Evaluation %s status: %s",
+            section_name,
+            section.status,
+        )
+
+        for outcome in section.outcomes:
+            for issue in outcome.issues:
+                run_log.warning(
+                    "Evaluation %s outcome %r [%s]: %s",
+                    section_name,
+                    outcome.name,
+                    outcome.status,
+                    issue,
+                )
+
+    log_workflow_status = (
+        run_log.info
+        if status_report.status == "completed"
+        else run_log.warning
+    )
+    log_workflow_status(
+        "Evaluation workflow status: %s",
+        status_report.status,
     )

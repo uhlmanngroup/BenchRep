@@ -1,17 +1,19 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TYPE_CHECKING
 import json
 import math
+import warnings
 
 import anndata as ad
 import numpy as np
 import re
 import tifffile
 
+from benchrep.evaluation.status import EvaluationOutcome, EvaluationOutcomeStatus
 from benchrep.evaluation.reconstructions.data import ReconstructionEvaluationInput
 from benchrep.evaluation.reconstructions.error_maps import compute_error_maps
 from benchrep.evaluation.reconstructions.plotting import (
@@ -51,6 +53,12 @@ class EvaluationExportPaths:
     reconstruction_grid_paths: dict[str, list[Path]] | None = None
 
 
+@dataclass(frozen=True)
+class EvaluationExportResult:
+    paths: EvaluationExportPaths
+    outcomes: tuple[EvaluationOutcome, ...]
+
+
 def export_evaluation_outputs(
     *,
     adata: ad.AnnData,
@@ -63,19 +71,18 @@ def export_evaluation_outputs(
     reconstructions_dir: str | Path,
     reconstruction_figures_dir: str | Path,
     overwrite: bool = False,
-) -> EvaluationExportPaths:
-    """Export all requested evaluation artifacts.
+) -> EvaluationExportResult:
+    """Export evaluation artifacts and record each export outcome.
 
-    This function coordinates the granular evaluation exporters and returns the
-    concrete paths they wrote. It does not perform evaluation analysis; callers
-    must provide the already-evaluated AnnData object and any reconstruction
-    pipeline outputs.
+    The evaluated AnnData artifact is required; failure to write it aborts the
+    export process. Metrics JSON, embedding figures, reconstruction TIFFs, and
+    reconstruction grids are handled independently, so failure in one optional
+    group does not prevent later groups from being attempted.
 
-    The evaluated AnnData artifact and metrics JSON are always written.
-    Embedding figures are written when plotting is enabled. Reconstruction TIFFs
-    are written when reconstruction TIFF export is enabled. Reconstruction grids
-    are written independently whenever reconstruction inputs are available and
-    plotting is enabled.
+    Embedding figures are attempted when plotting is enabled. Reconstruction
+    TIFFs are attempted when TIFF export is enabled and reconstruction input is
+    available. Reconstruction grids are attempted when plotting is enabled and
+    reconstruction input is available.
 
     Parameters
     ----------
@@ -103,10 +110,8 @@ def export_evaluation_outputs(
 
     Returns
     -------
-    EvaluationExportPaths
-        Concrete paths for every evaluation artifact group that was written.
-        Optional groups are ``None`` when their export was not enabled or their
-        required inputs were unavailable.
+    EvaluationExportResult
+        Artifact paths and the outcome of each export group.
     """
     run_log = get_run_logger()
 
@@ -116,17 +121,38 @@ def export_evaluation_outputs(
     reconstructions_dir = Path(reconstructions_dir)
     reconstruction_figures_dir = Path(reconstruction_figures_dir)
 
-    # Evaluated embeddings
+    outcomes: list[EvaluationOutcome] = []
+
+    # Evaluated embeddings: required and therefore fatal on failure.
     embeddings_dir.mkdir(parents=True, exist_ok=True)
 
     evaluated_embeddings_path = (
         embeddings_dir / "evaluated_embeddings.h5ad"
     )
 
-    write_h5ad(
-        adata,
-        evaluated_embeddings_path,
-        overwrite=overwrite,
+    with warnings.catch_warnings(record=True) as caught_warnings:
+        warnings.simplefilter("always")
+        write_h5ad(
+            adata,
+            evaluated_embeddings_path,
+            overwrite=overwrite,
+        )
+
+    embedding_issues = _format_captured_export_warnings(
+        caught_warnings
+    )
+    embedding_status: EvaluationOutcomeStatus = (
+        "completed_with_warnings"
+        if embedding_issues
+        else "completed"
+    )
+
+    outcomes.append(
+        EvaluationOutcome(
+            name="evaluated_embeddings",
+            status=embedding_status,
+            issues=embedding_issues,
+        )
     )
 
     run_log.info(
@@ -134,98 +160,266 @@ def export_evaluation_outputs(
         evaluated_embeddings_path,
     )
 
-    # Embedding and clustering figures
+    # Optional embedding and clustering figures.
     reduction_plot_paths = None
     cluster_size_plot_paths = None
 
-    if step_spec.plots_enabled:
-        run_log.info(
-            "Generating embedding reduction and diagnostic plots..."
+    reduction_plots_enabled = (
+        step_spec.plots_enabled
+        and any(
+            (
+                step_spec.pca_enabled,
+                step_spec.umap_enabled,
+                step_spec.tsne_enabled,
+            )
+        )
+    )
+
+    if reduction_plots_enabled:
+        reduction_plot_paths, outcome = _run_recoverable_export(
+            name="reduction_plots",
+            export_fn=lambda: export_reduction_plots(
+                output_dir=embeddings_figures_dir,
+                adata=adata,
+                step_spec=step_spec,
+                overwrite=overwrite,
+            ),
+            skip_when_no_paths=True,
+        )
+        outcomes.append(outcome)
+    else:
+        outcomes.append(
+            EvaluationOutcome(
+                name="reduction_plots",
+                status="disabled",
+            )
         )
 
-        reduction_plot_paths = export_reduction_plots(
-            output_dir=embeddings_figures_dir,
-            adata=adata,
-            step_spec=step_spec,
-            overwrite=overwrite,
+    cluster_size_plots_enabled = (
+        step_spec.plots_enabled
+        and any(
+            (
+                step_spec.kmeans_enabled,
+                step_spec.leiden_enabled,
+                step_spec.hdbscan_enabled,
+            )
+        )
+    )
+
+    if cluster_size_plots_enabled:
+        cluster_size_plot_paths, outcome = _run_recoverable_export(
+            name="cluster_size_plots",
+            export_fn=lambda: export_cluster_size_plots(
+                output_dir=embeddings_figures_dir,
+                adata=adata,
+                step_spec=step_spec,
+                overwrite=overwrite,
+            ),
+            skip_when_no_paths=True,
+        )
+        outcomes.append(outcome)
+    else:
+        outcomes.append(
+            EvaluationOutcome(
+                name="cluster_size_plots",
+                status="disabled",
+            )
         )
 
-        cluster_size_plot_paths = export_cluster_size_plots(
-            output_dir=embeddings_figures_dir,
-            adata=adata,
-            step_spec=step_spec,
-            overwrite=overwrite,
-        )
-
+    if reduction_plots_enabled or cluster_size_plots_enabled:
         n_embedding_plot_files = (
-            count_paths(reduction_plot_paths)
-            + count_paths(cluster_size_plot_paths)
+            count_paths(reduction_plot_paths or {})
+            + count_paths(cluster_size_plot_paths or {})
         )
 
-        run_log.info(
-            "Saved %d embedding reduction and diagnostic plot file(s) to: '%s'",
-            n_embedding_plot_files,
-            embeddings_figures_dir,
-        )
+        if n_embedding_plot_files:
+            run_log.info(
+                "Saved %d embedding reduction and diagnostic plot file(s) "
+                "to: '%s'",
+                n_embedding_plot_files,
+                embeddings_figures_dir,
+            )
 
-    # Reconstruction artifacts
+    # Optional reconstruction artifacts.
     reconstruction_tiff_paths = None
     reconstruction_grid_paths = None
 
     if step_spec.reconstruction_tiffs_enabled:
         if reconstruction_input is None:
-            raise RuntimeError(
-                "Reconstruction TIFF export is enabled in the resolved step spec, "
-                "but no reconstruction input was provided."
+            issue = (
+                "Reconstruction TIFF export was enabled, but no "
+                "reconstruction input was available."
+            )
+            outcomes.append(
+                EvaluationOutcome(
+                    name="reconstruction_tiffs",
+                    status="failed",
+                    issues=(f"Error (RuntimeError): {issue}",),
+                )
+            )
+        else:
+            reconstruction_tiff_paths, outcome = (
+                _run_recoverable_export(
+                    name="reconstruction_tiffs",
+                    export_fn=lambda: export_reconstruction_tiffs(
+                        output_dir=reconstructions_dir,
+                        reconstruction_input=reconstruction_input,
+                        reconstruction_outputs=reconstruction_outputs,
+                        overwrite=overwrite,
+                    ),
+                    skip_when_no_paths=True,
+                )
+            )
+            outcomes.append(outcome)
+
+            n_reconstruction_tiff_files = count_paths(
+                reconstruction_tiff_paths
             )
 
-        reconstruction_tiff_paths = export_reconstruction_tiffs(
-            output_dir=reconstructions_dir,
-            reconstruction_input=reconstruction_input,
-            reconstruction_outputs=reconstruction_outputs,
-            overwrite=overwrite,
-        )
-
-        run_log.info(
-            "Saved %d reconstruction TIFF file(s) to: '%s'",
-            count_paths(reconstruction_tiff_paths),
-            reconstructions_dir,
+            if n_reconstruction_tiff_files:
+                run_log.info(
+                    "Saved %d reconstruction TIFF file(s) to: '%s'",
+                    n_reconstruction_tiff_files,
+                    reconstructions_dir,
+                )
+    else:
+        outcomes.append(
+            EvaluationOutcome(
+                name="reconstruction_tiffs",
+                status="disabled",
+            )
         )
 
     if reconstruction_input is not None and step_spec.plots_enabled:
-        reconstruction_grid_paths = export_reconstruction_grids(
-            output_dir=reconstruction_figures_dir,
-            reconstruction_input=reconstruction_input,
-            step_spec=step_spec,
-            overwrite=overwrite,
+        reconstruction_grid_paths, outcome = _run_recoverable_export(
+            name="reconstruction_grids",
+            export_fn=lambda: export_reconstruction_grids(
+                output_dir=reconstruction_figures_dir,
+                reconstruction_input=reconstruction_input,
+                step_spec=step_spec,
+                overwrite=overwrite,
+            ),
+            skip_when_no_paths=True,
         )
+        outcomes.append(outcome)
+
+        n_reconstruction_grid_files = count_paths(
+            reconstruction_grid_paths
+        )
+
+        if n_reconstruction_grid_files:
+            run_log.info(
+                "Saved %d reconstruction grid figure(s) to: '%s'",
+                n_reconstruction_grid_files,
+                reconstruction_figures_dir,
+            )
+    else:
+        outcomes.append(
+            EvaluationOutcome(
+                name="reconstruction_grids",
+                status="disabled",
+            )
+        )
+
+    metrics_json_path = metrics_dir / "metrics.json"
+
+    written_metrics_json_path, outcome = _run_recoverable_export(
+        name="metrics_json",
+        export_fn=lambda: save_evaluation_metrics_json(
+            output_dir=metrics_dir,
+            adata=adata,
+            reconstruction_outputs=reconstruction_outputs,
+            overwrite=overwrite,
+        ),
+    )
+    outcomes.append(outcome)
+
+    if written_metrics_json_path is not None:
+        metrics_json_path = written_metrics_json_path
 
         run_log.info(
-            "Saved %d reconstruction grid figure(s) to: '%s'",
-            count_paths(reconstruction_grid_paths),
-            reconstruction_figures_dir,
+            "Saved evaluation metrics JSON to: '%s'",
+            metrics_json_path,
         )
 
-    # Consolidated metrics
-    metrics_json_path = save_evaluation_metrics_json(
-        output_dir=metrics_dir,
-        adata=adata,
-        reconstruction_outputs=reconstruction_outputs,
-        overwrite=overwrite,
-    )
-
-    run_log.info(
-        "Saved evaluation metrics JSON to: '%s'",
-        metrics_json_path,
-    )
-
-    return EvaluationExportPaths(
+    paths = EvaluationExportPaths(
         evaluated_embeddings_path=evaluated_embeddings_path,
         metrics_json_path=metrics_json_path,
         reduction_plot_paths=reduction_plot_paths,
         cluster_size_plot_paths=cluster_size_plot_paths,
         reconstruction_tiff_paths=reconstruction_tiff_paths,
         reconstruction_grid_paths=reconstruction_grid_paths,
+    )
+
+    return EvaluationExportResult(
+        paths=paths,
+        outcomes=tuple(outcomes),
+    )
+
+
+def _run_recoverable_export(
+    *,
+    name: str,
+    export_fn: Callable[[], Any],
+    skip_when_no_paths: bool = False,
+) -> tuple[Any | None, EvaluationOutcome]:
+    """Run one optional export without preventing later exports."""
+
+    with warnings.catch_warnings(record=True) as caught_warnings:
+        warnings.simplefilter("always")
+
+        try:
+            result = export_fn()
+        except Exception as error:
+            issues = (
+                *_format_captured_export_warnings(caught_warnings),
+                f"Error ({type(error).__name__}): {error}",
+            )
+
+            return None, EvaluationOutcome(
+                name=name,
+                status="failed",
+                issues=issues,
+            )
+
+    issues = _format_captured_export_warnings(caught_warnings)
+
+    if skip_when_no_paths and count_paths(result) == 0:
+        return result, EvaluationOutcome(
+            name=name,
+            status="skipped",
+            issues=(
+                *issues,
+                "Skipped: no artifact files were produced from the "
+                "available evaluation outputs.",
+            ),
+        )
+
+    status: EvaluationOutcomeStatus = (
+        "completed_with_warnings"
+        if issues
+        else "completed"
+    )
+
+    return result, EvaluationOutcome(
+        name=name,
+        status=status,
+        issues=issues,
+    )
+
+
+def _format_captured_export_warnings(
+    captured_warnings: Sequence[warnings.WarningMessage],
+) -> tuple[str, ...]:
+    """Format relevant captured warnings as export issues."""
+
+    return tuple(
+        f"Warning ({warning.category.__name__}): {warning.message}"
+        for warning in captured_warnings
+        if not issubclass(
+            warning.category,
+            (FutureWarning, DeprecationWarning),
+        )
     )
 
 
@@ -605,25 +799,24 @@ def export_reconstruction_grids(
     dpi, formats = _resolve_plot_file_options(step_spec)
     output_dir = Path(output_dir)
 
-    run_log = get_run_logger()
-
     if channel_selection is None and n_channels > 1:
-        run_log.warning(
-            "Reconstruction-grid channel_selection is null for %d-channel data; "
-            "only channel 0 will be shown.",
-            n_channels,
+        warnings.warn(
+            "Reconstruction-grid channel_selection is null for "
+            f"{n_channels}-channel data; only channel 0 will be shown.",
+            UserWarning,
+            stacklevel=2,
         )
 
     n_grid_files = len(pages) * len(selected_channels) * len(formats)
 
     if n_grid_files > RECONSTRUCTION_GRID_FILE_WARNING_THRESHOLD:
-        run_log.warning(
-            "Reconstruction grid export will write %d figure files "
-            "(%d page(s) × %d channel(s) × %d format(s)).",
-            n_grid_files,
-            len(pages),
-            len(selected_channels),
-            len(formats),
+        warnings.warn(
+            "Reconstruction grid export will write "
+            f"{n_grid_files} figure files ({len(pages)} page(s) × "
+            f"{len(selected_channels)} channel(s) × "
+            f"{len(formats)} format(s)).",
+            UserWarning,
+            stacklevel=2,
         )
 
     written_paths: dict[str, list[Path]] = {
