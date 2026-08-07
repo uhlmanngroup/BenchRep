@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, TYPE_CHECKING
+from typing import Any, Literal, TYPE_CHECKING, TypeVar
+import warnings
 
 import anndata as ad
 
@@ -10,6 +11,7 @@ from benchrep.assembly.registries.core import (
     EVAL_CLUSTERING_METHODS,
     EVAL_REDUCTIONS,
 )
+from benchrep.evaluation.utils import RecoverableEvaluationStepError
 from benchrep.evaluation.embeddings.clustering_metrics import (
     compute_external_clustering_metrics,
     compute_internal_clustering_metrics,
@@ -32,70 +34,209 @@ if TYPE_CHECKING:
 # -------------------------
 # Step specs
 # -------------------------
-@dataclass(frozen=True)
-class AnnDataEvaluationStep:
-    """A single AnnData-based evaluation step.
+EvaluationStepStatus = Literal[
+    "pending",
+    "running",
+    "disabled",
+    "completed",
+    "completed_with_warnings",
+    "skipped",
+    "failed",
+]
 
-    The wrapped function must follow the BenchRep AnnData evaluation contract:
+StepResultT = TypeVar("StepResultT")
 
-        AnnData -> AnnData
 
-    The function may mutate the input AnnData in place, but it must still return
-    the updated AnnData so steps can be chained by the pipeline.
-    """
+@dataclass
+class EvaluationStep:
+    """Shared configuration and runtime state for an evaluation step."""
 
     name: str
-    fn: Callable[..., ad.AnnData]
+    fn: Callable[..., Any]
     params: Mapping[str, Any] = field(default_factory=dict)
     enabled: bool = True
+    dependencies: tuple["EvaluationStep", ...] = field(
+        default_factory=tuple,
+        repr=False,
+        compare=False,
+    )
+    status: EvaluationStepStatus = field(
+        default="pending",
+        init=False,
+    )
+    issues: list[str] = field(
+        default_factory=list,
+        init=False,
+    )
 
-    def run(self, adata: ad.AnnData) -> ad.AnnData:
-        """Run the step on an AnnData object."""
+    def mark_skipped(self, reason: str) -> None:
+        """Mark the step as skipped without executing its callable."""
+
+        self.issues.clear()
+        self.status = "skipped"
+        self.issues.append(f"Skipped: {reason}")
+
+    def _run_with_status(
+        self,
+        *,
+        operation: Callable[[], StepResultT],
+        inactive_result: StepResultT,
+    ) -> StepResultT:
+        """Run an operation while maintaining step status and issues."""
+
+        self.issues.clear()
 
         if not self.enabled:
-            return adata
+            self.status = "disabled"
+            return inactive_result
 
-        result = self.fn(adata, **dict(self.params))
+        if not self._dependencies_satisfied():
+            return inactive_result
 
-        if not isinstance(result, ad.AnnData):
-            raise TypeError(
-                f"AnnData evaluation step {self.name!r} must return an AnnData "
-                f"object, got {type(result).__name__}."
+        self.status = "running"
+
+        try:
+            with warnings.catch_warnings(record=True) as captured_warnings:
+                result = operation()
+
+        except RecoverableEvaluationStepError as error:
+            self.status = "failed"
+            self._record_warnings(captured_warnings)
+            self.issues.append(
+                f"Error ({type(error).__name__}): {error}"
             )
+            return inactive_result
+
+        except Exception as error:
+            self.status = "failed"
+            self._record_warnings(captured_warnings)
+            self.issues.append(
+                f"Error ({type(error).__name__}): {error}"
+            )
+            raise
+
+        self._record_warnings(captured_warnings)
+        self.status = (
+            "completed_with_warnings"
+            if self.issues
+            else "completed"
+        )
 
         return result
 
+    def _dependencies_satisfied(self) -> bool:
+        """Check whether all dependency steps completed successfully."""
 
-@dataclass(frozen=True)
-class ReconstructionEvaluationStep:
-    """A single reconstruction-based evaluation step.
+        unfinished_dependencies = [
+            dependency
+            for dependency in self.dependencies
+            if dependency.status in {"pending", "running"}
+        ]
 
-    Reconstruction steps use a looser contract than AnnData steps because
-    reconstruction artifacts are not naturally stored in AnnData. The wrapped
-    function receives the reconstruction input object plus step params and
-    returns a mapping of outputs, metrics, or artifact references.
-    """
-
-    name: str
-    fn: Callable[..., Mapping[str, Any]]
-    params: Mapping[str, Any] = field(default_factory=dict)
-    enabled: bool = True
-
-    def run(self, reconstruction_input: Any) -> dict[str, Any]:
-        """Run the step on reconstruction input data."""
-
-        if not self.enabled:
-            return {}
-
-        result = self.fn(reconstruction_input, **dict(self.params))
-
-        if not isinstance(result, Mapping):
-            raise TypeError(
-                f"Reconstruction evaluation step {self.name!r} must return a "
-                f"mapping, got {type(result).__name__}."
+        if unfinished_dependencies:
+            dependency_states = self._format_dependency_states(
+                unfinished_dependencies
+            )
+            message = (
+                f"Evaluation step {self.name!r} was reached before its "
+                f"dependency step(s) finished: {dependency_states}."
             )
 
-        return dict(result)
+            self.status = "failed"
+            self.issues.append(f"Error (RuntimeError): {message}")
+            raise RuntimeError(message)
+
+        unsuccessful_dependencies = [
+            dependency
+            for dependency in self.dependencies
+            if dependency.status in {"disabled", "skipped", "failed"}
+        ]
+
+        if unsuccessful_dependencies:
+            dependency_states = self._format_dependency_states(
+                unsuccessful_dependencies
+            )
+            self.mark_skipped(
+                "required dependency step(s) did not complete successfully: "
+                f"{dependency_states}"
+            )
+            return False
+
+        return True
+
+    def _record_warnings(
+        self,
+        captured_warnings: Sequence[warnings.WarningMessage],
+    ) -> None:
+        """Append captured Python warnings to the step issues."""
+
+        self.issues.extend(
+            f"Warning ({warning.category.__name__}): {warning.message}"
+            for warning in captured_warnings
+        )
+
+    @staticmethod
+    def _format_dependency_states(
+        dependencies: Sequence["EvaluationStep"],
+    ) -> str:
+        return ", ".join(
+            f"{dependency.name} ({dependency.status})"
+            for dependency in dependencies
+        )
+
+
+@dataclass
+class AnnDataEvaluationStep(EvaluationStep):
+    """A single AnnData-based evaluation step."""
+
+    def run(self, adata: ad.AnnData) -> ad.AnnData:
+        """Run the step and enforce the AnnData output contract."""
+
+        def operation() -> ad.AnnData:
+            result = self.fn(
+                adata,
+                **dict(self.params),
+            )
+
+            if not isinstance(result, ad.AnnData):
+                raise TypeError(
+                    f"AnnData evaluation step {self.name!r} must return an "
+                    f"AnnData object, got {type(result).__name__}."
+                )
+
+            return result
+
+        return self._run_with_status(
+            operation=operation,
+            inactive_result=adata,
+        )
+
+
+@dataclass
+class ReconstructionEvaluationStep(EvaluationStep):
+    """A single reconstruction-based evaluation step."""
+
+    def run(self, reconstruction_input: Any) -> dict[str, Any]:
+        """Run the step and enforce the reconstruction output contract."""
+
+        def operation() -> dict[str, Any]:
+            result = self.fn(
+                reconstruction_input,
+                **dict(self.params),
+            )
+
+            if not isinstance(result, Mapping):
+                raise TypeError(
+                    f"Reconstruction evaluation step {self.name!r} must return "
+                    f"a mapping, got {type(result).__name__}."
+                )
+
+            return dict(result)
+
+        return self._run_with_status(
+            operation=operation,
+            inactive_result={},
+        )
 
 
 # -------------------------
@@ -178,6 +319,27 @@ def create_anndata_evaluation_pipeline(
 
     step_spec = run_spec.step_spec
 
+    kmeans_step = AnnDataEvaluationStep(
+        name="kmeans",
+        fn=EVAL_CLUSTERING_METHODS.get("kmeans"),
+        params=step_spec.kmeans_params,
+        enabled=step_spec.kmeans_enabled,
+    )
+
+    leiden_step = AnnDataEvaluationStep(
+        name="leiden",
+        fn=EVAL_CLUSTERING_METHODS.get("leiden"),
+        params=step_spec.leiden_params,
+        enabled=step_spec.leiden_enabled,
+    )
+
+    hdbscan_step = AnnDataEvaluationStep(
+        name="hdbscan",
+        fn=EVAL_CLUSTERING_METHODS.get("hdbscan"),
+        params=step_spec.hdbscan_params,
+        enabled=step_spec.hdbscan_enabled,
+    )
+
     steps: list[AnnDataEvaluationStep] = [
         AnnDataEvaluationStep(
             name="pca",
@@ -197,37 +359,41 @@ def create_anndata_evaluation_pipeline(
             params=step_spec.tsne_params,
             enabled=step_spec.tsne_enabled,
         ),
-        AnnDataEvaluationStep(
-            name="kmeans",
-            fn=EVAL_CLUSTERING_METHODS.get("kmeans"),
-            params=step_spec.kmeans_params,
-            enabled=step_spec.kmeans_enabled,
-        ),
-        AnnDataEvaluationStep(
-            name="leiden",
-            fn=EVAL_CLUSTERING_METHODS.get("leiden"),
-            params=step_spec.leiden_params,
-            enabled=step_spec.leiden_enabled,
-        ),
-        AnnDataEvaluationStep(
-            name="hdbscan",
-            fn=EVAL_CLUSTERING_METHODS.get("hdbscan"),
-            params=step_spec.hdbscan_params,
-            enabled=step_spec.hdbscan_enabled,
-        ),
+        kmeans_step,
+        leiden_step,
+        hdbscan_step,
     ]
 
-    cluster_keys = _resolve_enabled_cluster_keys(run_spec)
+    clustering_steps = (
+        (
+            kmeans_step,
+            step_spec.kmeans_params.get("key_added", "kmeans"),
+        ),
+        (
+            leiden_step,
+            step_spec.leiden_params.get("key_added", "leiden"),
+        ),
+        (
+            hdbscan_step,
+            step_spec.hdbscan_params.get("key_added", "hdbscan"),
+        ),
+    )
 
-    for cluster_key in cluster_keys:
+    for clustering_step, cluster_key in clustering_steps:
+        if not clustering_step.enabled:
+            continue
+
         steps.append(
             AnnDataEvaluationStep(
                 name=f"internal_clustering_metrics_{cluster_key}",
                 fn=compute_internal_clustering_metrics,
+                dependencies=(clustering_step,),
                 params={
                     "cluster_key": cluster_key,
                     "selected": step_spec.internal_clustering_metrics,
-                    "metric_params": step_spec.internal_clustering_metric_params,
+                    "metric_params": (
+                        step_spec.internal_clustering_metric_params
+                    ),
                 },
                 enabled=step_spec.internal_clustering_metrics_enabled,
             )
@@ -237,16 +403,22 @@ def create_anndata_evaluation_pipeline(
             AnnDataEvaluationStep(
                 name=f"external_clustering_metrics_{cluster_key}",
                 fn=_compute_external_clustering_metrics_if_possible,
+                dependencies=(clustering_step,),
                 params={
                     "label_key": step_spec.external_clustering_label_key,
                     "cluster_key": cluster_key,
                     "selected": step_spec.external_clustering_metrics,
-                    "metric_params": step_spec.external_clustering_metric_params,
+                    "metric_params": (
+                        step_spec.external_clustering_metric_params
+                    ),
                     "external_metrics_enabled": (
                         step_spec.external_clustering_metrics_enabled
                     ),
                 },
-                enabled=step_spec.external_clustering_metrics_enabled is not False,
+                enabled=(
+                    step_spec.external_clustering_metrics_enabled
+                    is not False
+                ),
             )
         )
 
@@ -322,26 +494,6 @@ def create_reconstruction_evaluation_pipeline(
     ]
 
     return ReconstructionEvaluationPipeline(steps=steps)
-
-
-def _resolve_enabled_cluster_keys(
-    run_spec: "EvaluationRunSpec",
-) -> list[str]:
-    """Return cluster-label obs keys for enabled clustering steps."""
-
-    step_spec = run_spec.step_spec
-
-    clustering_methods = (
-        ("kmeans", step_spec.kmeans_enabled, step_spec.kmeans_params),
-        ("leiden", step_spec.leiden_enabled, step_spec.leiden_params),
-        ("hdbscan", step_spec.hdbscan_enabled, step_spec.hdbscan_params),
-    )
-
-    return [
-        params.get("key_added", method)
-        for method, enabled, params in clustering_methods
-        if enabled
-    ]
 
 
 def _compute_external_clustering_metrics_if_possible(

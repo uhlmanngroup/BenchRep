@@ -15,6 +15,7 @@ from benchrep.assembly.registries.utils import (
     resolve_registry_param_keys,
 )
 from benchrep.evaluation.utils import (
+    RecoverableEvaluationStepError,
     to_python_scalar,
     validate_adata_x,
     validate_metric_params,
@@ -75,7 +76,7 @@ def compute_external_clustering_metrics(
         clusters = clusters.iloc[non_noise_mask]
 
         if clusters.empty:
-            raise ValueError(
+            raise RecoverableEvaluationStepError(
                 "External clustering metrics require at least one non-noise "
                 "HDBSCAN observation."
             )
@@ -186,15 +187,16 @@ def compute_internal_clustering_metrics(
     n_clusters = int(clusters.nunique())
 
     if n_clusters < 2:
-        raise ValueError(
+        raise RecoverableEvaluationStepError(
             "Internal clustering metrics require at least 2 clusters, got "
             f"{n_clusters}."
         )
 
     if n_clusters >= n_observations:
-        raise ValueError(
-            "Internal clustering metrics require fewer clusters than observations, "
-            f"got {n_clusters} clusters for {n_observations} observations."
+        raise RecoverableEvaluationStepError(
+            "Internal clustering metrics require fewer clusters than "
+            "observations, got "
+            f"{n_clusters} clusters for {n_observations} observations."
         )
 
     metric_names = resolve_registry_keys(

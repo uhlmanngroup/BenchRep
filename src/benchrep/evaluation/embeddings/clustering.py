@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Literal
+import warnings
 
 import anndata as ad
 import numpy as np
@@ -371,6 +372,24 @@ def run_hdbscan(
         key_added=key_added,
         metadata=metadata,
     )
+
+    if n_clusters == 0:
+        warnings.warn(
+            "HDBSCAN produced no non-noise clusters: "
+            f"all {n_samples} observations were classified as noise. "
+            "Dependent clustering metrics may be unavailable.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+
+    elif n_clusters == 1:
+        warnings.warn(
+            "HDBSCAN produced only one non-noise cluster after excluding "
+            f"{n_noise} noise observations. Internal clustering metrics "
+            "requiring at least two clusters will be unavailable.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
 
     return adata
 

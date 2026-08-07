@@ -13,6 +13,10 @@ ArrayLike = np.ndarray | torch.Tensor
 PredictabilityTask = Literal["classification", "regression"]
 
 
+class RecoverableEvaluationStepError(RuntimeError):
+    """A known step-local failure that should not stop the evaluation pipeline."""
+
+
 def load_scanpy_backend(
     *,
     feature: str,
