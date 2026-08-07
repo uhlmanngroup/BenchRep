@@ -1,3 +1,8 @@
+# Fully pinned development environment for reproducing the BenchRep repository.
+# Regenerate with:
+# conda env export -n benchrep_dev --no-builds | sed '/^prefix:/d' > environment.yml
+# Remove the local BenchRep pip entry before committing.
+
 name: benchrep_dev
 channels:
   - conda-forge
