@@ -910,45 +910,12 @@ def _validate_enabled_step_preconditions(
         )
 
     if step_spec.kmeans_enabled:
-        params = step_spec.kmeans_params
+        n_clusters = step_spec.kmeans_params.get("n_clusters")
 
-        _validate_obs_key_available_for_write(
-            adata=adata,
-            key=_param(params, "key_added", "kmeans"),
-            overwrite=_param(params, "overwrite", False),
-            step_name="KMeans",
-        )
-
-        n_clusters = params.get("n_clusters")
         if n_clusters is None:
-            raise ValueError("KMeans n_clusters is required when KMeans is enabled.")
-
-        if n_clusters > adata.n_obs:
             raise ValueError(
-                "KMeans n_clusters cannot exceed adata.n_obs. "
-                f"Got n_clusters={n_clusters}, n_obs={adata.n_obs}."
+                "KMeans n_clusters is required when KMeans is enabled."
             )
-
-    if step_spec.leiden_enabled:
-        params = step_spec.leiden_params
-
-        _validate_obs_key_available_for_write(
-            adata=adata,
-            key=_param(params, "key_added", "leiden"),
-            overwrite=_param(params, "overwrite", False),
-            step_name="Leiden",
-        )
-        _validate_uns_key_available(
-            adata=adata,
-            key=_param(params, "neighbors_key", "neighbors"),
-            overwrite=_param(params, "overwrite", False),
-            step_name="Leiden neighbors",
-        )
-        _validate_n_neighbors(
-            n_neighbors=_param(params, "n_neighbors", 15),
-            n_obs=adata.n_obs,
-            step_name="Leiden",
-        )
 
     if (
         step_spec.external_clustering_metrics_enabled is True
@@ -1142,61 +1109,6 @@ def _infer_obs_length(obs: Any) -> int | None:
         return len(obs)
     except TypeError:
         return None
-
-
-def _validate_n_neighbors(
-    *,
-    n_neighbors: int,
-    n_obs: int,
-    step_name: str,
-) -> None:
-    if n_neighbors >= n_obs:
-        raise ValueError(
-            f"{step_name} n_neighbors must be smaller than adata.n_obs. "
-            f"Got n_neighbors={n_neighbors}, n_obs={n_obs}."
-        )
-
-
-def _validate_obsm_key_available(
-    *,
-    adata: ad.AnnData,
-    key: str,
-    overwrite: bool,
-    step_name: str,
-) -> None:
-    if key in adata.obsm and not overwrite:
-        raise KeyError(
-            f"{step_name} output key adata.obsm[{key!r}] already exists. "
-            "Set overwrite=True to replace it."
-        )
-
-
-def _validate_obs_key_available_for_write(
-    *,
-    adata: ad.AnnData,
-    key: str,
-    overwrite: bool,
-    step_name: str,
-) -> None:
-    if key in adata.obs.columns and not overwrite:
-        raise KeyError(
-            f"{step_name} output key adata.obs[{key!r}] already exists. "
-            "Set overwrite=True to replace it."
-        )
-
-
-def _validate_uns_key_available(
-    *,
-    adata: ad.AnnData,
-    key: str,
-    overwrite: bool,
-    step_name: str,
-) -> None:
-    if key in adata.uns and not overwrite:
-        raise KeyError(
-            f"{step_name} output key adata.uns[{key!r}] already exists. "
-            "Set overwrite=True to replace it."
-        )
 
 
 def _param(

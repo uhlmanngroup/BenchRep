@@ -8,7 +8,11 @@ import numpy as np
 import pandas as pd
 from sklearn.cluster import KMeans, HDBSCAN
 
-from benchrep.evaluation.utils import validate_adata_x, load_scanpy_backend
+from benchrep.evaluation.utils import (
+    RecoverableEvaluationStepError,
+    validate_adata_x,
+    load_scanpy_backend,
+)
 
 
 def run_kmeans(
@@ -52,6 +56,12 @@ def run_kmeans(
 
     if n_clusters < 1:
         raise ValueError(f"n_clusters must be >= 1, got {n_clusters}.")
+
+    if n_clusters > adata.n_obs:
+        raise RecoverableEvaluationStepError(
+            "n_clusters cannot exceed adata.n_obs, got "
+            f"n_clusters={n_clusters} and n_obs={adata.n_obs}."
+        )
 
     kmeans = KMeans(
         n_clusters=n_clusters,
@@ -145,16 +155,21 @@ def run_leiden(
     _check_obs_key_available(adata, key_added=key_added, overwrite=overwrite)
 
     if neighbors_key in adata.uns and not overwrite:
-        raise KeyError(
+        raise RecoverableEvaluationStepError(
             f"adata.uns already contains {neighbors_key!r}. "
             "Pass overwrite=True to replace it."
         )
-
     if resolution <= 0:
         raise ValueError(f"resolution must be > 0, got {resolution}.")
 
     if n_neighbors < 1:
         raise ValueError(f"n_neighbors must be >= 1, got {n_neighbors}.")
+
+    if n_neighbors >= adata.n_obs:
+        raise RecoverableEvaluationStepError(
+            "n_neighbors must be smaller than adata.n_obs, got "
+            f"n_neighbors={n_neighbors} and n_obs={adata.n_obs}."
+        )
 
     neighbors_kwargs = {} if neighbors_kwargs is None else neighbors_kwargs
     leiden_kwargs = {} if leiden_kwargs is None else leiden_kwargs
@@ -291,6 +306,24 @@ def run_hdbscan(
             f"got {cluster_selection_epsilon}."
         )
 
+    if adata.n_obs < 2:
+        raise RecoverableEvaluationStepError(
+            "HDBSCAN requires at least 2 observations, got "
+            f"n_obs={adata.n_obs}."
+        )
+
+    resolved_min_samples = (
+        min_cluster_size
+        if min_samples is None
+        else min_samples
+    )
+
+    if resolved_min_samples > adata.n_obs:
+        raise RecoverableEvaluationStepError(
+            "HDBSCAN min_samples cannot exceed adata.n_obs, got "
+            f"min_samples={resolved_min_samples} and n_obs={adata.n_obs}."
+        )
+
     # Preserve scikit-learn's original HDBSCAN behavior and suppress its
     # copy-default transition warning while still allowing an explicit override.
     hdbscan_kwargs.setdefault("copy", False)
@@ -403,7 +436,7 @@ def _check_obs_key_available(
     """Check whether an ``adata.obs`` key can be written."""
 
     if key_added in adata.obs.columns and not overwrite:
-        raise KeyError(
+        raise RecoverableEvaluationStepError(
             f"adata.obs already contains {key_added!r}. "
             "Pass overwrite=True to replace it."
         )
