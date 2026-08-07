@@ -173,6 +173,10 @@ class EvaluationStep:
         self.issues.extend(
             f"Warning ({warning.category.__name__}): {warning.message}"
             for warning in captured_warnings
+            if not issubclass(
+                warning.category,
+                (DeprecationWarning, FutureWarning),
+            )
         )
 
     @staticmethod

@@ -266,6 +266,15 @@ def _resolve_global_data_range(
     input_max = float(np.max(inputs))
     inferred_data_range = input_max - input_min
 
+    if inferred_data_range <= denominator_floor:
+        warnings.warn(
+            "The inferred global input data range was "
+            f"{inferred_data_range}, so denominator_floor="
+            f"{denominator_floor} was used for normalized error maps.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+
     return max(inferred_data_range, denominator_floor)
 
 
@@ -280,11 +289,37 @@ def _resolve_per_channel_data_range(
         input_min = float(np.min(inputs))
         input_max = float(np.max(inputs))
         inferred_data_range = input_max - input_min
+
+        if inferred_data_range <= denominator_floor:
+            warnings.warn(
+                "The inferred input data range was "
+                f"{inferred_data_range}, so denominator_floor="
+                f"{denominator_floor} was used for per-channel normalized "
+                "error maps.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+
         return max(inferred_data_range, denominator_floor)
 
     channel_mins = np.min(inputs, axis=(0, 2, 3))
     channel_maxs = np.max(inputs, axis=(0, 2, 3))
     inferred_data_ranges = channel_maxs - channel_mins
+
+    floored_channel_indices = np.flatnonzero(
+        inferred_data_ranges <= denominator_floor
+    )
+
+    if floored_channel_indices.size:
+        preview = floored_channel_indices[:10].tolist()
+
+        warnings.warn(
+            "Per-channel normalized error maps used denominator_floor="
+            f"{denominator_floor} for {floored_channel_indices.size} channel(s). "
+            f"First affected channel indices: {preview}.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
 
     return np.maximum(inferred_data_ranges, denominator_floor).astype(
         np.float32,
