@@ -186,19 +186,65 @@ def validate_reconstruction_arrays(
             f"{input_array.shape}."
         )
 
-    if not np.issubdtype(input_array.dtype, np.number):
-        raise TypeError(f"inputs must be numeric, got dtype {input_array.dtype}.")
-
-    if not np.issubdtype(reconstruction_array.dtype, np.number):
+    if (
+            not np.issubdtype(input_array.dtype, np.number)
+            or np.issubdtype(input_array.dtype, np.complexfloating)
+    ):
         raise TypeError(
-            "reconstructions must be numeric, got dtype "
+            f"inputs must contain real numeric values, got dtype "
+            f"{input_array.dtype}."
+        )
+
+    if (
+            not np.issubdtype(reconstruction_array.dtype, np.number)
+            or np.issubdtype(
+        reconstruction_array.dtype,
+        np.complexfloating,
+    )
+    ):
+        raise TypeError(
+            "reconstructions must contain real numeric values, got dtype "
             f"{reconstruction_array.dtype}."
         )
 
-    return (
-        input_array.astype(np.float32, copy=False),
-        reconstruction_array.astype(np.float32, copy=False),
-    )
+    if any(dimension < 1 for dimension in input_array.shape):
+        raise ValueError(
+            "Reconstruction arrays must not contain empty axes, got shape "
+            f"{input_array.shape}."
+        )
+
+    if not np.isfinite(input_array).all():
+        raise ValueError(
+            "Reconstruction inputs must contain only finite values."
+        )
+
+    if not np.isfinite(reconstruction_array).all():
+        raise ValueError(
+            "Reconstructions must contain only finite values."
+        )
+
+    with np.errstate(over="ignore", invalid="ignore"):
+        input_array = input_array.astype(
+            np.float32,
+            copy=False,
+        )
+        reconstruction_array = reconstruction_array.astype(
+            np.float32,
+            copy=False,
+        )
+
+    if not np.isfinite(input_array).all():
+        raise ValueError(
+            "Reconstruction inputs contain values outside the supported float32 "
+            "range."
+        )
+
+    if not np.isfinite(reconstruction_array).all():
+        raise ValueError(
+            "Reconstructions contain values outside the supported float32 range."
+        )
+
+    return input_array, reconstruction_array
 
 
 def ensure_reconstruction_channel_axis(array: np.ndarray) -> np.ndarray:

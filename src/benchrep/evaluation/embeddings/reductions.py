@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import anndata as ad
+import numpy as np
 from sklearn.decomposition import PCA
 
 from benchrep.evaluation.utils import (
@@ -88,7 +89,14 @@ def run_pca(
         **pca_kwargs,
     )
 
-    adata.obsm[key_added] = pca.fit_transform(adata.X)
+    coordinates = _validate_reduction_coordinates(
+        pca.fit_transform(adata.X),
+        method_name="PCA",
+        n_observations=adata.n_obs,
+        expected_n_dimensions=resolved_n_components,
+    )
+
+    adata.obsm[key_added] = coordinates
 
     _store_reduction_metadata(
         adata,
@@ -216,6 +224,18 @@ def run_umap(
         **umap_kwargs,
     )
 
+    if key_added not in adata.obsm:
+        raise RuntimeError(
+            f"UMAP did not create adata.obsm[{key_added!r}]."
+        )
+
+    adata.obsm[key_added] = _validate_reduction_coordinates(
+        adata.obsm[key_added],
+        method_name="UMAP",
+        n_observations=adata.n_obs,
+        expected_n_dimensions=umap_kwargs.get("n_components", 2),
+    )
+
     _store_reduction_metadata(
         adata,
         key_added=key_added,
@@ -308,6 +328,18 @@ def run_tsne(
         **tsne_kwargs,
     )
 
+    if key_added not in adata.obsm:
+        raise RuntimeError(
+            f"t-SNE did not create adata.obsm[{key_added!r}]."
+        )
+
+    adata.obsm[key_added] = _validate_reduction_coordinates(
+        adata.obsm[key_added],
+        method_name="t-SNE",
+        n_observations=adata.n_obs,
+        expected_n_dimensions=tsne_kwargs.get("n_components", 2),
+    )
+
     _store_reduction_metadata(
         adata,
         key_added=key_added,
@@ -322,6 +354,57 @@ def run_tsne(
     )
 
     return adata
+
+
+def _validate_reduction_coordinates(
+    value: Any,
+    *,
+    method_name: str,
+    n_observations: int,
+    expected_n_dimensions: int,
+) -> np.ndarray:
+    """Validate and return one reduction coordinate matrix."""
+
+    try:
+        coordinates = np.asarray(value)
+    except (TypeError, ValueError) as error:
+        raise TypeError(
+            f"{method_name} coordinates could not be converted to a NumPy "
+            "array."
+        ) from error
+
+    if coordinates.ndim != 2:
+        raise ValueError(
+            f"{method_name} coordinates must be two-dimensional, got shape "
+            f"{coordinates.shape}."
+        )
+
+    expected_shape = (
+        n_observations,
+        expected_n_dimensions,
+    )
+
+    if coordinates.shape != expected_shape:
+        raise ValueError(
+            f"{method_name} coordinates must have shape {expected_shape}, got "
+            f"{coordinates.shape}."
+        )
+
+    if (
+        not np.issubdtype(coordinates.dtype, np.number)
+        or np.issubdtype(coordinates.dtype, np.complexfloating)
+    ):
+        raise TypeError(
+            f"{method_name} coordinates must contain real numeric values, "
+            f"got dtype {coordinates.dtype}."
+        )
+
+    if not np.isfinite(coordinates).all():
+        raise RecoverableEvaluationStepError(
+            f"{method_name} produced non-finite coordinates."
+        )
+
+    return coordinates
 
 
 def _store_reduction_metadata(
