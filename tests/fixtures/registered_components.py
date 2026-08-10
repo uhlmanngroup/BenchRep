@@ -8,6 +8,7 @@ from typing import Any
 import numpy as np
 import torch
 from lightning.pytorch.loggers import Logger
+from lightning.pytorch.callbacks import Callback
 from torch import nn
 from torch.nn import functional as F
 
@@ -22,6 +23,7 @@ from benchrep.assembly.registries.core import (
     REGULARIZATION_LOSSES,
     OPTIMIZERS,
     LOGGERS,
+    CALLBACKS,
     EVAL_INTERNAL_CLUSTERING_METRICS,
     EVAL_EXTERNAL_CLUSTERING_METRICS,
     EVAL_EMBEDDING_METRICS,
@@ -183,6 +185,19 @@ class CustomLogger(Logger):
         COMPONENT_CALLS["logger_finalize"] += 1
 
 
+class CustomRegisteredCallback(Callback):
+    def __init__(self, marker: str) -> None:
+        COMPONENT_CALLS["callback_init"] += 1
+        self.marker = marker
+
+    def on_train_start(
+        self,
+        trainer: Any,
+        pl_module: Any,
+    ) -> None:
+        COMPONENT_CALLS["callback_train_start"] += 1
+
+
 def custom_internal_clustering_metric(
     embeddings: Any,
     cluster_labels: Any,
@@ -273,6 +288,10 @@ def register_custom_test_components() -> None:
     LOGGERS.register(
         "custom_test_logger",
         CustomLogger,
+    )
+    CALLBACKS.register(
+        "custom_test_callback",
+        CustomRegisteredCallback,
     )
     EVAL_INTERNAL_CLUSTERING_METRICS.register(
         "custom_test_internal_metric",

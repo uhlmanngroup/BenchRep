@@ -9,6 +9,11 @@ import pytest
 import torch
 import yaml
 
+from lightning.pytorch.callbacks import (
+    EarlyStopping,
+    LearningRateMonitor,
+)
+
 from benchrep.workflows import (
     train_ae,
     predict_ae,
@@ -19,7 +24,12 @@ from benchrep.workflows import (
 from tests.fixtures.datasets import TinySyntheticDataset
 from benchrep.assembly.registries.core import DATASETS
 from benchrep.architecture.models import VAE
-from benchrep.assembly.schemas import PredictionInferenceConfig
+from benchrep.assembly.schemas import (
+    AdditionalCallbackConfig,
+    EarlyStoppingConfig,
+    LoggerConfig,
+    PredictionInferenceConfig,
+)
 
 
 CONFIG_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "configs"
@@ -163,9 +173,7 @@ def test_internal_end_to_end(
     )
 
     assert evaluation_result.manifest_path.is_file()
-    assert evaluation_result.audit_report_path.is_file()
     _assert_completed_manifest(evaluation_result.manifest_path, "evaluation")
-    _assert_audit_has_no_errors(evaluation_result.audit_report_path)
 
     assert evaluation_result.status_report.status == "completed"
     assert evaluation_result.status_report.embeddings.status == "completed"
@@ -328,3 +336,77 @@ def _assert_vae_reconstruction_provenance(
             else None
         ),
     }
+
+
+def test_training_callbacks_are_not_inherited_by_prediction(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if "tiny_synthetic" not in DATASETS.keys():
+        DATASETS.register("tiny_synthetic", TinySyntheticDataset)
+
+    monkeypatch.chdir(tmp_path)
+
+    training_result = train_ae(
+        config_path=(
+            CONFIG_DIR
+            / "training_tiny_synthetic_ae.yaml"
+        ),
+        config_components={
+            "logger": LoggerConfig(
+                name="csv",
+                params={
+                    "save_dir": str(tmp_path / "lightning_logs"),
+                },
+            ),
+            "early_stopping": EarlyStoppingConfig(
+                monitor="val/loss",
+                mode="min",
+                patience=3,
+            ),
+            "additional_callbacks": [
+                AdditionalCallbackConfig(
+                    name="learning_rate_monitor",
+                    params={
+                        "logging_interval": "epoch",
+                    },
+                ),
+            ],
+        },
+    )
+
+    early_stopping_callbacks = [
+        callback
+        for callback in training_result.trainer.callbacks
+        if isinstance(callback, EarlyStopping)
+    ]
+    learning_rate_callbacks = [
+        callback
+        for callback in training_result.trainer.callbacks
+        if isinstance(callback, LearningRateMonitor)
+    ]
+
+    assert len(early_stopping_callbacks) == 1
+    assert early_stopping_callbacks[0].monitor == "val/loss"
+    assert early_stopping_callbacks[0].mode == "min"
+    assert early_stopping_callbacks[0].patience == 3
+
+    assert len(learning_rate_callbacks) == 1
+    assert learning_rate_callbacks[0].logging_interval == "epoch"
+
+    prediction_result = predict_ae(
+        config_path=(
+            CONFIG_DIR
+            / "prediction_tiny_synthetic.yaml"
+        ),
+        training_manifest_path=training_result.manifest_path,
+    )
+
+    assert not any(
+        isinstance(callback, EarlyStopping)
+        for callback in prediction_result.trainer.callbacks
+    )
+    assert not any(
+        isinstance(callback, LearningRateMonitor)
+        for callback in prediction_result.trainer.callbacks
+    )

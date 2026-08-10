@@ -36,6 +36,8 @@ from benchrep.assembly.schemas.training_config_schema import (
     TrainerConfig,
     LoggerConfig,
     CheckpointConfig,
+    EarlyStoppingConfig,
+    AdditionalCallbackConfig,
     InspectionConfig,
 )
 from benchrep.assembly.schemas.prediction_config_schema import (
@@ -77,6 +79,7 @@ ConfigSource: TypeAlias = Literal[
 LossesConfig: TypeAlias = dict[str, dict[str, LossTermConfig]]
 
 TransformsConfig: TypeAlias = list[TransformConfig]
+AdditionalCallbacksConfig: TypeAlias = list[AdditionalCallbackConfig]
 PredictionTransformsConfig: TypeAlias = list[PredictionTransformConfig]
 
 SupportedTrainingConfigComponent: TypeAlias = (
@@ -93,6 +96,8 @@ SupportedTrainingConfigComponent: TypeAlias = (
         | TrainerConfig
         | LoggerConfig
         | CheckpointConfig
+        | EarlyStoppingConfig
+        | AdditionalCallbacksConfig
         | InspectionConfig
 )
 
@@ -543,6 +548,30 @@ def _normalize_config_components(
             normalized[key] = [
                 transform.model_dump(mode="python")
                 for transform in component
+            ]
+            continue
+
+        if schema is TrainingConfig and key == "additional_callbacks":
+            if not isinstance(component, list):
+                raise TypeError(
+                    "Training config component 'additional_callbacks' must "
+                    "be a list of AdditionalCallbackConfig objects, got "
+                    f"{type(component).__name__}."
+                )
+
+            if not all(
+                isinstance(callback, AdditionalCallbackConfig)
+                for callback in component
+            ):
+                raise TypeError(
+                    "Every item in TrainingConfig component "
+                    "'additional_callbacks' must be an "
+                    "AdditionalCallbackConfig object."
+                )
+
+            normalized[key] = [
+                callback.model_dump(mode="python")
+                for callback in component
             ]
             continue
 

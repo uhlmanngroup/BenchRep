@@ -18,6 +18,7 @@ EXPECTED_CUSTOM_REGISTRATION_POLICY = {
     "regularization_loss": True,
     "optimizer": True,
     "logger": True,
+    "callback": True,
     "reduction": False,
     "clustering_method": False,
     "internal_clustering_metric": True,

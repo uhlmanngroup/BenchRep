@@ -50,6 +50,18 @@ def register_builtins() -> None:
             WandbLogger,
         )
 
+        from lightning.pytorch.callbacks import (
+            DeviceStatsMonitor,
+            GradientAccumulationScheduler,
+            LearningRateMonitor,
+            ModelSummary,
+            RichModelSummary,
+            RichProgressBar,
+            Timer,
+            TQDMProgressBar,
+            WeightAveraging,
+        )
+
         from sklearn.metrics import (
             silhouette_score,
             calinski_harabasz_score,
@@ -69,6 +81,7 @@ def register_builtins() -> None:
             REGULARIZATION_LOSSES,
             OPTIMIZERS,
             LOGGERS,
+            CALLBACKS,
             EVAL_REDUCTIONS,
             EVAL_CLUSTERING_METHODS,
             EVAL_INTERNAL_CLUSTERING_METRICS,
@@ -234,6 +247,52 @@ def register_builtins() -> None:
             "tblogger",
         )
         LOGGERS._register_builtin("mlflow", MLFlowLogger, "mlflowlogger")
+
+        CALLBACKS._register_builtin(
+            "device_stats_monitor",
+            DeviceStatsMonitor,
+            "devicestatsmonitor",
+        )
+        CALLBACKS._register_builtin(
+            "gradient_accumulation_scheduler",
+            GradientAccumulationScheduler,
+            "gradientaccumulationscheduler",
+        )
+        CALLBACKS._register_builtin(
+            "learning_rate_monitor",
+            LearningRateMonitor,
+            "learningratemonitor",
+            "lr_monitor",
+        )
+        CALLBACKS._register_builtin(
+            "model_summary",
+            ModelSummary,
+            "modelsummary",
+        )
+        CALLBACKS._register_builtin(
+            "rich_model_summary",
+            RichModelSummary,
+            "richmodelsummary",
+        )
+        CALLBACKS._register_builtin(
+            "rich_progress_bar",
+            RichProgressBar,
+            "richprogressbar",
+        )
+        CALLBACKS._register_builtin(
+            "timer",
+            Timer,
+        )
+        CALLBACKS._register_builtin(
+            "tqdm_progress_bar",
+            TQDMProgressBar,
+            "tqdmprogressbar",
+        )
+        CALLBACKS._register_builtin(
+            "weight_averaging",
+            WeightAveraging,
+            "weightaveraging",
+        )
 
         # --- Evaluation ---
         # Reductions

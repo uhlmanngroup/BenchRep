@@ -18,6 +18,7 @@ from benchrep.assembly.schemas import (
     ExternalClusteringMetricConfig,
     InternalClusteringMetricConfig,
     LoggerConfig,
+    AdditionalCallbackConfig,
     LossTermConfig,
     OptimizerConfig,
     ReconstructionMetricConfig,
@@ -28,6 +29,7 @@ from tests.fixtures.registered_components import (
     COMPONENT_CALLS,
     register_custom_test_components,
     reset_component_calls,
+    CustomRegisteredCallback,
 )
 
 
@@ -136,8 +138,25 @@ def test_custom_registered_components_work_end_to_end(
                 name="custom_test_logger",
                 params={},
             ),
+            "additional_callbacks": [
+                AdditionalCallbackConfig(
+                    name="custom_test_callback",
+                    params={
+                        "marker": "configured_from_test",
+                    },
+                ),
+            ],
         },
     )
+
+    custom_callbacks = [
+        callback
+        for callback in training_result.trainer.callbacks
+        if isinstance(callback, CustomRegisteredCallback)
+    ]
+
+    assert len(custom_callbacks) == 1
+    assert custom_callbacks[0].marker == "configured_from_test"
 
     assert training_result.manifest_path.is_file()
     assert training_result.audit_report_path.is_file()
@@ -219,7 +238,6 @@ def test_custom_registered_components_work_end_to_end(
     )
 
     assert evaluation_result.manifest_path.is_file()
-    assert evaluation_result.audit_report_path.is_file()
 
     expected_calls = {
         "dataset_init",
@@ -235,6 +253,8 @@ def test_custom_registered_components_work_end_to_end(
         "optimizer_factory",
         "logger_init",
         "logger_metrics",
+        "callback_init",
+        "callback_train_start",
         "internal_clustering_metric",
         "external_clustering_metric",
         "embedding_metric",

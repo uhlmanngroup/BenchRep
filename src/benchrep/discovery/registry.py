@@ -15,6 +15,7 @@ from benchrep.assembly.registries.core import (
     REGULARIZATION_LOSSES,
     OPTIMIZERS,
     LOGGERS,
+    CALLBACKS,
     EVAL_REDUCTIONS,
     EVAL_CLUSTERING_METHODS,
     EVAL_INTERNAL_CLUSTERING_METRICS,
@@ -142,6 +143,17 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
         config_locations=("TrainingConfig.logger",),
         contract=(
             "The registered class must satisfy Lightning's logger interface."
+        ),
+    ),
+    "callback": ComponentRegistryInfo(
+        symbol="CALLBACKS",
+        registry=CALLBACKS,
+        custom_registration_supported=True,
+        runtime_instance_override_supported=False,
+        config_locations=("TrainingConfig.additional_callbacks",),
+        contract=(
+            "The registered class or factory must accept the configured "
+            "`params` and return a Lightning `Callback` instance."
         ),
     ),
     "reduction": ComponentRegistryInfo(

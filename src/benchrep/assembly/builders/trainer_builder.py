@@ -6,12 +6,22 @@ from pathlib import Path
 from typing import Literal
 
 import lightning as L
-from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.callbacks import (
+    Callback,
+    EarlyStopping,
+    ModelCheckpoint,
+)
 from lightning.pytorch.loggers import Logger, WandbLogger
 
 from benchrep.records import get_run_logger
-from benchrep.assembly.registries.core import LOGGERS
-from benchrep.assembly.schemas import TrainerConfig, LoggerConfig, CheckpointConfig
+from benchrep.assembly.registries.core import CALLBACKS, LOGGERS
+from benchrep.assembly.schemas import (
+    AdditionalCallbackConfig,
+    CheckpointConfig,
+    EarlyStoppingConfig,
+    LoggerConfig,
+    TrainerConfig,
+)
 from benchrep.runtime import RunContext
 
 
@@ -35,6 +45,8 @@ def build_trainer(
         run_context: RunContext,
         logger_config: LoggerConfig | None = None,
         checkpoint_config: CheckpointConfig | None = None,
+        early_stopping_config: EarlyStoppingConfig | None = None,
+        additional_callback_configs: list[AdditionalCallbackConfig] | None = None,
         max_batches: int | None = None,
 ) -> tuple[L.Trainer, ModelCheckpoint | None]:
     """Build a Lightning Trainer for a BenchRep workflow stage.
@@ -44,12 +56,12 @@ def build_trainer(
     Trainer arguments that BenchRep owns internally.
 
     The ``stage`` argument controls stage-specific Trainer behavior. During
-    training, this builder attaches the configured Lightning logger and creates a
-    BenchRep-managed ``ModelCheckpoint`` callback from the top-level
-    ``checkpointing`` config. During prediction, this builder disables Lightning
-    logging and checkpointing, ignores any provided training logger/checkpoint
-    config with a warning, and optionally maps ``max_batches`` to Lightning's
-    ``limit_predict_batches``.
+    training, this builder attaches the configured logger, the BenchRep-managed
+    ``ModelCheckpoint`` callback, an optional BenchRep-managed ``EarlyStopping``
+    callback, and any registered additional callbacks. During prediction, it
+    disables Lightning logging and checkpointing, does not attach training
+    callbacks, and optionally maps ``max_batches`` to Lightning's
+    ``limit_predict_batches``..
 
     The following Lightning Trainer arguments are intentionally not allowed in
     ``trainer_config`` because BenchRep manages them directly:
@@ -74,6 +86,12 @@ def build_trainer(
     checkpoint_config:
         Optional top-level checkpoint config. Required during training. Ignored
         with a warning during prediction.
+    early_stopping_config:
+        Optional top-level early-stopping config. Used only during training and
+        ignored with a warning during prediction.
+    additional_callback_configs:
+        Additional registered callback configurations. Used only during training
+        and ignored with a warning during prediction.
     max_batches:
         Optional prediction diagnostic limit. During prediction, this is mapped
         to Lightning's ``limit_predict_batches``. Ignored during training.
@@ -110,8 +128,9 @@ def build_trainer(
 
     if "callbacks" in trainer_params:
         raise ValueError(
-            "`trainer.callbacks` should not be set in the trainer config yet. "
-            "BenchRep currently manages required callbacks internally."
+            "`trainer.callbacks` should not be set in the trainer config. "
+            "Configure training callbacks through the top-level `checkpointing`, "
+            "`early_stopping`, and `additional_callbacks` sections."
         )
 
     if "enable_checkpointing" in trainer_params:
@@ -140,11 +159,37 @@ def build_trainer(
             checkpoint_dir=run_context.training_checkpoint_dir,
         )
 
+        callbacks: list[Callback] = [checkpoint_callback]
+
+        if early_stopping_config is not None:
+            callbacks.append(
+                _build_early_stopping_callback(
+                    early_stopping_config,
+                )
+            )
+
+        callbacks.extend(
+            _build_additional_callbacks(
+                additional_callback_configs or [],
+            )
+        )
+
+        configured_callback_classes = tuple(
+            f"{type(callback).__module__}."
+            f"{type(callback).__qualname__}"
+            for callback in callbacks
+        )
+
         trainer = L.Trainer(
             default_root_dir=str(run_context.output_dir),
             logger=logger,
-            callbacks=[checkpoint_callback],
+            callbacks=callbacks,
             **trainer_params,
+        )
+
+        run_log.info(
+            "Attached configured training callbacks: %s",
+            configured_callback_classes,
         )
 
         run_log.info(
@@ -163,6 +208,7 @@ def build_trainer(
             checkpoint_config.save_top_k,
             checkpoint_config.save_last,
         )
+
     elif stage == "prediction":
         if logger_config is not None:
             run_log.warning(
@@ -174,6 +220,18 @@ def build_trainer(
             run_log.warning(
                 "Prediction received checkpoint_config, but prediction does not create "
                 "training checkpoints. Ignoring checkpoint_config."
+            )
+
+        if early_stopping_config is not None:
+            run_log.warning(
+                "Prediction received early_stopping_config, but training callbacks "
+                "are not inherited by prediction. Ignoring early_stopping_config."
+            )
+
+        if additional_callback_configs:
+            run_log.warning(
+                "Prediction received additional_callback_configs, but training "
+                "callbacks are not inherited by prediction. Ignoring them."
             )
 
         logger = False
@@ -314,3 +372,64 @@ def _build_checkpoint_callback(
         save_top_k=checkpoint_config.save_top_k,
         save_last=checkpoint_config.save_last,
     )
+
+
+def _build_early_stopping_callback(
+    config: EarlyStoppingConfig,
+) -> EarlyStopping:
+    params = config.model_dump(exclude_none=True)
+
+    try:
+        return EarlyStopping(**params)
+    except TypeError as exc:
+        raise TypeError(
+            "Failed to instantiate BenchRep-managed early stopping. "
+            "`early_stopping` likely contains an invalid Lightning "
+            "EarlyStopping argument."
+        ) from exc
+    except Exception as exc:
+        raise RuntimeError(
+            "Failed to instantiate BenchRep-managed early stopping."
+        ) from exc
+
+
+def _build_additional_callbacks(
+    configs: list[AdditionalCallbackConfig],
+) -> list[Callback]:
+    callbacks: list[Callback] = []
+
+    for config in configs:
+        requested_name = config.name
+        canonical_name = CALLBACKS.resolve_key(requested_name)
+        callback_factory = CALLBACKS.get(canonical_name)
+
+        target_name = (
+            f"{callback_factory.__module__}."
+            f"{callback_factory.__qualname__}"
+        )
+
+        try:
+            callback = callback_factory(**config.params)
+        except TypeError as exc:
+            raise TypeError(
+                "Failed to instantiate additional callback from config name "
+                f"{requested_name!r}. Resolved target: {target_name}. "
+                "`params` likely contains an invalid constructor argument."
+            ) from exc
+        except Exception as exc:
+            raise RuntimeError(
+                "Failed to instantiate additional callback from config name "
+                f"{requested_name!r}. Resolved target: {target_name}."
+            ) from exc
+
+        if not isinstance(callback, Callback):
+            raise TypeError(
+                "Registered additional callback factory returned an invalid "
+                f"object for config name {requested_name!r}. "
+                f"Expected a Lightning Callback, got "
+                f"{type(callback).__module__}.{type(callback).__qualname__}."
+            )
+
+        callbacks.append(callback)
+
+    return callbacks

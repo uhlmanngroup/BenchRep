@@ -294,6 +294,8 @@ def _train(
         run_context=run_context,
         logger_config=train_config.logger,
         checkpoint_config=train_config.checkpointing,
+        early_stopping_config=train_config.early_stopping,
+        additional_callback_configs=train_config.additional_callbacks,
     )
 
     if checkpoint_callback is None:

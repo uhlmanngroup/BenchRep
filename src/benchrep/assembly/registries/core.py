@@ -185,6 +185,7 @@ RECONSTRUCTION_LOSSES = Registry("reconstruction loss")
 REGULARIZATION_LOSSES = Registry("regularization loss")
 OPTIMIZERS = Registry("optimizer")
 LOGGERS = Registry("logger")
+CALLBACKS = Registry("callback")
 # Evaluation
 EVAL_REDUCTIONS = Registry(
     "reduction",

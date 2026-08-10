@@ -16,7 +16,7 @@ from pydantic import (
     field_validator,
 )
 
-from benchrep.assembly.registries.core import MODELS
+from benchrep.assembly.registries.core import CALLBACKS, MODELS
 from benchrep.assembly.registries.utils import normalize_name
 from benchrep.architecture.models import (
     Autoencoder,
@@ -30,6 +30,12 @@ def _require_present(value: object, field_name: str) -> None:
         raise ValueError(
             f"`{field_name}` is required unless the corresponding object is overridden."
         )
+
+
+_LOGGER_REQUIRED_ADDITIONAL_CALLBACKS = frozenset({
+    "device_stats_monitor",
+    "learning_rate_monitor",
+})
 
 
 # -------------------------
@@ -275,11 +281,14 @@ class TrainerConfig(_TrainingConfigBaseModel):
     All declared fields and additional non-null fields are passed as keyword
     arguments to `lightning.Trainer`. BenchRep manages `default_root_dir`,
     `logger`, `callbacks`, and `enable_checkpointing`, so these arguments cannot
-    be configured here.
+    be configured here. Use the top-level `logger`, `checkpointing`,
+    `early_stopping`, and `additional_callbacks` sections for their supported
+    BenchRep-managed equivalents.
 
-    The training Trainer configuration is reused for linked prediction.
-    Prediction may override selected behavior through its own configuration and
-    always disables Lightning logging and checkpointing.
+    The general Trainer configuration is reused for linked prediction.
+    Prediction may override selected behavior through its own configuration,
+    always disables Lightning logging and checkpointing, and does not inherit
+    training callbacks.
     """
 
     max_epochs: PositiveInt | None = Field(
@@ -542,6 +551,151 @@ class CheckpointConfig(_TrainingConfigBaseModel):
             )
 
         return self
+
+
+# -------------------------
+# Early stopping configuration
+# -------------------------
+class EarlyStoppingConfig(_TrainingConfigBaseModel):
+    """Configures metric-based early stopping during training.
+
+    BenchRep constructs a `lightning.pytorch.callbacks.EarlyStopping`
+    callback when this configuration is present. Declared fields and
+    additional non-null fields are passed as keyword arguments to that
+    callback. The callback checks the monitored metric at Lightning's
+    configured validation or training-check frequency and requests a clean
+    stop when its stopping criterion is met.
+
+    Early stopping ends training normally rather than failing the workflow.
+    BenchRep can therefore continue checkpoint validation, optional inspection,
+    and manifest writing after the Trainer stops.
+    """
+
+    monitor: str = Field(
+        default="val/loss",
+        min_length=1,
+        description=(
+            "Metric key passed to `EarlyStopping(monitor=...)`. The model must "
+            "log a metric with this exact key."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Monitors `val/loss`.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+
+    mode: Literal["min", "max"] = Field(
+        default="min",
+        description=(
+            "Direction passed to `EarlyStopping(mode=...)`: `min` treats lower "
+            "monitored values as better, while `max` treats higher values as better."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses `min`.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+
+    patience: NonNegativeInt = Field(
+        default=3,
+        description=(
+            "Number of consecutive checks without sufficient improvement allowed "
+            "before stopping. Patience counts metric checks, not necessarily epochs."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Allows three checks without sufficient improvement.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+
+    min_delta: float = Field(
+        default=0.0,
+        description=(
+            "Minimum change in the monitored metric required to count as an "
+            "improvement."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Any improvement greater than zero resets patience.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+
+    strict: bool = Field(
+        default=True,
+        description=(
+            "Whether training should fail when the monitored metric is unavailable. "
+            "When false, Lightning warns instead."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Fails when the monitored metric is unavailable.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+
+    check_finite: bool = Field(
+        default=True,
+        description=(
+            "Whether early stopping should stop training when the monitored metric "
+            "becomes NaN or infinite."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Stops when the monitored metric is non-finite.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+
+    stopping_threshold: float | None = Field(
+        default=None,
+        description=(
+            "Optional target value that stops training immediately once reached."
+        ),
+        json_schema_extra={
+            "omit_behavior": "No target-value threshold is used.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+
+    divergence_threshold: float | None = Field(
+        default=None,
+        description=(
+            "Optional value indicating that the monitored metric has become "
+            "sufficiently poor to stop training immediately."
+        ),
+        json_schema_extra={
+            "omit_behavior": "No divergence threshold is used.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+
+    check_on_train_epoch_end: bool | None = Field(
+        default=None,
+        description=(
+            "Whether the stopping criterion is checked at the end of each training "
+            "epoch. When null, Lightning chooses based on the validation schedule."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Lets Lightning determine when checks occur.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+
+    model_config = ConfigDict(extra="allow")
+
+
+# -------------------------
+# Additional callback configuration
+# -------------------------
+class AdditionalCallbackConfig(NamedConfig):
+    """Selects and configures one additional registered Lightning callback.
+
+    `name` identifies a callback in BenchRep's callback registry. `params` are
+    passed unchanged as keyword arguments to the callback constructor.
+
+    Additional callbacks apply only to training and supplement, rather than
+    replace, BenchRep-managed checkpointing and early stopping. BenchRep records
+    their configuration but does not specially interpret their runtime behavior.
+    """
+
 
 # -------------------------
 # Inspection configuration
@@ -1216,6 +1370,29 @@ class TrainingConfig(_TrainingConfigBaseModel):
             "null_behavior": "Not allowed.",
         },
     )
+    early_stopping: EarlyStoppingConfig | None = Field(
+        default=None,
+        description=(
+            "Optional metric-based early stopping settings. When configured, "
+            "BenchRep adds a Lightning EarlyStopping callback during training."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Disables early stopping.",
+            "null_behavior": "Equivalent to omission; early stopping is disabled.",
+        },
+    )
+    additional_callbacks: list[AdditionalCallbackConfig] = Field(
+        default_factory=list,
+        description=(
+            "Additional registered Lightning callbacks instantiated for training. "
+            "These supplement BenchRep-managed checkpointing and early stopping "
+            "and are not inherited by linked prediction runs."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses no additional callbacks.",
+            "null_behavior": "Not allowed; use an empty list instead.",
+        },
+    )
     inspection: InspectionConfig = Field(
         default_factory=InspectionConfig,
         description="Optional best-effort torchview model-graph export settings.",
@@ -1224,6 +1401,32 @@ class TrainingConfig(_TrainingConfigBaseModel):
             "null_behavior": "Not allowed.",
         },
     )
+
+    @model_validator(mode="after")
+    def validate_additional_callback_requirements(
+        self,
+    ) -> "TrainingConfig":
+        callback_names = {
+            CALLBACKS.resolve_key(callback.name)
+            for callback in self.additional_callbacks
+        }
+
+        callbacks_requiring_logger = sorted(
+            callback_names & _LOGGER_REQUIRED_ADDITIONAL_CALLBACKS
+        )
+
+        if self.logger is None and callbacks_requiring_logger:
+            formatted_names = ", ".join(
+                repr(name)
+                for name in callbacks_requiring_logger
+            )
+
+            raise ValueError(
+                "`logger` must be configured when using the following "
+                f"`additional_callbacks`: {formatted_names}."
+            )
+
+        return self
 
     @model_validator(mode="after")
     def validate_override_requirements(self, info: ValidationInfo) -> "TrainingConfig":
