@@ -78,13 +78,11 @@ def test_internal_end_to_end(
     )
 
     assert training_result.manifest_path.is_file()
-    assert training_result.audit_report_path.is_file()
     assert training_result.checkpoint_callback.best_model_path
     assert Path(training_result.checkpoint_callback.best_model_path).is_file()
     assert training_result.checkpoint_callback.last_model_path
     assert Path(training_result.checkpoint_callback.last_model_path).is_file()
     _assert_completed_manifest(training_result.manifest_path, "training")
-    _assert_audit_has_no_errors(training_result.audit_report_path)
 
     prediction_result = predict_fn(
         config_path=CONFIG_DIR / "prediction_tiny_synthetic.yaml",
@@ -92,7 +90,6 @@ def test_internal_end_to_end(
     )
 
     assert prediction_result.manifest_path.is_file()
-    assert prediction_result.audit_report_path.is_file()
 
     if training_config_name == "training_tiny_synthetic_vae.yaml":
         model = prediction_result.model
@@ -137,7 +134,6 @@ def test_internal_end_to_end(
     assert Path(
         prediction_manifest["source"]["checkpoint_path"]
     ) == prediction_result.run_spec.checkpoint_path
-    _assert_audit_has_no_errors(prediction_result.audit_report_path)
 
     embedding_export = prediction_result.export_paths.embedding_export
     reconstruction_paths = prediction_result.export_paths.reconstruction_paths
@@ -259,13 +255,6 @@ def _assert_completed_manifest(path: Path, expected_stage: str) -> None:
 
     assert manifest["stage"] == expected_stage
     assert manifest["status"] == "completed"
-
-
-def _assert_audit_has_no_errors(path: Path) -> None:
-    with path.open(encoding="utf-8") as handle:
-        report = yaml.safe_load(handle)
-
-    assert report["summary"]["errors"] == 0
 
 
 def _count_paths(value: Any) -> int:

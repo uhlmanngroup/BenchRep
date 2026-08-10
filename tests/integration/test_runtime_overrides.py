@@ -613,10 +613,7 @@ def _assert_successful_train_predict(
     expected_datamodule_source: str,
 ) -> None:
     assert training_result.manifest_path.is_file()
-    assert training_result.audit_report_path.is_file()
     assert prediction_result.manifest_path.is_file()
-    assert prediction_result.audit_report_path.is_file()
-
     assert training_result.checkpoint_callback.best_model_path
     assert Path(
         training_result.checkpoint_callback.best_model_path
@@ -674,19 +671,6 @@ def _assert_successful_train_predict(
             ]
             is expected_reconstructability
     )
-
-    with training_result.audit_report_path.open(
-        encoding="utf-8",
-    ) as handle:
-        training_audit = yaml.safe_load(handle)
-
-    with prediction_result.audit_report_path.open(
-        encoding="utf-8",
-    ) as handle:
-        prediction_audit = yaml.safe_load(handle)
-
-    assert training_audit["summary"]["errors"] == 0
-    assert prediction_audit["summary"]["errors"] == 0
 
 
 def _write_config_without_sections(

@@ -14,7 +14,7 @@ import torch
 from benchrep.runtime.run_context import RunContext
 from benchrep.runtime.train_run_validation import (
     validate_train_contract_compatibility,
-    audit_train_outputs,
+    validate_training_checkpoint_outputs,
 )
 from benchrep.runtime.utils import (
     CompatibilityPolicy,
@@ -27,7 +27,6 @@ from benchrep.records import (
     write_training_manifest,
     export_torchview_graph,
     infer_dummy_input_size,
-    write_audit_report,
     get_runtime_environment_filename,
     collect_training_environment_context,
     write_runtime_environment,
@@ -68,7 +67,6 @@ class TrainingWorkflowResult:
     trainer: L.Trainer
     checkpoint_callback: ModelCheckpoint
     manifest_path: Path
-    audit_report_path: Path
     torchview_graph_path: Path | None
 
 
@@ -327,6 +325,7 @@ def _train(
 
     run_log.info("Starting training...")
 
+    interruption_signal: Literal["sigint", "sigterm"] | None = None
     try:
         with capture_console_streams(
             log_out_dir=run_context.log_dir,
@@ -337,6 +336,8 @@ def _train(
     except SIGTERMException:
         if not trainer.received_sigterm:
             raise
+
+        interruption_signal = "sigterm"
 
         run_log.info(
             "Training was stopped by SIGTERM. Attempting to continue "
@@ -352,6 +353,8 @@ def _train(
 
         if not lightning_handled_sigint:
             raise
+
+        interruption_signal = "sigint"
 
         run_log.info(
             "Training was stopped by SIGINT. Attempting to continue "
@@ -379,6 +382,23 @@ def _train(
     run_log.info("Finished training")
     completed_at = now_isoformat()
 
+    # Log checkpoint errors and warnings
+    checkpoint_errors, checkpoint_warnings = (
+        validate_training_checkpoint_outputs(
+            checkpoint_config=train_config.checkpointing,
+            checkpoint_callback=checkpoint_callback,
+        )
+    )
+
+    training_errors = list(checkpoint_errors)
+    training_warnings = list(checkpoint_warnings)
+
+    for error in training_errors:
+        run_log.error(error)
+
+    for warning in training_warnings:
+        run_log.warning(warning)
+
     # Export torchview graph if possible
     torchview_graph_path = None
 
@@ -396,15 +416,49 @@ def _train(
             if torchview_graph_path is not None:
                 run_log.info("Exported torchview graph to: '%s'", torchview_graph_path)
             else:
-                run_log.warning("Torchview graph export was skipped or failed.")
+                warning = (
+                    "Torchview graph export was requested, but no graph "
+                    "was produced."
+                )
+                training_warnings.append(warning)
+                run_log.warning(warning)
 
         except Exception as exc:
             torchview_graph_path = None
+
+            warning = (
+                "Torchview graph export failed and was skipped: "
+                f"{type(exc).__name__}: {exc}"
+            )
+            training_warnings.append(warning)
+
             run_log.warning(
-                "Torchview graph export failed and was skipped: %s",
-                exc,
+                warning,
                 exc_info=True,
             )
+
+    # Finalize status
+    if training_errors:
+        training_status: Literal[
+            "completed",
+            "completed_with_warnings",
+            "completed_after_interruption",
+            "failed",
+        ] = "failed"
+
+    elif interruption_signal is not None:
+        training_status = "completed_after_interruption"
+
+    elif training_warnings:
+        training_status = "completed_with_warnings"
+
+    else:
+        training_status = "completed"
+
+    run_log.info(
+        "Training final status: %s",
+        training_status,
+    )
 
     # Export training manifest
     assert model is not None
@@ -420,7 +474,10 @@ def _train(
         torchview_graph_path=torchview_graph_path,
         created_at=created_at,
         completed_at=completed_at,
-        status="completed",
+        status=training_status,
+        errors=training_errors,
+        warnings=training_warnings,
+        interruption_signal=interruption_signal,
         model_source=model_source,
         model_class_name=type(model).__name__,
         datamodule_source=datamodule_source,
@@ -429,35 +486,12 @@ def _train(
 
     run_log.info("Exported training manifest to: '%s'", manifest_path)
 
-    audit_items = audit_train_outputs(
-        run_context=run_context,
-        config_composition_result=config_composition_result,
-        resolved_config_path=run_context.config_dir / "resolved_config.yaml",
-        checkpoint_dir=run_context.training_checkpoint_dir,
-        training_manifest_path=manifest_path,
-        torchview_requested=train_config.inspection.torchview.enabled,
-        torchview_graph_path=torchview_graph_path,
-        model_source=model_source,
-        model_class_name=type(model).__name__,
-        datamodule_source=datamodule_source,
-        datamodule_class_name=type(datamodule).__name__,
-        runtime_environment_path=runtime_environment_path,
-    )
-
-    audit_report_path = write_audit_report(
-        stage="training",
-        audit_items=audit_items,
-        output_path=(
-            run_context.metadata_dir / "training_audit_report.yaml"
-        ),
-        audited_at=now_isoformat(),
-    )
-
-    run_log.info(
-        "Exported training audit report to: '%s'",
-        audit_report_path,
-    )
-
+    if training_status == "failed":
+        raise RuntimeError(
+            "Training was finalized with status 'failed': "
+            f"{'; '.join(training_errors)} "
+            f"The failure manifest was written to '{manifest_path}'."
+        )
 
     return TrainingWorkflowResult(
         config=train_config,
@@ -467,6 +501,5 @@ def _train(
         trainer=trainer,
         checkpoint_callback=checkpoint_callback,
         manifest_path=manifest_path,
-        audit_report_path=audit_report_path,
         torchview_graph_path=torchview_graph_path,
     )

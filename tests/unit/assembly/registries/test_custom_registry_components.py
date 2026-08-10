@@ -159,7 +159,6 @@ def test_custom_registered_components_work_end_to_end(
     assert custom_callbacks[0].marker == "configured_from_test"
 
     assert training_result.manifest_path.is_file()
-    assert training_result.audit_report_path.is_file()
 
     print("\n=== Prediction with custom registered components ===")
     prediction_result = predict_vae(
@@ -174,7 +173,6 @@ def test_custom_registered_components_work_end_to_end(
     )
 
     assert prediction_result.manifest_path.is_file()
-    assert prediction_result.audit_report_path.is_file()
 
     print("\n=== Evaluation with custom registered components ===")
     evaluation_result = evaluate(

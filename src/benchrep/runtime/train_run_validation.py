@@ -6,6 +6,9 @@ from collections.abc import Mapping
 from typing import Any, Literal
 from pathlib import Path
 
+from lightning.pytorch.callbacks import ModelCheckpoint
+
+from benchrep.assembly.schemas import CheckpointConfig
 from benchrep.runtime.utils import (
     CompatibilityPolicy,
     PreconditionResult,
@@ -139,6 +142,80 @@ def validate_train_contract_compatibility(
         )
 
     return default_result
+
+
+def validate_training_checkpoint_outputs(
+    *,
+    checkpoint_config: CheckpointConfig,
+    checkpoint_callback: ModelCheckpoint,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Return checkpoint errors and warnings found after training."""
+    last_checkpoint_exists = bool(
+        checkpoint_callback.last_model_path
+        and Path(checkpoint_callback.last_model_path).is_file()
+    )
+
+    best_checkpoint_exists = bool(
+        checkpoint_callback.best_model_path
+        and Path(checkpoint_callback.best_model_path).is_file()
+    )
+
+    ranked_checkpoint_count = sum(
+        Path(path).is_file()
+        for path in checkpoint_callback.best_k_models
+    )
+
+    usable_checkpoint_exists = (
+        last_checkpoint_exists
+        or best_checkpoint_exists
+        or ranked_checkpoint_count > 0
+    )
+
+    if not usable_checkpoint_exists:
+        return (
+            ("Training produced no usable checkpoint.",),
+            (),
+        )
+
+    warnings: list[str] = []
+
+    if checkpoint_config.save_last and not last_checkpoint_exists:
+        warnings.append(
+            "Checkpointing requested `save_last=True`, but no last "
+            "checkpoint was produced."
+        )
+
+    ranked_checkpointing_requested = (
+        checkpoint_config.monitor is not None
+        and checkpoint_config.save_top_k != 0
+    )
+
+    if ranked_checkpointing_requested:
+        requested_top_k = checkpoint_config.save_top_k
+
+        if (
+            requested_top_k > 0
+            and ranked_checkpoint_count < requested_top_k
+        ):
+            warnings.append(
+                f"Checkpointing requested save_top_k={requested_top_k}, "
+                f"but only {ranked_checkpoint_count} ranked checkpoint(s) "
+                "were produced."
+            )
+
+        elif requested_top_k == -1 and ranked_checkpoint_count == 0:
+            warnings.append(
+                "Checkpointing requested ranked checkpoints, but none "
+                "were produced."
+            )
+
+        if ranked_checkpoint_count > 0 and not best_checkpoint_exists:
+            warnings.append(
+                "Ranked checkpoints exist, but the recorded best "
+                "checkpoint is unavailable."
+            )
+
+    return (), tuple(warnings)
 
 
 def audit_train_outputs(

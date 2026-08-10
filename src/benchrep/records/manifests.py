@@ -49,7 +49,10 @@ def write_training_manifest(
     torchview_graph_path: Path | None = None,
     created_at: str,
     completed_at: str,
-    status: str = "completed",
+    status: str,
+    errors: Sequence[str],
+    warnings: Sequence[str],
+    interruption_signal: str | None,
     model_source: str = "config",
     model_class_name: str,
     datamodule_source: str = "config",
@@ -108,6 +111,7 @@ def write_training_manifest(
         run_context,
     )
     records["architecture"] = {
+        "torchview_requested": config.inspection.torchview.enabled,
         "torchview_graph_path": paths_to_strings(torchview_graph_path),
     }
 
@@ -162,6 +166,8 @@ def write_training_manifest(
         ),
         "monitor": config.checkpointing.monitor,
         "mode": config.checkpointing.mode,
+        "save_top_k": config.checkpointing.save_top_k,
+        "save_last": config.checkpointing.save_last,
         "best_checkpoint_path": checkpoint_callback.best_model_path or None,
         "best_checkpoint_score": (
             float(checkpoint_callback.best_model_score)
@@ -181,6 +187,11 @@ def write_training_manifest(
     manifest = {
         "stage": config.stage,
         "status": status,
+        "outcome": {
+            "interruption_signal": interruption_signal,
+            "errors": list(errors),
+            "warnings": list(warnings),
+        },
         "created_at": created_at,
         "completed_at": completed_at,
         "run": {
