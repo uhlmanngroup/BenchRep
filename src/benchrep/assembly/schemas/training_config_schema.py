@@ -587,8 +587,11 @@ class EarlyStoppingConfig(_TrainingConfigBaseModel):
     mode: Literal["min", "max"] = Field(
         default="min",
         description=(
-            "Direction passed to `EarlyStopping(mode=...)`: `min` treats lower "
-            "monitored values as better, while `max` treats higher values as better."
+            "Direction used to interpret improvement and thresholds. With `min`, lower "
+            "values are better, improvement means decreasing by at least `min_delta`, "
+            "`stopping_threshold` is reached below the threshold, and "
+            "`divergence_threshold` is crossed above it. With `max`, these directions "
+            "are reversed."
         ),
         json_schema_extra={
             "omit_behavior": "Uses `min`.",
@@ -599,8 +602,11 @@ class EarlyStoppingConfig(_TrainingConfigBaseModel):
     patience: NonNegativeInt = Field(
         default=3,
         description=(
-            "Number of consecutive checks without sufficient improvement allowed "
-            "before stopping. Patience counts metric checks, not necessarily epochs."
+            "Number of consecutive checks that may fail to improve the monitored "
+            "metric by at least `min_delta` before stopping. A sufficient improvement "
+            "resets the counter. Patience counts metric checks, not necessarily epochs, "
+            "and does not apply to immediate stopping, divergence, or non-finite-value "
+            "conditions."
         ),
         json_schema_extra={
             "omit_behavior": "Allows three checks without sufficient improvement.",
