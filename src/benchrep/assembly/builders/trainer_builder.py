@@ -12,6 +12,7 @@ from lightning.pytorch.callbacks import (
     ModelCheckpoint,
 )
 from lightning.pytorch.loggers import Logger, WandbLogger
+from lightning.pytorch.utilities.exceptions import SIGTERMException
 
 from benchrep.records import get_run_logger
 from benchrep.assembly.registries.core import CALLBACKS, LOGGERS
@@ -358,20 +359,40 @@ def _build_checkpoint_callback(
     checkpoint_dir: Path,
 ) -> ModelCheckpoint:
     if checkpoint_config.monitor is None:
-        return ModelCheckpoint(
+        return _BenchRepModelCheckpoint(
             dirpath=checkpoint_dir,
             monitor=None,
             save_top_k=0,
             save_last=checkpoint_config.save_last,
+            save_on_exception=True,
         )
-    return ModelCheckpoint(
+    return _BenchRepModelCheckpoint(
         dirpath=checkpoint_dir,
         filename=checkpoint_config.filename,
         monitor=checkpoint_config.monitor,
         mode=checkpoint_config.mode,
         save_top_k=checkpoint_config.save_top_k,
         save_last=checkpoint_config.save_last,
+        save_on_exception=True,
     )
+
+
+class _BenchRepModelCheckpoint(ModelCheckpoint):
+    """Save exception checkpoints only for graceful training termination."""
+
+    def on_exception(
+        self,
+        trainer: L.Trainer,
+        pl_module: L.LightningModule,
+        exception: BaseException,
+    ) -> None:
+        if not isinstance(
+            exception,
+            (KeyboardInterrupt, SIGTERMException),
+        ):
+            return
+
+        super().on_exception(trainer, pl_module, exception)
 
 
 def _build_early_stopping_callback(

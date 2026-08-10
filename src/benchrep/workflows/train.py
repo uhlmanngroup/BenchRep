@@ -7,6 +7,7 @@ from typing import Literal
 
 import lightning as L
 from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.utilities.exceptions import SIGTERMException
 
 import torch
 
@@ -327,13 +328,41 @@ def _train(
     run_log.info("Starting training...")
 
     try:
-        with capture_console_streams(log_out_dir=run_context.log_dir, capture_stdout=False):
+        with capture_console_streams(
+            log_out_dir=run_context.log_dir,
+            capture_stdout=False,
+        ):
             trainer.fit(model, datamodule=datamodule)
+
+    except SIGTERMException:
+        if not trainer.received_sigterm:
+            raise
+
+        run_log.info(
+            "Training was stopped by SIGTERM. Attempting to continue "
+            "gracefully with BenchRep post-training finalization."
+        )
+
+    except SystemExit as exc:
+        lightning_handled_sigint = (
+            exc.code == 1
+            and trainer.interrupted
+            and isinstance(exc.__context__, KeyboardInterrupt)
+        )
+
+        if not lightning_handled_sigint:
+            raise
+
+        run_log.info(
+            "Training was stopped by SIGINT. Attempting to continue "
+            "gracefully with BenchRep post-training finalization."
+        )
 
     except Exception as exc:
         if precondition_result.should_wrap_batch_contract_errors:
             run_log.error(
-                "Training failed while using an external datamodule with an internal model.",
+                "Training failed while using an external datamodule "
+                "with an internal model.",
                 exc_info=True,
             )
 
