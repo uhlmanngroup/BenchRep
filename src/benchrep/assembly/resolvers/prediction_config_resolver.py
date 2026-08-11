@@ -29,6 +29,14 @@ from benchrep.interfaces.model_families import (
 )
 
 
+# Accepted training manifest statuses
+PREDICTABLE_TRAINING_STATUSES = {
+    "completed",
+    "completed_with_warnings",
+    "completed_after_interruption",
+}
+
+
 # -------------------------
 # Resolved specs
 # -------------------------
@@ -605,9 +613,11 @@ def _load_training_manifest(path: Path) -> dict[str, Any]:
         )
 
     manifest_status = training_manifest.get("status")
-    if manifest_status != "completed":
+
+    if manifest_status not in PREDICTABLE_TRAINING_STATUSES:
         raise ValueError(
-            "Prediction requires a completed training manifest, "
+            "Prediction requires a successfully finalized training manifest "
+            f"with status in {sorted(PREDICTABLE_TRAINING_STATUSES)}, "
             f"but manifest status is {manifest_status!r}."
         )
 

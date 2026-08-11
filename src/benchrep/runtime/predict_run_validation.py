@@ -130,20 +130,6 @@ def validate_predict_contract_compatibility(
 def prepare_predict_source_inputs(
     run_spec: PredictionRunSpec,
 ) -> PredictSourceInputsResult:
-    manifest_status = run_spec.training_manifest.get("status")
-
-    if manifest_status != "completed":
-        raise ValueError(
-            "Prediction requires a completed training manifest, "
-            f"but manifest status is {manifest_status!r}."
-        )
-
-    manifest_stage = run_spec.training_manifest.get("stage")
-    if manifest_stage != "training":
-        raise ValueError(
-            "Prediction requires a training manifest, "
-            f"but manifest stage is {manifest_stage!r}."
-        )
 
     try:
         checkpoint = torch.load(run_spec.checkpoint_path, map_location="cpu")
