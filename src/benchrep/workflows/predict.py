@@ -56,6 +56,7 @@ from benchrep.runtime.status import (
     PredictionOutcome,
     PredictionStatusReport,
     build_prediction_status_report,
+    PredictionOutcomeStatus,
 )
 from benchrep.assembly.registries.builtins import register_builtins
 
@@ -193,6 +194,7 @@ def _predict(
 
     # Initiate local run logger
     run_log = setup_run_logger(log_out_dir=run_context.log_dir)
+    inference_warnings: list[str] = []
 
     # Log composition messages and warnings
     for msg in config_composition_result.composition_messages:
@@ -223,14 +225,17 @@ def _predict(
         run_spec.export_spec.reconstructions.selection,
         run_spec.export_spec.reconstructions.seed,
     )
+
     if model_is_external and model_family == VAE_FAMILY:
-        run_log.warning(
+        warning = (
             "External VAE controls its own prediction logic. BenchRep cannot "
             "determine whether reconstructions are generated from the posterior "
             "mean, a sampled latent, or another model-specific path. Verify the "
             "external model's `predict_step()` implementation if deterministic "
             "reconstruction is required."
         )
+        inference_warnings.append(warning)
+        run_log.warning(warning)
 
     elif model_family == VAE_FAMILY:
         configured_source = (
@@ -255,11 +260,13 @@ def _predict(
                 "(`z_sample`)."
             )
     if run_spec.transform_source == "default_identity":
-        run_log.warning(
+        warning = (
             "Training used an external datamodule, so validation-targeted "
             "transforms could not be inherited. No prediction transforms were "
             "configured; using an identity transform pipeline."
         )
+        inference_warnings.append(warning)
+        run_log.warning(warning)
 
     elif run_spec.transform_source != "external_datamodule":
         assert run_spec.transform_configs is not None
@@ -351,6 +358,9 @@ def _predict(
         compatibility_policy=compatibility_policy,
     )
 
+    inference_warnings.extend(precondition_result.warnings)
+    inference_warning_issues = tuple(inference_warnings)
+
     predict_inputs = prepare_predict_source_inputs(run_spec=run_spec)
     model.load_state_dict(predict_inputs.state_dict)
     model.eval()
@@ -438,7 +448,10 @@ def _predict(
         inference_outcome = PredictionOutcome(
             name="inference",
             status="failed",
-            issues=(error_issue,),
+            issues=(
+                *inference_warning_issues,
+                error_issue,
+            ),
         )
 
         export_paths = PredictionExportPaths()
@@ -471,9 +484,16 @@ def _predict(
             )
 
     else:
+        inference_status: PredictionOutcomeStatus = (
+            "completed_with_warnings"
+            if inference_warning_issues
+            else "completed"
+        )
+
         inference_outcome = PredictionOutcome(
             name="inference",
-            status="completed",
+            status=inference_status,
+            issues=inference_warning_issues,
         )
 
         first_prediction = predictions[0]

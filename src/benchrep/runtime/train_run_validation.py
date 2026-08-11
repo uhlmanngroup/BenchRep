@@ -39,10 +39,11 @@ def validate_train_contract_compatibility(
         datamodule_is_external: bool = False,
         compatibility_policy: CompatibilityPolicy = "error",
 ) -> PreconditionResult:
-    external_model_only = model_is_external and not  datamodule_is_external
+    external_model_only = model_is_external and not datamodule_is_external
     external_datamodule_only = datamodule_is_external and not model_is_external
     fully_internal_run = not model_is_external and not datamodule_is_external
 
+    compatibility_warnings: list[str] = []
     default_result = PreconditionResult()
 
     if fully_internal_run:
@@ -51,7 +52,7 @@ def validate_train_contract_compatibility(
     if model_is_external:
         validate_external_model(model, model_family)
 
-        run_compatibility_check(
+        return_annotation_warning = run_compatibility_check(
             check=lambda: sanity_check_predict_step_return_annotation(
                 model=model,
                 model_family=model_family,
@@ -77,9 +78,11 @@ def validate_train_contract_compatibility(
                 "BenchRep prediction/export/evaluation may fail later."
             ),
         )
+        if return_annotation_warning is not None:
+            compatibility_warnings.append(return_annotation_warning)
 
     if external_model_only:
-        run_compatibility_check(
+        train_step_batch_annotation_warning = run_compatibility_check(
             check=lambda: sanity_check_training_step_batch_annotation(
                 model=model,
                 model_family=model_family,
@@ -105,8 +108,10 @@ def validate_train_contract_compatibility(
                 "Training may fail later."
             ),
         )
+        if train_step_batch_annotation_warning is not None:
+            compatibility_warnings.append(train_step_batch_annotation_warning)
 
-        run_compatibility_check(
+        predict_step_batch_annotation_warning = run_compatibility_check(
             check=lambda: sanity_check_predict_step_batch_annotation(
                 model=model,
                 model_family=model_family,
@@ -132,6 +137,8 @@ def validate_train_contract_compatibility(
                 "Prediction may fail later."
             ),
         )
+        if predict_step_batch_annotation_warning is not None:
+            compatibility_warnings.append(predict_step_batch_annotation_warning)
 
     if external_datamodule_only:
         return PreconditionResult(
@@ -139,9 +146,12 @@ def validate_train_contract_compatibility(
             expected_batch_type=model_family.expected_batch_type,
             expected_batch_contract_kind=model_family.expected_batch_contract_kind,
             model_family_name=model_family.name,
+            warnings=tuple(compatibility_warnings),
         )
 
-    return default_result
+    return PreconditionResult(
+        warnings=tuple(compatibility_warnings),
+    )
 
 
 def validate_training_checkpoint_outputs(

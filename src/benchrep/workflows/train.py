@@ -395,12 +395,15 @@ def _train(
     )
 
     training_errors = list(checkpoint_errors)
-    training_warnings = list(checkpoint_warnings)
+    training_warnings = [
+        *precondition_result.warnings,
+        *checkpoint_warnings,
+    ]
 
     for error in training_errors:
         run_log.error(error)
 
-    for warning in training_warnings:
+    for warning in checkpoint_warnings:
         run_log.warning(warning)
 
     # Export torchview graph if possible

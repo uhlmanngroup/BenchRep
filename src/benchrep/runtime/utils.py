@@ -16,12 +16,13 @@ AuditStatus = Literal["ok", "warning", "error", "skipped"]
 
 @dataclass(frozen=True, slots=True)
 class PreconditionResult:
-    """Metadata used to improve error messages after stage-level runtime failures."""
+    """Compatibility precondition metadata and non-fatal warnings."""
 
     should_wrap_batch_contract_errors: bool = False
     expected_batch_type: type[Any] | None = None
     expected_batch_contract_kind: ContractKind | None = None
     model_family_name: str | None = None
+    warnings: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,13 +41,14 @@ def run_compatibility_check(
     success_message: str,
     error_prefix: str,
     warning_prefix: str,
-) -> None:
+) -> str | None:
     """Run one compatibility check and apply the configured error/warning policy."""
     run_log = get_run_logger()
 
     try:
         check()
         run_log.info(success_message)
+        return None
 
     except TypeError as exc:
         if compatibility_policy == "error":
@@ -55,11 +57,13 @@ def run_compatibility_check(
                 f"Original reason: {exc}"
             ) from exc
 
-        run_log.warning(
-            "%s Original reason: %s",
-            warning_prefix,
-            exc,
+        warning = (
+            f"{warning_prefix} "
+            f"Original reason: {exc}"
         )
+        run_log.warning(warning)
+
+        return warning
 
 
 def format_external_datamodule_failure_message(
