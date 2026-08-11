@@ -16,6 +16,10 @@ from benchrep.runtime.train_run_validation import (
     validate_train_contract_compatibility,
     validate_training_checkpoint_outputs,
 )
+from benchrep.runtime.status.training import (
+    TrainingInterruptionSignal,
+    summarize_training_status,
+)
 from benchrep.runtime.utils import (
     CompatibilityPolicy,
     format_external_datamodule_failure_message,
@@ -325,7 +329,7 @@ def _train(
 
     run_log.info("Starting training...")
 
-    interruption_signal: Literal["sigint", "sigterm"] | None = None
+    interruption_signal: TrainingInterruptionSignal | None = None
     try:
         with capture_console_streams(
             log_out_dir=run_context.log_dir,
@@ -438,22 +442,11 @@ def _train(
             )
 
     # Finalize status
-    if training_errors:
-        training_status: Literal[
-            "completed",
-            "completed_with_warnings",
-            "completed_after_interruption",
-            "failed",
-        ] = "failed"
-
-    elif interruption_signal is not None:
-        training_status = "completed_after_interruption"
-
-    elif training_warnings:
-        training_status = "completed_with_warnings"
-
-    else:
-        training_status = "completed"
+    training_status = summarize_training_status(
+        errors=training_errors,
+        warnings=training_warnings,
+        interruption_signal=interruption_signal,
+    )
 
     run_log.info(
         "Training final status: %s",

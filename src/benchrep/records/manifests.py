@@ -28,7 +28,9 @@ from benchrep.records.runtime_environment import (
     get_runtime_environment_filename,
 )
 from benchrep.interfaces.model_families import ModelFamilySpec, VAE_FAMILY
-from benchrep.runtime.status.evaluation import (
+from benchrep.runtime.status import (
+    TrainingInterruptionSignal,
+    TrainingStatus,
     EvaluationOutcome,
     EvaluationSectionStatus,
     EvaluationStatusReport,
@@ -49,10 +51,10 @@ def write_training_manifest(
     torchview_graph_path: Path | None = None,
     created_at: str,
     completed_at: str,
-    status: str,
+    status: TrainingStatus,
     errors: Sequence[str],
     warnings: Sequence[str],
-    interruption_signal: str | None,
+    interruption_signal: TrainingInterruptionSignal | None,
     model_source: str = "config",
     model_class_name: str,
     datamodule_source: str = "config",
