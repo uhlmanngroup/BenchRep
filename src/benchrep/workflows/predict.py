@@ -47,6 +47,7 @@ from benchrep.runtime.predict_run_validation import (
     prepare_predict_source_inputs,
     validate_prediction_outputs,
     audit_predict_outputs,
+    infer_prediction_observation_count,
 )
 from benchrep.runtime.utils import (
     CompatibilityPolicy,
@@ -427,8 +428,9 @@ def _predict(
 
         raise
 
+    n_prediction_batches = len(predictions)
     run_log.info("Finished prediction")
-    run_log.info("Prediction returned %s batches.", len(predictions))
+    run_log.info("Prediction returned %s batches.", n_prediction_batches)
 
     try:
         validate_prediction_outputs(
@@ -437,6 +439,8 @@ def _predict(
         )
 
     except Exception as exc:
+        n_predicted_observations = None
+
         error_issue = f"Error ({type(exc).__name__}): {exc}"
 
         run_log.error(
@@ -494,6 +498,12 @@ def _predict(
             name="inference",
             status=inference_status,
             issues=inference_warning_issues,
+        )
+
+        n_predicted_observations = (
+            infer_prediction_observation_count(
+                predictions=predictions,
+            )
         )
 
         first_prediction = predictions[0]
@@ -561,6 +571,8 @@ def _predict(
         model_class_name=type(model).__name__,
         datamodule_source=datamodule_source,
         datamodule_class_name=type(datamodule).__name__,
+        n_batches=n_prediction_batches,
+        n_observations=n_predicted_observations,
     )
 
     run_log.info("Exported prediction manifest to: '%s'", manifest_path)

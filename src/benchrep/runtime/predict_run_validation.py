@@ -189,6 +189,29 @@ def validate_prediction_outputs(
         )
 
 
+def infer_prediction_observation_count(
+    *,
+    predictions: Sequence[Any],
+) -> int | None:
+    if not predictions:
+        return None
+
+    n_observations = 0
+
+    for prediction in predictions:
+        embedding = getattr(prediction, "embedding", None)
+
+        if (
+            not isinstance(embedding, torch.Tensor)
+            or embedding.ndim < 1
+        ):
+            return None
+
+        n_observations += int(embedding.shape[0])
+
+    return n_observations
+
+
 def audit_predict_outputs(
     *,
     run_context: RunContext,

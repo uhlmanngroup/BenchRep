@@ -50,6 +50,9 @@ class ReconstructionExportPaths:
     obs_path: Path | None = None
     metadata_path: Path | None = None
     n_examples_exported: int | None = None
+    n_strata: int | None = None
+    n_represented_strata: int | None = None
+    n_omitted_strata: int | None = None
 
 
 @dataclass(frozen=True)
@@ -753,6 +756,15 @@ def _export_reconstructions(
         obs_path=obs_path,
         metadata_path=metadata_path,
         n_examples_exported=len(selected_indices),
+        n_strata=selection_result.n_strata,
+        n_represented_strata=(
+            selection_result.n_represented_strata
+        ),
+        n_omitted_strata=(
+            selection_result.n_omitted_strata
+            if selection_result.n_strata is not None
+            else None
+        ),
     )
 
 

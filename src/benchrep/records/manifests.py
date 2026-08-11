@@ -260,8 +260,17 @@ def write_prediction_manifest(
     model_class_name: str,
     datamodule_source: str = "config",
     datamodule_class_name: str,
+    n_batches: int,
+    n_observations: int | None,
 ) -> None:
     training_provenance = run_spec.training_manifest.get("provenance", {})
+    training_status = run_spec.training_manifest.get("status")
+    training_outcome = run_spec.training_manifest.get("outcome")
+    training_interruption_signal = (
+        training_outcome.get("interruption_signal")
+        if isinstance(training_outcome, Mapping)
+        else None
+    )
     training_config_provenance = training_provenance.get("config", {})
     training_run_reconstructable = bool(
         training_config_provenance.get(
@@ -374,6 +383,8 @@ def write_prediction_manifest(
             "inference": {
                 "status": status_report.inference.status,
                 "issues": list(status_report.inference.issues),
+                "n_batches": n_batches,
+                "n_observations": n_observations,
             },
             "exports": {
                 "embeddings": {
@@ -386,6 +397,21 @@ def write_prediction_manifest(
                     "status": status_report.reconstructions_export.status,
                     "issues": list(
                         status_report.reconstructions_export.issues
+                    ),
+                    "n_strata": (
+                        reconstruction_paths.n_strata
+                        if reconstruction_paths is not None
+                        else None
+                    ),
+                    "n_represented_strata": (
+                        reconstruction_paths.n_represented_strata
+                        if reconstruction_paths is not None
+                        else None
+                    ),
+                    "n_omitted_strata": (
+                        reconstruction_paths.n_omitted_strata
+                        if reconstruction_paths is not None
+                        else None
                     ),
                 },
             },
@@ -400,6 +426,8 @@ def write_prediction_manifest(
             "training_manifest_path": str(run_spec.training_manifest_path),
             "training_run_name": run_spec.training_run_name,
             "training_output_dir": str(run_spec.training_output_dir),
+            "training_status": training_status,
+            "training_interruption_signal": training_interruption_signal,
             "resolved_training_config_path": str(run_spec.resolved_training_config_path),
             "checkpoint_selection": str(run_spec.prediction_config.source.checkpoint),
             "checkpoint_source": run_spec.checkpoint_source,
