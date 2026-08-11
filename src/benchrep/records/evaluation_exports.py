@@ -13,7 +13,7 @@ import numpy as np
 import re
 import tifffile
 
-from benchrep.evaluation.status import EvaluationOutcome, EvaluationOutcomeStatus
+from benchrep.runtime.status.evaluation import EvaluationOutcome, EvaluationOutcomeStatus
 from benchrep.evaluation.reconstructions.data import ReconstructionEvaluationInput
 from benchrep.evaluation.reconstructions.error_maps import compute_error_maps
 from benchrep.evaluation.reconstructions.plotting import (

@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 from benchrep.evaluation.pipelines import AnnDataEvaluationStep
-from benchrep.evaluation.status import (
+from benchrep.runtime.status.evaluation import (
     EvaluationOutcome,
     EvaluationOutcomeStatus,
     EvaluationSummaryStatus,

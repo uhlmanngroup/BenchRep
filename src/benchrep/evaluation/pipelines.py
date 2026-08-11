@@ -24,7 +24,7 @@ from benchrep.evaluation.reconstructions.error_maps import compute_error_maps
 from benchrep.evaluation.reconstructions.reconstruction_metrics import (
     compute_reconstruction_metrics,
 )
-from benchrep.evaluation.status import (
+from benchrep.runtime.status.evaluation import (
     EvaluationOutcome,
     EvaluationOutcomeStatus,
 )

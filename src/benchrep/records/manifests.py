@@ -28,7 +28,7 @@ from benchrep.records.runtime_environment import (
     get_runtime_environment_filename,
 )
 from benchrep.interfaces.model_families import ModelFamilySpec, VAE_FAMILY
-from benchrep.evaluation.status import (
+from benchrep.runtime.status.evaluation import (
     EvaluationOutcome,
     EvaluationSectionStatus,
     EvaluationStatusReport,

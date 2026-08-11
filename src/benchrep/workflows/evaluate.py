@@ -31,7 +31,7 @@ from benchrep.records.utils import now_isoformat
 from benchrep.runtime import RunContext
 from benchrep.runtime.evaluate_run_validation import prepare_evaluate_source_inputs
 from benchrep.assembly.registries.builtins import register_builtins
-from benchrep.evaluation.status import (
+from benchrep.runtime.status.evaluation import (
     EvaluationOutcome,
     EvaluationStatusReport,
     build_evaluation_status_report,
