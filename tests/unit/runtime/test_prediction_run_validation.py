@@ -134,12 +134,12 @@ def test_warning_policy_continues_after_batch_annotation_failure(
         compatibility_policy="warn",
     )
 
-    assert result == PreconditionResult()
     assert run_logger.warning.call_count == 1
 
-    warning_message = str(
-        run_logger.warning.call_args,
-    )
+    warning_message = run_logger.warning.call_args.args[0]
 
+    assert result == PreconditionResult(
+        warnings=(warning_message,),
+    )
     assert "predict_step()" in warning_message
     assert "compatibility_policy='warn'" in warning_message
