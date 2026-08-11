@@ -8,7 +8,7 @@ from benchrep.evaluation.pipelines import AnnDataEvaluationStep
 from benchrep.runtime.status.evaluation import (
     EvaluationOutcome,
     EvaluationOutcomeStatus,
-    EvaluationSummaryStatus,
+    EvaluationStatus,
     build_evaluation_status_report,
     summarize_evaluation_outcomes,
 )
@@ -30,7 +30,7 @@ from benchrep.runtime.status.evaluation import (
 )
 def test_summarize_evaluation_outcomes(
     statuses: tuple[EvaluationOutcomeStatus, ...],
-    expected: EvaluationSummaryStatus,
+    expected: EvaluationStatus,
 ) -> None:
     outcomes = tuple(
         EvaluationOutcome(

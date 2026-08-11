@@ -15,7 +15,7 @@ EvaluationOutcomeStatus = Literal[
     "failed",
 ]
 
-EvaluationSummaryStatus = Literal[
+EvaluationStatus = Literal[
     "disabled",
     "completed",
     "completed_with_warnings",
@@ -34,7 +34,7 @@ class EvaluationOutcome:
 
 @dataclass(frozen=True)
 class EvaluationSectionStatus:
-    status: EvaluationSummaryStatus
+    status: EvaluationStatus
     outcomes: tuple[EvaluationOutcome, ...]
 
 
@@ -43,7 +43,7 @@ class EvaluationStatusReport:
     embeddings: EvaluationSectionStatus
     reconstructions: EvaluationSectionStatus
     exports: EvaluationSectionStatus
-    status: EvaluationSummaryStatus
+    status: EvaluationStatus
     fatal_issue: str | None = None
 
 
@@ -90,7 +90,7 @@ def summarize_evaluation_outcomes(
     )
 
     if has_incomplete:
-        status: EvaluationSummaryStatus = (
+        status: EvaluationStatus = (
             "partially_completed"
             if has_success
             else "failed"
@@ -137,7 +137,7 @@ def _summarize_workflow_status(
     *,
     sections: Sequence[EvaluationSectionStatus],
     fatal_issue: str | None,
-) -> EvaluationSummaryStatus:
+) -> EvaluationStatus:
     if fatal_issue is not None:
         return "failed"
 
