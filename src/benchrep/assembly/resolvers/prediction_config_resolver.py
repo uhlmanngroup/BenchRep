@@ -27,14 +27,7 @@ from benchrep.interfaces.model_families import (
     VAE_FAMILY,
     model_family_supports_reconstruction,
 )
-
-
-# Accepted training manifest statuses
-PREDICTABLE_TRAINING_STATUSES = {
-    "completed",
-    "completed_with_warnings",
-    "completed_after_interruption",
-}
+from benchrep.runtime.status.training import SUCCESSFUL_TRAINING_STATUSES
 
 
 # -------------------------
@@ -614,10 +607,10 @@ def _load_training_manifest(path: Path) -> dict[str, Any]:
 
     manifest_status = training_manifest.get("status")
 
-    if manifest_status not in PREDICTABLE_TRAINING_STATUSES:
+    if manifest_status not in SUCCESSFUL_TRAINING_STATUSES:
         raise ValueError(
             "Prediction requires a successfully finalized training manifest "
-            f"with status in {sorted(PREDICTABLE_TRAINING_STATUSES)}, "
+            f"with status in {sorted(SUCCESSFUL_TRAINING_STATUSES)}, "
             f"but manifest status is {manifest_status!r}."
         )
 

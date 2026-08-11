@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, fields, is_dataclass
 from pathlib import Path
 from typing import Any, Sequence, cast
+import warnings
 
 import torch
 
@@ -11,17 +12,22 @@ from benchrep.interfaces.contracts import (
     VAEPredictionOutput,
 )
 from benchrep.assembly.resolvers.prediction_config_resolver import PredictionExportSpec
-from benchrep.records import get_run_logger
+from benchrep.records.logs import get_run_logger
 from benchrep.records.anndata_io import (
     package_matrix_as_anndata,
     write_h5ad,
 )
-from benchrep.interfaces.model_families import ModelFamilySpec
-from benchrep.interfaces.compatibility import validate_prediction_output_structure
+from benchrep.runtime.status import PredictionOutcome, PredictionOutcomeStatus
 
 
 PredictionOutput = AutoencoderPredictionOutput | VAEPredictionOutput
 PredictionOutputLike = object
+
+
+@dataclass(frozen=True)
+class PredictionExportResult:
+    paths: PredictionExportPaths
+    outcomes: tuple[PredictionOutcome, ...]
 
 
 @dataclass(frozen=True)
@@ -57,12 +63,11 @@ class ReconstructionSelectionResult:
 
 def export_prediction_outputs(
     *,
-    model_family: ModelFamilySpec,
     predictions: Sequence[PredictionOutputLike],
     export_spec: PredictionExportSpec,
     embedding_dir: Path,
     reconstruction_dir: Path,
-) -> PredictionExportPaths:
+) -> PredictionExportResult:
     """Export prediction outputs returned by ``Trainer.predict``.
 
     This function consumes the batch-level data objects returned by model
@@ -77,56 +82,162 @@ def export_prediction_outputs(
     The exporter does not own the run directory layout. In BenchRep workflows, the
     provided directories should normally come from ``RunContext`` (for example,
     ``run_context.embedding_dir`` and ``run_context.reconstruction_dir``). The
-    function returns the concrete file paths it wrote so callers can log them,
-    test them, or include them in manifests.
+    function returns the successfully produced artifact paths together with
+    the outcome of each export branch.
     """
-    _validate_prediction_outputs(
-        model_family=model_family,
-        predictions=predictions,
-    )
 
     exported_embeddings_path_and_keys = None
     exported_reconstruction_paths = None
 
-    if export_spec.embeddings.enabled:
-        embedding_dir.mkdir(parents=True, exist_ok=True)
-
-        exported_embeddings_path_and_keys = _export_embeddings(
-            predictions=predictions,
-            export_spec=export_spec,
-            output_dir=embedding_dir,
-        )
-
-    if export_spec.reconstructions.enabled:
-        reconstruction_dir.mkdir(parents=True, exist_ok=True)
-
-        exported_reconstruction_paths = _export_reconstructions(
-            predictions=predictions,
-            export_spec=export_spec,
-            output_dir=reconstruction_dir,
-        )
-
-    return PredictionExportPaths(
-        embedding_export=exported_embeddings_path_and_keys,
-        reconstruction_paths=exported_reconstruction_paths,
+    embedding_outcome = PredictionOutcome(
+        name="embeddings",
+        status="disabled",
+    )
+    reconstruction_outcome = PredictionOutcome(
+        name="reconstructions",
+        status="disabled",
     )
 
+    if export_spec.embeddings.enabled:
+        captured_warnings: list[warnings.WarningMessage] = []
 
-def _validate_prediction_outputs(
-        *,
-        model_family: ModelFamilySpec,
-        predictions: Sequence[PredictionOutputLike],
-) -> None:
-    if not predictions:
-        raise ValueError("Cannot export prediction outputs because no predictions were returned.")
+        try:
+            with warnings.catch_warnings(record=True) as captured_warnings:
+                warnings.simplefilter("always")
 
-    for batch_idx, batch in enumerate(predictions):
-        validate_prediction_output_structure(
-            prediction=batch,
-            model_family=model_family,
-            batch_idx=batch_idx,
-            check_value_types=True,
-        )
+                embedding_dir.mkdir(parents=True, exist_ok=True)
+
+                exported_embeddings_path_and_keys = _export_embeddings(
+                    predictions=predictions,
+                    export_spec=export_spec,
+                    output_dir=embedding_dir,
+                )
+
+        except Exception as exc:
+            warning_issues = tuple(
+                f"Warning ({type(warning.message).__name__}): "
+                f"{warning.message}"
+                for warning in captured_warnings
+            )
+            error_issue = f"Error ({type(exc).__name__}): {exc}"
+            issues = (*warning_issues, error_issue)
+
+            run_log = get_run_logger()
+
+            for issue in warning_issues:
+                run_log.warning("Embedding export: %s", issue)
+
+            run_log.error(
+                "Embedding export failed: %s",
+                error_issue,
+                exc_info=True,
+            )
+
+            embedding_outcome = PredictionOutcome(
+                name="embeddings",
+                status="failed",
+                issues=issues,
+            )
+
+        else:
+            issues = tuple(
+                f"Warning ({type(warning.message).__name__}): "
+                f"{warning.message}"
+                for warning in captured_warnings
+            )
+
+            for issue in issues:
+                get_run_logger().warning(
+                    "Embedding export: %s",
+                    issue,
+                )
+
+            embedding_status: PredictionOutcomeStatus =  (
+                "completed_with_warnings"
+                if issues
+                else "completed"
+            )
+            embedding_outcome = PredictionOutcome(
+                name="embeddings",
+                status=embedding_status,
+                issues=issues,
+            )
+
+    if export_spec.reconstructions.enabled:
+        captured_warnings: list[warnings.WarningMessage] = []
+
+        try:
+            with warnings.catch_warnings(record=True) as captured_warnings:
+                warnings.simplefilter("always")
+
+                reconstruction_dir.mkdir(parents=True, exist_ok=True)
+
+                exported_reconstruction_paths = _export_reconstructions(
+                    predictions=predictions,
+                    export_spec=export_spec,
+                    output_dir=reconstruction_dir,
+                )
+
+        except Exception as exc:
+            warning_issues = tuple(
+                f"Warning ({type(warning.message).__name__}): "
+                f"{warning.message}"
+                for warning in captured_warnings
+            )
+            error_issue = f"Error ({type(exc).__name__}): {exc}"
+            issues = (*warning_issues, error_issue)
+
+            run_log = get_run_logger()
+
+            for issue in warning_issues:
+                run_log.warning("Reconstruction export: %s", issue)
+
+            run_log.error(
+                "Reconstruction export failed: %s",
+                error_issue,
+                exc_info=True,
+            )
+
+            reconstruction_outcome = PredictionOutcome(
+                name="reconstructions",
+                status="failed",
+                issues=issues,
+            )
+
+        else:
+            issues = tuple(
+                f"Warning ({type(warning.message).__name__}): "
+                f"{warning.message}"
+                for warning in captured_warnings
+            )
+
+            for issue in issues:
+                get_run_logger().warning(
+                    "Reconstruction export: %s",
+                    issue,
+                )
+
+            reconstruction_status: PredictionOutcomeStatus = (
+                "completed_with_warnings"
+                if issues
+                else "completed"
+            )
+            reconstruction_outcome = PredictionOutcome(
+                name="reconstructions",
+                status=reconstruction_status,
+                issues=issues,
+            )
+
+    return PredictionExportResult(
+        paths=PredictionExportPaths(
+            embedding_export=exported_embeddings_path_and_keys,
+            reconstruction_paths=exported_reconstruction_paths,
+        ),
+        outcomes=(
+            embedding_outcome,
+            reconstruction_outcome,
+        ),
+    )
 
 
 def _export_embeddings(
@@ -582,16 +693,15 @@ def _export_reconstructions(
     selected_indices_list = selected_indices.tolist()
 
     if selection_result.n_omitted_strata > 0:
-        run_log = get_run_logger()
-        run_log.warning(
-            "Reconstruction export was stratified by '%s', but only %d of %d "
-            "strata could be represented within the requested %d examples. "
-            "%d strata were omitted.",
-            recon_spec.stratify_by,
-            selection_result.n_represented_strata,
-            selection_result.n_strata,
-            len(selected_indices),
-            selection_result.n_omitted_strata,
+        warnings.warn(
+            "Reconstruction export was stratified by "
+            f"{recon_spec.stratify_by!r}, but only "
+            f"{selection_result.n_represented_strata} of "
+            f"{selection_result.n_strata} strata could be represented "
+            f"within the requested {len(selected_indices)} examples. "
+            f"{selection_result.n_omitted_strata} strata were omitted.",
+            RuntimeWarning,
+            stacklevel=2,
         )
 
     input_path = None

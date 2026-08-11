@@ -4,6 +4,13 @@ from benchrep.runtime.status.training import (
     TrainingStatus,
     summarize_training_status,
 )
+from benchrep.runtime.status.prediction import (
+    PredictionOutcome,
+    PredictionOutcomeStatus,
+    PredictionStatus,
+    PredictionStatusReport,
+    build_prediction_status_report,
+)
 from benchrep.runtime.status.evaluation import (
     EvaluationOutcome,
     EvaluationSectionStatus,
@@ -17,6 +24,11 @@ __all__ = [
     "TrainingInterruptionSignal",
     "TrainingStatus",
     "summarize_training_status",
+    "PredictionOutcome",
+    "PredictionOutcomeStatus",
+    "PredictionStatus",
+    "PredictionStatusReport",
+    "build_prediction_status_report",
     "EvaluationOutcome",
     "EvaluationSectionStatus",
     "EvaluationStatusReport",

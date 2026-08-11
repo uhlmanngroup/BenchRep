@@ -26,7 +26,6 @@ from benchrep.interfaces.model_families import (
     AUTOENCODER_FAMILY,
     VAE_FAMILY,
 )
-from benchrep.interfaces.compatibility import validate_prediction_output_structure
 from benchrep.assembly.resolvers import resolve_prediction_config, PredictionRunSpec
 from benchrep.assembly.schemas import PredictionConfig
 from benchrep.records import (
@@ -41,15 +40,22 @@ from benchrep.records import (
     write_runtime_environment,
 )
 from benchrep.records.utils import now_isoformat
+from benchrep.records.prediction_exports import PredictionExportPaths
 from benchrep.runtime import RunContext
 from benchrep.runtime.predict_run_validation import (
     validate_predict_contract_compatibility,
     prepare_predict_source_inputs,
+    validate_prediction_outputs,
     audit_predict_outputs,
 )
 from benchrep.runtime.utils import (
     CompatibilityPolicy,
     format_external_datamodule_failure_message,
+)
+from benchrep.runtime.status import (
+    PredictionOutcome,
+    PredictionStatusReport,
+    build_prediction_status_report,
 )
 from benchrep.assembly.registries.builtins import register_builtins
 
@@ -64,6 +70,7 @@ class PredictionWorkflowResult:
     trainer: L.Trainer
     predictions: list[Any]
     export_paths: Any
+    status_report: PredictionStatusReport
     manifest_path: Path
     audit_report_path: Path
 
@@ -410,55 +417,111 @@ def _predict(
 
         raise
 
-    if not predictions:
-        raise RuntimeError("Prediction returned no batches.")
-
-    # Sanity test predictions
-    sanity_test_batch_idx = 0
-    sanity_test_prediction = predictions[sanity_test_batch_idx]
-
-    validate_prediction_output_structure(
-        prediction=sanity_test_prediction,
-        model_family=model_family,
-        batch_idx=sanity_test_batch_idx,
-        check_value_types=True,
-    )
-
     run_log.info("Finished prediction")
     run_log.info("Prediction returned %s batches.", len(predictions))
-    run_log.info(
-        "First prediction batch type: %s",
-        type(sanity_test_prediction).__name__,
-    )
 
-    run_log.info("Exporting prediction outputs...")
-
-    export_paths = export_prediction_outputs(
-        model_family=model_family,
-        predictions=predictions,
-        export_spec=run_spec.export_spec,
-        embedding_dir=run_context.prediction_embeddings_dir,
-        reconstruction_dir=run_context.prediction_reconstructions_dir,
-    )
-
-    if export_paths.embedding_export is not None:
-        run_log.info(
-            "Exported embedding artifact to: '%s'",
-            export_paths.embedding_export.embeddings_h5ad_path,
+    try:
+        validate_prediction_outputs(
+            predictions=predictions,
+            model_family=model_family,
         )
 
-    if export_paths.reconstruction_paths is not None:
-        run_log.info(
-            "Exported reconstruction artifacts: input=%s, reconstruction=%s, obs=%s, "
-            "metadata=%s, n_examples_exported=%s",
-            export_paths.reconstruction_paths.input_path,
-            export_paths.reconstruction_paths.reconstruction_path,
-            export_paths.reconstruction_paths.obs_path,
-            export_paths.reconstruction_paths.metadata_path,
-            export_paths.reconstruction_paths.n_examples_exported,
+    except Exception as exc:
+        error_issue = f"Error ({type(exc).__name__}): {exc}"
+
+        run_log.error(
+            "Prediction output validation failed: %s",
+            error_issue,
+            exc_info=True,
         )
 
-    run_log.info("Finished exporting prediction outputs")
+        inference_outcome = PredictionOutcome(
+            name="inference",
+            status="failed",
+            issues=(error_issue,),
+        )
+
+        export_paths = PredictionExportPaths()
+        skipped_issue = (
+            "Skipped because prediction output validation failed."
+        )
+
+        if run_spec.export_spec.embeddings.enabled:
+            embedding_outcome = PredictionOutcome(
+                name="embeddings",
+                status="skipped",
+                issues=(skipped_issue,),
+            )
+        else:
+            embedding_outcome = PredictionOutcome(
+                name="embeddings",
+                status="disabled",
+            )
+
+        if run_spec.export_spec.reconstructions.enabled:
+            reconstruction_outcome = PredictionOutcome(
+                name="reconstructions",
+                status="skipped",
+                issues=(skipped_issue,),
+            )
+        else:
+            reconstruction_outcome = PredictionOutcome(
+                name="reconstructions",
+                status="disabled",
+            )
+
+    else:
+        inference_outcome = PredictionOutcome(
+            name="inference",
+            status="completed",
+        )
+
+        first_prediction = predictions[0]
+
+        run_log.info(
+            "First prediction batch type: %s",
+            type(first_prediction).__name__,
+        )
+
+        run_log.info("Exporting prediction outputs...")
+
+        export_result = export_prediction_outputs(
+            predictions=predictions,
+            export_spec=run_spec.export_spec,
+            embedding_dir=run_context.prediction_embeddings_dir,
+            reconstruction_dir=run_context.prediction_reconstructions_dir,
+        )
+
+        export_paths = export_result.paths
+        embedding_outcome, reconstruction_outcome = (
+            export_result.outcomes
+        )
+
+        if export_paths.embedding_export is not None:
+            run_log.info(
+                "Exported embedding artifact to: '%s'",
+                export_paths.embedding_export.embeddings_h5ad_path,
+            )
+
+        if export_paths.reconstruction_paths is not None:
+            run_log.info(
+                "Exported reconstruction artifacts: input=%s, "
+                "reconstruction=%s, obs=%s, metadata=%s, "
+                "n_examples_exported=%s",
+                export_paths.reconstruction_paths.input_path,
+                export_paths.reconstruction_paths.reconstruction_path,
+                export_paths.reconstruction_paths.obs_path,
+                export_paths.reconstruction_paths.metadata_path,
+                export_paths.reconstruction_paths.n_examples_exported,
+            )
+
+        run_log.info("Finished exporting prediction outputs")
+
+    status_report = build_prediction_status_report(
+        inference=inference_outcome,
+        embeddings_export=embedding_outcome,
+        reconstructions_export=reconstruction_outcome,
+    )
 
     completed_at = now_isoformat()
 
@@ -473,7 +536,7 @@ def _predict(
         export_paths=export_paths,
         created_at=created_at,
         completed_at=completed_at,
-        status="completed",
+        status_report=status_report,
         model_source=model_source,
         model_class_name=type(model).__name__,
         datamodule_source=datamodule_source,
@@ -481,6 +544,11 @@ def _predict(
     )
 
     run_log.info("Exported prediction manifest to: '%s'", manifest_path)
+
+    run_log.info(
+        "Prediction final status: %s",
+        status_report.status,
+    )
 
     audit_items = audit_predict_outputs(
         run_context=run_context,
@@ -512,6 +580,28 @@ def _predict(
         audit_report_path,
     )
 
+    if status_report.status in {"partially_completed", "failed"}:
+        failed_outcomes = [
+            outcome
+            for outcome in (
+                status_report.inference,
+                status_report.embeddings_export,
+                status_report.reconstructions_export,
+            )
+            if outcome.status == "failed"
+        ]
+
+        failure_summary = "; ".join(
+            f"{outcome.name}: {'; '.join(outcome.issues)}"
+            for outcome in failed_outcomes
+        )
+
+        raise RuntimeError(
+            "Prediction was finalized with status "
+            f"{status_report.status!r}: {failure_summary}. "
+            f"The manifest was written to '{manifest_path}'."
+        )
+
     return PredictionWorkflowResult(
         config=run_spec.prediction_config,
         run_spec=run_spec,
@@ -521,6 +611,7 @@ def _predict(
         trainer=trainer,
         predictions=predictions,
         export_paths=export_paths,
+        status_report=status_report,
         manifest_path=manifest_path,
         audit_report_path=audit_report_path,
     )

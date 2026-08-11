@@ -164,6 +164,23 @@ def prepare_predict_source_inputs(
     )
 
 
+def validate_prediction_outputs(
+    *,
+    predictions: Sequence[Any],
+    model_family: ModelFamilySpec,
+) -> None:
+    if not predictions:
+        raise ValueError("Prediction returned no batches.")
+
+    for batch_idx, prediction in enumerate(predictions):
+        validate_prediction_output_structure(
+            prediction=prediction,
+            model_family=model_family,
+            batch_idx=batch_idx,
+            check_value_types=True,
+        )
+
+
 def audit_predict_outputs(
     *,
     run_context: RunContext,

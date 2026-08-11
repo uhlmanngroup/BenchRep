@@ -12,7 +12,6 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 from benchrep.assembly.schemas import TrainingConfig, PredictionConfig, EvaluationConfig
 from benchrep.assembly.config import ConfigCompositionResult
 from benchrep.assembly.resolvers import PredictionRunSpec, EvaluationRunSpec
-from benchrep.runtime import RunContext
 from benchrep.records.prediction_exports import PredictionExportPaths
 from benchrep.records.evaluation_exports import EvaluationExportPaths
 from benchrep.records.logs import (
@@ -24,13 +23,15 @@ from benchrep.records.utils import (
     paths_to_strings,
     count_paths,
 )
+from benchrep.interfaces.model_families import ModelFamilySpec, VAE_FAMILY
+from benchrep.runtime import RunContext
 from benchrep.records.runtime_environment import (
     get_runtime_environment_filename,
 )
-from benchrep.interfaces.model_families import ModelFamilySpec, VAE_FAMILY
 from benchrep.runtime.status import (
     TrainingInterruptionSignal,
     TrainingStatus,
+    PredictionStatusReport,
     EvaluationOutcome,
     EvaluationSectionStatus,
     EvaluationStatusReport,
@@ -254,7 +255,7 @@ def write_prediction_manifest(
     export_paths: PredictionExportPaths,
     created_at: str,
     completed_at: str,
-    status: str = "completed",
+    status_report: PredictionStatusReport,
     model_source: str = "config",
     model_class_name: str,
     datamodule_source: str = "config",
@@ -368,7 +369,27 @@ def write_prediction_manifest(
 
     manifest = {
         "stage": run_spec.stage,
-        "status": status,
+        "status": status_report.status,
+        "status_report": {
+            "inference": {
+                "status": status_report.inference.status,
+                "issues": list(status_report.inference.issues),
+            },
+            "exports": {
+                "embeddings": {
+                    "status": status_report.embeddings_export.status,
+                    "issues": list(
+                        status_report.embeddings_export.issues
+                    ),
+                },
+                "reconstructions": {
+                    "status": status_report.reconstructions_export.status,
+                    "issues": list(
+                        status_report.reconstructions_export.issues
+                    ),
+                },
+            },
+        },
         "created_at": created_at,
         "completed_at": completed_at,
         "run": {
