@@ -34,7 +34,6 @@ from benchrep.records import (
     capture_console_streams,
     export_prediction_outputs,
     write_prediction_manifest,
-    write_audit_report,
     get_runtime_environment_filename,
     collect_prediction_environment_context,
     write_runtime_environment,
@@ -46,7 +45,6 @@ from benchrep.runtime.predict_run_validation import (
     validate_predict_contract_compatibility,
     prepare_predict_source_inputs,
     validate_prediction_outputs,
-    audit_predict_outputs,
     infer_prediction_observation_count,
 )
 from benchrep.runtime.utils import (
@@ -74,7 +72,6 @@ class PredictionWorkflowResult:
     export_paths: Any
     status_report: PredictionStatusReport
     manifest_path: Path
-    audit_report_path: Path
 
 
 # Model-specific wrappers
@@ -582,36 +579,6 @@ def _predict(
         status_report.status,
     )
 
-    audit_items = audit_predict_outputs(
-        run_context=run_context,
-        run_spec=run_spec,
-        model_family=model_family,
-        predictions=predictions,
-        export_paths=export_paths,
-        config_composition_result=config_composition_result,
-        resolved_config_path=run_context.config_dir / "resolved_config.yaml",
-        prediction_manifest_path=manifest_path,
-        model_source=model_source,
-        model_class_name=type(model).__name__,
-        datamodule_source=datamodule_source,
-        datamodule_class_name=type(datamodule).__name__,
-        runtime_environment_path=runtime_environment_path,
-    )
-
-    audit_report_path = write_audit_report(
-        stage="prediction",
-        audit_items=audit_items,
-        output_path=(
-                run_context.metadata_dir / "prediction_audit_report.yaml"
-        ),
-        audited_at=now_isoformat(),
-    )
-
-    run_log.info(
-        "Exported prediction audit report to: '%s'",
-        audit_report_path,
-    )
-
     if status_report.status in {"partially_completed", "failed"}:
         failed_outcomes = [
             outcome
@@ -645,5 +612,4 @@ def _predict(
         export_paths=export_paths,
         status_report=status_report,
         manifest_path=manifest_path,
-        audit_report_path=audit_report_path,
     )

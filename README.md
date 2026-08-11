@@ -183,8 +183,7 @@ outputs/<workflow>/<run_name>_<timestamp>/
     │   └── benchrep.run.log
     └── metadata/
         ├── <workflow>_runtime_environment.yaml
-        ├── <workflow>_manifest.yaml
-        └── <workflow>_audit_report.yaml
+        └──  <workflow>_manifest.yaml
 ```
 
 ### Training-specific outputs
@@ -254,7 +253,6 @@ Shared run records include:
 4. `benchrep.run.log`: BenchRep workflow logging with paths and summaries.
 5. `<workflow>_runtime_environment.yaml`: Runtime hardware, software, accelerator, source-version, and workflow reproducibility provenance.
 6. `<workflow>_manifest.yaml`: Run provenance, inputs, configuration, outputs, and summary metadata.
-7. `<workflow>_audit_report.yaml`: Final checks that expected metrics, records, and artifacts were produced successfully and saved to disk.
 
 
 `metrics.json` includes:
@@ -306,20 +304,20 @@ Automated underlying pipeline:
    * build role-specific loss dicts
    * instantiate the full model
 5. Build trainer/logger/checkpointing and run `trainer.fit(model, datamodule)`
-6. Write checkpoints, config records, run logs, and training manifest, and audit
+6. Write checkpoints, config records, run logs, and training manifest
 
 # Predict
 7. Load prediction config → validate dict → compose config → parse → resolve into a complete run_spec
 8. Build or accept prediction datamodule/model
 9. Run prediction/inference
-10. Export embeddings (AnnData .h5ad), optional reconstructions (.pt), prediction records, and prediction manifest, and audit
+10. Export embeddings (AnnData .h5ad), optional reconstructions (.pt), prediction records, and prediction manifest
 
 # Evaluate
 11. Load evaluation config → validate dict → compose config → parse → resolve into a complete run_spec
 13. Run downstream evaluation in modular pipeline format
     * reductions/clustering/embedding metrics
     * reconstruction metrics/examples/error maps where available
-14. Export evaluation metrics (.json), plots/artifacts, evaluated AnnData (.h5ad), and evaluation records, and audit
+14. Export evaluation metrics (.json), plots/artifacts, evaluated AnnData (.h5ad), and evaluation records
 
 ```
 
@@ -386,7 +384,7 @@ For autoencoder-style workflows, custom models should subclass the appropriate B
 
 Caveat: runs using external Python objects are not fully reconstructable from the resolved config alone. Reproducing the run requires passing the custom model/datamodule code again. In theory, external Python objects can be added to BenchRep's registry to allow for
 reconstructable fully config-driven usage later; however, this route is yet fully implemented and would likely result
-in auditor errors regardless of runtime success.
+in errors regardless of runtime success.
 
 Example:
 
