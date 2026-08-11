@@ -35,6 +35,7 @@ from benchrep.runtime.status import (
     EvaluationOutcome,
     EvaluationStatusReport,
     build_evaluation_status_report,
+    log_outcome_summary,
 )
 
 if TYPE_CHECKING:
@@ -243,9 +244,6 @@ def evaluate(
         export_outcomes=export_result.outcomes,
     )
 
-    run_log.info("")
-    run_log.info("--- Evaluation status report ---")
-
     _log_evaluation_status_report(
         run_log=run_log,
         status_report=status_report,
@@ -269,16 +267,11 @@ def evaluate(
 
     run_log.info("Exported evaluation manifest to: '%s'", manifest_path)
 
-    summary = evaluation_manifest["summary"]
-
-    run_log.info(
-        "Evaluation outcome summary: total=%d, ok=%d, warnings=%d, "
-        "errors=%d, skipped=%d",
-        summary["total"],
-        summary["ok"],
-        summary["warnings"],
-        summary["errors"],
-        summary["skipped"],
+    log_outcome_summary(
+        run_log=run_log,
+        workflow_name="Evaluation",
+        workflow_status=status_report.status,
+        summary=evaluation_manifest["outcome_summary"],
     )
 
     return EvaluationWorkflowResult(
@@ -298,7 +291,7 @@ def _log_evaluation_status_report(
     run_log: logging.Logger,
     status_report: EvaluationStatusReport,
 ) -> None:
-    """Log evaluation section statuses and their recorded issues."""
+    """Log recorded evaluation issues."""
 
     sections = (
         ("embeddings", status_report.embeddings),
@@ -307,12 +300,6 @@ def _log_evaluation_status_report(
     )
 
     for section_name, section in sections:
-        run_log.info(
-            "Evaluation %s status: %s",
-            section_name,
-            section.status,
-        )
-
         for outcome in section.outcomes:
             for issue in outcome.issues:
                 run_log.warning(
@@ -322,13 +309,3 @@ def _log_evaluation_status_report(
                     outcome.status,
                     issue,
                 )
-
-    log_workflow_status = (
-        run_log.info
-        if status_report.status == "completed"
-        else run_log.warning
-    )
-    log_workflow_status(
-        "Evaluation workflow status: %s",
-        status_report.status,
-    )

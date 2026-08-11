@@ -16,10 +16,13 @@ from benchrep.runtime.train_run_validation import (
     validate_train_contract_compatibility,
     validate_training_checkpoint_outputs,
 )
-from benchrep.runtime.status.training import (
+from benchrep.runtime.status import (
     TrainingInterruptionSignal,
-    summarize_training_status,
+    TrainingStatusReport,
+    build_training_status_report,
+    log_outcome_summary,
 )
+
 from benchrep.runtime.utils import (
     CompatibilityPolicy,
     format_external_datamodule_failure_message,
@@ -70,8 +73,9 @@ class TrainingWorkflowResult:
     datamodule: L.LightningDataModule
     trainer: L.Trainer
     checkpoint_callback: ModelCheckpoint
-    manifest_path: Path
     torchview_graph_path: Path | None
+    status_report: TrainingStatusReport
+    manifest_path: Path
 
 
 # Model-specific wrappers
@@ -445,15 +449,10 @@ def _train(
             )
 
     # Finalize status
-    training_status = summarize_training_status(
+    status_report = build_training_status_report(
         errors=training_errors,
         warnings=training_warnings,
         interruption_signal=interruption_signal,
-    )
-
-    run_log.info(
-        "Training final status: %s",
-        training_status,
     )
 
     # Export training manifest
@@ -461,7 +460,7 @@ def _train(
     assert datamodule is not None
 
     manifest_path = run_context.metadata_dir / "training_manifest.yaml"
-    write_training_manifest(
+    training_manifest = write_training_manifest(
         config_composition_result=config_composition_result,
         output_path=manifest_path,
         model_family=model_family,
@@ -470,10 +469,7 @@ def _train(
         torchview_graph_path=torchview_graph_path,
         created_at=created_at,
         completed_at=completed_at,
-        status=training_status,
-        errors=training_errors,
-        warnings=training_warnings,
-        interruption_signal=interruption_signal,
+        status_report=status_report,
         model_source=model_source,
         model_class_name=type(model).__name__,
         datamodule_source=datamodule_source,
@@ -482,7 +478,14 @@ def _train(
 
     run_log.info("Exported training manifest to: '%s'", manifest_path)
 
-    if training_status == "failed":
+    log_outcome_summary(
+        run_log=run_log,
+        workflow_name="Training",
+        workflow_status=status_report.status,
+        summary=training_manifest["outcome_summary"],
+    )
+
+    if status_report.status == "failed":
         raise RuntimeError(
             "Training was finalized with status 'failed': "
             f"{'; '.join(training_errors)} "
@@ -496,6 +499,7 @@ def _train(
         datamodule=datamodule,
         trainer=trainer,
         checkpoint_callback=checkpoint_callback,
+        status_report=status_report,
         manifest_path=manifest_path,
         torchview_graph_path=torchview_graph_path,
     )

@@ -56,6 +56,7 @@ from benchrep.runtime.status import (
     PredictionStatusReport,
     build_prediction_status_report,
     PredictionOutcomeStatus,
+    log_outcome_summary,
 )
 from benchrep.assembly.registries.builtins import register_builtins
 
@@ -554,7 +555,7 @@ def _predict(
 
     # Export prediction manifest
     manifest_path = run_context.metadata_dir / "prediction_manifest.yaml"
-    write_prediction_manifest(
+    prediction_manifest = write_prediction_manifest(
         config_composition_result=config_composition_result,
         output_path=manifest_path,
         run_spec=run_spec,
@@ -574,9 +575,11 @@ def _predict(
 
     run_log.info("Exported prediction manifest to: '%s'", manifest_path)
 
-    run_log.info(
-        "Prediction final status: %s",
-        status_report.status,
+    log_outcome_summary(
+        run_log=run_log,
+        workflow_name="Prediction",
+        workflow_status=status_report.status,
+        summary=prediction_manifest["outcome_summary"],
     )
 
     if status_report.status in {"partially_completed", "failed"}:

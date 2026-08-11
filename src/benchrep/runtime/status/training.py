@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Literal
 
 
@@ -22,19 +23,35 @@ SUCCESSFUL_TRAINING_STATUSES = frozenset[TrainingStatus](
 )
 
 
-def summarize_training_status(
+@dataclass(frozen=True)
+class TrainingStatusReport:
+    status: TrainingStatus
+    issues: tuple[str, ...]
+    interruption_signal: TrainingInterruptionSignal | None
+
+
+def build_training_status_report(
     *,
     errors: Sequence[str],
     warnings: Sequence[str],
     interruption_signal: TrainingInterruptionSignal | None,
-) -> TrainingStatus:
+) -> TrainingStatusReport:
     if errors:
-        return "failed"
+        status: TrainingStatus = "failed"
+    elif interruption_signal is not None:
+        status = "completed_after_interruption"
+    elif warnings:
+        status = "completed_with_warnings"
+    else:
+        status = "completed"
 
-    if interruption_signal is not None:
-        return "completed_after_interruption"
+    issues = (
+        *(f"Error: {error}" for error in errors),
+        *(f"Warning: {warning}" for warning in warnings),
+    )
 
-    if warnings:
-        return "completed_with_warnings"
-
-    return "completed"
+    return TrainingStatusReport(
+        status=status,
+        issues=issues,
+        interruption_signal=interruption_signal,
+    )

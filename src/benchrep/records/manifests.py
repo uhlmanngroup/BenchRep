@@ -29,10 +29,9 @@ from benchrep.records.runtime_environment import (
     get_runtime_environment_filename,
 )
 from benchrep.runtime.status import (
-    TrainingInterruptionSignal,
-    TrainingStatus,
+    TrainingStatusReport,
     PredictionStatusReport,
-    EvaluationOutcome,
+    build_outcome_summary,
     EvaluationSectionStatus,
     EvaluationStatusReport,
 )
@@ -52,15 +51,12 @@ def write_training_manifest(
     torchview_graph_path: Path | None = None,
     created_at: str,
     completed_at: str,
-    status: TrainingStatus,
-    errors: Sequence[str],
-    warnings: Sequence[str],
-    interruption_signal: TrainingInterruptionSignal | None,
+    status_report: TrainingStatusReport,
     model_source: str = "config",
     model_class_name: str,
     datamodule_source: str = "config",
     datamodule_class_name: str,
-) -> None:
+) -> dict[str, Any]:
     # Source flags
     model_is_external = model_source != "config"
     datamodule_is_external = datamodule_source != "config"
@@ -187,14 +183,21 @@ def write_training_manifest(
         ],
     }
 
+    outcome_summary = build_outcome_summary(
+        (status_report.status,)
+    )
+
     manifest = {
         "stage": config.stage,
-        "status": status,
-        "outcome": {
-            "interruption_signal": interruption_signal,
-            "errors": list(errors),
-            "warnings": list(warnings),
+        "status": status_report.status,
+        "status_report": {
+            "training": {
+                "status": status_report.status,
+                "issues": list(status_report.issues),
+                "interruption_signal": status_report.interruption_signal,
+            },
         },
+        "outcome_summary": outcome_summary,
         "created_at": created_at,
         "completed_at": completed_at,
         "run": {
@@ -244,6 +247,8 @@ def write_training_manifest(
 
     write_yaml_record(manifest, output_path)
 
+    return manifest
+
 
 def write_prediction_manifest(
     *,
@@ -262,13 +267,18 @@ def write_prediction_manifest(
     datamodule_class_name: str,
     n_batches: int,
     n_observations: int | None,
-) -> None:
+) -> dict[str, Any]:
     training_provenance = run_spec.training_manifest.get("provenance", {})
     training_status = run_spec.training_manifest.get("status")
-    training_outcome = run_spec.training_manifest.get("outcome")
+    training_status_report = run_spec.training_manifest.get("status_report")
+    training_status_record = (
+        training_status_report.get("training")
+        if isinstance(training_status_report, Mapping)
+        else None
+    )
     training_interruption_signal = (
-        training_outcome.get("interruption_signal")
-        if isinstance(training_outcome, Mapping)
+        training_status_record.get("interruption_signal")
+        if isinstance(training_status_record, Mapping)
         else None
     )
     training_config_provenance = training_provenance.get("config", {})
@@ -376,6 +386,15 @@ def write_prediction_manifest(
         "max_batches": run_spec.max_batches,
     }
 
+    outcome_summary = build_outcome_summary(
+        outcome.status
+        for outcome in (
+            status_report.inference,
+            status_report.embeddings_export,
+            status_report.reconstructions_export,
+        )
+    )
+
     manifest = {
         "stage": run_spec.stage,
         "status": status_report.status,
@@ -416,6 +435,7 @@ def write_prediction_manifest(
                 },
             },
         },
+        "outcome_summary": outcome_summary,
         "created_at": created_at,
         "completed_at": completed_at,
         "run": {
@@ -556,6 +576,8 @@ def write_prediction_manifest(
 
     write_yaml_record(manifest, output_path)
 
+    return manifest
+
 
 def write_evaluation_manifest(
     *,
@@ -651,9 +673,27 @@ def write_evaluation_manifest(
         run_spec=run_spec,
     )
 
+    outcome_statuses = [
+        outcome.status
+        for section in (
+            status_report.embeddings,
+            status_report.reconstructions,
+            status_report.exports,
+        )
+        for outcome in section.outcomes
+    ]
+
+    if status_report.fatal_issue is not None:
+        outcome_statuses.append("failed")
+
     manifest = {
         "stage": run_spec.stage,
         "status": status_report.status,
+        "status_report": _evaluation_status_report_to_manifest(
+            status_report,
+            anndata_output_locations=anndata_output_locations,
+        ),
+        "outcome_summary": build_outcome_summary(outcome_statuses),
         "created_at": created_at,
         "completed_at": completed_at,
         "run": {
@@ -765,10 +805,6 @@ def write_evaluation_manifest(
                 },
             },
         },
-        "status_report": _evaluation_status_report_to_manifest(
-            status_report,
-            anndata_output_locations=anndata_output_locations,
-        ),
         "summary": {
             "project_name": prediction_summary.get("project_name"),
             "model": prediction_summary.get("model"),
@@ -776,78 +812,12 @@ def write_evaluation_manifest(
             "decoder": prediction_summary.get("decoder"),
             "source_mode": source_mode,
             "has_reconstructions": reconstruction_spec is not None,
-            **_build_evaluation_runtime_summary(status_report),
         },
     }
 
     write_yaml_record(manifest, output_path)
 
     return manifest
-
-
-def _build_evaluation_runtime_summary(
-    status_report: EvaluationStatusReport,
-) -> dict[str, Any]:
-    """Summarize active evaluation outcomes by status and category."""
-
-    outcomes = _active_evaluation_outcomes(status_report)
-    bucket_by_status = {
-        "completed": "ok",
-        "completed_with_warnings": "warnings",
-        "failed": "errors",
-        "skipped": "skipped",
-    }
-    counts = {
-        "ok": 0,
-        "warnings": 0,
-        "errors": 0,
-        "skipped": 0,
-    }
-    grouped_outcomes: dict[str, dict[str, list[str]]] = {}
-
-    for outcome in outcomes:
-        bucket = bucket_by_status.get(outcome.status)
-
-        if bucket is None:
-            raise RuntimeError(
-                "Cannot summarize evaluation outcome "
-                f"{outcome.name!r} with status {outcome.status!r}."
-            )
-
-        counts[bucket] += 1
-
-        bucket_outcomes = grouped_outcomes.setdefault(bucket, {})
-        bucket_outcomes.setdefault(
-            outcome.category,
-            [],
-        ).append(outcome.name)
-
-    result: dict[str, Any] = {
-        "total": len(outcomes),
-        **counts,
-    }
-
-    if grouped_outcomes:
-        result["outcomes"] = grouped_outcomes
-
-    return result
-
-
-def _active_evaluation_outcomes(
-    status_report: EvaluationStatusReport,
-) -> tuple[EvaluationOutcome, ...]:
-    """Return all non-disabled outcomes in report order."""
-
-    return tuple(
-        outcome
-        for section in (
-            status_report.embeddings,
-            status_report.reconstructions,
-            status_report.exports,
-        )
-        for outcome in section.outcomes
-        if outcome.status != "disabled"
-    )
 
 
 def _evaluation_status_report_to_manifest(
@@ -916,10 +886,8 @@ def _status_section_to_manifest(
 
         outcome_record: dict[str, Any] = {
             "status": outcome.status,
+            "issues": list(outcome.issues),
         }
-
-        if outcome.issues:
-            outcome_record["issues"] = list(outcome.issues)
 
         if outcome.status in {
             "completed",
