@@ -50,6 +50,13 @@ losses:
       params:
         reduction: mean
 
+  custom_objective:
+    auxiliary_latent_classification:
+      weight: 0.1
+      params:
+        embedding_dim: 32  # must match model.params.latent_dim
+        n_classes: 10 # must match MNIST's class count
+
 optimizer:
   name: adam
   params:

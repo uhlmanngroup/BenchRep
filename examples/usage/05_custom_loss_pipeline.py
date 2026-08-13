@@ -1,15 +1,18 @@
-"""Run the canonical YAML-configured BenchRep pipeline with a custom loss.
+"""Run a YAML-configured pipeline with two kinds of registered custom loss.
+
+This example registers a reconstruction loss that follows BenchRep's existing
+reconstruction-role contract and a custom objective that requires inputs from
+both the batch and model output. Both are combined with BenchRep's built-in MSE
+reconstruction loss and Gaussian KL regularization.
 
 Run from the repository root:
 
     python examples/usage/05_custom_loss_pipeline.py
-
-This example is similar to 01_yaml_pipeline but registers a custom image
-gradient reconstruction loss and combines it with BenchRep's built-in MSE
-reconstruction loss and Gaussian KL regularization.
 """
 
 from pathlib import Path
+from collections.abc import Mapping
+from typing import Any
 
 import torch
 
@@ -19,8 +22,8 @@ from benchrep import (
     predict_vae,
     evaluate,
 )
-from benchrep.architecture.losses import BaseReconstructionLoss
-from benchrep.assembly.registries import RECONSTRUCTION_LOSSES
+from benchrep.architecture.losses import BaseReconstructionLoss, BaseCustomObjectiveLoss
+from benchrep.assembly.registries import RECONSTRUCTION_LOSSES, CUSTOM_OBJECTIVE_LOSSES
 
 
 # Resolve config paths relative to this script.
@@ -30,22 +33,25 @@ CONFIG_DIR = (
     / "05_custom_loss_pipeline"
 )
 
-# How custom losses move through BenchRep:
+# How losses work in BenchRep:
 #
-# 1. `gradient_difference` should be under `losses.reconstruction` in training.yaml.
-# 2. The registration in `main()` connects that name to this Python class.
-# 3. BenchRep instantiates the class using the configured `params`. This loss
-#    has no constructor parameters, so its `params` mapping is empty in the YAML.
-# 4. BenchRep wraps the instantiated loss and its configured `weight` in a
-#    `LossTerm` dataclass, then stores it under the same name in a plain
-#    dictionary passed to the VAE. The VAE receives a separate dictionary for
-#    each loss role: reconstruction and regularization.
-# 5. The VAE calls `forward(reconstruction, target)` during each loss step,
-#    multiplies the returned raw loss by that weight, and adds it to the other
-#    configured reconstruction and regularization losses.
+# Training config groups loss terms by role. Each term maps to a registered loss,
+# provides its constructor `params`, and assigns the scalar `weight` applied to
+# its output. A role can have multiple terms, and terms are weighted globally,
+# not within a given role.
 #
-# Users therefore implement and register the loss module, but do not need to
-# instantiate it, package it with its weight, or call it from the model.
+# BenchRep constructs each loss, wraps it and its weight in a `LossTerm`, then
+# stored in a `nn.ModuleDict` owned by the model ensuring any loss parameters
+# are correctly handled for optimization, device movement, etc.
+#
+# Roles have contracts: Reconstruction losses receive `reconstruction` and `target`;
+# regularization losses receive `z_mu` and `z_logvar`; but custom objectives receive
+# the complete `batch` and `model_output`.
+#
+# This example demonstrates both extension paths. `GradientDifferenceLoss`
+# registers under the built-in reconstruction role, while
+# `AuxiliaryLatentClassificationLoss` uses the unrestricted custom-objective
+# role as it needs both batch labels and model embeddings.
 class GradientDifferenceLoss(BaseReconstructionLoss):
     """Penalize differences in horizontal and vertical image gradients."""
 
@@ -101,8 +107,52 @@ class GradientDifferenceLoss(BaseReconstructionLoss):
         return horizontal_loss + vertical_loss
 
 
+class AuxiliaryLatentClassificationLoss(BaseCustomObjectiveLoss):
+    """Encourage VAE embeddings to predict the input class."""
+    def __init__(
+        self,
+        embedding_dim: int,
+        n_classes: int,
+    ) -> None:
+        super().__init__()
+
+        # Simple linear classifier
+        self.classifier = torch.nn.Linear(
+            embedding_dim,
+            n_classes,
+        )
+
+    def forward(
+        self,
+        *,
+        batch: Mapping[str, Any],
+        model_output: Mapping[str, torch.Tensor],
+    ) -> torch.Tensor:
+        labels = batch["label"]
+        embeddings = model_output["embedding"]
+
+        if not isinstance(labels, torch.Tensor):
+            raise TypeError(
+                "batch['label'] must be a torch.Tensor."
+            )
+
+        if labels.ndim != 1:
+            raise ValueError(
+                "batch['label'] must be one-dimensional."
+            )
+
+        if labels.shape[0] != embeddings.shape[0]:
+            raise ValueError(
+                "Labels and embeddings must have the same batch size."
+            )
+
+        logits = self.classifier(embeddings)
+
+        return torch.nn.functional.cross_entropy(logits, labels.long())
+
+
 def main() -> None:
-    # Connect the `gradient_difference` key used in training.yaml to the custom
+    # Connect the `gradient_difference` key used in training.yaml to the reconstruction
     # loss class. Registration must happen before workflow config resolution and
     # must be repeated in any future process reconstructing this run.
     RECONSTRUCTION_LOSSES.register(
@@ -115,6 +165,21 @@ def main() -> None:
     inspect_registry(
         "reconstruction_loss",
         "gradient_difference",
+    )
+
+    # Register a custom objective that combines labels from the batch with
+    # embeddings from the model output. Custom objectives use a broader
+    # contract than reconstruction and regularization losses.
+    CUSTOM_OBJECTIVE_LOSSES.register(
+        "auxiliary_latent_classification",
+        AuxiliaryLatentClassificationLoss,
+        "latent_classification",
+    )
+
+    # Confirm that the custom loss is available through the public registry.
+    inspect_registry(
+        "custom_objective_loss",
+        "auxiliary_latent_classification",
     )
 
     print("\n=== Training ===")
