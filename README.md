@@ -202,7 +202,6 @@ BenchRep is already usable for research experiments within its current autoencod
 
 - expanding the breadth of built-in datasets, transforms, architectures, evaluation methods, metrics, and plots;
 - adding contrastive and supervised model families, loss functions, heads, prediction contracts, and evaluation paths;
-- supporting an arbitrary `custom` loss that can consume multiple model outputs and targets; currently, registered custom losses remain confined to reconstruction or regularization roles;
 - adding loss-weight schedules and warm-up policies and potentially setting the stage for weight tuning;
 - adding higher-level experiment and study orchestration above the individual workflows;
 - continuing schema documentation, resilience testing, and end-to-end coverage.
