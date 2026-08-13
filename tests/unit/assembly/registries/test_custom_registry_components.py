@@ -129,6 +129,14 @@ def test_custom_registered_components_work_end_to_end(
                         weight=0.0001,
                     ),
                 },
+                "custom_objective": {
+                    "custom_test_objective_loss": LossTermConfig(
+                        weight=0.1,
+                        params={
+                            "regularization_weight": 0.0001,
+                        },
+                    ),
+                },
             },
             "optimizer": OptimizerConfig(
                 name="custom_test_optimizer",
@@ -248,6 +256,7 @@ def test_custom_registered_components_work_end_to_end(
         "decoder_forward",
         "reconstruction_loss",
         "regularization_loss",
+        "custom_objective_loss",
         "optimizer_factory",
         "logger_init",
         "logger_metrics",

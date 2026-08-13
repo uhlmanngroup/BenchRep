@@ -14,6 +14,7 @@ from torch.nn import functional as F
 
 from benchrep.architecture.decoders import BaseDecoder
 from benchrep.architecture.encoders import BaseEncoder
+from benchrep.architecture.losses import BaseCustomObjectiveLoss
 from benchrep.assembly.registries.core import (
     DATASETS,
     TRANSFORMS,
@@ -21,6 +22,7 @@ from benchrep.assembly.registries.core import (
     DECODERS,
     RECONSTRUCTION_LOSSES,
     REGULARIZATION_LOSSES,
+    CUSTOM_OBJECTIVE_LOSSES,
     OPTIMIZERS,
     LOGGERS,
     CALLBACKS,
@@ -140,6 +142,45 @@ class CustomRegularizationLoss(nn.Module):
 
         return -0.5 * torch.mean(
             1 + z_logvar - z_mu.pow(2) - z_logvar.exp()
+        )
+
+
+class CustomCombinedObjectiveLoss(BaseCustomObjectiveLoss):
+    def __init__(
+        self,
+        regularization_weight: float = 0.0001,
+    ) -> None:
+        super().__init__()
+        self.regularization_weight = regularization_weight
+
+    def forward(
+        self,
+        *,
+        batch: Mapping[str, Any],
+        model_output: Mapping[str, torch.Tensor],
+    ) -> torch.Tensor:
+        COMPONENT_CALLS["custom_objective_loss"] += 1
+
+        target = batch["x"]
+
+        if not isinstance(target, torch.Tensor):
+            raise TypeError("batch['x'] must be a torch.Tensor.")
+
+        reconstruction_loss = F.mse_loss(
+            model_output["reconstruction"],
+            target,
+        )
+
+        regularization_loss = -0.5 * torch.mean(
+            1
+            + model_output["z_logvar"]
+            - model_output["z_mu"].pow(2)
+            - model_output["z_logvar"].exp()
+        )
+
+        return (
+            reconstruction_loss
+            + self.regularization_weight * regularization_loss
         )
 
 
@@ -280,6 +321,10 @@ def register_custom_test_components() -> None:
     REGULARIZATION_LOSSES.register(
         "custom_test_regularization_loss",
         CustomRegularizationLoss,
+    )
+    CUSTOM_OBJECTIVE_LOSSES.register(
+        "custom_test_objective_loss",
+        CustomCombinedObjectiveLoss,
     )
     OPTIMIZERS.register(
         "custom_test_optimizer",
