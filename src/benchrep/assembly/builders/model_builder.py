@@ -52,14 +52,19 @@ def build_model(
 
     Each model-specific builder is responsible for requiring only the config
     sections that its model type actually needs. For example, an autoencoder
-    requires an encoder, decoder, reconstruction loss, and optimizer, while a
-    future contrastive model may require an encoder, projection head, contrastive
-    loss, and optimizer, but no decoder.
+    requires an encoder, decoder, compatible loss configuration, and optimizer,
+    while a future contrastive model may require an encoder, projection head,
+    contrastive loss, and optimizer, but no decoder.
 
     Parameters
     ----------
     config:
         Validated BenchRep config object.
+    prediction_reconstruction_latent_source:
+        VAE-only selection of the latent representation decoded during
+        prediction. ``"mean"`` uses the posterior mean and ``"sample"`` uses
+        the sampled latent. ``None`` resolves to ``"mean"`` for VAEs and is
+        required for autoencoders.
 
     Returns
     -------
