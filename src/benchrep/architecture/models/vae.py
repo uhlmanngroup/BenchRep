@@ -16,26 +16,31 @@ from benchrep.architecture.decoders.base import BaseDecoder
 from benchrep.architecture.encoders.base import BaseEncoder
 from benchrep.architecture.heads.variational import GaussianVariationalHead
 from benchrep.architecture.losses.base import LossTerm
+from benchrep.architecture.models.utils import validate_loss_weights
 
 
 class VAE(BenchRepVAEModel):
-    """Standard Gaussian variational autoencoder.
+    """Standard Gaussian variational autoencoder with role-scoped losses.
 
-    The model follows the standard VAE structure and uses the Autoencoder
-    batch contract, ``AutoencoderBatch``:
+    The model uses the ``AutoencoderBatch`` contract and follows this structure:
 
         encoder -> GaussianVariationalHead -> decoder
 
     The encoder produces deterministic features. The variational head maps those
-    features to a diagonal Gaussian posterior, samples a latent vector with the
-    reparameterization trick, and the decoder reconstructs the input from the
-    latent vector.
+    features to a diagonal Gaussian posterior and samples a latent vector using the
+    reparameterization trick.
 
     During training, the decoder reconstructs the input from the sampled latent.
-    During prediction, reconstruction can use either the posterior mean or the
-    sampled latent, with the posterior mean used by default.
+    The training objective requires either paired reconstruction and regularization
+    losses or at least one custom objective. Custom objectives may be used alone or
+    alongside either or both standard loss roles. Reconstruction losses receive the
+    reconstruction and target, regularization losses receive the posterior parameters,
+    and custom objectives receive the complete batch and forward output. All configured
+    terms contribute additively to the total loss.
 
-    The deterministic embedding exposed for downstream evaluation is ``z_mu``.
+    During prediction, reconstruction may use either the posterior mean or sampled
+    latent, with the posterior mean used by default. The deterministic embedding
+    exposed for downstream evaluation is ``z_mu``.
     """
 
     def __init__(
@@ -45,6 +50,7 @@ class VAE(BenchRepVAEModel):
         variational_head: GaussianVariationalHead,
         reconstruction_losses: dict[str, LossTerm],
         regularization_losses: dict[str, LossTerm],
+        custom_objective_losses: dict[str, LossTerm],
         optimizer_factory: Callable[[Iterable[nn.Parameter]], torch.optim.Optimizer],
         prediction_reconstruction_latent_source: Literal["mean", "sample"] = "mean",
     ) -> None:
@@ -79,28 +85,31 @@ class VAE(BenchRepVAEModel):
 
         self.variational_head = variational_head
 
-        if not reconstruction_losses:  # fail fast
-            raise ValueError("VAE requires at least one reconstruction loss.")
+        has_custom_objective_losses = bool(custom_objective_losses)
+        has_complete_standard_objective = bool(
+            reconstruction_losses and regularization_losses
+        )
 
-        if not regularization_losses:  # fail fast
-            raise ValueError("VAE requires at least one regularization loss.")
+        if not (
+                has_custom_objective_losses
+                or has_complete_standard_objective
+        ):
+            raise ValueError(
+                "VAE requires at least one custom objective loss or both "
+                "reconstruction and regularization losses."
+            )
 
-        for loss_name, loss_term in reconstruction_losses.items():
-            if loss_term.weight < 0:
-                raise ValueError(
-                    f"Reconstruction loss {loss_name!r} has negative weight "
-                    f"{loss_term.weight}."
-                )
+        validate_loss_weights(
+            {
+                "reconstruction": reconstruction_losses,
+                "regularization": regularization_losses,
+                "custom_objective": custom_objective_losses,
+            }
+        )
 
-        for loss_name, loss_term in regularization_losses.items():
-            if loss_term.weight < 0:
-                raise ValueError(
-                    f"Regularization loss {loss_name!r} has negative weight "
-                    f"{loss_term.weight}."
-                )
-
-        self.reconstruction_losses = reconstruction_losses
-        self.regularization_losses = regularization_losses
+        self.reconstruction_losses = nn.ModuleDict(reconstruction_losses)
+        self.regularization_losses = nn.ModuleDict(regularization_losses)
+        self.custom_objective_losses = nn.ModuleDict(custom_objective_losses)
 
         self.save_hyperparameters(
             ignore=[
@@ -109,6 +118,7 @@ class VAE(BenchRepVAEModel):
                 "variational_head",
                 "reconstruction_losses",
                 "regularization_losses",
+                "custom_objective_losses",
                 "optimizer_factory",
                 "prediction_reconstruction_latent_source",
             ]
@@ -180,66 +190,74 @@ class VAE(BenchRepVAEModel):
     def _compute_loss_step(self, batch: AutoencoderBatch, stage: str) -> torch.Tensor:
         x = self._get_input_from_batch(batch)
         output = self(x)
+        reconstruction = output["reconstruction"]
+        z_mu = output["z_mu"]
+        z_logvar = output["z_logvar"]
         batch_size = x.shape[0]
-
         total_loss = torch.zeros((), device=x.device, dtype=x.dtype)
 
-        # The VAE owns tensor routing for reconstruction losses. Anything
-        # registered under losses.reconstruction must follow the
-        # BaseReconstructionLoss interface: forward(reconstruction, target).
-        for loss_name, loss_term in self.reconstruction_losses.items():
-            raw_loss = loss_term.loss(
-                reconstruction=output["reconstruction"],
-                target=x,
-            )
-            weighted_loss_value = loss_term.weight * raw_loss
-            total_loss = total_loss + weighted_loss_value
+        loss_groups = {
+            "reconstruction": (
+                self.reconstruction_losses,
+                {
+                    "reconstruction": reconstruction,
+                    "target": x,
+                },
+            ),
+            "regularization": (
+                self.regularization_losses,
+                {
+                    "z_mu": z_mu,
+                    "z_logvar": z_logvar,
+                },
+            ),
+            "custom_objective": (
+                self.custom_objective_losses,
+                {
+                    "batch": batch,
+                    "model_output": output,
+                },
+            ),
+        }
 
-            self.log(
-                f"{stage}/reconstruction/{loss_name}",
-                raw_loss,
-                on_step=stage == "train",
-                on_epoch=True,
-                prog_bar=False,
-                batch_size=batch_size,
-            )
+        for role, (loss_terms, loss_kwargs) in loss_groups.items():
+            role_label = role.replace("_", " ").title()
 
-            self.log(
-                f"{stage}/reconstruction/{loss_name}_weighted",
-                weighted_loss_value,
-                on_step=stage == "train",
-                on_epoch=True,
-                prog_bar=False,
-                batch_size=batch_size,
-            )
+            for loss_name, loss_term in loss_terms.items():
+                raw_loss = loss_term.loss(**loss_kwargs)
 
-        # Standard Gaussian VAE regularization losses should follow the
-        # GaussianKLDivergenceLoss interface: forward(z_mu, z_logvar).
-        for loss_name, loss_term in self.regularization_losses.items():
-            raw_loss = loss_term.loss(
-                z_mu=output["z_mu"],
-                z_logvar=output["z_logvar"],
-            )
-            weighted_loss_value = loss_term.weight * raw_loss
-            total_loss = total_loss + weighted_loss_value
+                if not isinstance(raw_loss, torch.Tensor):
+                    raise TypeError(
+                        f"{role_label} loss {loss_name!r} must return a "
+                        f"torch.Tensor, got {type(raw_loss).__name__}."
+                    )
 
-            self.log(
-                f"{stage}/regularization/{loss_name}",
-                raw_loss,
-                on_step=stage == "train",
-                on_epoch=True,
-                prog_bar=False,
-                batch_size=batch_size,
-            )
+                if raw_loss.ndim != 0:
+                    raise ValueError(
+                        f"{role_label} loss {loss_name!r} must return a "
+                        f"scalar tensor, got shape {tuple(raw_loss.shape)}."
+                    )
 
-            self.log(
-                f"{stage}/regularization/{loss_name}_weighted",
-                weighted_loss_value,
-                on_step=stage == "train",
-                on_epoch=True,
-                prog_bar=False,
-                batch_size=batch_size,
-            )
+                weighted_loss = loss_term.weight * raw_loss
+                total_loss = total_loss + weighted_loss
+
+                self.log(
+                    f"{stage}/{role}/{loss_name}",
+                    raw_loss,
+                    on_step=stage == "train",
+                    on_epoch=True,
+                    prog_bar=False,
+                    batch_size=batch_size,
+                )
+
+                self.log(
+                    f"{stage}/{role}/{loss_name}_weighted",
+                    weighted_loss,
+                    on_step=stage == "train",
+                    on_epoch=True,
+                    prog_bar=False,
+                    batch_size=batch_size,
+                )
 
         self.log(
             f"{stage}/loss",

@@ -35,6 +35,7 @@ from benchrep.assembly.registries.core import (
     OPTIMIZERS,
     RECONSTRUCTION_LOSSES,
     REGULARIZATION_LOSSES,
+    CUSTOM_OBJECTIVE_LOSSES,
 )
 
 
@@ -95,7 +96,14 @@ def build_model(
             encoder=config.encoder,
             decoder=config.decoder,
             optimizer=config.optimizer,
-            reconstruction_losses=config.losses["reconstruction"],
+            reconstruction_losses=config.losses.get(
+                "reconstruction",
+                {},
+            ),
+            custom_objective_losses=config.losses.get(
+                "custom_objective",
+                {},
+            ),
         )
 
         run_log.info("Assembled model: %s", type(model).__name__)
@@ -106,15 +114,25 @@ def build_model(
         if config.decoder is None:
             raise ValueError("VAE requires a decoder config section.")
         if prediction_reconstruction_latent_source is None:
-            prediction_reconstruction_latent_source = "mean"
+            prediction_reconstruction_latent_source: Literal["mean", "sample"] = "mean"
 
         model = build_vae(
             encoder=config.encoder,
             decoder=config.decoder,
             optimizer=config.optimizer,
             latent_dim=config.model.params["latent_dim"],
-            reconstruction_losses=config.losses["reconstruction"],
-            regularization_losses=config.losses["regularization"],
+            reconstruction_losses=config.losses.get(
+                "reconstruction",
+                {},
+            ),
+            regularization_losses=config.losses.get(
+                "regularization",
+                {},
+            ),
+            custom_objective_losses=config.losses.get(
+                "custom_objective",
+                {},
+            ),
             prediction_reconstruction_latent_source=(
                 prediction_reconstruction_latent_source
             ),
@@ -138,6 +156,10 @@ def build_autoencoder(
             Callable[[Iterable[nn.Parameter]], torch.optim.Optimizer]
     ),
     reconstruction_losses: dict[str, LossTermConfig | LossTerm],
+    custom_objective_losses: dict[
+        str,
+        LossTermConfig | LossTerm,
+    ],
 ) -> Autoencoder:
     run_log = get_run_logger()
 
@@ -178,28 +200,47 @@ def build_autoencoder(
         run_log.info("Using provided optimizer factory: %s",
                      getattr(optimizer, "__name__", type(optimizer).__name__))
 
-    loss_sources = {
-        loss_name: "provided" if isinstance(loss_spec, LossTerm) else "config"
-        for loss_name, loss_spec in reconstruction_losses.items()
+    sources_by_role = {
+        "reconstruction": {
+            loss_name: (
+                "provided"
+                if isinstance(loss_spec, LossTerm)
+                else "config"
+            )
+            for loss_name, loss_spec
+            in reconstruction_losses.items()
+        },
+        "custom_objective": {
+            loss_name: (
+                "provided"
+                if isinstance(loss_spec, LossTerm)
+                else "config"
+            )
+            for loss_name, loss_spec
+            in custom_objective_losses.items()
+        },
     }
 
-    reconstruction_losses = _build_reconstruction_losses(reconstruction_losses)
-    run_log.info(
-        "Resolved reconstruction losses: %s",
-        ", ".join(
-            (
-                f"{loss_name} ({loss_sources[loss_name]})"
-                f" -> {type(loss_term.loss).__name__}"
-                f" (weight={loss_term.weight})"
-            )
-            for loss_name, loss_term in reconstruction_losses.items()
-        ),
+    reconstruction_losses = _build_reconstruction_losses(
+        reconstruction_losses
+    )
+    custom_objective_losses = _build_custom_objective_losses(
+        custom_objective_losses
+    )
+
+    _log_resolved_losses(
+        losses_by_role={
+            "reconstruction": reconstruction_losses,
+            "custom_objective": custom_objective_losses,
+        },
+        sources_by_role=sources_by_role,
     )
 
     return Autoencoder(
         encoder=encoder,
         decoder=decoder,
         reconstruction_losses=reconstruction_losses,
+        custom_objective_losses=custom_objective_losses,
         optimizer_factory=optimizer_factory,
     )
 
@@ -214,6 +255,10 @@ def build_vae(
     latent_dim: int,
     reconstruction_losses: dict[str, LossTermConfig | LossTerm],
     regularization_losses: dict[str, LossTermConfig | LossTerm],
+    custom_objective_losses: dict[
+        str,
+        LossTermConfig | LossTerm,
+    ],
     prediction_reconstruction_latent_source: (
             Literal["mean", "sample"]
     ) = "mean",
@@ -257,11 +302,6 @@ def build_vae(
         run_log.info("Using provided optimizer factory: %s",
                      getattr(optimizer, "__name__", type(optimizer).__name__))
 
-    reconstruction_loss_sources = {
-        loss_name: "pre-built" if isinstance(loss_spec, LossTerm) else "config"
-        for loss_name, loss_spec in reconstruction_losses.items()
-    }
-
     # Compression warning
     variational_head_in_features = encoder.output_dim
     compression_ratio = variational_head_in_features / latent_dim
@@ -291,35 +331,53 @@ def build_vae(
     run_log.info("Built variational head: %s",
                  type(variational_head).__name__)
 
-    reconstruction_losses = _build_reconstruction_losses(reconstruction_losses)
-    run_log.info(
-        "Resolved reconstruction losses: %s",
-        ", ".join(
-            (
-                f"{loss_name} ({reconstruction_loss_sources[loss_name]})"
-                f" -> {type(loss_term.loss).__name__}"
-                f" (weight={loss_term.weight})"
+    sources_by_role = {
+        "reconstruction": {
+            loss_name: (
+                "provided"
+                if isinstance(loss_spec, LossTerm)
+                else "config"
             )
-            for loss_name, loss_term in reconstruction_losses.items()
-        ),
-    )
-
-    regularization_loss_sources = {
-        loss_name: "provided" if isinstance(loss_spec, LossTerm) else "config"
-        for loss_name, loss_spec in regularization_losses.items()
+            for loss_name, loss_spec
+            in reconstruction_losses.items()
+        },
+        "regularization": {
+            loss_name: (
+                "provided"
+                if isinstance(loss_spec, LossTerm)
+                else "config"
+            )
+            for loss_name, loss_spec
+            in regularization_losses.items()
+        },
+        "custom_objective": {
+            loss_name: (
+                "provided"
+                if isinstance(loss_spec, LossTerm)
+                else "config"
+            )
+            for loss_name, loss_spec
+            in custom_objective_losses.items()
+        },
     }
 
-    regularization_losses = _build_regularization_losses(regularization_losses)
-    run_log.info(
-        "Resolved regularization losses: %s",
-        ", ".join(
-            (
-                f"{loss_name} ({regularization_loss_sources[loss_name]})"
-                f" -> {type(loss_term.loss).__name__}"
-                f" (weight={loss_term.weight})"
-            )
-            for loss_name, loss_term in regularization_losses.items()
-        ),
+    reconstruction_losses = _build_reconstruction_losses(
+        reconstruction_losses
+    )
+    regularization_losses = _build_regularization_losses(
+        regularization_losses
+    )
+    custom_objective_losses = _build_custom_objective_losses(
+        custom_objective_losses
+    )
+
+    _log_resolved_losses(
+        losses_by_role={
+            "reconstruction": reconstruction_losses,
+            "regularization": regularization_losses,
+            "custom_objective": custom_objective_losses,
+        },
+        sources_by_role=sources_by_role,
     )
 
     return VAE(
@@ -328,6 +386,7 @@ def build_vae(
         variational_head=variational_head,
         reconstruction_losses=reconstruction_losses,
         regularization_losses=regularization_losses,
+        custom_objective_losses=custom_objective_losses,
         optimizer_factory=optimizer_factory,
         prediction_reconstruction_latent_source=(
             prediction_reconstruction_latent_source
@@ -436,3 +495,59 @@ def _build_regularization_losses(
         )
 
     return loss_terms
+
+
+def _build_custom_objective_losses(
+    custom_objective_losses: dict[
+        str,
+        LossTermConfig | LossTerm,
+    ],
+) -> dict[str, LossTerm]:
+    loss_terms: dict[str, LossTerm] = {}
+
+    for loss_name, loss_spec in custom_objective_losses.items():
+        if isinstance(loss_spec, LossTerm):
+            loss_terms[loss_name] = loss_spec
+            continue
+
+        loss_terms[loss_name] = LossTerm(
+            loss=CUSTOM_OBJECTIVE_LOSSES.create(
+                loss_name,
+                **loss_spec.params,
+            ),
+            weight=loss_spec.weight,
+        )
+
+    return loss_terms
+
+
+def _log_resolved_losses(
+    *,
+    losses_by_role: dict[str, dict[str, LossTerm]],
+    sources_by_role: dict[str, dict[str, str]],
+) -> None:
+    run_log = get_run_logger()
+
+    descriptions = []
+
+    for role, loss_terms in losses_by_role.items():
+        if not loss_terms:
+            continue
+
+        sources = sources_by_role[role]
+
+        terms = ", ".join(
+            (
+                f"{loss_name} ({sources[loss_name]})"
+                f" -> {type(loss_term.loss).__name__}"
+                f" (weight={loss_term.weight})"
+            )
+            for loss_name, loss_term in loss_terms.items()
+        )
+
+        descriptions.append(f"{role}=[{terms}]")
+
+    run_log.info(
+        "Resolved losses: %s",
+        "; ".join(descriptions),
+    )

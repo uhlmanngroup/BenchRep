@@ -14,14 +14,23 @@ from benchrep.interfaces.contracts import (
 from benchrep.architecture.decoders.base import BaseDecoder
 from benchrep.architecture.encoders.base import BaseEncoder
 from benchrep.architecture.losses.base import LossTerm
+from benchrep.architecture.models.utils import validate_loss_weights
 
 
 class Autoencoder(BenchRepAutoencoderModel):
+    """Deterministic autoencoder with weighted role-scoped losses.
+
+    Reconstruction losses receive the reconstructed input and reconstruction
+    target. Custom objective losses receive the complete batch and forward
+    output, allowing objectives that do not fit the reconstruction-loss
+    contract. Terms from both roles contribute additively to the total loss.
+    """
     def __init__(
         self,
         encoder: BaseEncoder,
         decoder: BaseDecoder,
         reconstruction_losses: dict[str, LossTerm],
+        custom_objective_losses: dict[str, LossTerm],
         optimizer_factory: Callable[[Iterable[nn.Parameter]], torch.optim.Optimizer],
     ) -> None:
         super().__init__()
@@ -45,23 +54,28 @@ class Autoencoder(BenchRepAutoencoderModel):
         self.decoder = decoder
         self.optimizer_factory = optimizer_factory
 
-        if not reconstruction_losses: # fail fast
-            raise ValueError("Autoencoder requires at least one reconstruction loss.")
+        if not reconstruction_losses and not custom_objective_losses:
+            raise ValueError(
+                "Autoencoder requires at least one reconstruction loss "
+                "or custom objective loss."
+            )
 
-        for loss_name, weighted_loss in reconstruction_losses.items():
-            if weighted_loss.weight < 0:
-                raise ValueError(
-                    f"Reconstruction loss {loss_name!r} has negative weight "
-                    f"{weighted_loss.weight}."
-                )
+        validate_loss_weights(
+            {
+                "reconstruction": reconstruction_losses,
+                "custom_objective": custom_objective_losses,
+            }
+        )
 
-        self.reconstruction_losses = reconstruction_losses
+        self.reconstruction_losses = nn.ModuleDict(reconstruction_losses)
+        self.custom_objective_losses = nn.ModuleDict(custom_objective_losses)
 
         self.save_hyperparameters(
             ignore=[
                 "encoder",
                 "decoder",
                 "reconstruction_losses",
+                "custom_objective_losses",
                 "optimizer_factory",
             ]
         )
@@ -100,7 +114,6 @@ class Autoencoder(BenchRepAutoencoderModel):
             sample_id=batch.get("sample_id"),
             label=batch.get("label"),
             metadata=batch.get("metadata"),
-
         )
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
@@ -110,36 +123,64 @@ class Autoencoder(BenchRepAutoencoderModel):
         x = self._get_input_from_batch(batch)
         output = self(x)
         reconstruction = output["reconstruction"]
-        total_loss = torch.zeros((), device=x.device, dtype=x.dtype)
         batch_size = x.shape[0]
+        total_loss = torch.zeros((), device=x.device, dtype=x.dtype)
 
-        # Custom reconstruction losses should inherit from BaseReconstructionLoss,
-        # or at least implement forward(reconstruction, target).
-        for loss_name, loss_term in self.reconstruction_losses.items():
-            raw_loss = loss_term.loss(
-                reconstruction=reconstruction,
-                target=x,
-            )
-            weighted_loss_value = loss_term.weight * raw_loss
-            total_loss = total_loss + weighted_loss_value
+        loss_groups = {
+            "reconstruction": (
+                self.reconstruction_losses,
+                {
+                    "reconstruction": reconstruction,
+                    "target": x,
+                },
+            ),
+            "custom_objective": (
+                self.custom_objective_losses,
+                {
+                    "batch": batch,
+                    "model_output": output,
+                },
+            ),
+        }
 
-            self.log(
-                f"{stage}/reconstruction/{loss_name}",
-                raw_loss,
-                on_step=stage == "train",
-                on_epoch=True,
-                prog_bar=False,
-                batch_size=batch_size,
-            )
+        for role, (loss_terms, loss_kwargs) in loss_groups.items():
+            role_label = role.replace("_", " ").title()
 
-            self.log(
-                f"{stage}/reconstruction/{loss_name}_weighted",
-                weighted_loss_value,
-                on_step=stage == "train",
-                on_epoch=True,
-                prog_bar=False,
-                batch_size=batch_size,
-            )
+            for loss_name, loss_term in loss_terms.items():
+                raw_loss = loss_term.loss(**loss_kwargs)
+
+                if not isinstance(raw_loss, torch.Tensor):
+                    raise TypeError(
+                        f"{role_label} loss {loss_name!r} must return a "
+                        f"torch.Tensor, got {type(raw_loss).__name__}."
+                    )
+
+                if raw_loss.ndim != 0:
+                    raise ValueError(
+                        f"{role_label} loss {loss_name!r} must return a "
+                        f"scalar tensor, got shape {tuple(raw_loss.shape)}."
+                    )
+
+                weighted_loss = loss_term.weight * raw_loss
+                total_loss = total_loss + weighted_loss
+
+                self.log(
+                    f"{stage}/{role}/{loss_name}",
+                    raw_loss,
+                    on_step=stage == "train",
+                    on_epoch=True,
+                    prog_bar=False,
+                    batch_size=batch_size,
+                )
+
+                self.log(
+                    f"{stage}/{role}/{loss_name}_weighted",
+                    weighted_loss,
+                    on_step=stage == "train",
+                    on_epoch=True,
+                    prog_bar=False,
+                    batch_size=batch_size,
+                )
 
         self.log(
             f"{stage}/loss",
