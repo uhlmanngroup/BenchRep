@@ -5,6 +5,7 @@ from benchrep.architecture.losses.reconstruction import (
     MAEReconstructionLoss,
 )
 from benchrep.architecture.losses.regularization import GaussianKLDivergenceLoss
+from benchrep.architecture.losses.custom_objective import BaseCustomObjectiveLoss
 
 __all__ = [
     "LossTerm",
@@ -12,4 +13,5 @@ __all__ = [
     "MSEReconstructionLoss",
     "MAEReconstructionLoss",
     "GaussianKLDivergenceLoss",
+    "BaseCustomObjectiveLoss",
 ]

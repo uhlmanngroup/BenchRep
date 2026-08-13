@@ -13,6 +13,7 @@ from benchrep.assembly.registries.core import (
     MODELS,
     RECONSTRUCTION_LOSSES,
     REGULARIZATION_LOSSES,
+    CUSTOM_OBJECTIVE_LOSSES,
     OPTIMIZERS,
     LOGGERS,
     CALLBACKS,
@@ -121,6 +122,19 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
         contract=(
             "The registered loss must accept `z_mu` and `z_logvar` keyword "
             "arguments and return a loss tensor."
+        ),
+    ),
+    "custom_objective_loss": ComponentRegistryInfo(
+        symbol="CUSTOM_OBJECTIVE_LOSSES",
+        registry=CUSTOM_OBJECTIVE_LOSSES,
+        custom_registration_supported=True,
+        runtime_instance_override_supported=False,
+        config_locations=(
+            "TrainingConfig.losses.custom_objective",
+        ),
+        contract=(
+            "The registered loss must accept keyword-only `batch` and "
+            "`model_output` mappings and return a scalar loss tensor."
         ),
     ),
     "optimizer": ComponentRegistryInfo(

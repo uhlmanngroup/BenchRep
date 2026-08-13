@@ -183,6 +183,7 @@ MODELS = Registry(
 )
 RECONSTRUCTION_LOSSES = Registry("reconstruction loss")
 REGULARIZATION_LOSSES = Registry("regularization loss")
+CUSTOM_OBJECTIVE_LOSSES = Registry("custom objective loss")
 OPTIMIZERS = Registry("optimizer")
 LOGGERS = Registry("logger")
 CALLBACKS = Registry("callback")

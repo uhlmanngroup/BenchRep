@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 import pytest
 
 from benchrep.assembly.registries.core import Registry
@@ -16,6 +14,7 @@ EXPECTED_CUSTOM_REGISTRATION_POLICY = {
     "model": False,
     "reconstruction_loss": True,
     "regularization_loss": True,
+    "custom_objective_loss": True,
     "optimizer": True,
     "logger": True,
     "callback": True,

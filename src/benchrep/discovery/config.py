@@ -30,6 +30,7 @@ _CONFIG_REGISTRY_ROUTES: Final[dict[str, tuple[str, ...]]] = {
     "LossTermConfig": (
         "reconstruction_loss",
         "regularization_loss",
+        "custom_objective_loss",
     ),
     "OptimizerConfig": ("optimizer",),
     "LoggerConfig": ("logger",),

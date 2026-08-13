@@ -28,6 +28,7 @@ from benchrep.assembly.schemas.training_config_schema import (
     ModelConfig,
     EncoderConfig,
     DecoderConfig,
+    SupportedLossRole,
     LossTermConfig,
     OptimizerConfig,
     TransformConfig,
@@ -76,7 +77,10 @@ ConfigSource: TypeAlias = Literal[
     "yaml_with_components",
 ]
 
-LossesConfig: TypeAlias = dict[str, dict[str, LossTermConfig]]
+LossesConfig: TypeAlias = dict[
+    SupportedLossRole,
+    dict[str, LossTermConfig],
+]
 
 TransformsConfig: TypeAlias = list[TransformConfig]
 AdditionalCallbacksConfig: TypeAlias = list[AdditionalCallbackConfig]

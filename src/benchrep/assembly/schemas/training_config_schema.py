@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated, Any, Generic, Literal, TypeVar
+from typing import Annotated, Any, Generic, Literal, TypeVar, TypeAlias
 
 from pydantic import (
     BaseModel,
@@ -30,6 +30,13 @@ def _require_present(value: object, field_name: str) -> None:
         raise ValueError(
             f"`{field_name}` is required unless the corresponding object is overridden."
         )
+
+
+SupportedLossRole: TypeAlias = Literal[
+    "reconstruction",
+    "regularization",
+    "custom_objective",
+]
 
 
 _LOGGER_REQUIRED_ADDITIONAL_CALLBACKS = frozenset({
@@ -160,21 +167,35 @@ class DecoderConfig(NamedConfig):
 # Optimization/loss configuration
 # -------------------------
 class LossTermConfig(_TrainingConfigBaseModel):
-    """Configuration for one weighted loss within a role-specific loss mapping.
+    """Configuration for one weighted term in a role-specific loss mapping.
 
-    The surrounding mapping key is the registered loss name. Its parent role
-    determines the registry and calling convention: reconstruction losses receive
-    `reconstruction` and `target`, while regularization losses currently receive
-    `z_mu` and `z_logvar`.
+    The surrounding mapping key is the registered component name. Its parent role
+    selects the registry and runtime calling convention:
 
-    Use `benchrep.inspect_registry("reconstruction_loss")` or
-    `benchrep.inspect_registry("regularization_loss")` to inspect available names
-    and aliases. Pass a component name as the second argument to inspect its
-    registered constructor and documentation.
+    - `reconstruction`: called with `reconstruction` and `target`.
+    - `regularization`: called with `z_mu` and `z_logvar`.
+    - `custom_objective`: called with `batch` and `model_output` mappings.
 
-    User-registered losses must satisfy the relevant calling convention and must
-    be registered again when reconstructing an internally assembled model for
-    linked prediction.
+    `params` are passed only to the registered component's constructor. Runtime
+    model tensors are supplied separately by the model when the objective is
+    evaluated.
+
+    Every configured term must return a scalar tensor. BenchRep multiplies that
+    value by the configured `weight` before adding it to the other configured
+    terms.
+
+    Use `benchrep.inspect_registry("reconstruction_loss")`,
+    `benchrep.inspect_registry("regularization_loss")`, or
+    `benchrep.inspect_registry("custom_objective_loss")` to inspect available names,
+    aliases, constructors, and calling contracts.
+
+    User-registered components must satisfy the selected role's calling convention
+    and must be registered again when reconstructing an internally assembled model
+    for linked prediction.
+
+    A custom objective may use any fields available in the batch or model output.
+    If it is used in place of reconstruction or regularization losses, the custom
+    objective is responsible for implementing the omitted behavior.
     """
 
     weight: float = Field(
@@ -204,6 +225,12 @@ class LossTermConfig(_TrainingConfigBaseModel):
             "null_behavior": "Not allowed; use an empty mapping instead.",
         },
     )
+
+
+LossRoleTerms: TypeAlias = Annotated[
+    dict[str, LossTermConfig],
+    Field(min_length=1),
+]
 
 
 class OptimizerConfig(NamedConfig):
@@ -1259,11 +1286,14 @@ class TrainingConfig(_TrainingConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
-    losses: dict[str, dict[str, LossTermConfig]] | None = Field(
+    losses: dict[SupportedLossRole, LossRoleTerms] | None = Field(
         default_factory=dict,
         description=(
-            "Losses grouped first by loss role and then by registered loss name. "
-            "Built-in autoencoders require `reconstruction`; built-in VAEs require "
+            "Losses grouped first by role and then by registered component name. "
+            "All configured terms across all roles contribute additively to the "
+            "total loss. A nonempty `custom_objective` mapping may be used alone "
+            "or alongside the standard roles. Without a custom objective, built-in "
+            "autoencoders require `reconstruction`, while built-in VAEs require "
             "both `reconstruction` and `regularization`. This section is ignored "
             "when an external model object is supplied."
         ),
@@ -1276,6 +1306,12 @@ class TrainingConfig(_TrainingConfigBaseModel):
                 "Allowed when an external model is supplied; otherwise a loss "
                 "configuration is required."
             ),
+            "notes": [
+                "A configured custom objective bypasses only the structural "
+                "requirements for standard loss roles.",
+                "BenchRep does not verify that a custom objective reproduces any "
+                "omitted reconstruction or regularization behavior.",
+            ],
         },
     )
     optimizer: OptimizerConfig | None = Field(
@@ -1472,38 +1508,66 @@ class TrainingConfig(_TrainingConfigBaseModel):
 
         model_cls = MODELS.get(model_name)
 
+        has_reconstruction = bool(
+            self.losses.get("reconstruction")
+        )
+        has_regularization = bool(
+            self.losses.get("regularization")
+        )
+        has_custom_objective = bool(
+            self.losses.get("custom_objective")
+        )
+
         if model_cls is Autoencoder:
             if self.decoder is None:
-                raise ValueError("Autoencoder requires a decoder config section.")
-
-            if "reconstruction" not in self.losses or not self.losses["reconstruction"]:
                 raise ValueError(
-                    "Autoencoder requires at least one reconstruction loss under "
-                    "`losses.reconstruction`."
+                    "Autoencoder requires a decoder config section."
+                )
+
+            if has_regularization:
+                raise ValueError(
+                    "Autoencoder does not support losses under "
+                    "`losses.regularization`; use `losses.custom_objective` "
+                    "for objectives requiring non-reconstruction model outputs."
+                )
+
+            if not has_reconstruction and not has_custom_objective:
+                raise ValueError(
+                    "Autoencoder requires at least one loss under either "
+                    "`losses.reconstruction` or `losses.custom_objective`."
                 )
 
         elif model_cls is VAE:
             if self.decoder is None:
-                raise ValueError("VAE requires a decoder config section.")
+                raise ValueError(
+                    "VAE requires a decoder config section."
+                )
 
             if "latent_dim" not in self.model.params:
-                raise ValueError("VAE requires `model.params.latent_dim`.")
+                raise ValueError(
+                    "VAE requires `model.params.latent_dim`."
+                )
 
             latent_dim = self.model.params.get("latent_dim")
+
             if not isinstance(latent_dim, int) or latent_dim <= 0:
                 raise ValueError(
-                    "VAE requires `model.params.latent_dim` to be a positive integer."
+                    "VAE requires `model.params.latent_dim` to be a "
+                    "positive integer."
                 )
 
-            if "reconstruction" not in self.losses or not self.losses["reconstruction"]:
-                raise ValueError(
-                    "VAE requires at least one reconstruction loss under "
-                    "`losses.reconstruction`."
-                )
+            has_complete_standard_objective = (
+                    has_reconstruction and has_regularization
+            )
 
-            if "regularization" not in self.losses or not self.losses["regularization"]:
+            if (
+                    not has_custom_objective
+                    and not has_complete_standard_objective
+            ):
                 raise ValueError(
-                    "VAE requires at least one regularization loss under "
+                    "VAE requires either a nonempty "
+                    "`losses.custom_objective` mapping or at least one loss "
+                    "under both `losses.reconstruction` and "
                     "`losses.regularization`."
                 )
 
