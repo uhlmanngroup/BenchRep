@@ -14,6 +14,7 @@ from pydantic import (
     StringConstraints,
     NonNegativeInt,
     ValidationInfo,
+    field_validator,
 )
 
 NSplits = Annotated[int, Field(ge=2)]
@@ -58,31 +59,315 @@ HexColor = Annotated[
 # -------------------------
 # Generic reusable blocks
 # -------------------------
-class EvalStepConfig(BaseModel):
-    # None means "auto"; the resolver decides based on available inputs.
-    enabled: bool | None = None
-    params: dict[str, Any] | None = None
+class _EvaluationConfigBaseModel(BaseModel):
+    """Base model for strict evaluation configuration schemas."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "extra_field_behavior": (
+                "Forbidden at this configuration level; unknown fields raise a "
+                "validation error."
+            ),
+        },
+    )
 
 
-class EvalMetricGroupConfig(BaseModel):
-    # None means "auto"; the resolver decides based on available inputs.
-    enabled: bool | None = None
-    selected: list[str] | None = None
-    params: dict[str, dict[str, Any]] | None = None
+class EvalStepConfig(_EvaluationConfigBaseModel):
+    """Shared configuration for an optional evaluation step.
+
+    Evaluation steps use tri-state enablement. `True` explicitly enables the
+    step, `False` disables it, and `None` delegates the decision to the
+    evaluation resolver. Automatic behavior differs between concrete steps and
+    may depend on available source artifacts.
+
+    Enabling a step requests its execution but does not guarantee success.
+    Recoverable step-local failures are recorded with a `failed` status and the
+    pipeline continues, while dependent steps are skipped. Fatal configuration,
+    dependency, or unexpected runtime failures terminate the workflow.
+    """
+
+    enabled: bool | None = Field(
+        default=None,
+        description=(
+            "Tri-state switch controlling whether the evaluation step runs. "
+            "Automatic behavior is defined by the concrete step."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses the concrete step's automatic behavior.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    params: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Parameters supplied to the evaluation step. Concrete step schemas "
+            "replace this mapping with their corresponding typed parameter model."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses the concrete step's configured defaults.",
+            "null_behavior": (
+                "Uses an empty parameter mapping, allowing runtime defaults to apply."
+            ),
+        },
+    )
+
+
+class EvalMetricGroupConfig(_EvaluationConfigBaseModel):
+    """Shared configuration for a registry-backed metric group.
+
+    Each group may compute multiple registered metrics. If some metrics fail
+    recoverably, successful results are retained and the group completes with
+    warnings. If every selected metric fails recoverably, the group is marked
+    failed and the evaluation pipeline continues. Invalid configuration and
+    unexpected runtime failures remain fatal.
+    """
+
+    enabled: bool | None = Field(
+        default=None,
+        description=(
+            "Tri-state switch controlling whether the metric group runs. "
+            "Automatic behavior is defined by the concrete group and may depend "
+            "on enabled upstream steps or available source artifacts."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses the concrete metric group's automatic behavior.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    selected: list[str] | None = Field(
+        default=None,
+        description="Registered metric names or aliases to compute.",
+        json_schema_extra={
+            "omit_behavior": (
+                "Selects all registered metrics unless the concrete group "
+                "defines its own default selection."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "An empty list is rejected when the metric group runs."
+            ],
+        },
+    )
+    params: dict[str, dict[str, Any]] | None = Field(
+        default=None,
+        description=(
+            "Per-metric keyword arguments keyed by registered metric name or alias."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Passes no metric-specific parameters.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Nested mappings intentionally permit callable-specific arguments "
+                "and are validated against the resolved metric callable."
+            ],
+        },
+    )
 
 
 # -------------------------
 # Source and run config
 # -------------------------
-class EvaluationSourceConfig(BaseModel):
-    prediction_manifest_path: Path | None = None
-    embeddings_path: Path | None = None
-    reconstructions_path: Path | None = None
+class EvaluationSourceConfig(_EvaluationConfigBaseModel):
+    """Selects the embedding and optional reconstruction inputs for evaluation.
+
+    Evaluation always requires an AnnData embedding artifact. It may be supplied
+    directly or inferred from a prediction manifest. Reconstruction artifacts
+    are optional and may likewise be supplied directly or inferred independently,
+    allowing direct paths and manifest-derived paths to be mixed.
+
+    A directly configured artifact path takes precedence over the corresponding
+    path recorded in the manifest. The manifest still provides upstream
+    provenance and may supply evaluation run identity.
+
+    Direct inputs follow BenchRep's public evaluation artifact contracts and do
+    not need to have been produced by a BenchRep prediction workflow.
+
+    All configured paths expand `~` and resolve relative paths against the
+    current working directory.
+    """
+
+    prediction_manifest_path: Path | None = Field(
+        default=None,
+        description=(
+            "Path to a BenchRep prediction manifest used to infer unspecified "
+            "input artifacts, upstream provenance, and evaluation run identity."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "No configured manifest is loaded. An embedding path must be "
+                "provided directly unless a manifest is supplied through the "
+                "evaluation entrypoint."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "The `prediction_manifest_path` entrypoint argument takes "
+                "precedence over this field.",
+                "Accepted prediction statuses are `completed`, "
+                "`completed_with_warnings`, and `partially_completed`.",
+                "A partially completed prediction produces a warning; its "
+                "referenced artifacts are still validated before use.",
+            ],
+        },
+    )
+    embeddings_path: Path | None = Field(
+        default=None,
+        description=(
+            "Path to an AnnData `.h5ad` file. `adata.X` must be a non-empty, "
+            "two-dimensional, finite numeric matrix with shape "
+            "`(n_observations, n_embedding_dimensions)`; dense and sparse matrices "
+            "are supported. Each row represents one sample and each column one "
+            "embedding dimension."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Infers the embeddings path from the prediction manifest. "
+                "Validation fails if no manifest is available."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "`adata.X` is the representation consumed by dimensionality "
+                "reduction, clustering, embedding metrics, and predictability probes.",
+                "`adata.obs` may provide per-sample annotations such as external "
+                "clustering labels, predictability targets, cross-validation groups, "
+                "or metadata columns used to color reduction plots. Required keys "
+                "depend on the enabled steps.",
+                "No BenchRep-specific `obs`, `obsm`, or `uns` entries are required. "
+                "Existing entries are preserved unless an enabled step explicitly "
+                "overwrites them.",
+                "A directly configured path overrides the embeddings path recorded "
+                "in the prediction manifest.",
+            ],
+        },
+    )
+    reconstructions_path: Path | None = Field(
+        default=None,
+        description=(
+            "Path to a reconstruction artifact directory used for reconstruction "
+            "metrics, error maps, TIFF export, and reconstruction grids. The "
+            "directory must contain `input.pt`, `reconstruction.pt`, and `obs.pt`; "
+            "`reconstruction_export_metadata.pt` is optional."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Uses the reconstruction bundle recorded in the prediction manifest "
+                "when available; otherwise reconstruction inputs are unavailable."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "`input.pt` must contain a real numeric PyTorch tensor or NumPy array "
+                "with shape `(B, H, W)` or `(B, C, H, W)`. All axes must be non-empty "
+                "and all values finite.",
+                "`reconstruction.pt` must contain the same kind of array, with "
+                "exactly the same shape as `input.pt`. The two arrays are compared "
+                "by reconstruction metrics and error-map computations.",
+                "`obs.pt` must contain an object with an inferable length of exactly "
+                "`B`. A mapping of column names to equal-length sequences, or a "
+                "table-like object with columns, provides the fullest support.",
+                "Optional `obs.pt` fields include `sample_id` for TIFF filenames, "
+                "`sample_id` or `source_index` for reconstruction-grid row labels, "
+                "and any field selected through reconstruction-grid `stratify_by`.",
+                "`reconstruction_export_metadata.pt`, when present, must contain a "
+                "mapping. Its optional `channel_names` sequence must contain exactly "
+                "`C` names and labels per-channel reconstruction metric results; "
+                "otherwise names such as `channel_0` are generated.",
+                "A directly configured directory overrides reconstruction paths "
+                "recorded in the prediction manifest.",
+                "An incomplete directly configured bundle raises an error. An "
+                "incomplete manifest-derived bundle produces a warning and is skipped.",
+                "PyTorch `.pt` artifacts should only be loaded from trusted sources.",
+            ],
+        },
+    )
+
+    @field_validator(
+        "prediction_manifest_path",
+        "embeddings_path",
+        "reconstructions_path",
+    )
+    @classmethod
+    def resolve_source_path(cls, value: Path | None) -> Path | None:
+        if value is None:
+            return None
+
+        return value.expanduser().resolve()
+
+    @field_validator("prediction_manifest_path")
+    @classmethod
+    def validate_prediction_manifest_extension(
+        cls,
+        value: Path | None,
+    ) -> Path | None:
+        if value is not None and value.suffix.lower() not in {".yaml", ".yml"}:
+            raise ValueError(
+                "source.prediction_manifest_path must point to a YAML file."
+            )
+
+        return value
+
+    @field_validator("embeddings_path")
+    @classmethod
+    def validate_embeddings_extension(
+        cls,
+        value: Path | None,
+    ) -> Path | None:
+        if value is not None and value.suffix.lower() != ".h5ad":
+            raise ValueError(
+                "source.embeddings_path must point to an AnnData .h5ad file."
+            )
+
+        return value
 
 
-class EvaluationRunConfig(BaseModel):
-    output_root: Path | None = None
-    run_name: str | None = None
+class EvaluationRunConfig(_EvaluationConfigBaseModel):
+    """Controls the evaluation output location and generated run identity.
+
+    BenchRep writes each evaluation beneath an `evaluation/` stage directory and
+    creates a timestamped run directory. When a prediction manifest is available,
+    project and model identity are inferred from it when possible.
+    """
+
+    output_root: Path | None = Field(
+        default=None,
+        description=(
+            "Base directory beneath which BenchRep creates the evaluation stage "
+            "and generated run directories."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Infers the base output root from the prediction manifest when "
+                "possible; otherwise uses `outputs/` relative to the working directory."
+            ),
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    run_name: str | None = Field(
+        default=None,
+        description=(
+            "Optional stem used to construct the generated evaluation run name. "
+            "BenchRep sanitizes the stem and appends a timestamp."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Uses model identity inferred from the prediction manifest when "
+                "available; otherwise uses `evaluation`."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "A project name inferred from the manifest is prepended when available.",
+                "If the generated directory already exists, BenchRep appends a "
+                "short unique suffix.",
+            ],
+        },
+    )
+
+    @field_validator("output_root")
+    @classmethod
+    def resolve_output_root(cls, value: Path | None) -> Path | None:
+        if value is None:
+            return None
+
+        return value.expanduser().resolve()
 
 
 # -------------------------
@@ -97,9 +382,7 @@ class PCAParams(BaseModel):
     overwrite: bool | None = False
 
 
-class UMAPParams(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
+class UMAPParams(_EvaluationConfigBaseModel):
     n_neighbors: PositiveInt | None = 15
     n_pcs: PositiveInt | None = None
     min_dist: NonNegativeFloat | None = 0.1
@@ -134,7 +417,7 @@ class TSNEConfig(EvalStepConfig):
     params: TSNEParams | None = Field(default_factory=TSNEParams)
 
 
-class EvaluationReductionsConfig(BaseModel):
+class EvaluationReductionsConfig(_EvaluationConfigBaseModel):
     pca: PCAConfig = Field(default_factory=PCAConfig)
     umap: UMAPConfig = Field(default_factory=UMAPConfig)
     tsne: TSNEConfig = Field(default_factory=TSNEConfig)
@@ -167,9 +450,7 @@ class KMeansConfig(EvalStepConfig):
         return self
 
 
-class LeidenParams(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
+class LeidenParams(_EvaluationConfigBaseModel):
     resolution: PositiveFloat | None = 1.0
     n_neighbors: PositiveInt | None = 15
     n_pcs: PositiveInt | None = None
@@ -205,7 +486,7 @@ class HDBSCANConfig(EvalStepConfig):
     )
 
 
-class EvaluationClusteringConfig(BaseModel):
+class EvaluationClusteringConfig(_EvaluationConfigBaseModel):
     kmeans: KMeansConfig = Field(default_factory=KMeansConfig)
     leiden: LeidenConfig = Field(default_factory=LeidenConfig)
     hdbscan: HDBSCANConfig = Field(default_factory=HDBSCANConfig)
@@ -214,7 +495,7 @@ class EvaluationClusteringConfig(BaseModel):
 # -------------------------
 # Reconstruction artifacts config
 # -------------------------
-class ErrorMapParams(BaseModel):
+class ErrorMapParams(_EvaluationConfigBaseModel):
     model_config = ConfigDict(extra="forbid")
 
     kinds: list[ErrorMapKind] = Field(
@@ -224,7 +505,7 @@ class ErrorMapParams(BaseModel):
     denominator_floor: PositiveFloat | None = None
 
 
-class EvaluationReconstructionConfig(BaseModel):
+class EvaluationReconstructionConfig(_EvaluationConfigBaseModel):
     export_tiffs: bool = False
     n_examples: PositiveInt | None = None
     error_maps: ErrorMapParams = Field(default_factory=ErrorMapParams)
@@ -243,7 +524,7 @@ class ExternalClusteringMetricConfig(EvalMetricGroupConfig):
     label_key: str = "label"
 
 
-class EvaluationClusteringMetricsConfig(BaseModel):
+class EvaluationClusteringMetricsConfig(_EvaluationConfigBaseModel):
     internal: InternalClusteringMetricConfig = Field(default_factory=InternalClusteringMetricConfig)
     external: ExternalClusteringMetricConfig = Field(default_factory=ExternalClusteringMetricConfig)
 
@@ -278,7 +559,7 @@ class ReconstructionMetricConfig(EvalMetricGroupConfig):
 
 
 # Predictability ---
-class EvaluationCrossValidationConfig(BaseModel):
+class EvaluationCrossValidationConfig(_EvaluationConfigBaseModel):
     method: Literal[
         "stratified_kfold",
         "kfold",
@@ -314,11 +595,11 @@ class EvaluationCrossValidationConfig(BaseModel):
         return self
 
 
-class TuningInnerCVConfig(BaseModel):
+class TuningInnerCVConfig(_EvaluationConfigBaseModel):
     n_splits: NSplits = 3
 
 
-class EvaluationCVTuningConfig(BaseModel):
+class EvaluationCVTuningConfig(_EvaluationConfigBaseModel):
     enabled: bool = False
     inner_cv: TuningInnerCVConfig | None = None
 
@@ -331,7 +612,7 @@ class EvaluationCVTuningConfig(BaseModel):
         return self
 
 
-class DummyProbeConfig(BaseModel):
+class DummyProbeConfig(_EvaluationConfigBaseModel):
     strategy: Literal[
         "most_frequent",
         "stratified",
@@ -349,11 +630,15 @@ class LogisticRegressionProbeConfig(BaseModel):
     class_weight: Literal["balanced"] | None = None
     max_iter: PositiveInt = 5000
 
+    model_config = ConfigDict(extra="allow")
+
 
 class RidgeProbeConfig(BaseModel):
     model: Literal["ridge"] = "ridge"
     standardize: bool = True
     alpha: PositiveFloatOrList = 1.0
+
+    model_config = ConfigDict(extra="allow")
 
 
 LinearProbeConfig = Annotated[
@@ -368,6 +653,8 @@ class KNNProbeConfig(BaseModel):
     weights: KNNWeightsOrList = "distance"
     metric: str | list[str] = "euclidean"
 
+    model_config = ConfigDict(extra="allow")
+
 
 class RandomForestProbeConfig(BaseModel):
     n_estimators: PositiveIntOrList = 500
@@ -376,6 +663,8 @@ class RandomForestProbeConfig(BaseModel):
     random_state: int | None = 137
     n_jobs: int | None = -1
 
+    model_config = ConfigDict(extra="allow")
+
 
 class XGBoostProbeConfig(BaseModel):
     n_estimators: PositiveIntOrList = 300
@@ -383,6 +672,8 @@ class XGBoostProbeConfig(BaseModel):
     learning_rate: PositiveFloatOrList = 0.01
     random_state: int | None = 137
     n_jobs: int | None = -1
+
+    model_config = ConfigDict(extra="allow")
 
 
 class SVMRBFProbeConfig(BaseModel):
@@ -393,8 +684,10 @@ class SVMRBFProbeConfig(BaseModel):
     cache_size: PositiveFloat = 200.0
     max_iter: MaxIterWithNoLimitSentinel = -1
 
+    model_config = ConfigDict(extra="allow")
 
-class EvaluationPredictabilityParamsConfig(BaseModel):
+
+class EvaluationPredictabilityParamsConfig(_EvaluationConfigBaseModel):
     dummy: DummyProbeConfig = Field(default_factory=DummyProbeConfig)
     linear: LinearProbeConfig = Field(default_factory=LogisticRegressionProbeConfig)
     knn: KNNProbeConfig = Field(default_factory=KNNProbeConfig)
@@ -453,7 +746,7 @@ class EvaluationPredictabilityConfig(EvalStepConfig):
 
 
 # Full evaluation metrics config ---
-class EvaluationMetricsConfig(BaseModel):
+class EvaluationMetricsConfig(_EvaluationConfigBaseModel):
     clustering: EvaluationClusteringMetricsConfig = Field(default_factory=EvaluationClusteringMetricsConfig)
     embedding: EmbeddingMetricConfig = Field(default_factory=EmbeddingMetricConfig)
     predictability: EvaluationPredictabilityConfig = Field(default_factory=EvaluationPredictabilityConfig)
@@ -463,7 +756,7 @@ class EvaluationMetricsConfig(BaseModel):
 # -------------------------
 # Plots config
 # -------------------------
-class ReconstructionGridConfig(BaseModel):
+class ReconstructionGridConfig(_EvaluationConfigBaseModel):
     include_error_maps: bool = True
     random_state: int = 137
     stratify_by: Annotated[
@@ -478,7 +771,7 @@ class ReconstructionGridConfig(BaseModel):
         | None
     ) = None
 
-class PlotParams(BaseModel):
+class PlotParams(_EvaluationConfigBaseModel):
     accent_color: HexColor = "#6A3D9A"
     color_by: list[str] | None = None
     dpi: PositiveInt = 300
@@ -495,7 +788,7 @@ class EvaluationPlotsConfig(EvalStepConfig):
 # -------------------------
 # Full evaluation configuration
 # -------------------------
-class EvaluationConfig(BaseModel):
+class EvaluationConfig(_EvaluationConfigBaseModel):
     stage: Literal["evaluation"] = "evaluation"
     source: EvaluationSourceConfig = Field(default_factory=EvaluationSourceConfig)
     run: EvaluationRunConfig = Field(default_factory=EvaluationRunConfig)
@@ -521,14 +814,6 @@ class EvaluationConfig(BaseModel):
                 "Either source.embeddings_path or source.prediction_manifest_path "
                 "must be provided. If embeddings_path is null, embeddings are "
                 "inferred from the prediction manifest."
-            )
-
-        if (
-                self.source.embeddings_path is not None
-                and self.source.embeddings_path.suffix.lower() != ".h5ad"
-        ):
-            raise ValueError(
-                "source.embeddings_path must point to an AnnData .h5ad file."
             )
 
         if self.source.prediction_manifest_path is not None:
