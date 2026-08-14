@@ -125,9 +125,12 @@ def _validate_embedding_adata_basic_contract(adata: ad.AnnData) -> None:
             f"expected ({adata.n_obs}, {adata.n_vars})."
         )
 
-    if not np.issubdtype(adata.X.dtype, np.number):
+    if (
+        not np.issubdtype(adata.X.dtype, np.number)
+        or np.issubdtype(adata.X.dtype, np.complexfloating)
+    ):
         raise TypeError(
-            "adata.X must be numeric for evaluation, "
+            "adata.X must contain real numeric values for evaluation, "
             f"got dtype {adata.X.dtype}."
         )
 
