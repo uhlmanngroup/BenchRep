@@ -27,7 +27,15 @@ from benchrep.assembly.schemas.training_config_schema import (
 class _PredictionConfigBaseModel(BaseModel):
     """Base model for strict prediction configuration schemas."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "extra_field_behavior": (
+                "Forbidden at this configuration level; unknown fields raise a "
+                "validation error."
+            ),
+        },
+    )
 
 
 # -------------------------

@@ -51,7 +51,15 @@ _LOGGER_REQUIRED_ADDITIONAL_CALLBACKS = frozenset({
 class _TrainingConfigBaseModel(BaseModel):
     """Base model for strict training configuration schemas."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "extra_field_behavior": (
+                "Forbidden at this configuration level; unknown fields raise a "
+                "validation error."
+            ),
+        },
+    )
 
 
 class NamedConfig(_TrainingConfigBaseModel):
@@ -423,7 +431,15 @@ class TrainerConfig(_TrainingConfigBaseModel):
         },
     )
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(
+        extra="allow",
+        json_schema_extra={
+            "extra_field_behavior": (
+                "Allowed; additional non-null fields are forwarded as keyword "
+                "arguments to `lightning.Trainer`."
+            ),
+        },
+    )
 
 
 class LoggerConfig(NamedConfig):
@@ -712,7 +728,15 @@ class EarlyStoppingConfig(_TrainingConfigBaseModel):
         },
     )
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(
+        extra="allow",
+        json_schema_extra={
+            "extra_field_behavior": (
+                "Allowed; additional non-null fields are forwarded as keyword "
+                "arguments to `lightning.pytorch.callbacks.EarlyStopping`."
+            ),
+        },
+    )
 
 
 # -------------------------

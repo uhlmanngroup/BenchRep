@@ -98,6 +98,7 @@ def inspect_config(
         print(indent(docstring, "  "))
 
     _print_config_customization(config)
+    _print_extra_field_behavior(config)
 
     print("\nFields:")
 
@@ -194,6 +195,23 @@ def _print_config_customization(
                 "    ",
             )
         )
+
+
+def _print_extra_field_behavior(
+    config: type[BaseModel],
+) -> None:
+    schema_extra = config.model_config.get("json_schema_extra")
+
+    if not isinstance(schema_extra, dict):
+        return
+
+    behavior = schema_extra.get("extra_field_behavior")
+
+    if behavior is None:
+        return
+
+    print("\nExtra fields:")
+    print(indent(str(behavior), "  "))
 
 
 def _find_config_registries(
