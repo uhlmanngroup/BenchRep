@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any, Literal
 import warnings
@@ -689,7 +689,7 @@ def resolve_step_spec(
             stacklevel=2,
         )
 
-    return EvaluationStepSpec(
+    step_spec = EvaluationStepSpec(
         # None = True
         pca_enabled=pca_enabled,
         pca_params=pca_params,
@@ -791,6 +791,13 @@ def resolve_step_spec(
         plots_enabled=enabled_by_default(evaluation_config.plots.enabled),
         plot_params=plot_params,
     )
+
+    _validate_has_enabled_evaluation_work(
+        step_spec=step_spec,
+        has_reconstructions=has_reconstructions,
+    )
+
+    return step_spec
 
 
 def _resolve_plot_params(
@@ -1099,3 +1106,38 @@ def _load_prediction_manifest(path: Path) -> dict[str, Any]:
         )
 
     return prediction_manifest
+
+
+def _validate_has_enabled_evaluation_work(
+    *,
+    step_spec: EvaluationStepSpec,
+    has_reconstructions: bool,
+) -> None:
+    """Reject evaluation runs that resolve to no meaningful work.
+
+    Resolved evaluation-step switches use the ``_enabled`` suffix. Plotting is
+    handled separately because enabling plots alone does not guarantee that any
+    artifact can be produced.
+    """
+    has_enabled_evaluation_step = any(
+        getattr(step_spec, field.name) is not False
+        for field in fields(step_spec)
+        if field.name.endswith("_enabled")
+        and field.name != "plots_enabled"
+    )
+
+    has_reconstruction_grid_export = (
+        step_spec.plots_enabled
+        and has_reconstructions
+    )
+
+    if (
+        has_enabled_evaluation_step
+        or has_reconstruction_grid_export
+    ):
+        return
+
+    raise ValueError(
+        "Evaluation configuration resolves to no enabled evaluation "
+        "or artifact-producing steps."
+    )
