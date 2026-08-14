@@ -221,6 +221,7 @@ def evaluate(
 
     export_result = export_evaluation_outputs(
         adata=adata,
+        anndata_outcomes=embeddings_pipeline.outcomes,
         reconstruction_input=reconstruction_input,
         reconstruction_outputs=reconstruction_outputs,
         step_spec=run_spec.step_spec,

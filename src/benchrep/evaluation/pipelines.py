@@ -196,14 +196,21 @@ class EvaluationStep:
 
 @dataclass
 class AnnDataEvaluationStep(EvaluationStep):
-    """A single AnnData-based evaluation step."""
+    """A failure-atomic AnnData evaluation step.
+
+    The callable operates on a copy of the current AnnData object. Its returned
+    object is adopted only after successful completion, so mutations made by a
+    failed step are discarded.
+    """
 
     def run(self, adata: ad.AnnData) -> ad.AnnData:
         """Run the step and enforce the AnnData output contract."""
 
         def operation() -> ad.AnnData:
+            working_adata = adata.copy()
+
             result = self.fn(
-                adata,
+                working_adata,
                 **dict(self.params),
             )
 

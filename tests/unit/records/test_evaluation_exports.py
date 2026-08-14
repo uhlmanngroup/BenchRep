@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from benchrep.records import evaluation_exports
+from benchrep.runtime.status.evaluation import EvaluationOutcome
 
 
 def _make_step_spec(**overrides: Any) -> SimpleNamespace:
@@ -68,6 +69,13 @@ def _run_export(
     return evaluation_exports.export_evaluation_outputs(
         adata=ad.AnnData(
             X=np.ones((3, 2), dtype=np.float32)
+        ),
+        anndata_outcomes=(
+            EvaluationOutcome(
+                name="test_anndata_step",
+                category="embeddings",
+                status="completed",
+            ),
         ),
         reconstruction_input=reconstruction_input,
         reconstruction_outputs=None,

@@ -749,9 +749,19 @@ def write_evaluation_manifest(
         "records": records,
         "exports": {
             "embeddings": {
-                "path": str(export_paths.evaluated_embeddings_path),
-                "n_obs": int(adata.n_obs),
-                "n_vars": int(adata.n_vars),
+                "path": paths_to_strings(
+                    export_paths.evaluated_embeddings_path
+                ),
+                "n_obs": (
+                    int(adata.n_obs)
+                    if export_paths.evaluated_embeddings_path is not None
+                    else None
+                ),
+                "n_vars": (
+                    int(adata.n_vars)
+                    if export_paths.evaluated_embeddings_path is not None
+                    else None
+                ),
             },
             "metrics": {
                 "path": paths_to_strings(export_paths.metrics_json_path),

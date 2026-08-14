@@ -45,7 +45,7 @@ RECONSTRUCTION_GRID_LABEL_VALUE_MAX_LENGTH = 32
 
 @dataclass(frozen=True)
 class EvaluationExportPaths:
-    evaluated_embeddings_path: Path
+    evaluated_embeddings_path: Path | None
     metrics_json_path: Path | None
     reduction_plot_paths: dict[str, list[Path]] | None = None
     cluster_size_plot_paths: dict[str, list[Path]] | None = None
@@ -62,6 +62,7 @@ class EvaluationExportResult:
 def export_evaluation_outputs(
     *,
     adata: ad.AnnData,
+    anndata_outcomes: Sequence[EvaluationOutcome],
     reconstruction_input: ReconstructionEvaluationInput | None,
     reconstruction_outputs: Mapping[str, Any] | None,
     step_spec: "EvaluationStepSpec",
@@ -74,8 +75,9 @@ def export_evaluation_outputs(
 ) -> EvaluationExportResult:
     """Export evaluation artifacts and record each export outcome.
 
-    The evaluated AnnData artifact is required; failure to write it aborts the
-    export process. Metrics JSON, embedding figures, reconstruction TIFFs, and
+    The evaluated AnnData artifact is written only when at least one AnnData
+    evaluation step completes successfully. When applicable, failure to write it
+    aborts the export process. Metrics JSON, embedding figures, reconstruction TIFFs, and
     reconstruction grids are handled independently, so failure in one optional
     group does not prevent later groups from being attempted. Metrics JSON export
     is omitted when no metrics are available.
@@ -90,6 +92,9 @@ def export_evaluation_outputs(
     adata
         Evaluated AnnData object containing reductions, clustering assignments,
         metrics, and associated BenchRep metadata.
+    anndata_outcomes
+        Final outcomes from the AnnData evaluation pipeline, used to determine
+        whether an evaluated AnnData artifact should be written.
     reconstruction_input
         Loaded reconstruction inputs and predictions, when available.
     reconstruction_outputs
@@ -124,43 +129,61 @@ def export_evaluation_outputs(
 
     outcomes: list[EvaluationOutcome] = []
 
-    # Evaluated embeddings: required and therefore fatal on failure.
-    embeddings_dir.mkdir(parents=True, exist_ok=True)
-
-    evaluated_embeddings_path = (
-        embeddings_dir / "evaluated_embeddings.h5ad"
+    has_successful_anndata_step = any(
+        outcome.status in {
+            "completed",
+            "completed_with_warnings",
+        }
+        for outcome in anndata_outcomes
     )
 
-    with warnings.catch_warnings(record=True) as caught_warnings:
-        warnings.simplefilter("always")
-        write_h5ad(
-            adata,
+    evaluated_embeddings_path = None
+
+    if has_successful_anndata_step:
+        embeddings_dir.mkdir(parents=True, exist_ok=True)
+
+        evaluated_embeddings_path = (
+                embeddings_dir / "evaluated_embeddings.h5ad"
+        )
+
+        with warnings.catch_warnings(record=True) as caught_warnings:
+            warnings.simplefilter("always")
+            write_h5ad(
+                adata,
+                evaluated_embeddings_path,
+                overwrite=overwrite,
+            )
+
+        embedding_issues = _format_captured_export_warnings(
+            caught_warnings
+        )
+        embedding_status: EvaluationOutcomeStatus = (
+            "completed_with_warnings"
+            if embedding_issues
+            else "completed"
+        )
+
+        outcomes.append(
+            EvaluationOutcome(
+                name="evaluated_embeddings",
+                category="exports",
+                status=embedding_status,
+                issues=embedding_issues,
+            )
+        )
+
+        run_log.info(
+            "Saved evaluated embeddings AnnData to: '%s'",
             evaluated_embeddings_path,
-            overwrite=overwrite,
         )
-
-    embedding_issues = _format_captured_export_warnings(
-        caught_warnings
-    )
-    embedding_status: EvaluationOutcomeStatus = (
-        "completed_with_warnings"
-        if embedding_issues
-        else "completed"
-    )
-
-    outcomes.append(
-        EvaluationOutcome(
-            name="evaluated_embeddings",
-            category="exports",
-            status=embedding_status,
-            issues=embedding_issues,
+    else:
+        outcomes.append(
+            EvaluationOutcome(
+                name="evaluated_embeddings",
+                category="exports",
+                status="disabled",
+            )
         )
-    )
-
-    run_log.info(
-        "Saved evaluated embeddings AnnData to: '%s'",
-        evaluated_embeddings_path,
-    )
 
     # Optional embedding and clustering figures.
     reduction_plot_paths = None
