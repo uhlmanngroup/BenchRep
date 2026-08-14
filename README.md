@@ -5,13 +5,26 @@ BenchRep is a configuration-driven, Lightning-based framework for training repre
 > [!NOTE]
 > BenchRep is an early, pre-1.0 research project under active development. Its APIs, configuration schemas, contracts, supported components, and output formats may still change. The most complete vertical slices currently cover standard autoencoder and VAE models; broader model support and more flexible integration of custom and external components are planned.
 
-BenchRep separates a benchmark experiment into three workflows:
+BenchRep exposes three separately invoked workflows. Linking workflows does not
+require a single orchestration class: one workflow is linked to another by
+passing its manifest to the downstream workflow.
 
 1. **Training** builds or accepts a model and data module, fits the model, and records checkpoints and provenance.
-2. **Prediction** requires a training manifest, restores the trained model from the resolved checkpoint, runs inference, and exports embeddings and optional reconstructions.
-3. **Evaluation** consumes a prediction manifest, direct artifact paths, or a combination thereof, and evaluates embeddings and optional reconstructions. Embeddings must be stored as AnnData (`.h5ad`), while reconstructions must be supplied as BenchRep-compatible PyTorch (`.pt`) artifact bundles.
+2. **Prediction** <u>requires</u> a training manifest, restores the trained model from the resolved checkpoint, runs inference, and exports embeddings and optional reconstructions.
+3. **Evaluation** accepts a prediction manifest, direct artifact paths, or a combination thereof, and evaluates embeddings and optional reconstructions. Embeddings must be stored as AnnData (`.h5ad`), while reconstructions must be supplied as BenchRep-compatible PyTorch (`.pt`) artifact bundles.
 
-The workflows can be run separately. When used together, their manifests provide the hand-off between stages and retain the provenance of the complete chain.
+> [!IMPORTANT]
+> Separate invocation does <u>not</u> mean isolated configuration. Prediction resolves
+> many omitted or null settings from its required training manifest. When
+> evaluation receives a prediction manifest, it may infer artifact paths and run
+> identity from it; evaluation also resolves automatic behavior according to the
+> available inputs. Therefore, omission does not always mean “use a standalone
+> default.” Explicit downstream settings take precedence where supported, and
+> each run records its resulting configuration and provenance.
+
+Training can run without another workflow. Prediction, by design, is always linked to
+training through a training manifest. Evaluation can run from a prediction
+manifest, direct compatible artifacts, or both.
 
 ## Current scope
 
