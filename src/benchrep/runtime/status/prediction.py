@@ -19,6 +19,14 @@ PredictionStatus = Literal[
     "failed",
 ]
 
+ACCEPTABLE_PREDICTION_STATUSES = frozenset[PredictionStatus](
+    {
+        "completed",
+        "completed_with_warnings",
+        "partially_completed",
+    }
+)
+
 
 @dataclass(frozen=True)
 class PredictionOutcome:

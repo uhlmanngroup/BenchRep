@@ -14,7 +14,7 @@ TrainingStatus = Literal[
 
 TrainingInterruptionSignal = Literal["sigint", "sigterm"]
 
-SUCCESSFUL_TRAINING_STATUSES = frozenset[TrainingStatus](
+ACCEPTABLE_TRAINING_STATUSES = frozenset[TrainingStatus](
     {
         "completed",
         "completed_with_warnings",

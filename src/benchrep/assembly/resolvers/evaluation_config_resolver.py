@@ -27,6 +27,7 @@ from benchrep.assembly.schemas.evaluation_config_schema import (
     EvaluationConfig,
     EvaluationRunConfig,
 )
+from benchrep.runtime.status import ACCEPTABLE_PREDICTION_STATUSES
 
 
 # -------------------------
@@ -1080,10 +1081,21 @@ def _load_prediction_manifest(path: Path) -> dict[str, Any]:
         )
 
     manifest_status = prediction_manifest.get("status")
-    if manifest_status != "completed":
+    if manifest_status not in ACCEPTABLE_PREDICTION_STATUSES:
         raise ValueError(
-            "Evaluation requires a completed prediction manifest, "
+            "Evaluation accepts a provided prediction manifest only when its "
+            f"status is in {sorted(ACCEPTABLE_PREDICTION_STATUSES)}, "
             f"but manifest status is {manifest_status!r}."
+        )
+
+    if manifest_status == "partially_completed":
+        warnings.warn(
+            "Prediction manifest is partially completed. Evaluation will proceed "
+            "using available artifacts. Missing embeddings will still prevent "
+            "evaluation, while unavailable reconstruction artifacts will disable "
+            "reconstruction-dependent steps.",
+            UserWarning,
+            stacklevel=2,
         )
 
     return prediction_manifest
