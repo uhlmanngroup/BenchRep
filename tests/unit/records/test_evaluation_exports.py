@@ -218,3 +218,38 @@ def test_export_warnings_are_recorded(
     assert outcome.issues == (
         "Warning (RuntimeWarning): plot warning",
     )
+
+
+def test_metrics_json_is_not_written_when_no_metrics(
+    tmp_path: Path,
+) -> None:
+    output_path = evaluation_exports.save_evaluation_metrics_json(
+        output_dir=tmp_path,
+        adata=ad.AnnData(
+            X=np.ones((3, 2), dtype=np.float32)
+        ),
+    )
+
+    assert output_path is None
+    assert not (tmp_path / "metrics.json").exists()
+
+
+def test_empty_metrics_export_is_disabled(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_required_exports(monkeypatch)
+    monkeypatch.setattr(
+        evaluation_exports,
+        "save_evaluation_metrics_json",
+        lambda **_: None,
+    )
+
+    result = _run_export(
+        tmp_path=tmp_path,
+        step_spec=_make_step_spec(),
+    )
+    outcome = _outcomes_by_name(result)["metrics_json"]
+
+    assert result.paths.metrics_json_path is None
+    assert outcome.status == "disabled"

@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TYPE_CHECKING
+from typing import Any, Literal, TYPE_CHECKING
 import json
 import math
 import warnings
@@ -46,7 +46,7 @@ RECONSTRUCTION_GRID_LABEL_VALUE_MAX_LENGTH = 32
 @dataclass(frozen=True)
 class EvaluationExportPaths:
     evaluated_embeddings_path: Path
-    metrics_json_path: Path
+    metrics_json_path: Path | None
     reduction_plot_paths: dict[str, list[Path]] | None = None
     cluster_size_plot_paths: dict[str, list[Path]] | None = None
     reconstruction_tiff_paths: dict[str, Any] | None = None
@@ -77,7 +77,8 @@ def export_evaluation_outputs(
     The evaluated AnnData artifact is required; failure to write it aborts the
     export process. Metrics JSON, embedding figures, reconstruction TIFFs, and
     reconstruction grids are handled independently, so failure in one optional
-    group does not prevent later groups from being attempted.
+    group does not prevent later groups from being attempted. Metrics JSON export
+    is omitted when no metrics are available.
 
     Embedding figures are attempted when plotting is enabled. Reconstruction
     TIFFs are attempted when TIFF export is enabled and reconstruction input is
@@ -185,7 +186,7 @@ def export_evaluation_outputs(
                 step_spec=step_spec,
                 overwrite=overwrite,
             ),
-            skip_when_no_paths=True,
+            empty_result_status="skipped",
         )
         outcomes.append(outcome)
     else:
@@ -217,7 +218,7 @@ def export_evaluation_outputs(
                 step_spec=step_spec,
                 overwrite=overwrite,
             ),
-            skip_when_no_paths=True,
+            empty_result_status="skipped",
         )
         outcomes.append(outcome)
     else:
@@ -271,7 +272,7 @@ def export_evaluation_outputs(
                         reconstruction_outputs=reconstruction_outputs,
                         overwrite=overwrite,
                     ),
-                    skip_when_no_paths=True,
+                    empty_result_status="skipped",
                 )
             )
             outcomes.append(outcome)
@@ -304,7 +305,7 @@ def export_evaluation_outputs(
                 step_spec=step_spec,
                 overwrite=overwrite,
             ),
-            skip_when_no_paths=True,
+            empty_result_status="skipped",
         )
         outcomes.append(outcome)
 
@@ -327,9 +328,7 @@ def export_evaluation_outputs(
             )
         )
 
-    metrics_json_path = metrics_dir / "metrics.json"
-
-    written_metrics_json_path, outcome = _run_recoverable_export(
+    metrics_json_path, outcome = _run_recoverable_export(
         name="metrics_json",
         export_fn=lambda: save_evaluation_metrics_json(
             output_dir=metrics_dir,
@@ -337,12 +336,11 @@ def export_evaluation_outputs(
             reconstruction_outputs=reconstruction_outputs,
             overwrite=overwrite,
         ),
+        empty_result_status="disabled",
     )
     outcomes.append(outcome)
 
-    if written_metrics_json_path is not None:
-        metrics_json_path = written_metrics_json_path
-
+    if metrics_json_path is not None:
         run_log.info(
             "Saved evaluation metrics JSON to: '%s'",
             metrics_json_path,
@@ -367,9 +365,13 @@ def _run_recoverable_export(
     *,
     name: str,
     export_fn: Callable[[], Any],
-    skip_when_no_paths: bool = False,
+    empty_result_status: Literal["disabled", "skipped"] | None = None,
 ) -> tuple[Any | None, EvaluationOutcome]:
-    """Run one optional export without preventing later exports."""
+    """Run one optional export and record its outcome.
+
+    When configured, ``empty_result_status`` determines the outcome assigned when
+    the exporter returns no paths.
+    """
 
     with warnings.catch_warnings(record=True) as caught_warnings:
         warnings.simplefilter("always")
@@ -391,16 +393,24 @@ def _run_recoverable_export(
 
     issues = _format_captured_export_warnings(caught_warnings)
 
-    if skip_when_no_paths and count_paths(result) == 0:
-        return result, EvaluationOutcome(
-            name=name,
-            category="exports",
-            status="skipped",
-            issues=(
+    if (
+        empty_result_status is not None
+        and count_paths(result) == 0
+    ):
+        empty_issues = issues
+
+        if empty_result_status == "skipped":
+            empty_issues = (
                 *issues,
                 "Skipped: no artifact files were produced from the "
                 "available evaluation outputs.",
-            ),
+            )
+
+        return result, EvaluationOutcome(
+            name=name,
+            category="exports",
+            status=empty_result_status,
+            issues=empty_issues,
         )
 
     status: EvaluationOutcomeStatus = (
@@ -438,19 +448,22 @@ def save_evaluation_metrics_json(
     adata: ad.AnnData,
     reconstruction_outputs: Mapping[str, Any] | None = None,
     overwrite: bool = False,
-) -> Path:
-    """Save all available evaluation metrics to one JSON file."""
-
-    output_path = Path(output_dir) / "metrics.json"
-
-    if output_path.exists() and not overwrite:
-        raise FileExistsError(f"Metrics JSON already exists: {output_path}")
+) -> Path | None:
+    """Save available evaluation metrics, returning ``None`` when none exist."""
 
     metrics = _collect_evaluation_metrics(
         adata=adata,
         reconstruction_outputs=reconstruction_outputs,
     )
     metrics = _to_json_safe(metrics)
+
+    if not metrics:
+        return None
+
+    output_path = Path(output_dir) / "metrics.json"
+
+    if output_path.exists() and not overwrite:
+        raise FileExistsError(f"Metrics JSON already exists: {output_path}")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 

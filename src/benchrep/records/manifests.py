@@ -754,7 +754,7 @@ def write_evaluation_manifest(
                 "n_vars": int(adata.n_vars),
             },
             "metrics": {
-                "path": str(export_paths.metrics_json_path),
+                "path": paths_to_strings(export_paths.metrics_json_path),
             },
             "figures": {
                 "reductions": {
