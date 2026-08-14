@@ -111,7 +111,7 @@ class RunConfig(_TrainingConfigBaseModel):
         ),
         json_schema_extra={
             "omit_behavior": "No project-name prefix is added.",
-            "null_behavior": "Equivalent to omission; no project-name prefix is added.",
+            "null_behavior": "Equivalent to omission.",
         },
     )
 
@@ -1425,7 +1425,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
         description="Optional experiment logger used during training.",
         json_schema_extra={
             "omit_behavior": "Disables experiment logging.",
-            "null_behavior": "Equivalent to omission; experiment logging is disabled.",
+            "null_behavior": "Equivalent to omission.",
         },
     )
     checkpointing: CheckpointConfig = Field(
@@ -1444,7 +1444,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
         ),
         json_schema_extra={
             "omit_behavior": "Disables early stopping.",
-            "null_behavior": "Equivalent to omission; early stopping is disabled.",
+            "null_behavior": "Equivalent to omission.",
         },
     )
     additional_callbacks: list[AdditionalCallbackConfig] = Field(

@@ -74,8 +74,7 @@ class PredictionSourceConfig(_PredictionConfigBaseModel):
                 "of entrypoint functions like `predict_ae()` or `predict_vae()`."
             ),
             "null_behavior": (
-                "Equivalent to omission; the manifest path must be supplied "
-                "through the prediction workflow argument."
+                "Equivalent to omission."
             ),
         },
     )
@@ -222,7 +221,7 @@ class PredictionDataConfig(_PredictionConfigBaseModel):
         ),
         json_schema_extra={
             "omit_behavior": "Processes every available prediction batch.",
-            "null_behavior": "Equivalent to omission; processes every batch.",
+            "null_behavior": "Equivalent to omission.",
             "notes": [
                 "This limits batches rather than individual samples.",
                 "Prediction exports and linked evaluation contain only samples "
@@ -523,7 +522,7 @@ class PredictionReconstructionsExportConfig(_PredictionConfigBaseModel):
                 "Automatically enables reconstruction export for model families "
                 "that declare reconstruction output and disables it otherwise."
             ),
-            "null_behavior": "Equivalent to omission; resolves automatically.",
+            "null_behavior": "Equivalent to omission.",
             "notes": [
                 "Setting this field to true for a model family without "
                 "reconstruction output raises during prediction configuration "
