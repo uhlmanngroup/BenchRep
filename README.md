@@ -10,11 +10,11 @@ require a single orchestration class: one workflow is linked to another by
 passing its manifest to the downstream workflow.
 
 1. **Training** builds or accepts a model and data module, fits the model, and records checkpoints and provenance.
-2. **Prediction** <u>requires</u> a training manifest, restores the trained model from the resolved checkpoint, runs inference, and exports embeddings and optional reconstructions.
+2. **Prediction** <ins>requires</ins> a training manifest, restores the trained model from the resolved checkpoint, runs inference, and exports embeddings and optional reconstructions.
 3. **Evaluation** accepts a prediction manifest, direct artifact paths, or a combination thereof, and evaluates embeddings and optional reconstructions. Embeddings must be stored as AnnData (`.h5ad`), while reconstructions must be supplied as BenchRep-compatible PyTorch (`.pt`) artifact bundles.
 
 > [!IMPORTANT]
-> Separate invocation does <u>not</u> mean isolated configuration. Prediction resolves
+> Separate invocation does <ins>not</ins> mean isolated configuration. Prediction resolves
 > many omitted or null settings from its required training manifest. When
 > evaluation receives a prediction manifest, it may infer artifact paths and run
 > identity from it; evaluation also resolves automatic behavior according to the
