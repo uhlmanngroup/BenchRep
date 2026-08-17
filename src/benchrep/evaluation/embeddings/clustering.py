@@ -64,6 +64,7 @@ def run_kmeans(
             "n_clusters cannot exceed adata.n_obs, got "
             f"n_clusters={n_clusters} and n_obs={adata.n_obs}."
         )
+    requested_n_clusters = n_clusters
 
     kmeans = KMeans(
         n_clusters=n_clusters,
@@ -84,7 +85,6 @@ def run_kmeans(
             "KMeans returned negative cluster labels."
         )
 
-    requested_n_clusters = n_clusters
     actual_n_clusters = int(np.unique(labels).size)
 
     adata.obs[key_added] = labels.astype(str)
@@ -96,9 +96,8 @@ def run_kmeans(
         metadata={
             "method": "kmeans",
             "cluster_key": key_added,
-            "n_clusters": n_clusters,
+            "n_clusters": actual_n_clusters,
             "requested_n_clusters": requested_n_clusters,
-            "actual_n_clusters": actual_n_clusters,
             "random_state": random_state,
             "n_init": n_init,
             "input_shape": list(adata.X.shape),
@@ -107,7 +106,7 @@ def run_kmeans(
         },
     )
 
-    if n_clusters == 1:
+    if actual_n_clusters == 1:
         warnings.warn(
             "KMeans produced only one cluster. Internal clustering metrics "
             "requiring at least two clusters will be unavailable.",
@@ -117,7 +116,7 @@ def run_kmeans(
 
     _warn_if_many_clusters(
         cluster_key=key_added,
-        n_clusters=n_clusters,
+        n_clusters=actual_n_clusters,
     )
 
     return adata
