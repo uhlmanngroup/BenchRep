@@ -373,11 +373,11 @@ class EvaluationRunConfig(_EvaluationConfigBaseModel):
 # Reductions config
 # -------------------------
 class PCAParams(BaseModel):
-    """Controls PCA computation and AnnData output storage.
+    """Controls scikit-learn PCA computation and AnnData storage.
 
-    BenchRep applies PCA directly to `adata.X`, stores the coordinates in
-    `adata.obsm[key_added]`, and records parameters and explained-variance
-    summaries under `adata.uns["benchrep"]["reductions"][key_added]`.
+    PCA is fitted to `adata.X`. Coordinates are stored in
+    `adata.obsm[key_added]`, with explained-variance summaries and provenance
+    stored under `adata.uns["benchrep"]["reductions"][key_added]`.
 
     Additional non-null fields are forwarded to
     `sklearn.decomposition.PCA`.
@@ -395,7 +395,9 @@ class PCAParams(BaseModel):
 
     n_components: PositiveInt | None = Field(
         default=None,
-        description="Number of principal components to compute.",
+        description=(
+            "Number of components passed to `sklearn.decomposition.PCA`."
+        ),
         json_schema_extra={
             "omit_behavior": (
                 "Uses the smallest of 30, the number of observations, and the "
@@ -406,7 +408,7 @@ class PCAParams(BaseModel):
     )
     key_added: str | None = Field(
         default="X_pca",
-        description="Key used to store PCA coordinates in `adata.obsm`.",
+        description="Key used by BenchRep to store coordinates in `adata.obsm`.",
         json_schema_extra={
             "omit_behavior": "Uses `X_pca`.",
             "null_behavior": "Equivalent to omission.",
@@ -414,7 +416,9 @@ class PCAParams(BaseModel):
     )
     random_state: int | None = Field(
         default=137,
-        description="Random seed passed to scikit-learn PCA.",
+        description=(
+            "Random seed passed to `sklearn.decomposition.PCA`."
+        ),
         json_schema_extra={
             "omit_behavior": "Uses 137.",
             "null_behavior": "Equivalent to omission.",
@@ -423,7 +427,8 @@ class PCAParams(BaseModel):
     overwrite: bool | None = Field(
         default=False,
         description=(
-            "Whether an existing `adata.obsm[key_added]` entry may be replaced."
+            "Whether BenchRep may replace an existing "
+            "`adata.obsm[key_added]` entry."
         ),
         json_schema_extra={
             "omit_behavior": "Does not overwrite an existing entry.",
@@ -438,16 +443,17 @@ class PCAParams(BaseModel):
 class PCAConfig(EvalStepConfig):
     """Configures PCA as an evaluation step.
 
-    PCA is enabled automatically by default. It operates on the original
-    representation in `adata.X`; other reduction steps do not depend on its
-    output.
+    PCA operates directly on `adata.X`. It is enabled automatically when
+    embeddings are available and disabled when they are unavailable.
     """
 
     enabled: bool | None = Field(
         default=None,
         description="Whether PCA is included in the evaluation pipeline.",
         json_schema_extra={
-            "omit_behavior": "Enables PCA.",
+            "omit_behavior": (
+                "Enables PCA when embeddings are available; otherwise disables it."
+            ),
             "null_behavior": "Equivalent to omission.",
         },
     )
@@ -462,34 +468,295 @@ class PCAConfig(EvalStepConfig):
 
 
 class UMAPParams(_EvaluationConfigBaseModel):
-    n_neighbors: PositiveInt | None = 15
-    n_pcs: PositiveInt | None = None
-    min_dist: NonNegativeFloat | None = 0.1
-    metric: str | None = "euclidean"
-    key_added: str | None = "X_umap"
-    neighbors_key: str | None = "neighbors"
-    random_state: int | None = 137
-    overwrite: bool | None = False
-    neighbors_kwargs: dict[str, Any] | None = None
-    umap_kwargs: dict[str, Any] | None = None
+    """Controls Scanpy neighbor-graph construction and UMAP computation.
 
+    Coordinates are stored in `adata.obsm[key_added]`. Neighbor metadata is
+    stored in `adata.uns[neighbors_key]`, with distance and connectivity
+    matrices stored in `adata.obsp`. BenchRep provenance is stored under
+    `adata.uns["benchrep"]["reductions"][key_added]`.
 
-class TSNEParams(BaseModel):
-    model_config = ConfigDict(extra="allow")
+    Unless `use_rep` is set, Scanpy uses `adata.X` below its PCA threshold
+    and otherwise reuses or computes `adata.obsm["X_pca"]`.
+    """
 
-    n_pcs: PositiveInt | None = None
-    perplexity: PositiveFloat | None = 30.0
-    key_added: str | None = "X_tsne"
-    random_state: int | None = 137
-    overwrite: bool | None = False
+    n_neighbors: PositiveInt | None = Field(
+        default=15,
+        description=(
+            "Number of kNN neighbors passed to `scanpy.pp.neighbors()`."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses 15.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Must be smaller than the number of observations."
+            ],
+        },
+    )
+    n_pcs: NonNegativeInt | None = Field(
+        default=None,
+        description=(
+            "Number of principal components passed to "
+            "`scanpy.pp.neighbors()`."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Lets Scanpy choose the representation and PCA dimensionality."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Zero forces `adata.X` when `use_rep` is not set."
+            ],
+        },
+    )
+    use_rep: str | None = Field(
+        default=None,
+        description=(
+            "Representation key passed to `scanpy.pp.neighbors()`. `X` selects "
+            "`adata.X`; other values select `adata.obsm[use_rep]`."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Delegates representation selection to Scanpy.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    metric: str | None = Field(
+        default="euclidean",
+        description="Distance metric passed to `scanpy.pp.neighbors()`.",
+        json_schema_extra={
+            "omit_behavior": "Uses `euclidean`.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    neighbors_kwargs: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Additional keyword arguments passed to `scanpy.pp.neighbors()`."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Passes no additional arguments.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Duplicating arguments represented by dedicated fields raises "
+                "`TypeError` during backend invocation.",
+            ],
+        },
+    )
+    min_dist: NonNegativeFloat | None = Field(
+        default=0.1,
+        description="Minimum distance passed to `scanpy.tl.umap()`.",
+        json_schema_extra={
+            "omit_behavior": "Uses 0.1.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    key_added: str | None = Field(
+        default="X_umap",
+        description=(
+            "Key passed to `scanpy.tl.umap()` for storing coordinates in "
+            "`adata.obsm`."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses `X_umap`.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    umap_kwargs: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Additional keyword arguments passed to `scanpy.tl.umap()`."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Passes no additional arguments.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Duplicating arguments represented by dedicated fields raises "
+                "`TypeError` during backend invocation.",
+            ],
+        },
+    )
+    neighbors_key: str | None = Field(
+        default="neighbors",
+        description=(
+            "Namespace used by `scanpy.pp.neighbors()` to store the graph and "
+            "by `scanpy.tl.umap()` to retrieve it."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses `neighbors`.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    random_state: int | None = Field(
+        default=137,
+        description=(
+            "Random seed passed to `scanpy.pp.neighbors()` and "
+            "`scanpy.tl.umap()`."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses 137.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    overwrite: bool | None = Field(
+        default=False,
+        description=(
+            "Whether BenchRep may replace existing UMAP and neighbor-graph "
+            "outputs."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Does not overwrite existing outputs.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "A key collision without overwrite is a recoverable step failure."
+            ],
+        },
+    )
 
 
 class UMAPConfig(EvalStepConfig):
-    params: UMAPParams | None = Field(default_factory=UMAPParams)
+    """Configures the optional Scanpy UMAP evaluation step.
+
+    UMAP requires embeddings and the optional Scanpy dependency. It is disabled
+    by default and is skipped with a warning if explicitly enabled without
+    embeddings.
+    """
+
+    enabled: bool | None = Field(
+        default=None,
+        description="Whether UMAP is included in the evaluation pipeline.",
+        json_schema_extra={
+            "omit_behavior": "Disables UMAP.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    params: UMAPParams | None = Field(
+        default_factory=UMAPParams,
+        description=(
+            "Parameters passed to neighbor-graph construction and UMAP."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses `UMAPParams` defaults.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+
+
+class TSNEParams(BaseModel):
+    """Controls Scanpy t-SNE computation and AnnData storage.
+
+    Coordinates are stored in `adata.obsm[key_added]`, with BenchRep provenance
+    stored under `adata.uns["benchrep"]["reductions"][key_added]`.
+
+    Unless `use_rep` is set, Scanpy uses `adata.X` below its PCA threshold and
+    otherwise reuses or computes `adata.obsm["X_pca"]`. Additional non-null
+    fields are forwarded to `scanpy.tl.tsne()`.
+    """
+
+    model_config = ConfigDict(
+        extra="allow",
+        json_schema_extra={
+            "extra_field_behavior": (
+                "Allowed; additional non-null fields are forwarded as keyword "
+                "arguments to `scanpy.tl.tsne()`."
+            ),
+        },
+    )
+
+    n_pcs: NonNegativeInt | None = Field(
+        default=None,
+        description=(
+            "Number of principal components passed to `scanpy.tl.tsne()`."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Lets Scanpy choose the representation and PCA dimensionality."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Zero forces `adata.X` when `use_rep` is not set."
+            ],
+        },
+    )
+    use_rep: str | None = Field(
+        default=None,
+        description=(
+            "Representation key passed to `scanpy.tl.tsne()`. `X` selects "
+            "`adata.X`; any other value names an entry in `adata.obsm`."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Delegates representation selection to Scanpy.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    perplexity: PositiveFloat | None = Field(
+        default=30.0,
+        description="Perplexity passed to `scanpy.tl.tsne()`.",
+        json_schema_extra={
+            "omit_behavior": "Uses 30.0.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Must be smaller than the number of observations."
+            ],
+        },
+    )
+    key_added: str | None = Field(
+        default="X_tsne",
+        description=(
+            "Key passed to `scanpy.tl.tsne()` for storing coordinates in "
+            "`adata.obsm`."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses `X_tsne`.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    random_state: int | None = Field(
+        default=137,
+        description="Random seed passed to `scanpy.tl.tsne()`.",
+        json_schema_extra={
+            "omit_behavior": "Uses 137.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    overwrite: bool | None = Field(
+        default=False,
+        description=(
+            "Whether BenchRep may replace an existing "
+            "`adata.obsm[key_added]` entry."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Does not overwrite an existing entry.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "A key collision without overwrite is a recoverable step failure."
+            ],
+        },
+    )
 
 
 class TSNEConfig(EvalStepConfig):
-    params: TSNEParams | None = Field(default_factory=TSNEParams)
+    """Configures the optional Scanpy t-SNE evaluation step.
+
+    t-SNE requires embeddings and the optional Scanpy dependency. It is disabled
+    by default and is skipped with a warning if explicitly enabled without
+    embeddings.
+    """
+
+    enabled: bool | None = Field(
+        default=None,
+        description="Whether t-SNE is included in the evaluation pipeline.",
+        json_schema_extra={
+            "omit_behavior": "Disables t-SNE.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    params: TSNEParams | None = Field(
+        default_factory=TSNEParams,
+        description="Parameters controlling Scanpy t-SNE computation.",
+        json_schema_extra={
+            "omit_behavior": "Uses `TSNEParams` defaults.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
 
 
 class EvaluationReductionsConfig(_EvaluationConfigBaseModel):

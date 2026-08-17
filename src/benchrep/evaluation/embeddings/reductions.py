@@ -122,59 +122,63 @@ def run_umap(
     *,
     n_neighbors: int = 15,
     n_pcs: int | None = None,
-    min_dist: float = 0.1,
+    use_rep: str | None = None,
     metric: str = "euclidean",
+    neighbors_kwargs: dict[str, Any] | None = None,
+    min_dist: float = 0.1,
     key_added: str = "X_umap",
+    umap_kwargs: dict[str, Any] | None = None,
     neighbors_key: str = "neighbors",
     random_state: int = 137,
     overwrite: bool = False,
-    neighbors_kwargs: dict[str, Any] | None = None,
-    umap_kwargs: dict[str, Any] | None = None,
 ) -> ad.AnnData:
-    """
-    Run Scanpy neighbors followed by UMAP on ``adata.X``.
+    """Construct a Scanpy neighbor graph and compute UMAP coordinates.
 
-    This function builds a neighbor graph from ``adata.X`` using
-    ``scanpy.pp.neighbors`` and then computes UMAP coordinates with
-    ``scanpy.tl.umap``. The UMAP coordinates are stored in
-    ``adata.obsm[key_added]``. Neighbor-graph information is stored under
-    ``neighbors_key`` using Scanpy's standard AnnData fields, and UMAP
-    parameters are written to
+    The representation used for neighbor construction is controlled by
+    ``use_rep`` and ``n_pcs``. When ``use_rep`` is ``None``, Scanpy selects
+    between ``adata.X`` and ``adata.obsm["X_pca"]`` automatically.
+
+    UMAP coordinates are stored in ``adata.obsm[key_added]``. Neighbor metadata
+    is stored in ``adata.uns[neighbors_key]``, with distance and connectivity
+    matrices in ``adata.obsp``. BenchRep provenance is stored under
     ``adata.uns["benchrep"]["reductions"][key_added]``.
 
     Parameters
     ----------
     adata:
-        AnnData object whose ``X`` matrix contains the representation to reduce.
+        AnnData object containing the representation to reduce.
     n_neighbors:
-        Number of neighbors used to construct the neighbor graph.
+        Number of kNN neighbors passed to ``scanpy.pp.neighbors()``.
     n_pcs:
-        Number of PCs passed to Scanpy neighbors. If ``None``, Scanpy decides
-        based on the input.
-    min_dist:
-        Effective minimum distance between embedded points passed to Scanpy UMAP.
+        Number of principal components passed to ``scanpy.pp.neighbors()``.
+        ``None`` delegates selection to Scanpy; zero forces ``adata.X`` when
+        ``use_rep`` is unset.
+    use_rep:
+        Representation passed to ``scanpy.pp.neighbors()``. ``"X"`` selects
+        ``adata.X``; other values name an entry in ``adata.obsm``. ``None``
+        delegates selection to Scanpy.
     metric:
-        Distance metric passed to Scanpy neighbors. Common useful options
-        include ``"euclidean"``, ``"cosine"``, ``"correlation"``,
-        ``"manhattan"``, ``"l1"``, and ``"l2"``.
-    key_added:
-        Key under which UMAP coordinates are stored in ``adata.obsm``.
-    neighbors_key:
-        Key used by Scanpy to store and retrieve the neighbor graph.
-    random_state:
-        Random seed passed to Scanpy UMAP.
-    overwrite:
-        If ``False``, raise an error when ``key_added`` or ``neighbors_key``
-        already exists. If ``True``, replace existing entries.
+        Distance metric passed to ``scanpy.pp.neighbors()``.
     neighbors_kwargs:
-        Additional keyword arguments passed to ``scanpy.pp.neighbors``.
+        Additional keyword arguments passed to ``scanpy.pp.neighbors()``.
+    min_dist:
+        Minimum distance passed to ``scanpy.tl.umap()``.
+    key_added:
+        Key used by ``scanpy.tl.umap()`` to store coordinates in ``adata.obsm``.
     umap_kwargs:
-        Additional keyword arguments passed to ``scanpy.tl.umap``.
+        Additional keyword arguments passed to ``scanpy.tl.umap()``.
+    neighbors_key:
+        Namespace used to store the neighbor graph and retrieve it for UMAP.
+    random_state:
+        Random seed passed to ``scanpy.pp.neighbors()`` and
+        ``scanpy.tl.umap()``.
+    overwrite:
+        Whether existing UMAP or neighbor-graph outputs may be replaced.
 
     Returns
     -------
     AnnData
-        The input AnnData object, modified in place and returned for convenience.
+        The input AnnData object, modified in place and returned.
     """
 
     sc = load_scanpy_backend(feature="UMAP")
@@ -209,6 +213,7 @@ def run_umap(
         adata,
         n_neighbors=n_neighbors,
         n_pcs=n_pcs,
+        use_rep=use_rep,
         metric=metric,
         key_added=None if neighbors_key == "neighbors" else neighbors_key,
         random_state=random_state,
@@ -243,13 +248,14 @@ def run_umap(
             "method": "umap",
             "n_neighbors": n_neighbors,
             "n_pcs": n_pcs,
+            "use_rep": use_rep,
             "metric": metric,
+            "neighbors_params": neighbors_kwargs,
+            "min_dist": min_dist,
+            "umap_params": umap_kwargs,
             "neighbors_key": neighbors_key,
             "random_state": random_state,
-            "min_dist": min_dist,
-            "input_shape": list(adata.X.shape),
-            "neighbors_params": neighbors_kwargs,
-            "umap_params": umap_kwargs,
+            "adata_x_shape": list(adata.X.shape),
         },
     )
 
@@ -260,44 +266,50 @@ def run_tsne(
     adata: ad.AnnData,
     *,
     n_pcs: int | None = None,
+    use_rep: str | None = None,
     perplexity: float = 30.0,
     key_added: str = "X_tsne",
     random_state: int = 137,
     overwrite: bool = False,
     **tsne_kwargs: Any,
 ) -> ad.AnnData:
-    """
-    Run t-SNE on ``adata.X`` and store the coordinates in ``adata.obsm``.
+    """Compute t-SNE coordinates with Scanpy.
 
-    This function uses Scanpy's t-SNE implementation and treats ``adata.X`` as
-    the representation being evaluated. Coordinates are written to
-    ``adata.obsm[key_added]`` and basic run parameters are written to
-    ``adata.uns["benchrep"]["reductions"][key_added]``.
+    The input representation is controlled by ``use_rep`` and ``n_pcs``. When
+    ``use_rep`` is ``None``, Scanpy selects between ``adata.X`` and
+    ``adata.obsm["X_pca"]`` automatically.
+
+    Coordinates are stored in ``adata.obsm[key_added]`` and BenchRep provenance
+    under ``adata.uns["benchrep"]["reductions"][key_added]``.
 
     Parameters
     ----------
     adata:
-        AnnData object whose ``X`` matrix contains the representation to reduce.
+        AnnData object containing the representation to reduce.
     n_pcs:
-        Number of PCs used by Scanpy before t-SNE. If ``None``, Scanpy decides
-        based on the input.
+        Number of principal components passed to ``scanpy.tl.tsne()``.
+        ``None`` delegates selection to Scanpy; zero forces ``adata.X`` when
+        ``use_rep`` is unset.
+    use_rep:
+        Representation passed to ``scanpy.tl.tsne()``. ``"X"`` selects
+        ``adata.X``; other values name an entry in ``adata.obsm``. ``None``
+        delegates selection to Scanpy.
     perplexity:
-        t-SNE perplexity. Must be greater than 0 and smaller than
-        ``adata.n_obs``.
+        Perplexity passed to ``scanpy.tl.tsne()``. It must be positive and
+        smaller than ``adata.n_obs``.
     key_added:
-        Key under which t-SNE coordinates are stored in ``adata.obsm``.
+        Key used by ``scanpy.tl.tsne()`` to store coordinates in ``adata.obsm``.
     random_state:
-        Random seed passed to Scanpy t-SNE.
+        Random seed passed to ``scanpy.tl.tsne()``.
     overwrite:
-        If ``False``, raise an error when ``key_added`` already exists. If
-        ``True``, replace existing entries.
+        Whether an existing ``adata.obsm[key_added]`` entry may be replaced.
     **tsne_kwargs:
-        Additional keyword arguments passed to ``scanpy.tl.tsne``.
+        Additional keyword arguments passed to ``scanpy.tl.tsne()``.
 
     Returns
     -------
     AnnData
-        The input AnnData object, modified in place and returned for convenience.
+        The input AnnData object, modified in place and returned.
     """
 
     sc = load_scanpy_backend(feature="t-SNE")
@@ -322,6 +334,7 @@ def run_tsne(
     sc.tl.tsne(
         adata,
         n_pcs=n_pcs,
+        use_rep=use_rep,
         perplexity=perplexity,
         random_state=random_state,
         key_added=key_added,
@@ -346,9 +359,10 @@ def run_tsne(
         metadata={
             "method": "tsne",
             "n_pcs": n_pcs,
+            "use_rep": use_rep,
             "perplexity": perplexity,
             "random_state": random_state,
-            "input_shape": list(adata.X.shape),
+            "adata_x_shape": list(adata.X.shape),
             "params": dict(tsne_kwargs),
         },
     )
