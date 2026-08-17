@@ -84,7 +84,8 @@ def run_kmeans(
             "KMeans returned negative cluster labels."
         )
 
-    n_clusters = int(np.unique(labels).size)
+    requested_n_clusters = n_clusters
+    actual_n_clusters = int(np.unique(labels).size)
 
     adata.obs[key_added] = labels.astype(str)
     adata.obs[key_added] = adata.obs[key_added].astype("category")
@@ -96,7 +97,8 @@ def run_kmeans(
             "method": "kmeans",
             "cluster_key": key_added,
             "n_clusters": n_clusters,
-            "requested_n_clusters": n_clusters,
+            "requested_n_clusters": requested_n_clusters,
+            "actual_n_clusters": actual_n_clusters,
             "random_state": random_state,
             "n_init": n_init,
             "input_shape": list(adata.X.shape),
