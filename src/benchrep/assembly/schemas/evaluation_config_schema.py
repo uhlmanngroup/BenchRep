@@ -760,78 +760,521 @@ class TSNEConfig(EvalStepConfig):
 
 
 class EvaluationReductionsConfig(_EvaluationConfigBaseModel):
-    pca: PCAConfig = Field(default_factory=PCAConfig)
-    umap: UMAPConfig = Field(default_factory=UMAPConfig)
-    tsne: TSNEConfig = Field(default_factory=TSNEConfig)
+    """Groups dimensionality-reduction steps in execution order.
+
+    PCA, UMAP, and t-SNE are tracked independently, so a recoverable failure in
+    one does not prevent later reductions from running. When Scanpy representation
+    selection is automatic, UMAP and t-SNE may reuse an available `X_pca` or
+    compute one internally.
+    """
+
+    pca: PCAConfig = Field(
+        default_factory=PCAConfig,
+        description="Configuration for the PCA evaluation step.",
+        json_schema_extra={
+            "omit_behavior": "Uses `PCAConfig` defaults.",
+            "null_behavior": "Rejected; a configuration mapping is required.",
+        },
+    )
+    umap: UMAPConfig = Field(
+        default_factory=UMAPConfig,
+        description="Configuration for the UMAP evaluation step.",
+        json_schema_extra={
+            "omit_behavior": "Uses `UMAPConfig` defaults.",
+            "null_behavior": "Rejected; a configuration mapping is required.",
+        },
+    )
+    tsne: TSNEConfig = Field(
+        default_factory=TSNEConfig,
+        description="Configuration for the t-SNE evaluation step.",
+        json_schema_extra={
+            "omit_behavior": "Uses `TSNEConfig` defaults.",
+            "null_behavior": "Rejected; a configuration mapping is required.",
+        },
+    )
 
 
 # -------------------------
 # Clustering config
 # -------------------------
 class KMeansParams(BaseModel):
-    model_config = ConfigDict(extra="allow")
+    """Controls scikit-learn KMeans clustering and AnnData storage.
 
-    n_clusters: PositiveInt | None = None
-    key_added: str | None = "kmeans"
-    random_state: int | None = 137
-    n_init: str | int | None = "auto"
-    overwrite: bool | None = False
+    KMeans is fitted directly to `adata.X`. Cluster labels are stored as
+    categorical strings in `adata.obs[key_added]`, with clustering provenance
+    stored under `adata.uns["benchrep"]["clustering"][key_added]`.
+
+    Additional non-null fields are forwarded to `sklearn.cluster.KMeans`.
+    """
+
+    model_config = ConfigDict(
+        extra="allow",
+        json_schema_extra={
+            "extra_field_behavior": (
+                "Allowed; additional non-null fields are forwarded as keyword "
+                "arguments to `sklearn.cluster.KMeans`."
+            ),
+        },
+    )
+
+    n_clusters: PositiveInt | None = Field(
+        default=None,
+        description="Number of clusters passed to `sklearn.cluster.KMeans`.",
+        json_schema_extra={
+            "omit_behavior": (
+                "Rejected when KMeans is enabled because `n_clusters` is required; "
+                "otherwise leaves the value unset."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Must not exceed the number of observations.",
+                "A single cluster is allowed but prevents applicable internal "
+                "clustering metrics from being computed.",
+            ],
+        },
+    )
+    key_added: str | None = Field(
+        default="kmeans",
+        description=(
+            "Key used by BenchRep to store cluster labels in `adata.obs`."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses `kmeans`.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    random_state: int | None = Field(
+        default=137,
+        description="Random seed passed to `sklearn.cluster.KMeans`.",
+        json_schema_extra={
+            "omit_behavior": "Uses 137.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    n_init: Literal["auto"] | PositiveInt | None = Field(
+        default="auto",
+        description="Initialization count passed to `sklearn.cluster.KMeans`.",
+        json_schema_extra={
+            "omit_behavior": "Uses `auto`.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    overwrite: bool | None = Field(
+        default=False,
+        description=(
+            "Whether BenchRep may replace an existing `adata.obs[key_added]` "
+            "entry."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Does not overwrite an existing entry.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "A key collision without overwrite is a recoverable step failure."
+            ],
+        },
+    )
 
 
 class KMeansConfig(EvalStepConfig):
-    params: KMeansParams | None = Field(default_factory=KMeansParams)
+    """Configures the optional scikit-learn KMeans evaluation step.
+
+    KMeans clusters `adata.X` directly and does not consume reduction outputs.
+    It is disabled by default and is skipped with a warning if explicitly
+    enabled without embeddings.
+    """
+
+    enabled: bool | None = Field(
+        default=None,
+        description="Whether KMeans is included in the evaluation pipeline.",
+        json_schema_extra={
+            "omit_behavior": "Disables KMeans.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    params: KMeansParams | None = Field(
+        default_factory=KMeansParams,
+        description="Parameters controlling KMeans clustering and output storage.",
+        json_schema_extra={
+            "omit_behavior": "Uses `KMeansParams` defaults.",
+            "null_behavior": (
+                "Accepted while KMeans is disabled; rejected when it is enabled."
+            ),
+        },
+    )
 
     @model_validator(mode="after")
     def validate_kmeans(self) -> "KMeansConfig":
         if self.enabled is True and (
-                self.params is None or self.params.n_clusters is None
+            self.params is None or self.params.n_clusters is None
         ):
             raise ValueError(
-                "clustering.kmeans.params.n_clusters is required when KMeans is enabled."
+                "clustering.kmeans.params.n_clusters is required when "
+                "KMeans is enabled."
             )
+
         return self
 
 
 class LeidenParams(_EvaluationConfigBaseModel):
-    resolution: PositiveFloat | None = 1.0
-    n_neighbors: PositiveInt | None = 15
-    n_pcs: PositiveInt | None = None
-    metric: str | None = "euclidean"
-    key_added: str | None = "leiden"
-    neighbors_key: str | None = "neighbors"
-    random_state: int | None = 137
-    overwrite: bool | None = False
-    neighbors_kwargs: dict[str, Any] | None = None
-    leiden_kwargs: dict[str, Any] | None = None
+    """Controls Scanpy neighbor-graph construction and Leiden clustering.
+
+    Cluster labels are stored in `adata.obs[key_added]`. Neighbor metadata is
+    stored in `adata.uns[neighbors_key]`, with distance and connectivity
+    matrices in `adata.obsp`. BenchRep provenance is stored under
+    `adata.uns["benchrep"]["clustering"][key_added]`.
+
+    Unless `use_rep` is set, Scanpy uses `adata.X` below its PCA threshold and
+    otherwise reuses or computes `adata.obsm["X_pca"]`.
+    """
+
+    n_neighbors: PositiveInt | None = Field(
+        default=15,
+        description=(
+            "Number of kNN neighbors passed to `scanpy.pp.neighbors()`."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses 15.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Must be smaller than the number of observations."
+            ],
+        },
+    )
+    n_pcs: NonNegativeInt | None = Field(
+        default=None,
+        description=(
+            "Number of principal components passed to "
+            "`scanpy.pp.neighbors()`."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Lets Scanpy choose the representation and PCA dimensionality."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Zero forces `adata.X` when `use_rep` is not set."
+            ],
+        },
+    )
+    use_rep: str | None = Field(
+        default=None,
+        description=(
+            "Representation key passed to `scanpy.pp.neighbors()`. `X` selects "
+            "`adata.X`; any other value names an entry in `adata.obsm`."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Delegates representation selection to Scanpy.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    metric: str | None = Field(
+        default="euclidean",
+        description="Distance metric passed to `scanpy.pp.neighbors()`.",
+        json_schema_extra={
+            "omit_behavior": "Uses `euclidean`.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    neighbors_kwargs: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Additional keyword arguments passed to `scanpy.pp.neighbors()`."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Passes no additional arguments.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Duplicating arguments represented by dedicated fields raises "
+                "`TypeError` during backend invocation."
+            ],
+        },
+    )
+    resolution: PositiveFloat | None = Field(
+        default=1.0,
+        description="Resolution passed to `scanpy.tl.leiden()`.",
+        json_schema_extra={
+            "omit_behavior": "Uses 1.0.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Higher values generally produce more clusters."
+            ],
+        },
+    )
+    key_added: str | None = Field(
+        default="leiden",
+        description=(
+            "Key passed to `scanpy.tl.leiden()` for storing labels in "
+            "`adata.obs`."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses `leiden`.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    leiden_kwargs: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Additional keyword arguments passed to `scanpy.tl.leiden()`."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Passes no additional user arguments.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "BenchRep defaults `flavor='igraph'`, `n_iterations=2`, and "
+                "`directed=False` unless overridden here.",
+                "Duplicating arguments represented by dedicated fields raises "
+                "`TypeError` during backend invocation.",
+            ],
+        },
+    )
+    neighbors_key: str | None = Field(
+        default="neighbors",
+        description=(
+            "Namespace used by `scanpy.pp.neighbors()` to store the graph and "
+            "by `scanpy.tl.leiden()` to retrieve it."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses `neighbors`.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Enabled UMAP and Leiden steps cannot share this key unless "
+                "Leiden overwrite is enabled."
+            ],
+        },
+    )
+    random_state: int | None = Field(
+        default=137,
+        description=(
+            "Random seed passed to `scanpy.pp.neighbors()` and "
+            "`scanpy.tl.leiden()`."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses 137.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    overwrite: bool | None = Field(
+        default=False,
+        description=(
+            "Whether BenchRep may replace existing Leiden and neighbor-graph "
+            "outputs."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Does not overwrite existing outputs.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "A key collision without overwrite is a recoverable step failure."
+            ],
+        },
+    )
 
 
 class LeidenConfig(EvalStepConfig):
-    params: LeidenParams | None = Field(default_factory=LeidenParams)
+    """Configures the optional Scanpy Leiden evaluation step.
+
+    Leiden constructs its own neighbor graph and does not cluster UMAP
+    coordinates. It requires embeddings and the optional Scanpy, igraph, and
+    Leiden dependencies. The step is disabled by default and is skipped with a
+    warning if explicitly enabled without embeddings.
+    """
+
+    enabled: bool | None = Field(
+        default=None,
+        description="Whether Leiden is included in the evaluation pipeline.",
+        json_schema_extra={
+            "omit_behavior": "Disables Leiden.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    params: LeidenParams | None = Field(
+        default_factory=LeidenParams,
+        description=(
+            "Parameters controlling neighbor construction, Leiden clustering, "
+            "and output storage."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses `LeidenParams` defaults.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
 
 
 class HDBSCANParams(BaseModel):
-    model_config = ConfigDict(extra="allow")
+    """Controls scikit-learn HDBSCAN clustering and AnnData storage.
 
-    min_cluster_size: Annotated[int, Field(ge=2)] | None = 5
-    min_samples: PositiveInt | None = None
-    cluster_selection_epsilon: NonNegativeFloat | None = 0.0
-    metric: str | None = "euclidean"
-    cluster_selection_method: Literal["eom", "leaf"] | None = "eom"
-    allow_single_cluster: bool | None = False
-    key_added: str | None = "hdbscan"
-    overwrite: bool | None = False
+    HDBSCAN clusters `adata.X` directly. Labels are stored as categorical
+    strings in `adata.obs[key_added]`, where `-1` denotes noise. Membership
+    strengths are stored in `adata.obs[f"{key_added}_probability"]`, with
+    provenance under `adata.uns["benchrep"]["clustering"][key_added]`.
+
+    Additional non-null fields are forwarded to `sklearn.cluster.HDBSCAN`.
+    BenchRep uses `copy=False` unless overridden.
+    """
+
+    model_config = ConfigDict(
+        extra="allow",
+        json_schema_extra={
+            "extra_field_behavior": (
+                "Allowed; additional non-null fields are forwarded as keyword "
+                "arguments to `sklearn.cluster.HDBSCAN`."
+            ),
+        },
+    )
+
+    min_cluster_size: Annotated[int, Field(ge=2)] | None = Field(
+        default=5,
+        description=(
+            "Minimum cluster size passed to `sklearn.cluster.HDBSCAN`."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses 5.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    min_samples: PositiveInt | None = Field(
+        default=None,
+        description=(
+            "Core-point neighborhood size passed to "
+            "`sklearn.cluster.HDBSCAN`."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses `min_cluster_size`.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Must not exceed the number of observations."
+            ],
+        },
+    )
+    cluster_selection_epsilon: NonNegativeFloat | None = Field(
+        default=0.0,
+        description=(
+            "Cluster-merging distance threshold passed to "
+            "`sklearn.cluster.HDBSCAN`."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses 0.0.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    metric: str | None = Field(
+        default="euclidean",
+        description="Distance metric passed to `sklearn.cluster.HDBSCAN`.",
+        json_schema_extra={
+            "omit_behavior": "Uses `euclidean`.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    cluster_selection_method: Literal["eom", "leaf"] | None = Field(
+        default="eom",
+        description=(
+            "Condensed-tree cluster-selection method passed to "
+            "`sklearn.cluster.HDBSCAN`."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses `eom`.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    allow_single_cluster: bool | None = Field(
+        default=False,
+        description=(
+            "Whether `sklearn.cluster.HDBSCAN` may select one non-noise cluster."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Does not allow a single cluster.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    key_added: str | None = Field(
+        default="hdbscan",
+        description=(
+            "Key used by BenchRep to store labels in `adata.obs`; membership "
+            "strengths use the corresponding `<key_added>_probability` key."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses `hdbscan`.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    overwrite: bool | None = Field(
+        default=False,
+        description=(
+            "Whether BenchRep may replace existing label and probability entries."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Does not overwrite existing entries.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "A key collision without overwrite is a recoverable step failure."
+            ],
+        },
+    )
 
 
 class HDBSCANConfig(EvalStepConfig):
+    """Configures the optional scikit-learn HDBSCAN evaluation step.
+
+    HDBSCAN clusters `adata.X` directly and does not consume reduction outputs.
+    Noise observations are excluded from dependent clustering metrics. Producing
+    no non-noise clusters or only one non-noise cluster completes with warnings.
+
+    The step is disabled by default and is skipped with a warning if explicitly
+    enabled without embeddings.
+    """
+
+    enabled: bool | None = Field(
+        default=None,
+        description="Whether HDBSCAN is included in the evaluation pipeline.",
+        json_schema_extra={
+            "omit_behavior": "Disables HDBSCAN.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
     params: HDBSCANParams | None = Field(
-        default_factory=HDBSCANParams
+        default_factory=HDBSCANParams,
+        description=(
+            "Parameters controlling HDBSCAN clustering and output storage."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses `HDBSCANParams` defaults.",
+            "null_behavior": "Equivalent to omission.",
+        },
     )
 
 
 class EvaluationClusteringConfig(_EvaluationConfigBaseModel):
-    kmeans: KMeansConfig = Field(default_factory=KMeansConfig)
-    leiden: LeidenConfig = Field(default_factory=LeidenConfig)
-    hdbscan: HDBSCANConfig = Field(default_factory=HDBSCANConfig)
+    """Groups independently tracked clustering evaluation steps.
+
+    KMeans, Leiden, and HDBSCAN run in that order. A recoverable failure in one
+    method does not prevent the others from running. KMeans and HDBSCAN cluster
+    `adata.X` directly, while Leiden first constructs a Scanpy neighbor graph
+    from its configured representation.
+    """
+
+    kmeans: KMeansConfig = Field(
+        default_factory=KMeansConfig,
+        description="Configuration for the KMeans evaluation step.",
+        json_schema_extra={
+            "omit_behavior": "Uses `KMeansConfig` defaults.",
+            "null_behavior": "Rejected; a configuration mapping is required.",
+        },
+    )
+    leiden: LeidenConfig = Field(
+        default_factory=LeidenConfig,
+        description="Configuration for the Leiden evaluation step.",
+        json_schema_extra={
+            "omit_behavior": "Uses `LeidenConfig` defaults.",
+            "null_behavior": "Rejected; a configuration mapping is required.",
+        },
+    )
+    hdbscan: HDBSCANConfig = Field(
+        default_factory=HDBSCANConfig,
+        description="Configuration for the HDBSCAN evaluation step.",
+        json_schema_extra={
+            "omit_behavior": "Uses `HDBSCANConfig` defaults.",
+            "null_behavior": "Rejected; a configuration mapping is required.",
+        },
+    )
 
 
 # -------------------------
