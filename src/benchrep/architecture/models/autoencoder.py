@@ -67,8 +67,16 @@ class Autoencoder(BenchRepAutoencoderModel):
             }
         )
 
-        self.reconstruction_losses = nn.ModuleDict(reconstruction_losses)
-        self.custom_objective_losses = nn.ModuleDict(custom_objective_losses)
+        self.reconstruction_losses: nn.ModuleDict | None = (
+            nn.ModuleDict(reconstruction_losses)
+            if reconstruction_losses
+            else None
+        )
+        self.custom_objective_losses: nn.ModuleDict | None = (
+            nn.ModuleDict(custom_objective_losses)
+            if custom_objective_losses
+            else None
+        )
 
         self.save_hyperparameters(
             ignore=[
@@ -144,6 +152,9 @@ class Autoencoder(BenchRepAutoencoderModel):
         }
 
         for role, (loss_terms, loss_kwargs) in loss_groups.items():
+            if loss_terms is None:
+                continue
+
             role_label = role.replace("_", " ").title()
 
             for loss_name, loss_term in loss_terms.items():
