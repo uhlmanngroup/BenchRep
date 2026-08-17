@@ -585,7 +585,7 @@ def write_evaluation_manifest(
     output_path: Path,
     run_spec: EvaluationRunSpec,
     run_context: RunContext,
-    adata: ad.AnnData,
+    adata: ad.AnnData | None,
     export_paths: EvaluationExportPaths,
     status_report: EvaluationStatusReport,
     created_at: str,
@@ -615,11 +615,12 @@ def write_evaluation_manifest(
         if isinstance(summary_value, Mapping):
             prediction_summary = summary_value
 
-    embeddings_source = (
-        "direct_path"
-        if config.source.embeddings_path is not None
-        else "prediction_manifest"
-    )
+    if run_spec.input_spec.embeddings_path is None:
+        embeddings_source = None
+    elif config.source.embeddings_path is not None:
+        embeddings_source = "direct_path"
+    else:
+        embeddings_source = "prediction_manifest"
 
     if reconstruction_spec is None:
         reconstructions_source = None
@@ -668,9 +669,13 @@ def write_evaluation_manifest(
         run_context,
     )
 
-    anndata_output_locations = _build_evaluation_anndata_output_locations(
-        adata=adata,
-        run_spec=run_spec,
+    anndata_output_locations = (
+        _build_evaluation_anndata_output_locations(
+            adata=adata,
+            run_spec=run_spec,
+        )
+        if adata is not None
+        else {}
     )
 
     outcome_statuses = [
@@ -709,7 +714,9 @@ def write_evaluation_manifest(
             "prediction_output_dir": prediction_run.get("output_dir"),
             "embeddings": {
                 "source": embeddings_source,
-                "path": str(run_spec.input_spec.embeddings_path),
+                "path": paths_to_strings(
+                    run_spec.input_spec.embeddings_path
+                ),
             },
             "reconstructions": {
                 "source": reconstructions_source,
@@ -755,11 +762,13 @@ def write_evaluation_manifest(
                 "n_obs": (
                     int(adata.n_obs)
                     if export_paths.evaluated_embeddings_path is not None
+                       and adata is not None
                     else None
                 ),
                 "n_vars": (
                     int(adata.n_vars)
                     if export_paths.evaluated_embeddings_path is not None
+                       and adata is not None
                     else None
                 ),
             },
@@ -821,6 +830,7 @@ def write_evaluation_manifest(
             "encoder": prediction_summary.get("encoder"),
             "decoder": prediction_summary.get("decoder"),
             "source_mode": source_mode,
+            "has_embeddings": run_spec.input_spec.embeddings_path is not None,
             "has_reconstructions": reconstruction_spec is not None,
         },
     }

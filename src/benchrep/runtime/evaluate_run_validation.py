@@ -28,7 +28,7 @@ if TYPE_CHECKING:
 class EvaluateSourceInputsResult:
     """Validated evaluation source inputs needed by the evaluation runner."""
 
-    adata_input: ad.AnnData
+    adata_input: ad.AnnData | None
     reconstruction_input: ReconstructionEvaluationInput | None
 
 
@@ -37,8 +37,13 @@ def prepare_evaluate_source_inputs(
 ) -> EvaluateSourceInputsResult:
     """Load and validate source inputs required by the evaluation runner."""
 
-    adata = _load_embeddings_adata(run_spec.input_spec.embeddings_path)
-    _validate_embedding_adata_basic_contract(adata)
+    adata = None
+    embeddings_path = run_spec.input_spec.embeddings_path
+
+    if embeddings_path is not None:
+        adata = _load_embeddings_adata(embeddings_path)
+        _validate_embedding_adata_basic_contract(adata)
+
     _validate_enabled_step_preconditions(
         run_spec=run_spec,
     )
@@ -65,6 +70,11 @@ def prepare_evaluate_source_inputs(
         )
 
         _validate_reconstruction_obs_length(reconstruction_input)
+
+    if adata is None and reconstruction_input is None:
+        raise RuntimeError(
+            "Evaluation source resolution produced no loadable inputs."
+        )
 
     return EvaluateSourceInputsResult(
         adata_input=adata,

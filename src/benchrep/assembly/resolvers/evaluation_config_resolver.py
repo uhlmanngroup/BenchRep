@@ -19,7 +19,6 @@ from benchrep.assembly.registries.utils import (
 )
 from benchrep.assembly.resolvers.utils import (
     get_optional_nested_path,
-    get_required_nested_path,
     get_optional_nested_value,
     params_to_dict,
 )
@@ -44,7 +43,7 @@ class EvaluationReconstructionInputSpec:
 
 @dataclass(frozen=True)
 class EvaluationInputSpec:
-    embeddings_path: Path
+    embeddings_path: Path | None
     reconstructions: EvaluationReconstructionInputSpec | None
     prediction_manifest_path: Path | None
 
@@ -178,7 +177,14 @@ def resolve_evaluation_config(
         n_examples=evaluation_config.reconstruction.n_examples,
     )
 
+    has_embeddings = embeddings_path is not None
     has_reconstructions = reconstructions is not None
+
+    if not has_embeddings and not has_reconstructions:
+        raise ValueError(
+            "Evaluation could not resolve a usable embeddings artifact or "
+            "reconstruction bundle from the configured sources."
+        )
 
     # Resolve run identity. RunContext is handled by the entrypoint workflow script
     run_identity = resolve_run_identity(
@@ -190,6 +196,7 @@ def resolve_evaluation_config(
     # Resolve step spec (some configs need further downstream resolution)
     step_spec = resolve_step_spec(
         evaluation_config=evaluation_config,
+        has_embeddings=has_embeddings,
         has_reconstructions=has_reconstructions,
     )
 
@@ -210,40 +217,35 @@ def resolve_evaluation_config(
 
 
 def resolve_embeddings_path(
-        embeddings_path: Path | None = None,
-        prediction_manifest: dict[str, Any] | None = None,
-        manifest_base_dir: Path | None = None,
-) -> Path:
-    """Resolve the AnnData embeddings input for evaluation.
+    embeddings_path: Path | None = None,
+    prediction_manifest: dict[str, Any] | None = None,
+    manifest_base_dir: Path | None = None,
+) -> Path | None:
+    """Resolve the optional AnnData embeddings input for evaluation.
 
-    Manual ``source.embeddings_path`` takes precedence over embeddings inferred
-    from a prediction manifest.
+    A direct `source.embeddings_path` takes precedence over the path recorded
+    in a prediction manifest. If neither source provides an embeddings path,
+    embedding-dependent evaluation is unavailable.
     """
     if embeddings_path is not None:
-        resolved_embeddings_path = Path(embeddings_path).resolve()
+        return Path(embeddings_path).expanduser().resolve()
 
-    else:
-        if prediction_manifest is None:
-            raise ValueError(
-                "source.embeddings_path is required when no prediction manifest "
-                "is provided."
-            )
+    if prediction_manifest is None:
+        return None
 
-        if manifest_base_dir is None:
-            raise ValueError(
-                "manifest_base_dir is required when resolving embeddings "
-                "from a prediction manifest."
-            )
-
-        resolved_embeddings_path = get_required_nested_path(
-            prediction_manifest,
-            "exports",
-            "embeddings",
-            "path",
-            base_dir=manifest_base_dir,
+    if manifest_base_dir is None:
+        raise ValueError(
+            "manifest_base_dir is required when resolving embeddings "
+            "from a prediction manifest."
         )
 
-    return resolved_embeddings_path
+    return get_optional_nested_path(
+        prediction_manifest,
+        "exports",
+        "embeddings",
+        "path",
+        base_dir=manifest_base_dir,
+    )
 
 
 def resolve_reconstructions(
@@ -515,10 +517,10 @@ def resolve_run_identity(
         model_name=model_name,
     )
 
-
 def resolve_step_spec(
         evaluation_config: EvaluationConfig,
         *,
+        has_embeddings: bool,
         has_reconstructions: bool,
 ) -> EvaluationStepSpec:
     """Resolve evaluation step switches and backend parameter dictionaries.
@@ -532,7 +534,10 @@ def resolve_step_spec(
 
     Most static defaults are resolved immediately. PCA, embedding metrics,
     and plots default to enabled. UMAP, t-SNE, KMeans, Leiden, HDBSCAN,
-    and predictability probes default to disabled.
+    and predictability probes default to disabled. Embedding-dependent steps
+    are disabled when no embeddings artifact is available. Explicit requests
+    are skipped with a warning. Default-enabled embedding steps run only when
+    embeddings are available, while opt-in steps still require explicit enablement.
 
     Clustering metrics require at least one clustering method to be enabled.
     When KMeans, Leiden, and HDBSCAN are all disabled, both internal and
@@ -545,14 +550,8 @@ def resolve_step_spec(
 
     External clustering metrics remain partially unresolved because they depend
     on the loaded AnnData object: ``None`` is preserved so the workflow can later
-    decide based on whether ``label_key`` exists in ``adata.obs``.
-
-    Clustering metrics also require at least one clustering method to be enabled.
-    If all clustering methods are disabled, both internal and external clustering
-    metrics are forced off during resolution. The availability check currently
-    reflects the explicitly modeled clustering methods in the config schema
-    (``kmeans`` and ``leiden``); if additional clustering methods are added to the
-    schema, they should be included in this check as well.
+    decide based on whether ``label_key`` exists in ``adata.obs``. Clustering metrics
+    also require at least one clustering method to be enabled.
 
     Selected metric names are validated against the evaluation registries and
     resolved to canonical names. Parameter objects are converted to dictionaries for
@@ -561,22 +560,46 @@ def resolve_step_spec(
     apply.
     """
     # Resolve step switches and params needed by multiple downstream decisions.
-    pca_enabled = enabled_by_default(evaluation_config.reductions.pca.enabled)
+    pca_enabled = resolve_enabled_if_available(
+        configured=evaluation_config.reductions.pca.enabled,
+        available=has_embeddings,
+        name="PCA",
+    )
     pca_params = params_to_dict(evaluation_config.reductions.pca.params)
 
-    umap_enabled = disabled_by_default(evaluation_config.reductions.umap.enabled)
+    umap_enabled = resolve_enabled_if_explicit_and_available(
+        configured=evaluation_config.reductions.umap.enabled,
+        available=has_embeddings,
+        name="UMAP",
+    )
     umap_params = params_to_dict(evaluation_config.reductions.umap.params)
 
-    tsne_enabled = disabled_by_default(evaluation_config.reductions.tsne.enabled)
+    tsne_enabled = resolve_enabled_if_explicit_and_available(
+        configured=evaluation_config.reductions.tsne.enabled,
+        available=has_embeddings,
+        name="t-SNE",
+    )
     tsne_params = params_to_dict(evaluation_config.reductions.tsne.params)
 
-    kmeans_enabled = disabled_by_default(evaluation_config.clustering.kmeans.enabled)
+    kmeans_enabled = resolve_enabled_if_explicit_and_available(
+        configured=evaluation_config.clustering.kmeans.enabled,
+        available=has_embeddings,
+        name="KMeans",
+    )
     kmeans_params = params_to_dict(evaluation_config.clustering.kmeans.params)
 
-    leiden_enabled = disabled_by_default(evaluation_config.clustering.leiden.enabled)
+    leiden_enabled = resolve_enabled_if_explicit_and_available(
+        configured=evaluation_config.clustering.leiden.enabled,
+        available=has_embeddings,
+        name="Leiden",
+    )
     leiden_params = params_to_dict(evaluation_config.clustering.leiden.params)
 
-    hdbscan_enabled = disabled_by_default(evaluation_config.clustering.hdbscan.enabled)
+    hdbscan_enabled = resolve_enabled_if_explicit_and_available(
+        configured=evaluation_config.clustering.hdbscan.enabled,
+        available=has_embeddings,
+        name="HDBSCAN",
+    )
     hdbscan_params = params_to_dict(evaluation_config.clustering.hdbscan.params)
 
     # Prep for guard to prevent clustering metric computation if no clustering is enabled.
@@ -586,6 +609,12 @@ def resolve_step_spec(
         evaluation_config.metrics.clustering.external.enabled
         if clustering_enabled
         else False
+    )
+
+    embedding_metrics_enabled = resolve_enabled_if_available(
+        configured=evaluation_config.metrics.embedding.enabled,
+        available=has_embeddings,
+        name="Embedding metrics",
     )
 
     embedding_metrics = resolve_registry_keys(
@@ -629,7 +658,11 @@ def resolve_step_spec(
         )
 
     predictability_config = evaluation_config.metrics.predictability
-    predictability_enabled = disabled_by_default(predictability_config.enabled)
+    predictability_enabled = resolve_enabled_if_explicit_and_available(
+        configured=predictability_config.enabled,
+        available=has_embeddings,
+        name="Predictability evaluation",
+    )
     predictability_task: PredictabilityTask = predictability_config.task
 
     predictability_probes = resolve_registry_keys(
@@ -746,9 +779,7 @@ def resolve_step_spec(
         ),
 
         # None = True
-        embedding_metrics_enabled=enabled_by_default(
-            evaluation_config.metrics.embedding.enabled
-        ),
+        embedding_metrics_enabled=embedding_metrics_enabled,
         embedding_metrics=embedding_metrics,
         embedding_metric_params=resolve_registry_param_keys(
             params=evaluation_config.metrics.embedding.params,
@@ -885,8 +916,8 @@ def resolve_enabled_if_available(
 
     if configured:
         warnings.warn(
-            f"{name} were explicitly enabled, but required inputs are unavailable. "
-            f"They will be skipped.",
+            f"Explicit enablement was requested for {name}, but required inputs "
+            "are unavailable. It will be skipped.",
             UserWarning,
             stacklevel=2,
         )
@@ -902,9 +933,9 @@ def resolve_enabled_if_explicit_and_available(
 ) -> bool:
     """Resolve a switch that requires both explicit enablement and input data.
 
-    This is used for optional artifact-producing steps such as reconstruction
-    error maps. ``None`` behaves like ``False``. If the user explicitly enables
-    the step but the required input is unavailable, the step is skipped with a
+    This is used for optional artifact-producing steps such as reductions, clustering,
+    predictability, and exports. ``None`` behaves like ``False``. If the user explicitly
+    enables the step but the required input is unavailable, the step is skipped with a
     warning.
     """
     if not configured:
@@ -912,8 +943,8 @@ def resolve_enabled_if_explicit_and_available(
 
     if not available:
         warnings.warn(
-            f"{name} were explicitly enabled, but required inputs are unavailable. "
-            f"They will be skipped.",
+            f"Explicit enablement was requested for {name}, but required inputs "
+            "are unavailable. It will be skipped.",
             UserWarning,
             stacklevel=2,
         )

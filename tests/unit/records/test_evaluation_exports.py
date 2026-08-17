@@ -6,6 +6,7 @@ import warnings
 import anndata as ad
 import numpy as np
 import pytest
+import json
 
 from benchrep.records import evaluation_exports
 from benchrep.runtime.status.evaluation import EvaluationOutcome
@@ -261,3 +262,28 @@ def test_empty_metrics_export_is_disabled(
 
     assert result.paths.metrics_json_path is None
     assert outcome.status == "disabled"
+
+
+def test_metrics_json_supports_reconstruction_metrics_without_adata(
+    tmp_path: Path,
+) -> None:
+    output_path = evaluation_exports.save_evaluation_metrics_json(
+        output_dir=tmp_path,
+        adata=None,
+        reconstruction_outputs={
+            "reconstruction_metrics": {
+                "mse": 1.25,
+            },
+        },
+    )
+
+    assert output_path is not None
+
+    with output_path.open(encoding="utf-8") as handle:
+        metrics = json.load(handle)
+
+    assert metrics == {
+        "reconstruction": {
+            "mse": 1.25,
+        },
+    }

@@ -169,12 +169,11 @@ class EvalMetricGroupConfig(_EvaluationConfigBaseModel):
 # Source and run config
 # -------------------------
 class EvaluationSourceConfig(_EvaluationConfigBaseModel):
-    """Selects the embedding and optional reconstruction inputs for evaluation.
+    """Selects the embedding and reconstruction inputs for evaluation.
 
-    Evaluation always requires an AnnData embedding artifact. It may be supplied
-    directly or inferred from a prediction manifest. Reconstruction artifacts
-    are optional and may likewise be supplied directly or inferred independently,
-    allowing direct paths and manifest-derived paths to be mixed.
+    Evaluation requires at least one usable embedding or reconstruction input.
+    Either artifact type may be supplied directly or inferred from a prediction
+    manifest, allowing embedding-only, reconstruction-only, or combined evaluation.
 
     A directly configured artifact path takes precedence over the corresponding
     path recorded in the manifest. The manifest still provides upstream
@@ -195,9 +194,9 @@ class EvaluationSourceConfig(_EvaluationConfigBaseModel):
         ),
         json_schema_extra={
             "omit_behavior": (
-                "No configured manifest is loaded. An embedding path must be "
-                "provided directly unless a manifest is supplied through the "
-                "evaluation entrypoint."
+                "No configured manifest is loaded. At least one direct artifact path "
+                "must be provided unless a manifest is supplied through the evaluation "
+                "entrypoint."
             ),
             "null_behavior": "Equivalent to omission.",
             "notes": [
@@ -214,15 +213,15 @@ class EvaluationSourceConfig(_EvaluationConfigBaseModel):
         default=None,
         description=(
             "Path to an AnnData `.h5ad` file. `adata.X` must be a non-empty, "
-            "two-dimensional, finite numeric matrix with shape "
+            "two-dimensional, finite real numeric matrix with shape "
             "`(n_observations, n_embedding_dimensions)`; dense and sparse matrices "
             "are supported. Each row represents one sample and each column one "
             "embedding dimension."
         ),
         json_schema_extra={
             "omit_behavior": (
-                "Infers the embeddings path from the prediction manifest. "
-                "Validation fails if no manifest is available."
+                "Infers the embeddings path from the prediction manifest when available; "
+                "otherwise embedding-dependent evaluation is unavailable."
             ),
             "null_behavior": "Equivalent to omission.",
             "notes": [
@@ -374,12 +373,92 @@ class EvaluationRunConfig(_EvaluationConfigBaseModel):
 # Reductions config
 # -------------------------
 class PCAParams(BaseModel):
-    model_config = ConfigDict(extra="allow")
+    """Controls PCA computation and AnnData output storage.
 
-    n_components: PositiveInt | None = None
-    key_added: str | None = "X_pca"
-    random_state: int | None = 137
-    overwrite: bool | None = False
+    BenchRep applies PCA directly to `adata.X`, stores the coordinates in
+    `adata.obsm[key_added]`, and records parameters and explained-variance
+    summaries under `adata.uns["benchrep"]["reductions"][key_added]`.
+
+    Additional non-null fields are forwarded to
+    `sklearn.decomposition.PCA`.
+    """
+
+    model_config = ConfigDict(
+        extra="allow",
+        json_schema_extra={
+            "extra_field_behavior": (
+                "Allowed; additional non-null fields are forwarded as keyword "
+                "arguments to `sklearn.decomposition.PCA`."
+            ),
+        },
+    )
+
+    n_components: PositiveInt | None = Field(
+        default=None,
+        description="Number of principal components to compute.",
+        json_schema_extra={
+            "omit_behavior": (
+                "Uses the smallest of 30, the number of observations, and the "
+                "number of embedding dimensions."
+            ),
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    key_added: str | None = Field(
+        default="X_pca",
+        description="Key used to store PCA coordinates in `adata.obsm`.",
+        json_schema_extra={
+            "omit_behavior": "Uses `X_pca`.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    random_state: int | None = Field(
+        default=137,
+        description="Random seed passed to scikit-learn PCA.",
+        json_schema_extra={
+            "omit_behavior": "Uses 137.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    overwrite: bool | None = Field(
+        default=False,
+        description=(
+            "Whether an existing `adata.obsm[key_added]` entry may be replaced."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Does not overwrite an existing entry.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "A key collision without overwrite is a recoverable step failure."
+            ],
+        },
+    )
+
+
+class PCAConfig(EvalStepConfig):
+    """Configures PCA as an evaluation step.
+
+    PCA is enabled automatically by default. It operates on the original
+    representation in `adata.X`; other reduction steps do not depend on its
+    output.
+    """
+
+    enabled: bool | None = Field(
+        default=None,
+        description="Whether PCA is included in the evaluation pipeline.",
+        json_schema_extra={
+            "omit_behavior": "Enables PCA.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    params: PCAParams | None = Field(
+        default_factory=PCAParams,
+        description="Parameters controlling PCA computation and output storage.",
+        json_schema_extra={
+            "omit_behavior": "Uses `PCAParams` defaults.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
 
 
 class UMAPParams(_EvaluationConfigBaseModel):
@@ -403,10 +482,6 @@ class TSNEParams(BaseModel):
     key_added: str | None = "X_tsne"
     random_state: int | None = 137
     overwrite: bool | None = False
-
-
-class PCAConfig(EvalStepConfig):
-    params: PCAParams | None = Field(default_factory=PCAParams)
 
 
 class UMAPConfig(EvalStepConfig):
@@ -807,22 +882,15 @@ class EvaluationConfig(_EvaluationConfigBaseModel):
 
         if (
                 self.source.embeddings_path is None
+                and self.source.reconstructions_path is None
                 and self.source.prediction_manifest_path is None
                 and not prediction_manifest_path_overridden
         ):
             raise ValueError(
-                "Either source.embeddings_path or source.prediction_manifest_path "
-                "must be provided. If embeddings_path is null, embeddings are "
-                "inferred from the prediction manifest."
+                "At least one evaluation source must be provided through "
+                "source.embeddings_path, source.reconstructions_path, "
+                "source.prediction_manifest_path, or the "
+                "prediction_manifest_path workflow argument."
             )
-
-        if self.source.prediction_manifest_path is not None:
-            if self.source.prediction_manifest_path.suffix.lower() not in {
-                ".yaml",
-                ".yml",
-            }:
-                raise ValueError(
-                    "source.prediction_manifest_path must point to a YAML file."
-                )
 
         return self

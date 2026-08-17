@@ -61,7 +61,7 @@ class EvaluationExportResult:
 
 def export_evaluation_outputs(
     *,
-    adata: ad.AnnData,
+    adata: ad.AnnData | None,
     anndata_outcomes: Sequence[EvaluationOutcome],
     reconstruction_input: ReconstructionEvaluationInput | None,
     reconstruction_outputs: Mapping[str, Any] | None,
@@ -140,8 +140,13 @@ def export_evaluation_outputs(
     evaluated_embeddings_path = None
 
     if has_successful_anndata_step:
-        embeddings_dir.mkdir(parents=True, exist_ok=True)
+        if adata is None:
+            raise RuntimeError(
+                "AnnData evaluation completed successfully, but no AnnData object "
+                "was available for export."
+            )
 
+        embeddings_dir.mkdir(parents=True, exist_ok=True)
         evaluated_embeddings_path = (
                 embeddings_dir / "evaluated_embeddings.h5ad"
         )
@@ -154,9 +159,7 @@ def export_evaluation_outputs(
                 overwrite=overwrite,
             )
 
-        embedding_issues = _format_captured_export_warnings(
-            caught_warnings
-        )
+        embedding_issues = _format_captured_export_warnings(caught_warnings)
         embedding_status: EvaluationOutcomeStatus = (
             "completed_with_warnings"
             if embedding_issues
@@ -190,7 +193,8 @@ def export_evaluation_outputs(
     cluster_size_plot_paths = None
 
     reduction_plots_enabled = (
-        step_spec.plots_enabled
+        adata is not None
+        and step_spec.plots_enabled
         and any(
             (
                 step_spec.pca_enabled,
@@ -222,7 +226,8 @@ def export_evaluation_outputs(
         )
 
     cluster_size_plots_enabled = (
-        step_spec.plots_enabled
+        adata is not None
+        and step_spec.plots_enabled
         and any(
             (
                 step_spec.kmeans_enabled,
@@ -468,7 +473,7 @@ def _format_captured_export_warnings(
 def save_evaluation_metrics_json(
     *,
     output_dir: str | Path,
-    adata: ad.AnnData,
+    adata: ad.AnnData | None,
     reconstruction_outputs: Mapping[str, Any] | None = None,
     overwrite: bool = False,
 ) -> Path | None:
@@ -952,29 +957,34 @@ def export_reconstruction_grids(
 
 def _collect_evaluation_metrics(
     *,
-    adata: ad.AnnData,
+    adata: ad.AnnData | None,
     reconstruction_outputs: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Collect evaluation metrics from AnnData and reconstruction outputs."""
 
-    benchrep = adata.uns.get("benchrep", {})
-    if not isinstance(benchrep, Mapping):
-        raise TypeError(
-            "Expected adata.uns['benchrep'] to be a mapping, "
-            f"got {type(benchrep).__name__}."
-        )
+    metrics: dict[str, Any] = {}
 
-    adata_metrics = benchrep.get("metrics", {})
-    if adata_metrics is None:
-        adata_metrics = {}
+    if adata is not None:
+        benchrep = adata.uns.get("benchrep", {})
 
-    if not isinstance(adata_metrics, Mapping):
-        raise TypeError(
-            "Expected adata.uns['benchrep']['metrics'] to be a mapping, "
-            f"got {type(adata_metrics).__name__}."
-        )
+        if not isinstance(benchrep, Mapping):
+            raise TypeError(
+                "Expected adata.uns['benchrep'] to be a mapping, "
+                f"got {type(benchrep).__name__}."
+            )
 
-    metrics = dict(adata_metrics)
+        adata_metrics = benchrep.get("metrics", {})
+
+        if adata_metrics is None:
+            adata_metrics = {}
+
+        if not isinstance(adata_metrics, Mapping):
+            raise TypeError(
+                "Expected adata.uns['benchrep']['metrics'] to be a mapping, "
+                f"got {type(adata_metrics).__name__}."
+            )
+
+        metrics.update(adata_metrics)
 
     if reconstruction_outputs is None:
         return metrics

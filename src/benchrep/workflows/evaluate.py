@@ -50,7 +50,7 @@ class EvaluationWorkflowResult:
     config: EvaluationConfig
     run_spec: EvaluationRunSpec
     run_context: RunContext
-    adata: ad.AnnData
+    adata: ad.AnnData | None
     reconstruction_outputs: dict[str, Any] | None
     export_paths: EvaluationExportPaths
     status_report: EvaluationStatusReport
@@ -67,7 +67,7 @@ def evaluate(
 
     # Prediction manifest override
     if prediction_manifest_path is not None:
-        prediction_manifest_path = Path(prediction_manifest_path).resolve()
+        prediction_manifest_path = Path(prediction_manifest_path).expanduser().resolve()
         if prediction_manifest_path.suffix.lower() not in {".yaml", ".yml"}:
             raise ValueError(
                 "prediction_manifest_path override must point to a YAML file."
@@ -114,7 +114,13 @@ def evaluate(
         config_composition_result.effective_source,
     )
     run_log.info("Evaluation outputs will be saved to: '%s'", run_context.output_dir)
-    run_log.info("Resolved embeddings path: '%s'", run_spec.input_spec.embeddings_path)
+    if run_spec.input_spec.embeddings_path is None:
+        run_log.info("No embeddings path was resolved.")
+    else:
+        run_log.info(
+            "Resolved embeddings path: '%s'",
+            run_spec.input_spec.embeddings_path,
+        )
 
     # Bookkeeping --- config
     save_config_records(
@@ -151,12 +157,15 @@ def evaluate(
     adata = source_inputs.adata_input
     reconstruction_input = source_inputs.reconstruction_input
 
-    run_log.info(
-        "Loaded AnnData with shape %s, obs columns=%s, obsm keys=%s",
-        adata.shape,
-        tuple(adata.obs.columns),
-        tuple(adata.obsm.keys()),
-    )
+    if adata is None:
+        run_log.info("No embedding evaluation input was loaded.")
+    else:
+        run_log.info(
+            "Loaded AnnData with shape %s, obs columns=%s, obsm keys=%s",
+            adata.shape,
+            tuple(adata.obs.columns),
+            tuple(adata.obsm.keys()),
+        )
 
     if reconstruction_input is None:
         run_log.info("No reconstruction evaluation inputs were loaded.")
@@ -171,19 +180,24 @@ def evaluate(
         )
 
     # Create and run AnnData evaluation pipeline
-    embeddings_pipeline = create_anndata_evaluation_pipeline(run_spec)
+    embedding_outcomes: tuple[EvaluationOutcome, ...] = ()
 
-    run_log.info("Starting AnnData evaluation pipeline...")
+    if adata is not None:
+        embeddings_pipeline = create_anndata_evaluation_pipeline(run_spec)
 
-    with capture_console_streams(
-        log_out_dir=run_context.log_dir,
-        capture_stdout=False,
-    ):
-        adata = embeddings_pipeline.run(adata)
+        run_log.info("Starting AnnData evaluation pipeline...")
 
-    run_log.info("Finished AnnData evaluation pipeline.")
-    run_log.info("Final obsm keys: %s", tuple(adata.obsm.keys()))
-    run_log.info("Final obs columns: %s", tuple(adata.obs.columns))
+        with capture_console_streams(
+                log_out_dir=run_context.log_dir,
+                capture_stdout=False,
+        ):
+            adata = embeddings_pipeline.run(adata)
+
+        embedding_outcomes = embeddings_pipeline.outcomes
+
+        run_log.info("Finished AnnData evaluation pipeline.")
+        run_log.info("Final obsm keys: %s", tuple(adata.obsm.keys()))
+        run_log.info("Final obs columns: %s", tuple(adata.obs.columns))
 
     # Create and run reconstruction evaluation pipeline
     reconstruction_outputs = None
@@ -221,7 +235,7 @@ def evaluate(
 
     export_result = export_evaluation_outputs(
         adata=adata,
-        anndata_outcomes=embeddings_pipeline.outcomes,
+        anndata_outcomes=embedding_outcomes,
         reconstruction_input=reconstruction_input,
         reconstruction_outputs=reconstruction_outputs,
         step_spec=run_spec.step_spec,
@@ -240,7 +254,7 @@ def evaluate(
     run_log.info("Finished evaluation artifact export.")
 
     status_report = build_evaluation_status_report(
-        embedding_outcomes=embeddings_pipeline.outcomes,
+        embedding_outcomes=embedding_outcomes,
         reconstruction_outcomes=reconstruction_outcomes,
         export_outcomes=export_result.outcomes,
     )

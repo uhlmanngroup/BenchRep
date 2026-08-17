@@ -75,5 +75,6 @@ def test_resolve_step_spec_rejects_no_enabled_work() -> None:
     ):
         resolve_step_spec(
             evaluation_config=config,
+            has_embeddings=True,
             has_reconstructions=False,
         )
