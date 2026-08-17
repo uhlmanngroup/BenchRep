@@ -125,54 +125,66 @@ def run_kmeans(
 def run_leiden(
     adata: ad.AnnData,
     *,
-    resolution: float = 1.0,
     n_neighbors: int = 15,
     n_pcs: int | None = None,
+    use_rep: str | None = None,
     metric: str = "euclidean",
+    neighbors_kwargs: dict[str, Any] | None = None,
+    resolution: float = 1.0,
     key_added: str = "leiden",
+    leiden_kwargs: dict[str, Any] | None = None,
     neighbors_key: str = "neighbors",
     random_state: int = 137,
     overwrite: bool = False,
-    neighbors_kwargs: dict[str, Any] | None = None,
-    leiden_kwargs: dict[str, Any] | None = None,
 ) -> ad.AnnData:
-    """
-    Build a Scanpy neighbor graph and run Leiden clustering on ``adata.X``.
+    """Construct a Scanpy neighbor graph and run Leiden clustering.
+
+    The representation used for neighbor construction is controlled by
+    ``use_rep`` and ``n_pcs``. When ``use_rep`` is ``None``, Scanpy selects
+    between ``adata.X`` and ``adata.obsm["X_pca"]`` automatically.
+
+    Cluster labels are stored in ``adata.obs[key_added]``. Neighbor metadata is
+    stored in ``adata.uns[neighbors_key]``, with distance and connectivity
+    matrices in ``adata.obsp``. BenchRep provenance is stored under
+    ``adata.uns["benchrep"]["clustering"][key_added]``.
 
     Parameters
     ----------
     adata:
-        AnnData object whose ``X`` matrix contains the representation to cluster.
-    resolution:
-        Leiden resolution parameter. Higher values generally produce more
-        clusters.
+        AnnData object containing the representation to cluster.
     n_neighbors:
-        Number of neighbors used to construct the neighbor graph.
+        Number of kNN neighbors passed to ``scanpy.pp.neighbors()``.
     n_pcs:
-        Number of PCs passed to Scanpy neighbors. If ``None``, Scanpy decides
-        based on the input.
+        Number of principal components passed to ``scanpy.pp.neighbors()``.
+        ``None`` delegates selection to Scanpy; zero forces ``adata.X`` when
+        ``use_rep`` is unset.
+    use_rep:
+        Representation passed to ``scanpy.pp.neighbors()``. ``"X"`` selects
+        ``adata.X``; other values name an entry in ``adata.obsm``. ``None``
+        delegates selection to Scanpy.
     metric:
-        Distance metric passed to Scanpy neighbors. Common useful options
-        include ``"euclidean"``, ``"cosine"``, ``"correlation"``,
-        ``"manhattan"``, ``"l1"``, and ``"l2"``.
-    key_added:
-        Key under which Leiden cluster labels are stored in ``adata.obs``.
-    neighbors_key:
-        Key used by Scanpy to store and retrieve the neighbor graph.
-    random_state:
-        Random seed passed to Scanpy Leiden.
-    overwrite:
-        If ``False``, raise an error when ``key_added`` or ``neighbors_key``
-        already exists. If ``True``, replace existing entries.
+        Distance metric passed to ``scanpy.pp.neighbors()``.
     neighbors_kwargs:
-        Additional keyword arguments passed to ``scanpy.pp.neighbors``.
+        Additional keyword arguments passed to ``scanpy.pp.neighbors()``.
+    resolution:
+        Resolution passed to ``scanpy.tl.leiden()``. Higher values generally
+        produce more clusters.
+    key_added:
+        Key used by ``scanpy.tl.leiden()`` to store labels in ``adata.obs``.
     leiden_kwargs:
-        Additional keyword arguments passed to ``scanpy.tl.leiden``.
+        Additional keyword arguments passed to ``scanpy.tl.leiden()``.
+    neighbors_key:
+        Namespace used to store the neighbor graph and retrieve it for Leiden.
+    random_state:
+        Random seed passed to ``scanpy.pp.neighbors()`` and
+        ``scanpy.tl.leiden()``.
+    overwrite:
+        Whether existing Leiden or neighbor-graph outputs may be replaced.
 
     Returns
     -------
     AnnData
-        The input AnnData object, modified in place and returned for convenience.
+        The input AnnData object, modified in place and returned.
     """
     sc = load_scanpy_backend(
         feature="Leiden clustering",
@@ -199,13 +211,18 @@ def run_leiden(
             f"n_neighbors={n_neighbors} and n_obs={adata.n_obs}."
         )
 
-    neighbors_kwargs = {} if neighbors_kwargs is None else neighbors_kwargs
-    leiden_kwargs = {} if leiden_kwargs is None else leiden_kwargs
+    neighbors_kwargs = (
+        {} if neighbors_kwargs is None else dict(neighbors_kwargs)
+    )
+    leiden_kwargs = (
+        {} if leiden_kwargs is None else dict(leiden_kwargs)
+    )
 
     sc.pp.neighbors(
         adata,
         n_neighbors=n_neighbors,
         n_pcs=n_pcs,
+        use_rep=use_rep,
         metric=metric,
         key_added=None if neighbors_key == "neighbors" else neighbors_key,
         random_state=random_state,
@@ -241,17 +258,18 @@ def run_leiden(
         key_added=key_added,
         metadata={
             "method": "leiden",
-            "cluster_key": key_added,
-            "resolution": resolution,
             "n_neighbors": n_neighbors,
             "n_pcs": n_pcs,
+            "use_rep": use_rep,
             "metric": metric,
+            "neighbors_params": dict(neighbors_kwargs),
+            "resolution": resolution,
+            "cluster_key": key_added,
+            "leiden_params": dict(leiden_kwargs),
             "neighbors_key": neighbors_key,
             "random_state": random_state,
-            "input_shape": list(adata.X.shape),
             "n_clusters": n_clusters,
-            "neighbors_params": dict(neighbors_kwargs),
-            "leiden_params": dict(leiden_kwargs),
+            "adata_x_shape": list(adata.X.shape),
         },
     )
 
