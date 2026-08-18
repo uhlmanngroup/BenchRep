@@ -140,8 +140,8 @@ class EvalMetricGroupConfig(_EvaluationConfigBaseModel):
         description="Registered metric names or aliases to compute.",
         json_schema_extra={
             "omit_behavior": (
-                "Selects all registered metrics unless the concrete group "
-                "defines its own default selection."
+                "Selects every metric currently registered in the process unless the "
+                "concrete group defines its own default selection."
             ),
             "null_behavior": "Equivalent to omission.",
             "notes": [
@@ -1391,16 +1391,132 @@ class EvaluationReconstructionConfig(_EvaluationConfigBaseModel):
 
 # Clustering ---
 class InternalClusteringMetricConfig(EvalMetricGroupConfig):
-    pass
+    """Configures internal metrics for each enabled clustering result.
+
+    Registered callables receive `adata.X` and the corresponding cluster labels.
+    Results are stored under
+    `adata.uns["benchrep"]["metrics"]["clustering"]["internal"][cluster_key]`.
+    Each metric step depends on successful completion of its clustering step.
+    """
+
+    enabled: bool | None = Field(
+        default=None,
+        description="Whether internal clustering metrics are computed.",
+        json_schema_extra={
+            "omit_behavior": (
+                "Enables the group when at least one clustering method is "
+                "enabled; otherwise disables it."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "A separate metric step runs for each enabled clustering method."
+            ],
+        },
+    )
+    selected: list[str] | None = Field(
+        default=None,
+        description=(
+            "Registered internal clustering metric names or aliases to compute."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Computes every internal clustering metric currently "
+                "registered in the process."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Inspect available metrics with "
+                "`benchrep.inspect_registry(\"internal_clustering_metric\")`.",
+                "An empty list is rejected when the group runs.",
+            ],
+        },
+    )
 
 
 class ExternalClusteringMetricConfig(EvalMetricGroupConfig):
-    label_key: str = "label"
+    """Configures label-referenced metrics for each clustering result.
+
+    Registered callables receive reference labels from
+    `adata.obs[label_key]` and the corresponding cluster assignments. Results
+    are stored under
+    `adata.uns["benchrep"]["metrics"]["clustering"]["external"][cluster_key]`.
+    Each metric step depends on successful completion of its clustering step.
+    """
+
+    enabled: bool | None = Field(
+        default=None,
+        description="Whether external clustering metrics are computed.",
+        json_schema_extra={
+            "omit_behavior": (
+                "Enables the group when clustering is enabled and `label_key` "
+                "exists in `adata.obs`; otherwise disables it."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Explicit enablement with a missing label column produces a "
+                "recoverable step failure.",
+                "The group is disabled when no clustering method is enabled.",
+            ],
+        },
+    )
+    label_key: str = Field(
+        default="label",
+        description=(
+            "Column in `adata.obs` containing the reference labels passed to "
+            "external metric callables."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses `label`.",
+            "null_behavior": "Rejected.",
+        },
+    )
+    selected: list[str] | None = Field(
+        default=None,
+        description=(
+            "Registered external clustering metric names or aliases to compute."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Computes every external clustering metric currently "
+                "registered in the process."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Inspect available metrics with "
+                "`benchrep.inspect_registry(\"external_clustering_metric\")`.",
+                "An empty list is rejected when the group runs.",
+            ],
+        },
+    )
 
 
 class EvaluationClusteringMetricsConfig(_EvaluationConfigBaseModel):
-    internal: InternalClusteringMetricConfig = Field(default_factory=InternalClusteringMetricConfig)
-    external: ExternalClusteringMetricConfig = Field(default_factory=ExternalClusteringMetricConfig)
+    """Groups internal and external metrics for clustering outputs.
+
+    Both groups are evaluated independently for every enabled clustering
+    method. Observations assigned to HDBSCAN's noise cluster are excluded from
+    both internal and external metrics.
+    """
+
+    internal: InternalClusteringMetricConfig = Field(
+        default_factory=InternalClusteringMetricConfig,
+        description="Internal metrics evaluating cluster structure in `adata.X`.",
+        json_schema_extra={
+            "omit_behavior": "Uses `InternalClusteringMetricConfig` defaults.",
+            "null_behavior": "Rejected.",
+        },
+    )
+    external: ExternalClusteringMetricConfig = Field(
+        default_factory=ExternalClusteringMetricConfig,
+        description=(
+            "External metrics comparing cluster assignments with reference "
+            "labels."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses `ExternalClusteringMetricConfig` defaults.",
+            "null_behavior": "Rejected.",
+        },
+    )
 
 
 # Embedding ---
