@@ -102,7 +102,8 @@ def compute_external_clustering_metrics(
     failures: dict[str, str] = {}
 
     for metric_name in metric_names:
-        metric_fn = EVAL_EXTERNAL_CLUSTERING_METRICS.get(metric_name)
+        metric = EVAL_EXTERNAL_CLUSTERING_METRICS.get(metric_name)
+        metric_fn = metric.fn
         params = metric_params.get(metric_name, {})
 
         validate_metric_params(
@@ -241,7 +242,8 @@ def compute_internal_clustering_metrics(
     failures: dict[str, str] = {}
 
     for metric_name in metric_names:
-        metric_fn = EVAL_INTERNAL_CLUSTERING_METRICS.get(metric_name)
+        metric = EVAL_INTERNAL_CLUSTERING_METRICS.get(metric_name)
+        metric_fn = metric.fn
         params = metric_params.get(metric_name, {})
 
         validate_metric_params(

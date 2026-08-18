@@ -226,7 +226,8 @@ def _compute_metric_group(
     failures: dict[str, str] = {}
 
     for metric_name in metric_names:
-        metric_fn = EVAL_RECONSTRUCTION_METRICS.get(metric_name)
+        metric = EVAL_RECONSTRUCTION_METRICS.get(metric_name)
+        metric_fn = metric.fn
         params = metric_params.get(metric_name, {})
 
         validate_metric_params(

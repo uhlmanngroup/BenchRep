@@ -138,6 +138,7 @@ def register_builtins() -> None:
             root_mean_squared_error,
             max_absolute_error,
         )
+        from benchrep.evaluation.metrics import EvaluationMetric
 
 
         # --- Data ---
@@ -313,19 +314,28 @@ def register_builtins() -> None:
         # Internal clustering metrics
         EVAL_INTERNAL_CLUSTERING_METRICS._register_builtin(
             "silhouette",
-            silhouette_score,
+            EvaluationMetric(
+                fn=silhouette_score,
+                result_kind="scalar",
+            ),
             "silhouette_score",
         )
         EVAL_INTERNAL_CLUSTERING_METRICS._register_builtin(
             "calinski_harabasz",
-            calinski_harabasz_score,
+            EvaluationMetric(
+                fn=calinski_harabasz_score,
+                result_kind="scalar",
+            ),
             "calinski_harabasz_score",
             "ch",
             "ch_score",
         )
         EVAL_INTERNAL_CLUSTERING_METRICS._register_builtin(
             "davies_bouldin",
-            davies_bouldin_score,
+            EvaluationMetric(
+                fn=davies_bouldin_score,
+                result_kind="scalar",
+            ),
             "davies_bouldin_score",
             "db",
             "db_score",
@@ -334,7 +344,10 @@ def register_builtins() -> None:
         # External clustering metrics
         EVAL_EXTERNAL_CLUSTERING_METRICS._register_builtin(
             "adjusted_mutual_info",
-            adjusted_mutual_info_score,
+            EvaluationMetric(
+                fn=adjusted_mutual_info_score,
+                result_kind="scalar",
+            ),
             "adjusted_mutual_info_score",
             "adjusted_mutual_information",
             "adjusted_mutual_information_score",
@@ -345,7 +358,10 @@ def register_builtins() -> None:
         )
         EVAL_EXTERNAL_CLUSTERING_METRICS._register_builtin(
             "adjusted_rand_index",
-            adjusted_rand_score,
+            EvaluationMetric(
+                fn=adjusted_rand_score,
+                result_kind="scalar",
+            ),
             "adjusted_rand_score",
             "adjusted_rand",
             "adj_rand_index",
@@ -355,42 +371,69 @@ def register_builtins() -> None:
         )
         EVAL_EXTERNAL_CLUSTERING_METRICS._register_builtin(
             "homogeneity",
-            homogeneity_score,
+            EvaluationMetric(
+                fn=homogeneity_score,
+                result_kind="scalar",
+            ),
             "homogeneity_score",
         )
 
         # Embedding metrics
         EVAL_EMBEDDING_METRICS._register_builtin(
             "mean",
-            dimensionwise_mean,
+            EvaluationMetric(
+                fn=dimensionwise_mean,
+                result_kind="vector",
+                vector_axis="embedding_dimension",
+            ),
             "dimensionwise_mean",
         )
         EVAL_EMBEDDING_METRICS._register_builtin(
             "median",
-            dimensionwise_median,
+            EvaluationMetric(
+                fn=dimensionwise_median,
+                result_kind="vector",
+                vector_axis="embedding_dimension",
+            ),
             "dimensionwise_median",
         )
         EVAL_EMBEDDING_METRICS._register_builtin(
             "standard_deviation",
-            dimensionwise_standard_deviation,
+            EvaluationMetric(
+                fn=dimensionwise_standard_deviation,
+                result_kind="vector",
+                vector_axis="embedding_dimension",
+            ),
             "dimensionwise_standard_deviation",
             "std",
         )
         EVAL_EMBEDDING_METRICS._register_builtin(
             "minimum",
-            dimensionwise_minimum,
+            EvaluationMetric(
+                fn=dimensionwise_minimum,
+                result_kind="vector",
+                vector_axis="embedding_dimension",
+            ),
             "dimensionwise_minimum",
             "min",
         )
         EVAL_EMBEDDING_METRICS._register_builtin(
             "maximum",
-            dimensionwise_maximum,
+            EvaluationMetric(
+                fn=dimensionwise_maximum,
+                result_kind="vector",
+                vector_axis="embedding_dimension",
+            ),
             "dimensionwise_maximum",
             "max",
         )
         EVAL_EMBEDDING_METRICS._register_builtin(
             "quantiles",
-            dimensionwise_quantiles,
+            EvaluationMetric(
+                fn=dimensionwise_quantiles,
+                result_kind="vector_mapping",
+                vector_axis="embedding_dimension",
+            ),
             "dimensionwise_quantiles",
             "quantile",
         )
@@ -434,28 +477,39 @@ def register_builtins() -> None:
         # Reconstruction metrics
         EVAL_RECONSTRUCTION_METRICS._register_builtin(
             "mae",
-            mean_absolute_error,
+            EvaluationMetric(
+                fn=mean_absolute_error,
+                result_kind="scalar",
+            ),
             "mean_absolute_error",
             "mean_abs_error",
         )
         EVAL_RECONSTRUCTION_METRICS._register_builtin(
             "mse",
-            mean_squared_error,
+            EvaluationMetric(
+                fn=mean_squared_error,
+                result_kind="scalar",
+            ),
             "mean_squared_error",
             "mean_sq_error",
         )
         EVAL_RECONSTRUCTION_METRICS._register_builtin(
             "rmse",
-            root_mean_squared_error,
+            EvaluationMetric(
+                fn=root_mean_squared_error,
+                result_kind="scalar",
+            ),
             "root_mean_squared_error",
             "root_mean_sq_error",
         )
         EVAL_RECONSTRUCTION_METRICS._register_builtin(
             "max_absolute_error",
-            max_absolute_error,
+            EvaluationMetric(
+                fn=max_absolute_error,
+                result_kind="scalar",
+            ),
             "max_abs_error",
         )
-
 
         _BUILTINS_REGISTERED = True
 

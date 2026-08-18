@@ -31,6 +31,7 @@ from benchrep.assembly.registries.core import (
     EVAL_EMBEDDING_METRICS,
     EVAL_RECONSTRUCTION_METRICS,
 )
+from benchrep.evaluation.metrics import EvaluationMetric
 from tests.fixtures.datasets import TinySyntheticDataset
 
 
@@ -340,17 +341,30 @@ def register_custom_test_components() -> None:
     )
     EVAL_INTERNAL_CLUSTERING_METRICS.register(
         "custom_test_internal_metric",
-        custom_internal_clustering_metric,
+        EvaluationMetric(
+            fn=custom_internal_clustering_metric,
+            result_kind="scalar",
+        ),
     )
     EVAL_EXTERNAL_CLUSTERING_METRICS.register(
         "custom_test_external_metric",
-        custom_external_clustering_metric,
+        EvaluationMetric(
+            fn=custom_external_clustering_metric,
+            result_kind="scalar",
+        ),
     )
     EVAL_EMBEDDING_METRICS.register(
         "custom_test_embedding_metric",
-        custom_embedding_metric,
+        EvaluationMetric(
+            fn=custom_embedding_metric,
+            result_kind="vector",
+            vector_axis="embedding_dimension",
+        ),
     )
     EVAL_RECONSTRUCTION_METRICS.register(
         "custom_test_reconstruction_metric",
-        custom_reconstruction_metric,
+        EvaluationMetric(
+            fn=custom_reconstruction_metric,
+            result_kind="scalar",
+        ),
     )

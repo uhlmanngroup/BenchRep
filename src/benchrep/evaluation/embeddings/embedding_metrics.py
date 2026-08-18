@@ -75,7 +75,8 @@ def compute_embedding_metrics(
     failures: dict[str, str] = {}
 
     for metric_name in metric_names:
-        metric_fn = EVAL_EMBEDDING_METRICS.get(metric_name)
+        metric = EVAL_EMBEDDING_METRICS.get(metric_name)
+        metric_fn = metric.fn
         params = resolved_metric_params.get(metric_name, {})
 
         validate_metric_params(

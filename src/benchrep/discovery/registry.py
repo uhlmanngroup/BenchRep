@@ -26,6 +26,7 @@ from benchrep.assembly.registries.core import (
     EVAL_RECONSTRUCTION_METRICS,
     Registry,
 )
+from benchrep.evaluation.metrics import EvaluationMetric
 
 
 @dataclass(frozen=True)
@@ -193,8 +194,10 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
             "EvaluationConfig.metrics.clustering.internal",
         ),
         contract=(
-            "The registered callable must accept an embedding matrix and cluster "
-            "labels, followed by the configured parameters, and return a scalar."
+            "The registered value must be an EvaluationMetric whose callable "
+            "accepts an embedding matrix and cluster labels, followed by the "
+            "configured parameters. Its return value must satisfy the declared "
+            "result_kind and vector_axis contract."
         ),
     ),
     "external_clustering_metric": ComponentRegistryInfo(
@@ -206,9 +209,10 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
             "EvaluationConfig.metrics.clustering.external",
         ),
         contract=(
-            "The registered callable must accept reference labels and predicted "
-            "cluster labels, followed by the configured parameters, and return "
-            "a scalar."
+            "The registered value must be an EvaluationMetric whose callable "
+            "accepts reference labels and predicted cluster labels, followed by "
+            "the configured parameters. Its return value must satisfy the "
+            "declared result_kind and vector_axis contract."
         ),
     ),
     "embedding_metric": ComponentRegistryInfo(
@@ -218,9 +222,10 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
         runtime_instance_override_supported=False,
         config_locations=("EvaluationConfig.metrics.embedding",),
         contract=(
-            "The registered callable must accept an embedding matrix and the "
-            "configured parameters, and return dimension-wise values or a mapping "
-            "of named dimension-wise values."
+            "The registered value must be an EvaluationMetric whose callable "
+            "accepts an embedding matrix followed by the configured parameters. "
+            "Its return value must satisfy the declared result_kind and "
+            "vector_axis contract."
         ),
     ),
     "predictability_probe": ComponentRegistryInfo(
@@ -237,8 +242,10 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
         runtime_instance_override_supported=False,
         config_locations=("EvaluationConfig.metrics.reconstruction",),
         contract=(
-            "The registered callable must accept input and reconstruction arrays, "
-            "followed by the configured parameters, and return a scalar."
+            "The registered value must be an EvaluationMetric whose callable "
+            "accepts input and reconstruction arrays, followed by the configured "
+            "parameters. Its return value must satisfy the declared result_kind "
+            "and vector_axis contract."
         ),
     ),
 }
@@ -300,27 +307,35 @@ def inspect_registry(
         print("\nComponents:")
 
         for canonical_name, aliases in aliases_by_canonical.items():
-            item = selected_registry.get(canonical_name)
+            entry = selected_registry.get(canonical_name)
+            target = _registry_entry_target(entry)
 
             print(f"\n  {canonical_name}")
             print(
                 "    aliases: "
                 + (", ".join(aliases) if aliases else "none")
             )
-            print(f"    target: {_qualified_name(item)}")
+            print(f"    target: {_qualified_name(target)}")
+
+            if isinstance(entry, EvaluationMetric):
+                print(f"    result kind: {entry.result_kind}")
+
+                if entry.vector_axis is not None:
+                    print(f"    vector axis: {entry.vector_axis}")
 
         return
 
     canonical_name = selected_registry.resolve_key(component)
-    item = selected_registry.get(canonical_name)
+    entry = selected_registry.get(canonical_name)
+    target = _registry_entry_target(entry)
     aliases = aliases_by_canonical[canonical_name]
-    signature = _callable_signature(item)
+    signature = _callable_signature(target)
     signature_label = (
         "Constructor signature"
-        if inspect.isclass(item)
+        if inspect.isclass(target)
         else "Callable signature"
     )
-    docstring = inspect.getdoc(item)
+    docstring = inspect.getdoc(target)
 
     print(f"Registry: {registry_name}")
     print(f"Component: {canonical_name}")
@@ -331,7 +346,14 @@ def inspect_registry(
         "Aliases: "
         + (", ".join(aliases) if aliases else "none")
     )
-    print(f"Target: {_qualified_name(item)}")
+    print(f"Target: {_qualified_name(target)}")
+
+    if isinstance(entry, EvaluationMetric):
+        print(f"Result kind: {entry.result_kind}")
+
+        if entry.vector_axis is not None:
+            print(f"Vector axis: {entry.vector_axis}")
+
     print(
         f"{signature_label}: "
         + (signature if signature is not None else "unavailable")
@@ -431,6 +453,15 @@ def _registry_object_path(
         "benchrep.assembly.registries."
         f"{registry_info.symbol}"
     )
+
+
+def _registry_entry_target(entry: Any) -> Any:
+    """Return the callable represented by a registry entry."""
+
+    if isinstance(entry, EvaluationMetric):
+        return entry.fn
+
+    return entry
 
 
 def _qualified_name(item: Any) -> str:
