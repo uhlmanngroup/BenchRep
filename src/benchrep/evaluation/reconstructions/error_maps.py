@@ -44,8 +44,9 @@ def compute_error_maps(
         Absolute residual divided by the absolute input intensity, with a
         denominator floor for stability.
     normalized_absolute_global
-        Absolute residual divided by one global input intensity range
-        ``max(input) - min(input)``.
+        Absolute residual divided by one global input intensity range. The
+        range is inferred as ``max(input) - min(input)`` unless ``data_range``
+        is provided explicitly.
     normalized_absolute_per_channel
         Absolute residual divided by a separate intensity range for each
         channel, computed across all provided samples for that channel.
@@ -65,6 +66,18 @@ def compute_error_maps(
             f"Unsupported error map kinds: {invalid_kinds!r}. "
             f"Supported kinds: {sorted(SUPPORTED_ERROR_MAP_KINDS)}."
         )
+
+    if (
+        data_range is not None
+        and "normalized_absolute_global" not in kinds
+    ):
+        warnings.warn(
+            "`data_range` was ignored because it only applies to "
+            "`normalized_absolute_global`, which was not requested.",
+            UserWarning,
+            stacklevel=2,
+        )
+        data_range = None
 
     inputs, reconstructions = validate_reconstruction_arrays(
         inputs=reconstruction_input.inputs,
@@ -109,7 +122,11 @@ def compute_error_maps(
             "n_examples": error_maps.shape[0],
             "params": {
                 "denominator_floor": denominator_floor,
-                "data_range": data_range,
+                "data_range": (
+                    data_range
+                    if error_kind == "normalized_absolute_global"
+                    else None
+                ),
             },
         }
 
@@ -117,7 +134,6 @@ def compute_error_maps(
         results=error_maps_dict,
         failures=failures,
     )
-
 
     return error_maps_dict
 
@@ -229,13 +245,6 @@ def _compute_error_map_array(
         return np.abs(residual) / resolved_data_range
 
     if kind == "normalized_absolute_per_channel":
-        if data_range is not None:
-            raise ValueError(
-                "data_range is not supported for "
-                "'normalized_absolute_per_channel'. Per-channel ranges are "
-                "inferred automatically from the inputs."
-            )
-
         per_channel_data_range = _resolve_per_channel_data_range(
             inputs=inputs,
             denominator_floor=denominator_floor,

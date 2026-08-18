@@ -1281,19 +1281,108 @@ class EvaluationClusteringConfig(_EvaluationConfigBaseModel):
 # Reconstruction artifacts config
 # -------------------------
 class ErrorMapParams(_EvaluationConfigBaseModel):
-    model_config = ConfigDict(extra="forbid")
+    """Controls error maps used by TIFF and reconstruction-grid exports.
+
+    This block does not enable error-map output independently. Each
+    requested kind is computed separately. Successful kinds are retained
+    when another kind fails recoverably.
+    """
 
     kinds: list[ErrorMapKind] = Field(
         default_factory=lambda: ["absolute", "signed", "relative"],
         min_length=1,
+        description="Error-map representations passed to `compute_error_maps()`.",
+        json_schema_extra={
+            "omit_behavior": "Computes `absolute`, `signed`, and `relative` maps.",
+            "null_behavior": "Rejected.",
+            "notes": [
+                "`signed` returns the residual; `absolute` and `squared` "
+                "return its absolute value or square.",
+                "`relative` divides absolute error by the absolute input, "
+                "bounded below by `denominator_floor`.",
+                "`normalized_absolute_global` uses one global input range; "
+                "`normalized_absolute_per_channel` infers separate ranges.",
+            ],
+        },
     )
-    denominator_floor: PositiveFloat | None = None
+    denominator_floor: PositiveFloat | None = Field(
+        default=None,
+        description=(
+            "Minimum denominator used by relative and inferred-range "
+            "normalization."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses `1e-8`.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+    data_range: PositiveFloat | None = Field(
+        default=None,
+        description=(
+            "Fixed global intensity range used by "
+            "`normalized_absolute_global`."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "When global normalization is requested, infers the range "
+                "from the input values."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Applies only to `normalized_absolute_global`.",
+                "When provided without that kind, it is ignored with a warning.",
+            ],
+        },
+    )
 
 
 class EvaluationReconstructionConfig(_EvaluationConfigBaseModel):
-    export_tiffs: bool = False
-    n_examples: PositiveInt | None = None
-    error_maps: ErrorMapParams = Field(default_factory=ErrorMapParams)
+    """Controls reconstruction TIFF artifacts and shared error-map settings.
+
+    Reconstruction metrics are configured separately. Reconstruction grids use
+    their own example selection but reuse the error-map settings defined here.
+    """
+
+    export_tiffs: bool = Field(
+        default=False,
+        description=(
+            "Whether to export inputs, reconstructions, and configured error "
+            "maps as individual TIFF files."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Does not export reconstruction TIFFs.",
+            "null_behavior": "Rejected.",
+            "notes": [
+                "When requested without usable reconstruction inputs, the "
+                "export is disabled with a warning."
+            ],
+        },
+    )
+    n_examples: PositiveInt | None = Field(
+        default=None,
+        description="Maximum number of examples included in TIFF export.",
+        json_schema_extra={
+            "omit_behavior": "Uses all available reconstruction examples.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Values above the available count are capped.",
+                "Does not limit reconstruction metrics or reconstruction grids.",
+            ],
+        },
+    )
+    error_maps: ErrorMapParams = Field(
+        default_factory=ErrorMapParams,
+        description=(
+            "Error-map settings shared by TIFF and reconstruction-grid exports."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses `ErrorMapParams` defaults.",
+            "null_behavior": "Rejected.",
+            "notes": [
+                "Does not independently enable error-map computation or export."
+            ],
+        },
+    )
 
 
 # -------------------------
