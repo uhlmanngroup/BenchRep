@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
-from dataclasses import dataclass
+from collections.abc import Mapping, Collection
+from dataclasses import dataclass, replace
 from importlib.util import find_spec
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -10,7 +10,7 @@ import anndata as ad
 import numpy as np
 from scipy import sparse
 
-
+from benchrep.assembly.resolvers.evaluation_config_resolver import EvaluationStepSpec
 from benchrep.evaluation.reconstructions.data import (
     ReconstructionEvaluationInput,
     load_reconstruction_evaluation_input,
@@ -79,6 +79,25 @@ def prepare_evaluate_source_inputs(
     return EvaluateSourceInputsResult(
         adata_input=adata,
         reconstruction_input=reconstruction_input,
+    )
+
+
+def finalize_evaluation_step_spec(
+    step_spec: EvaluationStepSpec,
+    *,
+    available_obs_columns: Collection[str],
+) -> EvaluationStepSpec:
+    """Finalize automatic step settings that depend on loaded evaluation inputs."""
+
+    if step_spec.external_clustering_metrics_enabled is not None:
+        return step_spec
+
+    return replace(
+        step_spec,
+        external_clustering_metrics_enabled=(
+            step_spec.external_clustering_label_key
+            in available_obs_columns
+        ),
     )
 
 

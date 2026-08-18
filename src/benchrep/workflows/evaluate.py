@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Mapping
 import logging
@@ -29,7 +29,10 @@ from benchrep.records import (
 )
 from benchrep.records.utils import now_isoformat
 from benchrep.runtime import RunContext
-from benchrep.runtime.evaluate_run_validation import prepare_evaluate_source_inputs
+from benchrep.runtime.evaluate_run_validation import (
+    prepare_evaluate_source_inputs,
+    finalize_evaluation_step_spec,
+)
 from benchrep.assembly.registries.builtins import register_builtins
 from benchrep.runtime.status import (
     EvaluationOutcome,
@@ -183,6 +186,15 @@ def evaluate(
     embedding_outcomes: tuple[EvaluationOutcome, ...] = ()
 
     if adata is not None:
+        # Finalize automatic settings that depend on the loaded AnnData columns.
+        run_spec = replace(
+            run_spec,
+            step_spec=finalize_evaluation_step_spec(
+                run_spec.step_spec,
+                available_obs_columns=adata.obs.columns,
+            ),
+        )
+
         embeddings_pipeline = create_anndata_evaluation_pipeline(run_spec)
 
         run_log.info("Starting AnnData evaluation pipeline...")
