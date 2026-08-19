@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from typing import Any
-from numbers import Real
 import warnings
 
 import anndata as ad
@@ -16,11 +15,10 @@ from benchrep.assembly.registries.utils import (
     resolve_registry_keys,
     resolve_registry_param_keys,
 )
+from benchrep.evaluation.metrics.execution import execute_metric_group
 from benchrep.evaluation.utils import (
     RecoverableEvaluationStepError,
-    to_python_scalar,
     validate_adata_x,
-    validate_metric_params,
     validate_obs_key,
 )
 
@@ -34,23 +32,33 @@ def compute_external_clustering_metrics(
     metric_params: Mapping[str, Mapping[str, Any]] | None = None,
     overwrite: bool = False,
 ) -> ad.AnnData:
-    """Compute external clustering metrics against labels in ``adata.obs``.
+    """Compute external clustering metrics against reference labels.
 
-    External clustering metrics compare cluster assignments to a reference
-    annotation, such as class labels, cell types, or transferred labels.
+    External clustering metrics compare cluster assignments in
+    ``adata.obs[cluster_key]`` with reference labels in
+    ``adata.obs[label_key]``.
 
-    Registered external metric callables must follow the BenchRep external
-    clustering metric contract:
+    Registered entries must be ``EvaluationMetric`` descriptors whose callables
+    accept:
 
-        metric_fn(labels_true, labels_pred, **params) -> scalar
+        metric.fn(labels_true, labels_pred, **metric_kwargs)
 
-    where ``labels_true`` comes from ``adata.obs[label_key]`` and
-    ``labels_pred`` comes from ``adata.obs[cluster_key]``. Custom metrics with a
-    different native signature should be wrapped before registration.
+    Return values are validated and normalized according to the metric's declared
+    ``result_kind``. Vector and vector-mapping metrics may declare either of these
+    axes:
 
-    ``selected`` should contain canonical metric names or aliases registered in
-    ``EVAL_EXTERNAL_CLUSTERING_METRICS``. If ``selected`` is ``None``, all
-    canonical registered external clustering metrics are computed.
+    - ``"true_label"``: unique reference labels in order of first appearance.
+    - ``"cluster"``: unique cluster labels in order of first appearance.
+
+    Metric vectors must follow the ordering of their declared axis.
+
+    For HDBSCAN results, observations assigned to the noise cluster are excluded
+    before metrics and axis labels are computed. The metric step fails recoverably
+    if no non-noise observations remain.
+
+    ``selected`` may contain canonical names or aliases from
+    ``EVAL_EXTERNAL_CLUSTERING_METRICS``. Under the current selection behavior,
+    ``None`` selects every canonical metric registered in the process.
 
     Results are stored under:
 
@@ -88,7 +96,7 @@ def compute_external_clustering_metrics(
         registry=EVAL_EXTERNAL_CLUSTERING_METRICS,
         none_policy="all",
     )
-    metric_params = resolve_registry_param_keys(
+    resolved_metric_kwargs_by_name = resolve_registry_param_keys(
         params=metric_params,
         registry=EVAL_EXTERNAL_CLUSTERING_METRICS,
     )
@@ -98,39 +106,19 @@ def compute_external_clustering_metrics(
             "At least one external clustering metric must be selected."
         )
 
-    results: dict[str, Any] = {}
-    failures: dict[str, str] = {}
-
-    for metric_name in metric_names:
-        metric = EVAL_EXTERNAL_CLUSTERING_METRICS.get(metric_name)
-        metric_fn = metric.fn
-        params = metric_params.get(metric_name, {})
-
-        validate_metric_params(
-            metric_name=metric_name,
-            metric_fn=metric_fn,
-            params=params,
-            metric_kind="external clustering metric",
-        )
-
-        try:
-            value = metric_fn(labels, clusters, **params)
-        except RecoverableEvaluationStepError as error:
-            failures[metric_name] = str(error)
-            continue
-        except Exception as error:
-            raise RuntimeError(
-                f"Failed to compute external clustering metric {metric_name!r}. "
-                "The metric callable was found, but execution failed."
-            ) from error
-
-        try:
-            results[metric_name] = _validate_clustering_metric_value(
-                value,
-                metric_name=metric_name,
-            )
-        except RecoverableEvaluationStepError as error:
-            failures[metric_name] = str(error)
+    results, failures = execute_metric_group(
+        registry=EVAL_EXTERNAL_CLUSTERING_METRICS,
+        metric_names=metric_names,
+        metric_positional_args=(
+            labels,
+            clusters,
+        ),
+        metric_kwargs_by_name=resolved_metric_kwargs_by_name,
+        axis_labels_by_name={
+            "true_label": labels.unique(),
+            "cluster": clusters.unique(),
+        },
+    )
 
     _finalize_recoverable_metric_failures(
         metric_kind="external clustering",
@@ -144,7 +132,7 @@ def compute_external_clustering_metrics(
         cluster_key=cluster_key,
         result={
             "metrics": results,
-            "params": metric_params,
+            "params": resolved_metric_kwargs_by_name,
             "label_key": label_key,
             "cluster_key": cluster_key,
             "n_labels": int(labels.nunique()),
@@ -164,23 +152,30 @@ def compute_internal_clustering_metrics(
     metric_params: Mapping[str, Mapping[str, Any]] | None = None,
     overwrite: bool = False,
 ) -> ad.AnnData:
-    """Compute internal clustering metrics from ``adata.X`` and cluster labels.
+    """Compute internal clustering metrics from embeddings and cluster labels.
 
-    Internal clustering metrics evaluate cluster structure in the representation
-    space without requiring ground-truth labels.
+    Internal clustering metrics evaluate cluster structure in ``adata.X`` using
+    assignments from ``adata.obs[cluster_key]``, without requiring reference
+    labels.
 
-    Registered internal metric callables must follow the BenchRep internal
-    clustering metric contract:
+    Registered entries must be ``EvaluationMetric`` descriptors whose callables
+    accept:
 
-        metric_fn(X, labels, **params) -> scalar
+        metric.fn(X, cluster_labels, **metric_kwargs)
 
-    where ``X`` is ``adata.X`` and ``labels`` comes from
-    ``adata.obs[cluster_key]``. Custom metrics with a different native signature
-    should be wrapped before registration.
+    Return values are validated and normalized according to the metric's declared
+    ``result_kind``. Vector and vector-mapping metrics may declare the
+    ``"cluster"`` axis, whose labels are the unique cluster assignments in order
+    of first appearance. Metric vectors must follow that same ordering.
 
-    ``selected`` should contain canonical metric names or aliases registered in
-    ``EVAL_INTERNAL_CLUSTERING_METRICS``. If ``selected`` is ``None``, all
-    canonical registered internal clustering metrics are computed.
+    For HDBSCAN results, observations assigned to the noise cluster are excluded
+    before metrics and axis labels are computed. Internal metrics require at least
+    two remaining clusters and fewer clusters than observations; violations fail
+    the metric step recoverably.
+
+    ``selected`` may contain canonical names or aliases from
+    ``EVAL_INTERNAL_CLUSTERING_METRICS``. Under the current selection behavior,
+    ``None`` selects every canonical metric registered in the process.
 
     Results are stored under:
 
@@ -228,7 +223,7 @@ def compute_internal_clustering_metrics(
         registry=EVAL_INTERNAL_CLUSTERING_METRICS,
         none_policy="all",
     )
-    metric_params = resolve_registry_param_keys(
+    resolved_metric_kwargs_by_name = resolve_registry_param_keys(
         params=metric_params,
         registry=EVAL_INTERNAL_CLUSTERING_METRICS,
     )
@@ -238,39 +233,18 @@ def compute_internal_clustering_metrics(
             "At least one internal clustering metric must be selected."
         )
 
-    results: dict[str, Any] = {}
-    failures: dict[str, str] = {}
-
-    for metric_name in metric_names:
-        metric = EVAL_INTERNAL_CLUSTERING_METRICS.get(metric_name)
-        metric_fn = metric.fn
-        params = metric_params.get(metric_name, {})
-
-        validate_metric_params(
-            metric_name=metric_name,
-            metric_fn=metric_fn,
-            params=params,
-            metric_kind="internal clustering metric",
-        )
-
-        try:
-            value = metric_fn(metric_input, clusters, **params)
-        except RecoverableEvaluationStepError as error:
-            failures[metric_name] = str(error)
-            continue
-        except Exception as error:
-            raise RuntimeError(
-                f"Failed to compute internal clustering metric {metric_name!r}. "
-                "The metric callable was found, but execution failed."
-            ) from error
-
-        try:
-            results[metric_name] = _validate_clustering_metric_value(
-                value,
-                metric_name=metric_name,
-            )
-        except RecoverableEvaluationStepError as error:
-            failures[metric_name] = str(error)
+    results, failures = execute_metric_group(
+        registry=EVAL_INTERNAL_CLUSTERING_METRICS,
+        metric_names=metric_names,
+        metric_positional_args=(
+            metric_input,
+            clusters,
+        ),
+        metric_kwargs_by_name=resolved_metric_kwargs_by_name,
+        axis_labels_by_name={
+            "cluster": clusters.unique(),
+        },
+    )
 
     _finalize_recoverable_metric_failures(
         metric_kind="internal clustering",
@@ -284,7 +258,7 @@ def compute_internal_clustering_metrics(
         cluster_key=cluster_key,
         result={
             "metrics": results,
-            "params": metric_params,
+            "params": resolved_metric_kwargs_by_name,
             "cluster_key": cluster_key,
             "n_clusters": n_clusters,
             "n_obs": int(n_observations),
@@ -292,35 +266,6 @@ def compute_internal_clustering_metrics(
     )
 
     return adata
-
-
-def _validate_clustering_metric_value(
-    value: Any,
-    *,
-    metric_name: str,
-) -> Real:
-    """Validate and return one clustering metric scalar."""
-
-    try:
-        scalar = to_python_scalar(value)
-    except Exception as error:
-        raise TypeError(
-            f"Clustering metric {metric_name!r} must return a scalar."
-        ) from error
-
-    if isinstance(scalar, bool) or not isinstance(scalar, Real):
-        raise TypeError(
-            f"Clustering metric {metric_name!r} must return a real numeric "
-            f"scalar, got {type(scalar).__name__}."
-        )
-
-    if not np.isfinite(float(scalar)):
-        raise RecoverableEvaluationStepError(
-            f"Clustering metric {metric_name!r} returned a non-finite value: "
-            f"{scalar!r}."
-        )
-
-    return scalar
 
 
 def _finalize_recoverable_metric_failures(
