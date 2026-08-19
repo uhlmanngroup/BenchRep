@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any
-from numbers import Real
+from typing import Any, Literal
 import warnings
 
 import numpy as np
@@ -13,16 +12,14 @@ from benchrep.assembly.registries.utils import (
     resolve_registry_param_keys,
 )
 from benchrep.evaluation.reconstructions.data import ReconstructionEvaluationInput
-
 from benchrep.evaluation.utils import (
     ArrayLike,
     RecoverableEvaluationStepError,
     ensure_reconstruction_channel_axis,
     resolve_reconstruction_channel_names,
-    to_python_scalar,
-    validate_metric_params,
     validate_reconstruction_arrays,
 )
+from benchrep.evaluation.metrics.execution import execute_metric_group
 
 
 def mean_absolute_error(inputs: ArrayLike, reconstructions: ArrayLike) -> float:
@@ -58,17 +55,30 @@ def compute_reconstruction_metrics(
     *,
     selected: Sequence[str] | None = None,
     metric_params: Mapping[str, Mapping[str, Any]] | None = None,
-    reduction: str = "global",
+    reduction: Literal["global", "per_channel", "both"] = "global",
 ) -> dict[str, Any]:
-    """Compute reconstruction metrics from reconstruction input data.
+    """Compute selected reconstruction metrics globally and/or per channel.
 
-    Registered reconstruction metric callables must follow the contract:
+    Registered entries must be ``EvaluationMetric`` descriptors whose callables
+    accept:
 
-        metric_fn(inputs, reconstructions, **params) -> scalar
+        metric.fn(inputs, reconstructions, **metric_kwargs)
 
-    ``selected`` should contain canonical metric names or aliases registered in
-    ``EVAL_RECONSTRUCTION_METRICS``. If ``selected`` is ``None``, all canonical
-    registered reconstruction metrics are computed.
+    Return values are validated and normalized according to the metric's declared
+    ``result_kind``. Vector and vector-mapping metrics may declare the
+    ``"reconstruction_channel"`` axis.
+
+    For global computation, that axis contains every reconstruction channel in
+    array order. For per-channel computation, each metric invocation receives one
+    channel and the axis contains only that channel's name.
+
+    ``reduction`` controls whether metrics are computed over the complete arrays,
+    independently for each channel, or both. Recoverable failures are retained per
+    global or per-channel result; the step fails recoverably only if no requested
+    result succeeds.
+
+    Under the current selection behavior, ``selected=None`` selects every
+    canonical reconstruction metric registered in the process.
     """
     input_array, reconstruction_array = validate_reconstruction_arrays(
         inputs=reconstruction_input.inputs,
@@ -81,18 +91,18 @@ def compute_reconstruction_metrics(
             f"got {reduction!r}."
         )
 
-    metric_names = resolve_registry_keys(
+    resolved_metric_names = resolve_registry_keys(
         selected=selected,
         registry=EVAL_RECONSTRUCTION_METRICS,
         none_policy="all",
     )
 
-    if not metric_names:
+    if not resolved_metric_names:
         raise ValueError(
             "At least one reconstruction metric must be selected."
         )
 
-    metric_params = resolve_registry_param_keys(
+    resolved_metric_kwargs_by_name = resolve_registry_param_keys(
         params=metric_params,
         registry=EVAL_RECONSTRUCTION_METRICS,
     )
@@ -101,12 +111,30 @@ def compute_reconstruction_metrics(
     failures: dict[str, str] = {}
     n_successful_results = 0
 
+    input_array_with_channel_axis = ensure_reconstruction_channel_axis(
+        input_array
+    )
+    reconstruction_array_with_channel_axis = (
+        ensure_reconstruction_channel_axis(reconstruction_array)
+    )
+
+    channel_names = resolve_reconstruction_channel_names(
+        metadata=reconstruction_input.metadata,
+        n_channels=input_array_with_channel_axis.shape[1],
+    )
+
     if reduction in {"global", "both"}:
-        global_results, global_failures = _compute_metric_group(
-            input_array=input_array,
-            reconstruction_array=reconstruction_array,
-            metric_names=metric_names,
-            metric_params=metric_params,
+        global_results, global_failures = execute_metric_group(
+            registry=EVAL_RECONSTRUCTION_METRICS,
+            canonical_metric_names=resolved_metric_names,
+            metric_positional_args=(
+                input_array,
+                reconstruction_array,
+            ),
+            metric_kwargs_by_name=resolved_metric_kwargs_by_name,
+            axis_labels_by_name={
+                "reconstruction_channel": channel_names,
+            },
         )
 
         results["global"] = global_results
@@ -118,16 +146,40 @@ def compute_reconstruction_metrics(
             }
         )
 
+    per_channel_results: dict[str, dict[str, Any]] = {}
+    per_channel_failures: dict[str, str] = {}
+
     if reduction in {"per_channel", "both"}:
-        per_channel_results, per_channel_failures = (
-            _compute_per_channel_metric_group(
-                reconstruction_input=reconstruction_input,
-                input_array=input_array,
-                reconstruction_array=reconstruction_array,
-                metric_names=metric_names,
-                metric_params=metric_params,
+        for channel_index, channel_name in enumerate(channel_names):
+            channel_input_array = input_array_with_channel_axis[
+                :, channel_index, :, :
+            ]
+            channel_reconstruction_array = (
+                reconstruction_array_with_channel_axis[
+                    :, channel_index, :, :
+                ]
             )
-        )
+
+            channel_results, channel_failures = execute_metric_group(
+                registry=EVAL_RECONSTRUCTION_METRICS,
+                canonical_metric_names=resolved_metric_names,
+                metric_positional_args=(
+                    channel_input_array,
+                    channel_reconstruction_array,
+                ),
+                metric_kwargs_by_name=resolved_metric_kwargs_by_name,
+                axis_labels_by_name={
+                    "reconstruction_channel": [channel_name],
+                },
+            )
+
+            per_channel_results[channel_name] = channel_results
+            per_channel_failures.update(
+                {
+                    f"{channel_name}.{metric_name}": reason
+                    for metric_name, reason in channel_failures.items()
+                }
+            )
 
         results["per_channel"] = per_channel_results
         n_successful_results += sum(
@@ -148,40 +200,11 @@ def compute_reconstruction_metrics(
 
     return {
         "metrics": results,
-        "params": metric_params,
+        "params": resolved_metric_kwargs_by_name,
         "reduction": reduction,
         "shape": tuple(input_array.shape),
         "n_images": int(input_array.shape[0]),
     }
-
-
-def _validate_reconstruction_metric_value(
-    value: Any,
-    *,
-    metric_name: str,
-) -> Real:
-    """Validate and return one reconstruction metric scalar."""
-
-    try:
-        scalar = to_python_scalar(value)
-    except Exception as error:
-        raise TypeError(
-            f"Reconstruction metric {metric_name!r} must return a scalar."
-        ) from error
-
-    if isinstance(scalar, bool) or not isinstance(scalar, Real):
-        raise TypeError(
-            f"Reconstruction metric {metric_name!r} must return a real "
-            f"numeric scalar, got {type(scalar).__name__}."
-        )
-
-    if not np.isfinite(float(scalar)):
-        raise RecoverableEvaluationStepError(
-            f"Reconstruction metric {metric_name!r} returned a non-finite "
-            f"value: {scalar!r}."
-        )
-
-    return scalar
 
 
 def _finalize_recoverable_reconstruction_metric_failures(
@@ -211,98 +234,3 @@ def _finalize_recoverable_reconstruction_metric_failures(
             RuntimeWarning,
             stacklevel=2,
         )
-
-
-def _compute_metric_group(
-    *,
-    input_array: np.ndarray,
-    reconstruction_array: np.ndarray,
-    metric_names: Sequence[str],
-    metric_params: Mapping[str, Mapping[str, Any]],
-) -> tuple[dict[str, Any], dict[str, str]]:
-    """Compute selected metrics for one input/reconstruction pair."""
-
-    results: dict[str, Any] = {}
-    failures: dict[str, str] = {}
-
-    for metric_name in metric_names:
-        metric = EVAL_RECONSTRUCTION_METRICS.get(metric_name)
-        metric_fn = metric.fn
-        params = metric_params.get(metric_name, {})
-
-        validate_metric_params(
-            metric_name=metric_name,
-            metric_fn=metric_fn,
-            params=params,
-            metric_kind="reconstruction metric",
-        )
-
-        try:
-            value = metric_fn(
-                input_array,
-                reconstruction_array,
-                **params,
-            )
-        except RecoverableEvaluationStepError as error:
-            failures[metric_name] = str(error)
-            continue
-        except Exception as error:
-            raise RuntimeError(
-                f"Failed to compute reconstruction metric {metric_name!r}. "
-                "The metric callable was found, but execution failed."
-            ) from error
-
-        try:
-            results[metric_name] = _validate_reconstruction_metric_value(
-                value,
-                metric_name=metric_name,
-            )
-        except RecoverableEvaluationStepError as error:
-            failures[metric_name] = str(error)
-
-    return results, failures
-
-
-def _compute_per_channel_metric_group(
-    *,
-    reconstruction_input: ReconstructionEvaluationInput,
-    input_array: np.ndarray,
-    reconstruction_array: np.ndarray,
-    metric_names: Sequence[str],
-    metric_params: Mapping[str, Mapping[str, Any]],
-) -> tuple[dict[str, dict[str, Any]], dict[str, str]]:
-    """Compute selected metrics independently for each image channel."""
-
-    input_array = ensure_reconstruction_channel_axis(input_array)
-    reconstruction_array = ensure_reconstruction_channel_axis(
-        reconstruction_array
-    )
-
-    n_channels = input_array.shape[1]
-    channel_names = resolve_reconstruction_channel_names(
-        metadata=reconstruction_input.metadata,
-        n_channels=n_channels,
-    )
-
-    results: dict[str, dict[str, Any]] = {}
-    failures: dict[str, str] = {}
-
-    for channel_index, channel_name in enumerate(channel_names):
-        channel_results, channel_failures = _compute_metric_group(
-            input_array=input_array[:, channel_index, :, :],
-            reconstruction_array=(
-                reconstruction_array[:, channel_index, :, :]
-            ),
-            metric_names=metric_names,
-            metric_params=metric_params,
-        )
-
-        results[channel_name] = channel_results
-        failures.update(
-            {
-                f"{channel_name}.{metric_name}": reason
-                for metric_name, reason in channel_failures.items()
-            }
-        )
-
-    return results, failures
