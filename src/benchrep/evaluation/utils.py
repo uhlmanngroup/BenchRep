@@ -135,7 +135,7 @@ def validate_metric_params(
     metric_name: str,
     metric_fn: Any,
     params: Mapping[str, Any],
-    metric_kind: str = "metric",
+    metric_kind: str,
 ) -> None:
     """Validate user-provided metric params against the callable signature."""
 
@@ -290,10 +290,12 @@ def resolve_reconstruction_channel_names(
 
 
 def to_python_scalar(value: Any) -> Any:
-    """Convert scalar-like values to plain Python scalars when possible."""
+    """Convert zero-dimensional array-like values to Python scalars."""
 
-    if hasattr(value, "item"):
-        return value.item()
+    item = getattr(value, "item", None)
+
+    if callable(item) and getattr(value, "ndim", None) == 0:
+        return item()
 
     return value
 
