@@ -91,24 +91,25 @@ def compute_external_clustering_metrics(
                 "HDBSCAN observation."
             )
 
-    metric_names = resolve_registry_keys(
+    resolved_metric_names = resolve_registry_keys(
         selected=selected,
         registry=EVAL_EXTERNAL_CLUSTERING_METRICS,
         none_policy="all",
     )
+
     resolved_metric_kwargs_by_name = resolve_registry_param_keys(
         params=metric_params,
         registry=EVAL_EXTERNAL_CLUSTERING_METRICS,
     )
 
-    if not metric_names:
+    if not resolved_metric_names:
         raise ValueError(
             "At least one external clustering metric must be selected."
         )
 
     results, failures = execute_metric_group(
         registry=EVAL_EXTERNAL_CLUSTERING_METRICS,
-        metric_names=metric_names,
+        canonical_metric_names=resolved_metric_names,
         metric_positional_args=(
             labels,
             clusters,
@@ -218,7 +219,7 @@ def compute_internal_clustering_metrics(
             f"{n_clusters} clusters for {n_observations} observations."
         )
 
-    metric_names = resolve_registry_keys(
+    resolved_metric_names = resolve_registry_keys(
         selected=selected,
         registry=EVAL_INTERNAL_CLUSTERING_METRICS,
         none_policy="all",
@@ -228,14 +229,14 @@ def compute_internal_clustering_metrics(
         registry=EVAL_INTERNAL_CLUSTERING_METRICS,
     )
 
-    if not metric_names:
+    if not resolved_metric_names:
         raise ValueError(
             "At least one internal clustering metric must be selected."
         )
 
     results, failures = execute_metric_group(
         registry=EVAL_INTERNAL_CLUSTERING_METRICS,
-        metric_names=metric_names,
+        canonical_metric_names=resolved_metric_names,
         metric_positional_args=(
             metric_input,
             clusters,

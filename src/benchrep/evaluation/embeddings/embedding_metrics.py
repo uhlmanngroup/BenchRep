@@ -8,7 +8,10 @@ import anndata as ad
 import numpy as np
 
 from benchrep.assembly.registries.core import EVAL_EMBEDDING_METRICS
-from benchrep.assembly.registries.utils import resolve_registry_param_keys
+from benchrep.assembly.registries.utils import (
+    resolve_registry_keys,
+    resolve_registry_param_keys,
+)
 from benchrep.evaluation.utils import (
     ArrayLike,
     RecoverableEvaluationStepError,
@@ -49,16 +52,27 @@ def compute_embedding_metrics(
 
     embedding_array = validate_embedding_matrix(adata.X)
 
-    resolved_metric_params = resolve_registry_param_keys(
+    resolved_metric_names = resolve_registry_keys(
+        selected=selected,
+        registry=EVAL_EMBEDDING_METRICS,
+        none_policy="preserve",
+    )
+
+    if not resolved_metric_names:
+        raise ValueError(
+            "At least one embedding metric must be selected."
+        )
+
+    resolved_metric_kwargs_by_name = resolve_registry_param_keys(
         params=metric_params,
         registry=EVAL_EMBEDDING_METRICS,
     )
 
     results, failures = execute_metric_group(
         registry=EVAL_EMBEDDING_METRICS,
-        metric_names=selected,
+        canonical_metric_names=resolved_metric_names,
         metric_positional_args=(embedding_array,),
-        metric_kwargs_by_name=resolved_metric_params,
+        metric_kwargs_by_name=resolved_metric_kwargs_by_name,
         axis_labels_by_name={
             "embedding_dimension": adata.var_names,
         },
@@ -77,7 +91,7 @@ def compute_embedding_metrics(
                 for name in adata.var_names
             ],
             "metrics": results,
-            "params": resolved_metric_params,
+            "params": resolved_metric_kwargs_by_name,
             "n_samples": int(embedding_array.shape[0]),
             "n_dimensions": int(embedding_array.shape[1]),
         },
