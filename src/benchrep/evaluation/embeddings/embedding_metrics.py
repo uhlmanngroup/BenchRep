@@ -143,7 +143,7 @@ def _check_embedding_metric_result_available(
     )
 
     if "embedding" in metrics and not overwrite:
-        raise KeyError(
+        raise RecoverableEvaluationStepError(
             "BenchRep embedding metrics already contain results. "
             "Pass overwrite=True to replace them."
         )

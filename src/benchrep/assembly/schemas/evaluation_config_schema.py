@@ -1399,8 +1399,9 @@ class InternalClusteringMetricConfig(EvalMetricGroupConfig):
 
     Results are stored under
     `adata.uns["benchrep"]["metrics"]["clustering"]["internal"][cluster_key]`.
-    A separate metric step runs for each enabled clustering result and depends on
-    that clustering step completing successfully.
+    Existing results for the same cluster key cause a recoverable step failure
+    unless overwriting is enabled. A separate metric step runs for each enabled
+    clustering result and depends on that clustering step completing successfully.
     """
 
     enabled: bool | None = Field(
@@ -1441,6 +1442,20 @@ class InternalClusteringMetricConfig(EvalMetricGroupConfig):
             ],
         },
     )
+    overwrite: bool | None = Field(
+        default=False,
+        description=(
+            "Whether BenchRep may replace existing internal metric results for "
+            "the same clustering result."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Does not replace existing results.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "A result collision without overwrite is a recoverable step failure."
+            ],
+        },
+    )
 
 
 class ExternalClusteringMetricConfig(EvalMetricGroupConfig):
@@ -1452,8 +1467,9 @@ class ExternalClusteringMetricConfig(EvalMetricGroupConfig):
 
     Results are stored under
     `adata.uns["benchrep"]["metrics"]["clustering"]["external"][cluster_key]`.
-    A separate metric step runs for each enabled clustering result and depends on
-    that clustering step completing successfully.
+    Existing results for the same cluster key cause a recoverable step failure
+    unless overwriting is enabled. A separate metric step runs for each enabled
+    clustering result and depends on that clustering step completing successfully.
     """
 
     enabled: bool | None = Field(
@@ -1504,6 +1520,20 @@ class ExternalClusteringMetricConfig(EvalMetricGroupConfig):
             ],
         },
     )
+    overwrite: bool | None = Field(
+        default=False,
+        description=(
+            "Whether BenchRep may replace existing external metric results for "
+            "the same clustering result."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Does not replace existing results.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "A result collision without overwrite is a recoverable step failure."
+            ],
+        },
+    )
 
 
 class EvaluationClusteringMetricsConfig(_EvaluationConfigBaseModel):
@@ -1543,7 +1573,8 @@ class EmbeddingMetricConfig(EvalMetricGroupConfig):
     and normalized according to their declared metric-result contracts.
 
     Results are stored under
-    `adata.uns["benchrep"]["metrics"]["embedding"]`.
+    `adata.uns["benchrep"]["metrics"]["embedding"]`. Existing embedding metric
+    results cause a recoverable step failure unless overwriting is enabled.
     """
 
     enabled: bool | None = Field(
@@ -1580,6 +1611,19 @@ class EmbeddingMetricConfig(EvalMetricGroupConfig):
                 "An empty list is rejected when the group runs.",
                 "Inspect the current canonical names and aliases with "
                 '`benchrep.inspect_registry("embedding_metric")`.',
+            ],
+        },
+    )
+    overwrite: bool | None = Field(
+        default=False,
+        description=(
+            "Whether BenchRep may replace existing embedding metric results."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Does not replace existing results.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "A result collision without overwrite is a recoverable step failure."
             ],
         },
     )
@@ -1788,8 +1832,10 @@ class EvaluationPredictabilityConfig(EvalStepConfig):
     """Configures cross-validated probes of embedding predictability.
 
     Registered probe builders construct supervised estimators that predict
-    `target_key` from the embedding matrix. Probe results are stored under the
-    predictability metrics namespace for that target.
+    `target_key` from the embedding matrix. Results are stored under
+    `adata.uns["benchrep"]["metrics"]["predictability"][target_key]`. Existing
+    results for the same target cause a recoverable step failure unless
+    overwriting is enabled.
     """
 
     enabled: bool | None = Field(
@@ -1825,6 +1871,20 @@ class EvaluationPredictabilityConfig(EvalStepConfig):
         },
     )
     target_key: str = "label"
+    overwrite: bool | None = Field(
+        default=False,
+        description=(
+            "Whether BenchRep may replace existing predictability results for "
+            "`target_key`."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Does not replace existing results.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "A result collision without overwrite is a recoverable step failure."
+            ],
+        },
+    )
     task: Literal["classification", "regression"] = "classification"
     cv: EvaluationCrossValidationConfig = Field(default_factory=EvaluationCrossValidationConfig)
     tuning: EvaluationCVTuningConfig = Field(default_factory=EvaluationCVTuningConfig)
@@ -1847,7 +1907,6 @@ class EvaluationPredictabilityConfig(EvalStepConfig):
             )
 
         return self
-
 
 
 # Full evaluation metrics config ---

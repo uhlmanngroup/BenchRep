@@ -479,10 +479,24 @@ def compute_predictability_metrics(
         probe_params: Mapping[str, Mapping[str, Any]],
         cv_params: Mapping[str, Any],
         tuning_params: Mapping[str, Any],
+        overwrite: bool = False,
 ) -> ad.AnnData:
-    """Compute supervised predictability metrics from embeddings in ``adata.X``."""
+    """Compute and store cross-validated predictability metrics.
+
+    Results are stored under
+    `adata.uns["benchrep"]["metrics"]["predictability"][target_key]`.
+    Existing results for the same target cause a recoverable error unless
+    `overwrite=True`.
+    """
+
     if len(selected) == 0:
         raise ValueError("selected must contain at least one predictability probe.")
+
+    _check_predictability_metric_result_available(
+        adata,
+        target_key=target_key,
+        overwrite=overwrite,
+    )
 
     cv_params = dict(cv_params)
     tuning_params = dict(tuning_params)
@@ -604,6 +618,28 @@ def _finalize_recoverable_predictability_probe_failures(
             f"Skipped predictability probe {probe_name!r}: {reason}",
             RuntimeWarning,
             stacklevel=2,
+        )
+
+
+def _check_predictability_metric_result_available(
+    adata: ad.AnnData,
+    *,
+    target_key: str,
+    overwrite: bool,
+) -> None:
+    """Check whether predictability results for the target can be written."""
+
+    predictability_results = (
+        adata.uns
+        .get("benchrep", {})
+        .get("metrics", {})
+        .get("predictability", {})
+    )
+
+    if target_key in predictability_results and not overwrite:
+        raise RecoverableEvaluationStepError(
+            "BenchRep predictability metrics already contain results for "
+            f"{target_key!r}. Pass overwrite=True to replace them."
         )
 
 

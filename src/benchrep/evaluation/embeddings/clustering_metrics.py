@@ -66,7 +66,7 @@ def compute_external_clustering_metrics(
     """
     validate_obs_key(adata, label_key)
     validate_obs_key(adata, cluster_key)
-    _check_metric_result_available(
+    _check_clustering_metric_result_available(
         adata,
         metric_group="external",
         cluster_key=cluster_key,
@@ -184,7 +184,7 @@ def compute_internal_clustering_metrics(
     """
     validate_adata_x(adata)
     validate_obs_key(adata, cluster_key)
-    _check_metric_result_available(
+    _check_clustering_metric_result_available(
         adata,
         metric_group="internal",
         cluster_key=cluster_key,
@@ -323,7 +323,7 @@ def _hdbscan_non_noise_mask(
     return np.asarray(clusters.astype(str) != "-1")
 
 
-def _check_metric_result_available(
+def _check_clustering_metric_result_available(
     adata: ad.AnnData,
     *,
     metric_group: str,
@@ -341,7 +341,7 @@ def _check_metric_result_available(
     )
 
     if cluster_key in group_results and not overwrite:
-        raise KeyError(
+        raise RecoverableEvaluationStepError(
             f"BenchRep {metric_group} clustering metrics already contain results "
             f"for {cluster_key!r}. Pass overwrite=True to replace them."
         )

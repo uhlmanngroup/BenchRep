@@ -146,15 +146,19 @@ class EvaluationStepSpec:
     internal_clustering_metrics_enabled: bool
     internal_clustering_metrics: list[str]
     internal_clustering_metric_params: dict[str, dict[str, Any]]
+    internal_clustering_metrics_overwrite: bool
 
     external_clustering_metrics_enabled: bool | None
     external_clustering_label_key: str
     external_clustering_metrics: list[str]
     external_clustering_metric_params: dict[str, dict[str, Any]]
+    external_clustering_metrics_overwrite: bool
+
 
     embedding_metrics_enabled: bool
     embedding_metrics: list[str]
     embedding_metric_params: dict[str, dict[str, Any]]
+    embedding_metrics_overwrite: bool
 
     predictability_enabled: bool
     predictability_target_key: str
@@ -163,6 +167,7 @@ class EvaluationStepSpec:
     predictability_probe_params: dict[str, dict[str, Any]]
     predictability_cv_params: dict[str, Any]
     predictability_tuning_params: dict[str, Any]
+    predictability_overwrite: bool
 
     reconstruction_metrics_enabled: bool
     reconstruction_metrics: list[str]
@@ -899,6 +904,9 @@ def resolve_step_spec(
             params=evaluation_config.metrics.clustering.internal.params,
             registry=EVAL_INTERNAL_CLUSTERING_METRICS,
         ),
+        internal_clustering_metrics_overwrite=(
+                internal_metrics_config.overwrite is True
+        ),
 
         # None is resolved later after loading AnnData and checking adata.obs
         # Force disable if not clustering_enabled
@@ -909,6 +917,9 @@ def resolve_step_spec(
             params=evaluation_config.metrics.clustering.external.params,
             registry=EVAL_EXTERNAL_CLUSTERING_METRICS,
         ),
+        external_clustering_metrics_overwrite=(
+                external_metrics_config.overwrite is True
+        ),
 
         # None = True
         embedding_metrics_enabled=embedding_metrics_enabled,
@@ -916,6 +927,9 @@ def resolve_step_spec(
         embedding_metric_params=resolve_registry_param_keys(
             params=evaluation_config.metrics.embedding.params,
             registry=EVAL_EMBEDDING_METRICS,
+        ),
+        embedding_metrics_overwrite=(
+                evaluation_config.metrics.embedding.overwrite is True
         ),
 
         # None = False
@@ -926,6 +940,7 @@ def resolve_step_spec(
         predictability_probe_params=predictability_probe_params,
         predictability_cv_params=predictability_cv_params,
         predictability_tuning_params=predictability_tuning_params,
+        predictability_overwrite=predictability_config.overwrite is True,
 
         # True if not disabled and reconstructions are available
         reconstruction_metrics_enabled=reconstruction_metrics_enabled,

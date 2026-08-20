@@ -425,6 +425,9 @@ def create_anndata_evaluation_pipeline(
                     "metric_params": (
                         step_spec.internal_clustering_metric_params
                     ),
+                    "overwrite": (
+                        step_spec.internal_clustering_metrics_overwrite
+                    ),
                 },
                 enabled=step_spec.internal_clustering_metrics_enabled,
             )
@@ -446,6 +449,9 @@ def create_anndata_evaluation_pipeline(
                     "external_metrics_enabled": (
                         step_spec.external_clustering_metrics_enabled
                     ),
+                    "overwrite": (
+                        step_spec.external_clustering_metrics_overwrite
+                    ),
                 },
                 enabled=(
                     step_spec.external_clustering_metrics_enabled
@@ -462,6 +468,7 @@ def create_anndata_evaluation_pipeline(
             params={
                 "selected": step_spec.embedding_metrics,
                 "metric_params": step_spec.embedding_metric_params,
+                "overwrite": step_spec.embedding_metrics_overwrite,
             },
             enabled=step_spec.embedding_metrics_enabled,
         )
@@ -480,6 +487,7 @@ def create_anndata_evaluation_pipeline(
                 "probe_params": step_spec.predictability_probe_params,
                 "cv_params": step_spec.predictability_cv_params,
                 "tuning_params": step_spec.predictability_tuning_params,
+                "overwrite": step_spec.predictability_overwrite,
             },
             enabled=step_spec.predictability_enabled,
         )
@@ -540,6 +548,7 @@ def _compute_external_clustering_metrics_if_possible(
     selected: Sequence[str] | None,
     metric_params: Mapping[str, Mapping[str, Any]] | None,
     external_metrics_enabled: bool | None,
+    overwrite: bool,
 ) -> ad.AnnData:
     """Compute external clustering metrics when labels are available.
 
@@ -551,6 +560,8 @@ def _compute_external_clustering_metrics_if_possible(
     ``external_metrics_enabled=None`` means auto mode: run only if ``label_key``
     exists in ``adata.obs``. ``external_metrics_enabled=True`` means the user
     explicitly requested external metrics, so missing labels should fail loudly.
+    The resolved overwrite policy is forwarded unchanged when the metric runner
+    is called.
     """
 
     if label_key not in adata.obs.columns:
@@ -568,4 +579,5 @@ def _compute_external_clustering_metrics_if_possible(
         cluster_key=cluster_key,
         selected=selected,
         metric_params=metric_params,
+        overwrite=overwrite,
     )
