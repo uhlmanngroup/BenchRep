@@ -1016,7 +1016,10 @@ def _to_json_safe(value: Any) -> Any:
     value = to_python_scalar(value)
 
     if isinstance(value, Mapping):
-        return {str(key): _to_json_safe(item) for key, item in value.items()}
+        return {
+            str(key): _to_json_safe(item)
+            for key, item in value.items()
+        }
 
     if isinstance(value, list | tuple):
         return [_to_json_safe(item) for item in value]
@@ -1025,13 +1028,7 @@ def _to_json_safe(value: Any) -> Any:
         return str(value)
 
     if isinstance(value, np.ndarray):
-        if value.ndim == 0:
-            return _to_json_safe(value.item())
-
-        return {
-            "array_shape": list(value.shape),
-            "dtype": str(value.dtype),
-        }
+        return _to_json_safe(value.tolist())
 
     if isinstance(value, float) and not math.isfinite(value):
         return None
