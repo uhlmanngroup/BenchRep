@@ -17,6 +17,8 @@ from pydantic import (
     field_validator,
 )
 
+RegistrySelection: TypeAlias = Literal["all"] | list[str] | None
+
 NSplits = Annotated[int, Field(ge=2)]
 
 PositiveFloatOrList: TypeAlias = PositiveFloat | list[PositiveFloat]
@@ -31,15 +33,6 @@ MaxIterWithNoLimitSentinel: TypeAlias = Literal[-1] | PositiveInt
 
 MaxDepthValue: TypeAlias = PositiveInt | None
 MaxDepthParam: TypeAlias = MaxDepthValue | list[MaxDepthValue]
-
-PredictabilityProbeName = Literal[
-    "dummy",
-    "linear",
-    "knn",
-    "random_forest",
-    "xgboost",
-    "svm_rbf"
-]
 
 ErrorMapKind = Literal[
     "absolute",
@@ -116,11 +109,15 @@ class EvalStepConfig(_EvaluationConfigBaseModel):
 class EvalMetricGroupConfig(_EvaluationConfigBaseModel):
     """Shared configuration for a registry-backed metric group.
 
-    Each group may compute multiple registered metrics. If some metrics fail
-    recoverably, successful results are retained and the group completes with
-    warnings. If every selected metric fails recoverably, the group is marked
-    failed and the evaluation pipeline continues. Invalid configuration and
-    unexpected runtime failures remain fatal.
+    Selection is independent of enablement. Once the group runs, `None` uses its
+    curated default selection, `"all"` selects every canonical metric registered
+    in the process, including custom registrations, and a list selects exactly the
+    provided metric names or aliases.
+
+    If some selected metrics fail recoverably, successful results are retained and
+    the group completes with warnings. If every selected metric fails recoverably,
+    the group is marked failed and the evaluation pipeline continues. Invalid
+    configuration and unexpected runtime failures remain fatal.
     """
 
     enabled: bool | None = Field(
@@ -135,17 +132,21 @@ class EvalMetricGroupConfig(_EvaluationConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
-    selected: list[str] | None = Field(
+    selected: RegistrySelection = Field(
         default=None,
-        description="Registered metric names or aliases to compute.",
+        description=(
+            "Metrics to compute: curated defaults, every registered metric, or an "
+            "explicit list of registered names or aliases."
+        ),
         json_schema_extra={
-            "omit_behavior": (
-                "Selects every metric currently registered in the process unless the "
-                "concrete group defines its own default selection."
-            ),
+            "omit_behavior": "Uses the concrete metric group's curated defaults.",
             "null_behavior": "Equivalent to omission.",
             "notes": [
-                "An empty list is rejected when the metric group runs."
+                '`"all"` selects every registered metric, including custom metrics '
+                "including custom registrations.",
+                "An explicit list selects exactly the provided metric names or aliases.",
+                "An empty list is rejected when the metric group runs.",
+                "Selection does not enable or disable the metric group.",
             ],
         },
     )
@@ -736,9 +737,8 @@ class TSNEParams(BaseModel):
 class TSNEConfig(EvalStepConfig):
     """Configures the optional Scanpy t-SNE evaluation step.
 
-    t-SNE requires embeddings and the optional Scanpy dependency. It is disabled
-    by default and is skipped with a warning if explicitly enabled without
-    embeddings.
+    t-SNE requires embeddings. It is disabled by default and raises an error if
+    explicitly enabled without embeddings.
     """
 
     enabled: bool | None = Field(
@@ -1353,8 +1353,8 @@ class EvaluationReconstructionConfig(_EvaluationConfigBaseModel):
             "omit_behavior": "Does not export reconstruction TIFFs.",
             "null_behavior": "Rejected.",
             "notes": [
-                "When requested without usable reconstruction inputs, the "
-                "export is disabled with a warning."
+                "If enabled but no reconstruction bundle can be resolved, "
+                "configuration resolution raises an error."
             ],
         },
     )
@@ -1393,10 +1393,14 @@ class EvaluationReconstructionConfig(_EvaluationConfigBaseModel):
 class InternalClusteringMetricConfig(EvalMetricGroupConfig):
     """Configures internal metrics for each enabled clustering result.
 
-    Registered callables receive `adata.X` and the corresponding cluster labels.
+    Registered metrics receive `adata.X` and the corresponding cluster labels.
+    Their returned values are validated and normalized according to their declared
+    metric-result contracts.
+
     Results are stored under
     `adata.uns["benchrep"]["metrics"]["clustering"]["internal"][cluster_key]`.
-    Each metric step depends on successful completion of its clustering step.
+    A separate metric step runs for each enabled clustering result and depends on
+    that clustering step completing successfully.
     """
 
     enabled: bool | None = Field(
@@ -1404,43 +1408,52 @@ class InternalClusteringMetricConfig(EvalMetricGroupConfig):
         description="Whether internal clustering metrics are computed.",
         json_schema_extra={
             "omit_behavior": (
-                "Enables the group when at least one clustering method is "
-                "enabled; otherwise disables it."
+                "Enables the group when at least one clustering method is enabled; "
+                "otherwise disables it."
             ),
             "null_behavior": "Equivalent to omission.",
             "notes": [
-                "A separate metric step runs for each enabled clustering method."
+                "With `enabled=True`, having no enabled clustering method produces "
+                "an error instead of disabling the group.",
+                "A separate metric step runs for each enabled clustering method.",
             ],
         },
     )
-    selected: list[str] | None = Field(
+    selected: RegistrySelection = Field(
         default=None,
         description=(
-            "Registered internal clustering metric names or aliases to compute."
+            "Internal clustering metrics to compute using curated defaults, every "
+            "registered metric, or an explicit list of names or aliases."
         ),
         json_schema_extra={
             "omit_behavior": (
-                "Computes every internal clustering metric currently "
-                "registered in the process."
+                "Computes `silhouette`, `calinski_harabasz`, and "
+                "`davies_bouldin`."
             ),
             "null_behavior": "Equivalent to omission.",
             "notes": [
-                "Inspect available metrics with "
-                "`benchrep.inspect_registry(\"internal_clustering_metric\")`.",
+                '`"all"` selects every registered internal clustering metric, '
+                "including custom metrics.",
+                "An explicit list selects exactly the provided names or aliases.",
                 "An empty list is rejected when the group runs.",
+                "Inspect the current canonical names and aliases with "
+                '`benchrep.inspect_registry("internal_clustering_metric")`.',
             ],
         },
     )
 
 
 class ExternalClusteringMetricConfig(EvalMetricGroupConfig):
-    """Configures label-referenced metrics for each clustering result.
+    """Configures label-referenced metrics for each enabled clustering result.
 
-    Registered callables receive reference labels from
-    `adata.obs[label_key]` and the corresponding cluster assignments. Results
-    are stored under
+    Registered metrics receive reference labels from `adata.obs[label_key]` and
+    the corresponding cluster assignments. Their returned values are validated
+    and normalized according to their declared metric-result contracts.
+
+    Results are stored under
     `adata.uns["benchrep"]["metrics"]["clustering"]["external"][cluster_key]`.
-    Each metric step depends on successful completion of its clustering step.
+    A separate metric step runs for each enabled clustering result and depends on
+    that clustering step completing successfully.
     """
 
     enabled: bool | None = Field(
@@ -1453,9 +1466,8 @@ class ExternalClusteringMetricConfig(EvalMetricGroupConfig):
             ),
             "null_behavior": "Equivalent to omission.",
             "notes": [
-                "Explicit enablement with a missing label column produces a "
-                "recoverable step failure.",
-                "The group is disabled when no clustering method is enabled.",
+                "With `enabled=True`, unavailable clustering or label prerequisites "
+                "produce an error instead of disabling the group.",
             ],
         },
     )
@@ -1470,21 +1482,25 @@ class ExternalClusteringMetricConfig(EvalMetricGroupConfig):
             "null_behavior": "Rejected.",
         },
     )
-    selected: list[str] | None = Field(
+    selected: RegistrySelection = Field(
         default=None,
         description=(
-            "Registered external clustering metric names or aliases to compute."
+            "External clustering metrics to compute using curated defaults, every "
+            "registered metric, or an explicit list of names or aliases."
         ),
         json_schema_extra={
             "omit_behavior": (
-                "Computes every external clustering metric currently "
-                "registered in the process."
+                "Computes `adjusted_mutual_info`, `adjusted_rand_index`, and "
+                "`homogeneity`."
             ),
             "null_behavior": "Equivalent to omission.",
             "notes": [
-                "Inspect available metrics with "
-                "`benchrep.inspect_registry(\"external_clustering_metric\")`.",
+                '`"all"` selects every registered external clustering metric, '
+                "including custom metrics.",
+                "An explicit list selects exactly the provided names or aliases.",
                 "An empty list is rejected when the group runs.",
+                "Inspect the current canonical names and aliases with "
+                '`benchrep.inspect_registry("external_clustering_metric")`.',
             ],
         },
     )
@@ -1521,31 +1537,113 @@ class EvaluationClusteringMetricsConfig(_EvaluationConfigBaseModel):
 
 # Embedding ---
 class EmbeddingMetricConfig(EvalMetricGroupConfig):
-    selected: list[str] = Field(
-        default_factory=lambda: [
-            "mean",
-            "median",
-            "standard_deviation",
-            "minimum",
-            "maximum",
-            "quantiles",
-        ]
+    """Configures metrics computed directly from the embedding matrix.
+
+    Registered metrics receive `adata.X`. Their returned values are validated
+    and normalized according to their declared metric-result contracts.
+
+    Results are stored under
+    `adata.uns["benchrep"]["metrics"]["embedding"]`.
+    """
+
+    enabled: bool | None = Field(
+        default=None,
+        description="Whether embedding metrics are computed.",
+        json_schema_extra={
+            "omit_behavior": (
+                "Enables the group when embeddings are available; otherwise "
+                "disables it."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "With `enabled=True`, unavailable embeddings produce an error "
+                "instead of disabling the group.",
+            ],
+        },
     )
-
-    @model_validator(mode="after")
-    def validate_embedding_metrics(self) -> "EmbeddingMetricConfig":
-        if self.enabled is not False and not self.selected:
-            raise ValueError(
-                "metrics.embedding.selected cannot be empty when "
-                "embedding metrics are enabled."
-            )
-
-        return self
+    selected: RegistrySelection = Field(
+        default=None,
+        description=(
+            "Embedding metrics to compute using curated defaults, every "
+            "registered metric, or an explicit list of names or aliases."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Computes `mean`, `median`, `standard_deviation`, `minimum`, "
+                "`maximum`, and `quantiles`."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                '`"all"` selects every registered embedding metric, including '
+                "custom metrics.",
+                "An explicit list selects exactly the provided names or aliases.",
+                "An empty list is rejected when the group runs.",
+                "Inspect the current canonical names and aliases with "
+                '`benchrep.inspect_registry("embedding_metric")`.',
+            ],
+        },
+    )
 
 
 # Reconstruction ---
 class ReconstructionMetricConfig(EvalMetricGroupConfig):
-    reduction: Literal["global", "per_channel", "both"] = "global"
+    """Configures metrics comparing inputs with their reconstructions.
+
+    Registered metrics receive the input and reconstruction arrays. Their
+    returned values are validated and normalized according to their declared
+    metric-result contracts.
+
+    Metrics may run once over the complete arrays, independently for each
+    reconstruction channel, or both.
+    """
+
+    enabled: bool | None = Field(
+        default=None,
+        description="Whether reconstruction metrics are computed.",
+        json_schema_extra={
+            "omit_behavior": (
+                "Enables the group when reconstruction inputs are available; "
+                "otherwise disables it."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "With `enabled=True`, unavailable reconstruction inputs produce "
+                "an error instead of disabling the group.",
+            ],
+        },
+    )
+    selected: RegistrySelection = Field(
+        default=None,
+        description=(
+            "Reconstruction metrics to compute using curated defaults, every "
+            "registered metric, or an explicit list of names or aliases."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Computes `mae`, `mse`, `rmse`, and `max_absolute_error`."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                '`"all"` selects every registered reconstruction metric, '
+                "including custom metrics.",
+                "An explicit list selects exactly the provided names or aliases.",
+                "An empty list is rejected when the group runs.",
+                "Inspect the current canonical names and aliases with "
+                '`benchrep.inspect_registry("reconstruction_metric")`.',
+            ],
+        },
+    )
+    reduction: Literal["global", "per_channel", "both"] = Field(
+        default="global",
+        description=(
+            "Whether metrics are computed over the complete arrays, separately "
+            "for each channel, or both."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Computes each metric globally.",
+            "null_behavior": "Rejected.",
+        },
+    )
 
 
 # Predictability ---
@@ -1687,8 +1785,44 @@ class EvaluationPredictabilityParamsConfig(_EvaluationConfigBaseModel):
 
 
 class EvaluationPredictabilityConfig(EvalStepConfig):
-    selected: list[PredictabilityProbeName] = Field(
-        default_factory=lambda: ["dummy", "linear", "knn", "random_forest", "svm_rbf"]
+    """Configures cross-validated probes of embedding predictability.
+
+    Registered probe builders construct supervised estimators that predict
+    `target_key` from the embedding matrix. Probe results are stored under the
+    predictability metrics namespace for that target.
+    """
+
+    enabled: bool | None = Field(
+        default=None,
+        description="Whether predictability probes are evaluated.",
+        json_schema_extra={
+            "omit_behavior": "Disables predictability evaluation.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "With `enabled=True`, unavailable embeddings or target data produce "
+                "an error instead of disabling the step.",
+            ],
+        },
+    )
+    selected: RegistrySelection = Field(
+        default=None,
+        description=(
+            "Predictability probes to evaluate using curated defaults, every "
+            "registered probe, or an explicit list of names or aliases."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Uses `dummy`, `linear`, `knn`, `random_forest`, and `svm_rbf`."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                '`"all"` selects every registered predictability probe.',
+                "An explicit list selects exactly the provided names or aliases.",
+                "An empty list is rejected when the step runs.",
+                "Inspect the current canonical names and aliases with "
+                '`benchrep.inspect_registry("predictability_probe")`.',
+            ],
+        },
     )
     target_key: str = "label"
     task: Literal["classification", "regression"] = "classification"
@@ -1701,35 +1835,16 @@ class EvaluationPredictabilityConfig(EvalStepConfig):
         if self.enabled is not True:
             return self
 
-        if len(self.selected) == 0:
-            raise ValueError("predictability.selected cannot be an empty list.")
+        if self.selected == []:
+            raise ValueError(
+                "predictability.selected cannot be empty when predictability is enabled."
+            )
 
         if self.target_key.strip() == "":
             raise ValueError(
                 "predictability.target_key must be a non-empty string when "
                 "predictability is enabled."
             )
-
-        if "dummy" in self.selected:
-            resolved_task = self.task
-
-            if resolved_task == "regression":
-                if self.params.dummy.strategy not in {"mean", "median"}:
-                    raise ValueError(
-                        "predictability.params.dummy.strategy must be one of "
-                        "['mean', 'median'] when predictability.task is 'regression'."
-                    )
-            else:
-                if self.params.dummy.strategy not in {
-                    "most_frequent",
-                    "stratified",
-                    "uniform",
-                }:
-                    raise ValueError(
-                        "predictability.params.dummy.strategy must be one of "
-                        "['most_frequent', 'stratified', 'uniform'] when "
-                        "predictability.task is 'classification'."
-                    )
 
         return self
 

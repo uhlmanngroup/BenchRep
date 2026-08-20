@@ -7,6 +7,7 @@ import warnings
 
 from benchrep.assembly.config import load_yaml
 from benchrep.assembly.registries.core import (
+    Registry,
     EVAL_INTERNAL_CLUSTERING_METRICS,
     EVAL_EXTERNAL_CLUSTERING_METRICS,
     EVAL_EMBEDDING_METRICS,
@@ -27,6 +28,77 @@ from benchrep.assembly.schemas.evaluation_config_schema import (
     EvaluationRunConfig,
 )
 from benchrep.runtime.status import ACCEPTABLE_PREDICTION_STATUSES
+
+
+# -------------------------
+# Registry selection defaults
+# -------------------------
+DEFAULT_INTERNAL_CLUSTERING_METRICS: tuple[str, ...] = (
+    "silhouette",
+    "calinski_harabasz",
+    "davies_bouldin",
+)
+
+DEFAULT_EXTERNAL_CLUSTERING_METRICS: tuple[str, ...] = (
+    "adjusted_mutual_info",
+    "adjusted_rand_index",
+    "homogeneity",
+)
+
+DEFAULT_EMBEDDING_METRICS: tuple[str, ...] = (
+    "mean",
+    "median",
+    "standard_deviation",
+    "minimum",
+    "maximum",
+    "quantiles",
+)
+
+DEFAULT_PREDICTABILITY_PROBES: tuple[str, ...] = (
+    "dummy",
+    "linear",
+    "knn",
+    "random_forest",
+    "svm_rbf",
+)
+
+DEFAULT_RECONSTRUCTION_METRICS: tuple[str, ...] = (
+    "mae",
+    "mse",
+    "rmse",
+    "max_absolute_error",
+)
+
+
+def _resolve_registry_selection(
+    *,
+    selected: Literal["all"] | list[str] | None,
+    default_selection: tuple[str, ...],
+    registry: Registry,
+) -> list[str]:
+    """Resolve an evaluation selection to unique canonical registry keys."""
+
+    if selected == "all":
+        return list(registry.canonical_keys())
+
+    requested_selection = (
+        default_selection
+        if selected is None
+        else selected
+    )
+
+    resolved_selection = resolve_registry_keys(
+        selected=requested_selection,
+        registry=registry,
+        none_policy="preserve",
+    )
+
+    if resolved_selection is None:
+        raise RuntimeError(
+            f"{registry.name} selection unexpectedly resolved to None."
+        )
+
+    return resolved_selection
 
 
 # -------------------------
@@ -72,12 +144,12 @@ class EvaluationStepSpec:
     hdbscan_params: dict[str, Any]
 
     internal_clustering_metrics_enabled: bool
-    internal_clustering_metrics: list[str] | None
+    internal_clustering_metrics: list[str]
     internal_clustering_metric_params: dict[str, dict[str, Any]]
 
     external_clustering_metrics_enabled: bool | None
     external_clustering_label_key: str
-    external_clustering_metrics: list[str] | None
+    external_clustering_metrics: list[str]
     external_clustering_metric_params: dict[str, dict[str, Any]]
 
     embedding_metrics_enabled: bool
@@ -93,7 +165,7 @@ class EvaluationStepSpec:
     predictability_tuning_params: dict[str, Any]
 
     reconstruction_metrics_enabled: bool
-    reconstruction_metrics: list[str] | None
+    reconstruction_metrics: list[str]
     reconstruction_metric_params: dict[str, dict[str, Any]]
     reconstruction_metrics_reduction: str
 
@@ -523,41 +595,30 @@ def resolve_step_spec(
         has_embeddings: bool,
         has_reconstructions: bool,
 ) -> EvaluationStepSpec:
-    """Resolve evaluation step switches and backend parameter dictionaries.
+    """Resolve evaluation step switches, selections, and backend parameters.
 
-    Evaluation ``enabled`` fields use tri-state semantics:
+    Evaluation `enabled` fields use tri-state semantics. `True` explicitly
+    requests a step and raises when its required source inputs are unavailable.
+    `False` disables it. `None` uses the concrete step's automatic behavior and
+    does not raise merely because optional inputs are unavailable.
 
-    - ``True`` explicitly enables a step.
-    - ``False`` explicitly disables a step.
-    - ``None`` means automatic/default behavior, resolved here unless later
-      runtime information is required.
+    PCA, embedding metrics, and reconstruction metrics default to enabled when
+    their respective inputs exist. UMAP, t-SNE, KMeans, Leiden, HDBSCAN,
+    predictability, and reconstruction TIFF export require explicit enablement.
+    Plots default to enabled.
 
-    Most static defaults are resolved immediately. PCA, embedding metrics,
-    and plots default to enabled. UMAP, t-SNE, KMeans, Leiden, HDBSCAN,
-    and predictability probes default to disabled. Embedding-dependent steps
-    are disabled when no embeddings artifact is available. Explicit requests
-    are skipped with a warning. Default-enabled embedding steps run only when
-    embeddings are available, while opt-in steps still require explicit enablement.
+    Internal and external clustering metrics require at least one enabled
+    clustering method. Explicitly enabling either group without one raises an
+    error; automatic enablement disables the group. External metric enablement
+    may remain `None` until the loaded AnnData object can be checked for
+    `label_key`.
 
-    Clustering metrics require at least one clustering method to be enabled.
-    When KMeans, Leiden, and HDBSCAN are all disabled, both internal and
-    external clustering metrics are forced off during resolution.
+    Registry selections resolve to canonical names. `None` uses the group's
+    curated defaults, `"all"` uses every currently registered component, and an
+    explicit list resolves exactly the provided names or aliases.
 
-    Reconstruction metrics default to enabled when reconstruction artifacts are
-    available. Reconstruction TIFF export requires explicit enablement and available
-    reconstructions. Error-map parameters are shared by TIFF and reconstruction-grid
-    consumers and do not have an independent enablement switch.
-
-    External clustering metrics remain partially unresolved because they depend
-    on the loaded AnnData object: ``None`` is preserved so the workflow can later
-    decide based on whether ``label_key`` exists in ``adata.obs``. Clustering metrics
-    also require at least one clustering method to be enabled.
-
-    Selected metric names are validated against the evaluation registries and
-    resolved to canonical names. Parameter objects are converted to dictionaries for
-    downstream/backend use.
-    ``None`` parameters are omitted by ``params_to_dict`` so backend defaults can
-    apply.
+    Parameter objects are converted to dictionaries for downstream use. `None`
+    parameters are omitted so callable or backend defaults can apply.
     """
     # Resolve step switches and params needed by multiple downstream decisions.
     pca_enabled = resolve_enabled_if_available(
@@ -605,11 +666,72 @@ def resolve_step_spec(
     # Prep for guard to prevent clustering metric computation if no clustering is enabled.
     clustering_enabled = kmeans_enabled or leiden_enabled or hdbscan_enabled
 
+    internal_metrics_config = (
+        evaluation_config.metrics.clustering.internal
+    )
+
+    if (
+            internal_metrics_config.enabled is True
+            and not clustering_enabled
+    ):
+        raise ValueError(
+            "Internal clustering metrics were explicitly enabled, but no "
+            "clustering method is enabled."
+        )
+
+    internal_clustering_metrics_enabled = (
+            clustering_enabled
+            and internal_metrics_config.enabled is not False
+    )
+
+    internal_clustering_metrics = _resolve_registry_selection(
+        selected=internal_metrics_config.selected,
+        default_selection=DEFAULT_INTERNAL_CLUSTERING_METRICS,
+        registry=EVAL_INTERNAL_CLUSTERING_METRICS,
+    )
+
+    if (
+            internal_clustering_metrics_enabled
+            and not internal_clustering_metrics
+    ):
+        raise ValueError(
+            "metrics.clustering.internal.selected cannot be empty when internal "
+            "clustering metrics are enabled."
+        )
+
+    external_metrics_config = (
+        evaluation_config.metrics.clustering.external
+    )
+
+    if (
+            external_metrics_config.enabled is True
+            and not clustering_enabled
+    ):
+        raise ValueError(
+            "External clustering metrics were explicitly enabled, but no "
+            "clustering method is enabled."
+        )
+
     external_clustering_metrics_enabled = (
-        evaluation_config.metrics.clustering.external.enabled
+        external_metrics_config.enabled
         if clustering_enabled
         else False
     )
+
+    external_clustering_metrics = _resolve_registry_selection(
+        selected=external_metrics_config.selected,
+        default_selection=DEFAULT_EXTERNAL_CLUSTERING_METRICS,
+        registry=EVAL_EXTERNAL_CLUSTERING_METRICS,
+    )
+
+    if (
+            external_clustering_metrics_enabled is True
+            and not external_clustering_metrics
+    ):
+        raise ValueError(
+            "metrics.clustering.external.selected cannot be empty when external "
+            "clustering metrics are enabled."
+        )
 
     embedding_metrics_enabled = resolve_enabled_if_available(
         configured=evaluation_config.metrics.embedding.enabled,
@@ -617,15 +739,16 @@ def resolve_step_spec(
         name="Embedding metrics",
     )
 
-    embedding_metrics = resolve_registry_keys(
+    embedding_metrics = _resolve_registry_selection(
         selected=evaluation_config.metrics.embedding.selected,
+        default_selection=DEFAULT_EMBEDDING_METRICS,
         registry=EVAL_EMBEDDING_METRICS,
-        none_policy="preserve",
     )
 
-    if embedding_metrics is None:
+    if embedding_metrics_enabled and not embedding_metrics:
         raise ValueError(
-            "metrics.embedding.selected cannot be None."
+            "metrics.embedding.selected cannot be empty when embedding metrics "
+            "are enabled."
         )
 
     plot_params = params_to_dict(evaluation_config.plots.params)
@@ -665,13 +788,17 @@ def resolve_step_spec(
     )
     predictability_task: PredictabilityTask = predictability_config.task
 
-    predictability_probes = resolve_registry_keys(
+    predictability_probes = _resolve_registry_selection(
         selected=predictability_config.selected,
+        default_selection=DEFAULT_PREDICTABILITY_PROBES,
         registry=EVAL_PREDICTABILITY_PROBES,
-        none_policy="preserve",
     )
-    if predictability_probes is None:
-        raise ValueError("metrics.predictability.selected cannot be None.")
+
+    if predictability_enabled and not predictability_probes:
+        raise ValueError(
+            "metrics.predictability.selected cannot be empty when predictability "
+            "is enabled."
+        )
 
     predictability_probe_params = resolve_registry_param_keys(
         params=params_to_dict(predictability_config.params),
@@ -686,6 +813,11 @@ def resolve_step_spec(
     )
 
     if predictability_enabled:
+        _validate_predictability_dummy_strategy(
+            task=predictability_task,
+            probes=predictability_probes,
+            probe_params=predictability_probe_params,
+        )
         _validate_predictability_linear_model(
             task=predictability_task,
             probes=predictability_probes,
@@ -702,6 +834,18 @@ def resolve_step_spec(
         available=has_reconstructions,
         name="Reconstruction metrics",
     )
+
+    reconstruction_metrics = _resolve_registry_selection(
+        selected=evaluation_config.metrics.reconstruction.selected,
+        default_selection=DEFAULT_RECONSTRUCTION_METRICS,
+        registry=EVAL_RECONSTRUCTION_METRICS,
+    )
+
+    if reconstruction_metrics_enabled and not reconstruction_metrics:
+        raise ValueError(
+            "metrics.reconstruction.selected cannot be empty when reconstruction "
+            "metrics are enabled."
+        )
 
     reconstruction_tiffs_enabled = resolve_enabled_if_explicit_and_available(
         configured=evaluation_config.reconstruction.export_tiffs,
@@ -749,16 +893,8 @@ def resolve_step_spec(
 
         # None = True
         # Force disable if not clustering_enabled
-        internal_clustering_metrics_enabled=(
-            enabled_by_default(evaluation_config.metrics.clustering.internal.enabled)
-            if clustering_enabled
-            else False
-        ),
-        internal_clustering_metrics=resolve_registry_keys(
-            selected=evaluation_config.metrics.clustering.internal.selected,
-            registry=EVAL_INTERNAL_CLUSTERING_METRICS,
-            none_policy="preserve",
-        ),
+        internal_clustering_metrics_enabled=internal_clustering_metrics_enabled,
+        internal_clustering_metrics=internal_clustering_metrics,
         internal_clustering_metric_params=resolve_registry_param_keys(
             params=evaluation_config.metrics.clustering.internal.params,
             registry=EVAL_INTERNAL_CLUSTERING_METRICS,
@@ -768,11 +904,7 @@ def resolve_step_spec(
         # Force disable if not clustering_enabled
         external_clustering_metrics_enabled=external_clustering_metrics_enabled,
         external_clustering_label_key=evaluation_config.metrics.clustering.external.label_key,
-        external_clustering_metrics=resolve_registry_keys(
-            selected=evaluation_config.metrics.clustering.external.selected,
-            registry=EVAL_EXTERNAL_CLUSTERING_METRICS,
-            none_policy="preserve",
-        ),
+        external_clustering_metrics=external_clustering_metrics,
         external_clustering_metric_params=resolve_registry_param_keys(
             params=evaluation_config.metrics.clustering.external.params,
             registry=EVAL_EXTERNAL_CLUSTERING_METRICS,
@@ -797,11 +929,7 @@ def resolve_step_spec(
 
         # True if not disabled and reconstructions are available
         reconstruction_metrics_enabled=reconstruction_metrics_enabled,
-        reconstruction_metrics=resolve_registry_keys(
-            selected=evaluation_config.metrics.reconstruction.selected,
-            registry=EVAL_RECONSTRUCTION_METRICS,
-            none_policy="preserve",
-        ),
+        reconstruction_metrics=reconstruction_metrics,
         reconstruction_metric_params=resolve_registry_param_keys(
             params=evaluation_config.metrics.reconstruction.params,
             registry=EVAL_RECONSTRUCTION_METRICS,
@@ -893,36 +1021,29 @@ def enabled_by_default(value: bool | None) -> bool:
     return value is not False
 
 
-def disabled_by_default(value: bool | None) -> bool:
-    """Resolve a tri-state switch where ``None`` means disabled."""
-    return value is True
-
-
 def resolve_enabled_if_available(
     configured: bool | None,
     *,
     available: bool,
     name: str,
 ) -> bool:
-    """Resolve a tri-state switch that defaults to enabled if input exists.
+    """Resolve a step that defaults to enabled when its inputs are available.
 
-    ``True`` and ``None`` both enable the step when the required input is
-    available. ``False`` always disables it. If the user explicitly enables the
-    step but the required input is unavailable, the step is skipped with a
-    warning rather than failing the full evaluation run.
+    `False` always disables the step. `None` enables it only when the required
+    inputs are available. `True` requires those inputs and raises when they are
+    unavailable.
     """
-    if available:
-        return configured is not False
 
-    if configured:
-        warnings.warn(
-            f"Explicit enablement was requested for {name}, but required inputs "
-            "are unavailable. It will be skipped.",
-            UserWarning,
-            stacklevel=2,
+    if configured is True and not available:
+        raise ValueError(
+            f"{name} was explicitly enabled, but its required inputs are "
+            "unavailable."
         )
 
-    return False
+    if not available:
+        return False
+
+    return configured is not False
 
 
 def resolve_enabled_if_explicit_and_available(
@@ -931,24 +1052,20 @@ def resolve_enabled_if_explicit_and_available(
     available: bool,
     name: str,
 ) -> bool:
-    """Resolve a switch that requires both explicit enablement and input data.
+    """Resolve a step that runs only when explicitly enabled.
 
-    This is used for optional artifact-producing steps such as reductions, clustering,
-    predictability, and exports. ``None`` behaves like ``False``. If the user explicitly
-    enables the step but the required input is unavailable, the step is skipped with a
-    warning.
+    `False` and `None` disable the step. `True` enables it when its required
+    inputs are available and raises when they are unavailable.
     """
-    if not configured:
+
+    if configured is not True:
         return False
 
     if not available:
-        warnings.warn(
-            f"Explicit enablement was requested for {name}, but required inputs "
-            "are unavailable. It will be skipped.",
-            UserWarning,
-            stacklevel=2,
+        raise ValueError(
+            f"{name} was explicitly enabled, but its required inputs are "
+            "unavailable."
         )
-        return False
 
     return True
 
@@ -1011,6 +1128,32 @@ def _resolve_predictability_scoring(
         )
 
     return scoring
+
+
+def _validate_predictability_dummy_strategy(
+    *,
+    task: PredictabilityTask,
+    probes: list[str],
+    probe_params: dict[str, dict[str, Any]],
+) -> None:
+    """Validate the dummy strategy when the dummy probe is selected."""
+
+    if "dummy" not in probes:
+        return
+
+    strategy = probe_params.get("dummy", {}).get("strategy")
+
+    valid_strategies = (
+        {"most_frequent", "stratified", "uniform"}
+        if task == "classification"
+        else {"mean", "median"}
+    )
+
+    if strategy not in valid_strategies:
+        raise ValueError(
+            "metrics.predictability.params.dummy.strategy must be one of "
+            f"{sorted(valid_strategies)} when task={task!r}."
+        )
 
 
 def _validate_predictability_linear_model(
