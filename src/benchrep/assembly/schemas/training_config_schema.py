@@ -72,6 +72,7 @@ class NamedConfig(_TrainingConfigBaseModel):
             "null_behavior": "Not allowed.",
         },
     )
+
     params: dict[str, Any] = Field(
         default_factory=dict,
         description="Parameters used to configure the selected component.",
@@ -101,6 +102,7 @@ class RunConfig(_TrainingConfigBaseModel):
             "null_behavior": "Not allowed.",
         },
     )
+
     project_name: str | None = Field(
         default=None,
         description=(
@@ -223,6 +225,7 @@ class LossTermConfig(_TrainingConfigBaseModel):
             ],
         },
     )
+
     params: dict[str, Any] = Field(
         default_factory=dict,
         description=(
@@ -284,6 +287,7 @@ class ReproducibilityConfig(_TrainingConfigBaseModel):
             "null_behavior": "Not allowed.",
         },
     )
+
     seed_workers: bool = Field(
         default=True,
         description=(
@@ -296,6 +300,7 @@ class ReproducibilityConfig(_TrainingConfigBaseModel):
             "null_behavior": "Not allowed.",
         },
     )
+
     float32_matmul_precision: Literal["medium", "high", "highest"] = Field(
         default="highest",
         description=(
@@ -340,6 +345,7 @@ class TrainerConfig(_TrainingConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     accelerator: str | None = Field(
         default="auto",
         description=(
@@ -354,6 +360,7 @@ class TrainerConfig(_TrainingConfigBaseModel):
             ),
         },
     )
+
     devices: str | int | list[int] | None = Field(
         default="auto",
         description=(
@@ -368,6 +375,7 @@ class TrainerConfig(_TrainingConfigBaseModel):
             ),
         },
     )
+
     log_every_n_steps: PositiveInt | None = Field(
         default=None,
         description=(
@@ -382,6 +390,7 @@ class TrainerConfig(_TrainingConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     deterministic: bool | Literal["warn"] | None = Field(
         default=None,
         description=(
@@ -398,6 +407,7 @@ class TrainerConfig(_TrainingConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     benchmark: bool | None = Field(
         default=False,
         description=(
@@ -415,6 +425,7 @@ class TrainerConfig(_TrainingConfigBaseModel):
             ),
         },
     )
+
     precision: str | int | None = Field(
         default=None,
         description=(
@@ -912,6 +923,7 @@ class DatasetConfig(_TrainingConfigBaseModel, Generic[ParamsT]):
             "null_behavior": "Not allowed.",
         },
     )
+
     params: ParamsT = Field(
         description=(
             "Parameters used to construct the selected dataset. The accepted "
@@ -939,6 +951,7 @@ class MNISTDatasetParams(_TrainingConfigBaseModel):
             "null_behavior": "Not allowed.",
         },
     )
+
     split: Literal["train", "test"] = Field(
         default="train",
         description="MNIST split to load.",
@@ -947,6 +960,7 @@ class MNISTDatasetParams(_TrainingConfigBaseModel):
             "null_behavior": "Not allowed.",
         },
     )
+
     download: bool = Field(
         default=False,
         description=(
@@ -971,6 +985,7 @@ class MNISTDatasetConfig(DatasetConfig[MNISTDatasetParams]):
             "null_behavior": "Not allowed.",
         },
     )
+
     params: MNISTDatasetParams = Field(
         description="Parameters used to construct the MNIST dataset.",
         json_schema_extra={
@@ -990,6 +1005,7 @@ class CIFAR10DatasetParams(_TrainingConfigBaseModel):
             "null_behavior": "Not allowed.",
         },
     )
+
     split: Literal["train", "test"] = Field(
         default="train",
         description="CIFAR-10 split to load.",
@@ -998,6 +1014,7 @@ class CIFAR10DatasetParams(_TrainingConfigBaseModel):
             "null_behavior": "Not allowed.",
         },
     )
+
     download: bool = Field(
         default=False,
         description=(
@@ -1025,6 +1042,7 @@ class CIFAR10DatasetConfig(DatasetConfig[CIFAR10DatasetParams]):
             "null_behavior": "Not allowed.",
         },
     )
+
     params: CIFAR10DatasetParams = Field(
         description="Parameters used to construct the CIFAR-10 dataset.",
         json_schema_extra={
@@ -1044,6 +1062,7 @@ class STL10DatasetParams(_TrainingConfigBaseModel):
             "null_behavior": "Not allowed.",
         },
     )
+
     split: Literal[
         "train",
         "test",
@@ -1060,6 +1079,7 @@ class STL10DatasetParams(_TrainingConfigBaseModel):
             "null_behavior": "Not allowed.",
         },
     )
+
     download: bool = Field(
         default=False,
         description=(
@@ -1087,6 +1107,7 @@ class STL10DatasetConfig(DatasetConfig[STL10DatasetParams]):
             "null_behavior": "Not allowed.",
         },
     )
+
     params: STL10DatasetParams = Field(
         description="Parameters used to construct the STL-10 dataset.",
         json_schema_extra={
@@ -1111,6 +1132,7 @@ class CustomDatasetConfig(DatasetConfig[dict[str, Any]]):
             "null_behavior": "Not allowed.",
         },
     )
+
     params: dict[str, Any] = Field(
         default_factory=dict,
         description=(
@@ -1164,6 +1186,7 @@ class DataModuleConfig(_TrainingConfigBaseModel):
             "null_behavior": "Not allowed.",
         },
     )
+
     val_fraction: float = Field(
         default=0.1,
         ge=0.0,
@@ -1177,6 +1200,7 @@ class DataModuleConfig(_TrainingConfigBaseModel):
             "null_behavior": "Not allowed.",
         },
     )
+
     num_workers: NonNegativeInt = Field(
         default=4,
         description="Number of worker processes used by each DataLoader.",
@@ -1185,6 +1209,7 @@ class DataModuleConfig(_TrainingConfigBaseModel):
             "null_behavior": "Not allowed.",
         },
     )
+
     pin_memory: bool | Literal["auto"] = Field(
         default="auto",
         description=(
@@ -1196,6 +1221,7 @@ class DataModuleConfig(_TrainingConfigBaseModel):
             "null_behavior": "Not allowed.",
         },
     )
+
     persistent_workers: bool = Field(
         default=False,
         description=(
@@ -1207,6 +1233,7 @@ class DataModuleConfig(_TrainingConfigBaseModel):
             "null_behavior": "Not allowed.",
         },
     )
+
     drop_last: bool = Field(
         default=False,
         description=(
@@ -1252,6 +1279,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
             "null_behavior": "Not allowed.",
         },
     )
+
     run: RunConfig = Field(
         default_factory=RunConfig,
         description="Output location and run-identification settings.",
@@ -1260,6 +1288,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
             "null_behavior": "Not allowed.",
         },
     )
+
     reproducibility: ReproducibilityConfig = Field(
         default_factory=ReproducibilityConfig,
         description="Training randomness and numerical reproducibility settings.",
@@ -1268,6 +1297,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
             "null_behavior": "Not allowed.",
         },
     )
+
     model: ModelConfig | None = Field(
         default=None,
         description=(
@@ -1282,6 +1312,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     encoder: EncoderConfig | None = Field(
         default=None,
         description=(
@@ -1296,6 +1327,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     decoder: DecoderConfig | None = Field(
         default=None,
         description=(
@@ -1310,6 +1342,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     losses: dict[SupportedLossRole, LossRoleTerms] | None = Field(
         default_factory=dict,
         description=(
@@ -1338,6 +1371,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
             ],
         },
     )
+
     optimizer: OptimizerConfig | None = Field(
         default=None,
         description=(
@@ -1352,6 +1386,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     dataset: SupportedDatasetConfig | None = Field(
         default=None,
         description=(
@@ -1371,6 +1406,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     transforms: list[TransformConfig] = Field(
         default_factory=list,
         description=(
@@ -1392,6 +1428,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
             ),
         },
     )
+
     datamodule: DataModuleConfig | None = Field(
         default_factory=DataModuleConfig,
         description=(
@@ -1407,6 +1444,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
             ),
         },
     )
+
     trainer: TrainerConfig = Field(
         default_factory=TrainerConfig,
         description=(
@@ -1420,6 +1458,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
             "null_behavior": "Not allowed.",
         },
     )
+
     logger: LoggerConfig | None = Field(
         default=None,
         description="Optional experiment logger used during training.",
@@ -1428,6 +1467,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     checkpointing: CheckpointConfig = Field(
         default_factory=CheckpointConfig,
         description="Checkpoint creation and selection settings for training.",
@@ -1436,6 +1476,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
             "null_behavior": "Not allowed.",
         },
     )
+
     early_stopping: EarlyStoppingConfig | None = Field(
         default=None,
         description=(
@@ -1447,6 +1488,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     additional_callbacks: list[AdditionalCallbackConfig] = Field(
         default_factory=list,
         description=(
@@ -1459,6 +1501,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
             "null_behavior": "Not allowed; use an empty list instead.",
         },
     )
+
     inspection: InspectionConfig = Field(
         default_factory=InspectionConfig,
         description="Optional best-effort torchview model-graph export settings.",

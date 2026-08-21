@@ -746,6 +746,7 @@ class PredictionConfig(_PredictionConfigBaseModel):
             "null_behavior": "Not allowed.",
         },
     )
+
     source: PredictionSourceConfig = Field(
         default_factory=PredictionSourceConfig,
         description="Training-manifest and checkpoint-selection settings.",
@@ -758,6 +759,7 @@ class PredictionConfig(_PredictionConfigBaseModel):
             "null_behavior": "Not allowed.",
         },
     )
+
     dataset: SupportedDatasetConfig | None = Field(
         default=None,
         description=(
@@ -783,6 +785,7 @@ class PredictionConfig(_PredictionConfigBaseModel):
             ],
         },
     )
+
     data: PredictionDataConfig = Field(
         default_factory=PredictionDataConfig,
         description=(
@@ -795,6 +798,7 @@ class PredictionConfig(_PredictionConfigBaseModel):
             "null_behavior": "Not allowed.",
         },
     )
+
     inference: PredictionInferenceConfig = Field(
         default_factory=PredictionInferenceConfig,
         description=(
@@ -810,6 +814,7 @@ class PredictionConfig(_PredictionConfigBaseModel):
             "null_behavior": "Not allowed.",
         },
     )
+
     transforms: list[PredictionTransformConfig] | None = Field(
         default=None,
         description=(
@@ -831,6 +836,7 @@ class PredictionConfig(_PredictionConfigBaseModel):
             ),
         },
     )
+
     exports: PredictionExportConfig = Field(
         default_factory=PredictionExportConfig,
         description="Prediction embedding and reconstruction artifact settings.",
