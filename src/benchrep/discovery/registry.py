@@ -33,18 +33,21 @@ from benchrep.evaluation.metrics import EvaluationMetric
 class ComponentRegistryInfo:
     symbol: str
     registry: Registry
-    custom_registration_supported: bool | None = None
     runtime_instance_override_supported: bool | None = None
     config_locations: tuple[str, ...] = ()
     contract: str | None = None
     runtime_override: str | None = None
+
+    @property
+    def custom_registration_supported(self) -> bool:
+        """Return the registration policy enforced by the registry."""
+        return self.registry.custom_registration_supported
 
 
 _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
     "dataset": ComponentRegistryInfo(
         symbol="DATASETS",
         registry=DATASETS,
-        custom_registration_supported=True,
         runtime_instance_override_supported=False,
         config_locations=(
             "TrainingConfig.dataset",
@@ -58,7 +61,6 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
     "transform": ComponentRegistryInfo(
         symbol="TRANSFORMS",
         registry=TRANSFORMS,
-        custom_registration_supported=True,
         runtime_instance_override_supported=False,
         config_locations=(
             "TrainingConfig.transforms",
@@ -73,7 +75,6 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
     "encoder": ComponentRegistryInfo(
         symbol="ENCODERS",
         registry=ENCODERS,
-        custom_registration_supported=True,
         runtime_instance_override_supported=False,
         config_locations=("TrainingConfig.encoder",),
         contract=(
@@ -84,7 +85,6 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
     "decoder": ComponentRegistryInfo(
         symbol="DECODERS",
         registry=DECODERS,
-        custom_registration_supported=True,
         runtime_instance_override_supported=False,
         config_locations=("TrainingConfig.decoder",),
         contract=(
@@ -95,7 +95,6 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
     "model": ComponentRegistryInfo(
         symbol="MODELS",
         registry=MODELS,
-        custom_registration_supported=False,
         runtime_instance_override_supported=True,
         config_locations=("TrainingConfig.model",),
         runtime_override=(
@@ -106,7 +105,6 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
     "reconstruction_loss": ComponentRegistryInfo(
         symbol="RECONSTRUCTION_LOSSES",
         registry=RECONSTRUCTION_LOSSES,
-        custom_registration_supported=True,
         runtime_instance_override_supported=False,
         config_locations=("TrainingConfig.losses.reconstruction",),
         contract=(
@@ -117,7 +115,6 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
     "regularization_loss": ComponentRegistryInfo(
         symbol="REGULARIZATION_LOSSES",
         registry=REGULARIZATION_LOSSES,
-        custom_registration_supported=True,
         runtime_instance_override_supported=False,
         config_locations=("TrainingConfig.losses.regularization",),
         contract=(
@@ -128,7 +125,6 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
     "custom_objective_loss": ComponentRegistryInfo(
         symbol="CUSTOM_OBJECTIVE_LOSSES",
         registry=CUSTOM_OBJECTIVE_LOSSES,
-        custom_registration_supported=True,
         runtime_instance_override_supported=False,
         config_locations=(
             "TrainingConfig.losses.custom_objective",
@@ -141,7 +137,6 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
     "optimizer": ComponentRegistryInfo(
         symbol="OPTIMIZERS",
         registry=OPTIMIZERS,
-        custom_registration_supported=True,
         runtime_instance_override_supported=False,
         config_locations=("TrainingConfig.optimizer",),
         contract=(
@@ -153,7 +148,6 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
     "logger": ComponentRegistryInfo(
         symbol="LOGGERS",
         registry=LOGGERS,
-        custom_registration_supported=True,
         runtime_instance_override_supported=False,
         config_locations=("TrainingConfig.logger",),
         contract=(
@@ -163,7 +157,6 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
     "callback": ComponentRegistryInfo(
         symbol="CALLBACKS",
         registry=CALLBACKS,
-        custom_registration_supported=True,
         runtime_instance_override_supported=False,
         config_locations=("TrainingConfig.additional_callbacks",),
         contract=(
@@ -174,21 +167,18 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
     "reduction": ComponentRegistryInfo(
         symbol="EVAL_REDUCTIONS",
         registry=EVAL_REDUCTIONS,
-        custom_registration_supported=False,
         runtime_instance_override_supported=False,
         config_locations=("EvaluationConfig.reductions",),
     ),
     "clustering_method": ComponentRegistryInfo(
         symbol="EVAL_CLUSTERING_METHODS",
         registry=EVAL_CLUSTERING_METHODS,
-        custom_registration_supported=False,
         runtime_instance_override_supported=False,
         config_locations=("EvaluationConfig.clustering",),
     ),
     "internal_clustering_metric": ComponentRegistryInfo(
         symbol="EVAL_INTERNAL_CLUSTERING_METRICS",
         registry=EVAL_INTERNAL_CLUSTERING_METRICS,
-        custom_registration_supported=True,
         runtime_instance_override_supported=False,
         config_locations=(
             "EvaluationConfig.metrics.clustering.internal",
@@ -203,7 +193,6 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
     "external_clustering_metric": ComponentRegistryInfo(
         symbol="EVAL_EXTERNAL_CLUSTERING_METRICS",
         registry=EVAL_EXTERNAL_CLUSTERING_METRICS,
-        custom_registration_supported=True,
         runtime_instance_override_supported=False,
         config_locations=(
             "EvaluationConfig.metrics.clustering.external",
@@ -218,7 +207,6 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
     "embedding_metric": ComponentRegistryInfo(
         symbol="EVAL_EMBEDDING_METRICS",
         registry=EVAL_EMBEDDING_METRICS,
-        custom_registration_supported=True,
         runtime_instance_override_supported=False,
         config_locations=("EvaluationConfig.metrics.embedding",),
         contract=(
@@ -231,14 +219,12 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
     "predictability_probe": ComponentRegistryInfo(
         symbol="EVAL_PREDICTABILITY_PROBES",
         registry=EVAL_PREDICTABILITY_PROBES,
-        custom_registration_supported=False,
         runtime_instance_override_supported=False,
         config_locations=("EvaluationConfig.metrics.predictability",),
     ),
     "reconstruction_metric": ComponentRegistryInfo(
         symbol="EVAL_RECONSTRUCTION_METRICS",
         registry=EVAL_RECONSTRUCTION_METRICS,
-        custom_registration_supported=True,
         runtime_instance_override_supported=False,
         config_locations=("EvaluationConfig.metrics.reconstruction",),
         contract=(
