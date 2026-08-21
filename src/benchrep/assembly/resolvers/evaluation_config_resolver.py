@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any, Literal
@@ -811,6 +812,10 @@ def resolve_step_spec(
     )
     predictability_cv_params = params_to_dict(predictability_config.cv)
     predictability_tuning_params = params_to_dict(predictability_config.tuning)
+    predictability_cv_params["method"] = _resolve_predictability_cv_method(
+        task=predictability_task,
+        cv_params=predictability_cv_params,
+    )
 
     predictability_cv_params["scoring"] = _resolve_predictability_scoring(
         task=predictability_task,
@@ -1109,6 +1114,39 @@ def has_tunable_param_grid(value: Any) -> bool:
         return any(has_tunable_param_grid(v) for v in value.values())
 
     return False
+
+
+def _resolve_predictability_cv_method(
+    *,
+    task: PredictabilityTask,
+    cv_params: Mapping[str, Any],
+) -> str:
+    """Resolve and validate the predictability cross-validation strategy."""
+
+    method = cv_params.get("method")
+
+    if method is None:
+        if task == "classification":
+            return "stratified_kfold"
+
+        if task == "regression":
+            return "kfold"
+
+        raise ValueError(
+            "task must be either 'classification' or 'regression', "
+            f"got {task!r}."
+        )
+
+    if (
+        task == "regression"
+        and method in {"stratified_kfold", "stratified_group_kfold"}
+    ):
+        raise ValueError(
+            f"metrics.predictability.cv.method={method!r} is not valid for "
+            "task='regression'."
+        )
+
+    return method
 
 
 def _resolve_predictability_scoring(

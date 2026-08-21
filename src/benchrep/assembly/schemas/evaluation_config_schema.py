@@ -1692,16 +1692,97 @@ class ReconstructionMetricConfig(EvalMetricGroupConfig):
 
 # Predictability ---
 class EvaluationCrossValidationConfig(_EvaluationConfigBaseModel):
+    """Configures outer cross-validation for predictability probes.
+
+    Outer folds estimate probe performance on held-out observations. When
+    hyperparameter tuning is enabled, inner cross-validation uses the same
+    strategy family within each outer training fold. Grouped strategies keep
+    all observations belonging to the same group within one fold.
+    """
+
     method: Literal[
         "stratified_kfold",
         "kfold",
         "group_kfold",
         "stratified_group_kfold",
-    ] = "stratified_kfold"
-    n_splits: NSplits = 5
-    group_key: str | None = None
-    shuffle: bool = True
-    random_state: int | None = 137
+    ] | None = Field(
+        default=None,
+        description="Cross-validation strategy used for predictability evaluation.",
+        json_schema_extra={
+            "omit_behavior": (
+                "Uses `stratified_kfold` for classification and `kfold` for "
+                "regression."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "`stratified_kfold` and `stratified_group_kfold` are only valid "
+                "for classification.",
+                "`group_kfold` and `stratified_group_kfold` require `group_key`.",
+                "When tuning is enabled, the inner cross-validation uses the same "
+                "strategy family.",
+            ],
+        },
+    )
+    n_splits: NSplits = Field(
+        default=5,
+        description="Number of outer cross-validation folds.",
+        json_schema_extra={
+            "omit_behavior": "Uses five outer folds.",
+            "null_behavior": "Rejected.",
+            "notes": [
+                "The available observations, groups, and class counts are "
+                "validated when predictability evaluation runs.",
+            ],
+        },
+    )
+    group_key: (
+        Annotated[
+            str,
+            StringConstraints(strip_whitespace=True, min_length=1),
+        ]
+        | None
+    ) = Field(
+        default=None,
+        description=(
+            "AnnData observation column containing group labels for grouped "
+            "cross-validation."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Does not provide grouping labels.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Required by `group_kfold` and `stratified_group_kfold`.",
+                "Each group is kept entirely within a single fold.",
+            ],
+        },
+    )
+    shuffle: bool = Field(
+        default=True,
+        description="Whether observations or groups are shuffled before splitting.",
+        json_schema_extra={
+            "omit_behavior": "Enables shuffling.",
+            "null_behavior": "Rejected.",
+            "notes": [
+                "Grouped strategies preserve group boundaries while shuffling.",
+                "`random_state` is ignored when shuffling is disabled.",
+                "When tuning is enabled, the same setting applies to inner "
+                "cross-validation.",
+            ],
+        },
+    )
+    random_state: int | None = Field(
+        default=137,
+        description="Random seed used by shuffled cross-validation splitters.",
+        json_schema_extra={
+            "omit_behavior": "Uses seed 137.",
+            "null_behavior": "Does not use a fixed seed.",
+            "notes": [
+                "Ignored when shuffling is disabled.",
+                "When tuning is enabled, the same seed is used for inner "
+                "cross-validation.",
+            ],
+        },
+    )
     scoring: Literal[
         "balanced_accuracy",
         "f1_macro",
@@ -1710,18 +1791,38 @@ class EvaluationCrossValidationConfig(_EvaluationConfigBaseModel):
         "r2",
         "neg_mean_absolute_error",
         "neg_root_mean_squared_error",
-    ] | None = None
+    ] | None = Field(
+        default=None,
+        description=(
+            "Scoring function used to evaluate probe performance and, when "
+            "tuning is enabled, select hyperparameters."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Uses `balanced_accuracy` for classification and `r2` for "
+                "regression."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "`balanced_accuracy`, `f1_macro`, `f1_weighted`, and `accuracy` "
+                "are classification scorers.",
+                "`r2`, `neg_mean_absolute_error`, and "
+                "`neg_root_mean_squared_error` are regression scorers.",
+                "Negated error scorers follow scikit-learn's convention that "
+                "higher scores are better.",
+            ],
+        },
+    )
 
     @model_validator(mode="after")
     def validate_cv(self) -> EvaluationCrossValidationConfig:
-        if self.method in ("group_kfold", "stratified_group_kfold") and self.group_key is None:
+        if (
+            self.method in {"group_kfold", "stratified_group_kfold"}
+            and self.group_key is None
+        ):
             raise ValueError(
-                "cv.group_key required when using group_kfold or stratified_group_kfold for cv.method."
-            )
-
-        if self.method == "group_kfold" and self.shuffle:
-            raise ValueError(
-                f"cv.shuffle is not supported for cv.method = {self.method}"
+                "cv.group_key is required when cv.method is `group_kfold` or "
+                "`stratified_group_kfold`."
             )
 
         return self

@@ -152,8 +152,16 @@ def build_predictability_cv(
 
     if method == "group_kfold":
         return PredictabilityCVSpec(
-            outer_cv=GroupKFold(n_splits=outer_n_splits),
-            inner_cv=GroupKFold(n_splits=inner_n_splits) if tuning_enabled else None,
+            outer_cv=GroupKFold(
+                n_splits=outer_n_splits,
+                shuffle=shuffle,
+                random_state=random_state if shuffle else None,
+            ),
+            inner_cv=GroupKFold(
+                n_splits=inner_n_splits,
+                shuffle=shuffle,
+                random_state=random_state if shuffle else None,
+            ) if tuning_enabled else None,
             use_groups=True,
         )
 
