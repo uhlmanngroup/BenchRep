@@ -27,6 +27,8 @@ from benchrep.assembly.resolvers.utils import (
 from benchrep.assembly.schemas.evaluation_config_schema import (
     EvaluationConfig,
     EvaluationRunConfig,
+    LogisticRegressionProbeConfig,
+    RidgeProbeConfig,
 )
 from benchrep.runtime.status import ACCEPTABLE_PREDICTION_STATUSES
 
@@ -810,6 +812,10 @@ def resolve_step_spec(
         params=params_to_dict(predictability_config.params),
         registry=EVAL_PREDICTABILITY_PROBES,
     )
+    predictability_probe_params = _resolve_predictability_probe_params(
+        task=predictability_task,
+        probe_params=predictability_probe_params,
+    )
     predictability_cv_params = params_to_dict(predictability_config.cv)
     predictability_tuning_params = params_to_dict(predictability_config.tuning)
     predictability_cv_params["method"] = _resolve_predictability_cv_method(
@@ -829,6 +835,11 @@ def resolve_step_spec(
             probe_params=predictability_probe_params,
         )
         _validate_predictability_linear_model(
+            task=predictability_task,
+            probes=predictability_probes,
+            probe_params=predictability_probe_params,
+        )
+        _validate_predictability_class_weight(
             task=predictability_task,
             probes=predictability_probes,
             probe_params=predictability_probe_params,
@@ -1183,6 +1194,47 @@ def _resolve_predictability_scoring(
     return scoring
 
 
+def _resolve_predictability_probe_params(
+    *,
+    task: PredictabilityTask,
+    probe_params: Mapping[str, Mapping[str, Any]],
+) -> dict[str, dict[str, Any]]:
+    """Resolve task-dependent defaults for predictability probes."""
+
+    resolved_params = {
+        probe_name: dict(params)
+        for probe_name, params in probe_params.items()
+    }
+
+    dummy_params = resolved_params.setdefault("dummy", {})
+
+    if "strategy" not in dummy_params:
+        if task == "classification":
+            dummy_params["strategy"] = "most_frequent"
+        elif task == "regression":
+            dummy_params["strategy"] = "mean"
+        else:
+            raise ValueError(
+                "task must be either 'classification' or 'regression', "
+                f"got {task!r}."
+            )
+
+    if "linear" not in resolved_params:
+        if task == "classification":
+            linear_config = LogisticRegressionProbeConfig()
+        elif task == "regression":
+            linear_config = RidgeProbeConfig()
+        else:
+            raise ValueError(
+                "task must be either 'classification' or 'regression', "
+                f"got {task!r}."
+            )
+
+        resolved_params["linear"] = params_to_dict(linear_config)
+
+    return resolved_params
+
+
 def _validate_predictability_dummy_strategy(
     *,
     task: PredictabilityTask,
@@ -1230,6 +1282,34 @@ def _validate_predictability_linear_model(
         raise ValueError(
             "metrics.predictability.params.linear.model must be "
             "'ridge' when task='regression'."
+        )
+
+
+def _validate_predictability_class_weight(
+    *,
+    task: PredictabilityTask,
+    probes: list[str],
+    probe_params: Mapping[str, Mapping[str, Any]],
+) -> None:
+    """Reject classification-only class weighting for regression probes."""
+
+    if task != "regression":
+        return
+
+    incompatible_probes = [
+        probe_name
+        for probe_name in ("random_forest", "svm_rbf")
+        if (
+            probe_name in probes
+            and "class_weight" in probe_params.get(probe_name, {})
+        )
+    ]
+
+    if incompatible_probes:
+        raise ValueError(
+            "`class_weight` is only valid for classification predictability "
+            "probes, but it was configured for regression probes "
+            f"{incompatible_probes}."
         )
 
 

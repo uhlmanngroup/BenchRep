@@ -21,18 +21,41 @@ RegistrySelection: TypeAlias = Literal["all"] | list[str] | None
 
 NSplits = Annotated[int, Field(ge=2)]
 
-PositiveFloatOrList: TypeAlias = PositiveFloat | list[PositiveFloat]
-PositiveIntOrList: TypeAlias = PositiveInt | list[PositiveInt]
+PositiveFloatOrList: TypeAlias = (
+    PositiveFloat
+    | Annotated[list[PositiveFloat], Field(min_length=1)]
+)
+PositiveIntOrList: TypeAlias = (
+    PositiveInt
+    | Annotated[list[PositiveInt], Field(min_length=1)]
+)
 
 KNNWeights: TypeAlias = Literal["uniform", "distance"]
-KNNWeightsOrList: TypeAlias = KNNWeights | list[KNNWeights]
+KNNWeightsOrList: TypeAlias = (
+    KNNWeights
+    | Annotated[list[KNNWeights], Field(min_length=1)]
+)
+KNNMetric: TypeAlias = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1),
+]
+KNNMetricOrList: TypeAlias = (
+    KNNMetric
+    | Annotated[list[KNNMetric], Field(min_length=1)]
+)
 
 SVMRBFGammaValue: TypeAlias = Literal["scale", "auto"] | PositiveFloat
-SVMRBFGammaValueOrList: TypeAlias = SVMRBFGammaValue | list[SVMRBFGammaValue]
+SVMRBFGammaValueOrList: TypeAlias = (
+    SVMRBFGammaValue
+    | Annotated[list[SVMRBFGammaValue], Field(min_length=1)]
+)
 MaxIterWithNoLimitSentinel: TypeAlias = Literal[-1] | PositiveInt
 
 MaxDepthValue: TypeAlias = PositiveInt | None
-MaxDepthParam: TypeAlias = MaxDepthValue | list[MaxDepthValue]
+MaxDepthParam: TypeAlias = (
+    MaxDepthValue
+    | Annotated[list[MaxDepthValue], Field(min_length=1)]
+)
 
 ErrorMapKind = Literal[
     "absolute",
@@ -91,6 +114,7 @@ class EvalStepConfig(_EvaluationConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     params: dict[str, Any] | None = Field(
         default=None,
         description=(
@@ -132,6 +156,7 @@ class EvalMetricGroupConfig(_EvaluationConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     selected: RegistrySelection = Field(
         default=None,
         description=(
@@ -142,14 +167,14 @@ class EvalMetricGroupConfig(_EvaluationConfigBaseModel):
             "omit_behavior": "Uses the concrete metric group's curated defaults.",
             "null_behavior": "Equivalent to omission.",
             "notes": [
-                '`"all"` selects every registered metric, including custom metrics '
-                "including custom registrations.",
+                '`"all"` selects every registered metric, including custom registrations.',
                 "An explicit list selects exactly the provided metric names or aliases.",
                 "An empty list is rejected when the metric group runs.",
                 "Selection does not enable or disable the metric group.",
             ],
         },
     )
+
     params: dict[str, dict[str, Any]] | None = Field(
         default=None,
         description=(
@@ -210,6 +235,7 @@ class EvaluationSourceConfig(_EvaluationConfigBaseModel):
             ],
         },
     )
+
     embeddings_path: Path | None = Field(
         default=None,
         description=(
@@ -240,6 +266,7 @@ class EvaluationSourceConfig(_EvaluationConfigBaseModel):
             ],
         },
     )
+
     reconstructions_path: Path | None = Field(
         default=None,
         description=(
@@ -341,6 +368,7 @@ class EvaluationRunConfig(_EvaluationConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     run_name: str | None = Field(
         default=None,
         description=(
@@ -384,16 +412,6 @@ class PCAParams(BaseModel):
     `sklearn.decomposition.PCA`.
     """
 
-    model_config = ConfigDict(
-        extra="allow",
-        json_schema_extra={
-            "extra_field_behavior": (
-                "Allowed; additional non-null fields are forwarded as keyword "
-                "arguments to `sklearn.decomposition.PCA`."
-            ),
-        },
-    )
-
     n_components: PositiveInt | None = Field(
         default=None,
         description=(
@@ -407,6 +425,7 @@ class PCAParams(BaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     key_added: str | None = Field(
         default="X_pca",
         description="Key used by BenchRep to store coordinates in `adata.obsm`.",
@@ -415,6 +434,7 @@ class PCAParams(BaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     random_state: int | None = Field(
         default=137,
         description=(
@@ -425,6 +445,7 @@ class PCAParams(BaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     overwrite: bool | None = Field(
         default=False,
         description=(
@@ -437,6 +458,16 @@ class PCAParams(BaseModel):
             "notes": [
                 "A key collision without overwrite is a recoverable step failure."
             ],
+        },
+    )
+
+    model_config = ConfigDict(
+        extra="allow",
+        json_schema_extra={
+            "extra_field_behavior": (
+                "Allowed; additional non-null fields are forwarded as keyword "
+                "arguments to `sklearn.decomposition.PCA`."
+            ),
         },
     )
 
@@ -458,6 +489,7 @@ class PCAConfig(EvalStepConfig):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     params: PCAParams | None = Field(
         default_factory=PCAParams,
         description="Parameters controlling PCA computation and output storage.",
@@ -493,6 +525,7 @@ class UMAPParams(_EvaluationConfigBaseModel):
             ],
         },
     )
+
     n_pcs: NonNegativeInt | None = Field(
         default=None,
         description=(
@@ -509,6 +542,7 @@ class UMAPParams(_EvaluationConfigBaseModel):
             ],
         },
     )
+
     use_rep: str | None = Field(
         default=None,
         description=(
@@ -520,6 +554,7 @@ class UMAPParams(_EvaluationConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     metric: str | None = Field(
         default="euclidean",
         description="Distance metric passed to `scanpy.pp.neighbors()`.",
@@ -528,6 +563,7 @@ class UMAPParams(_EvaluationConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     neighbors_kwargs: dict[str, Any] | None = Field(
         default=None,
         description=(
@@ -542,6 +578,7 @@ class UMAPParams(_EvaluationConfigBaseModel):
             ],
         },
     )
+
     min_dist: NonNegativeFloat | None = Field(
         default=0.1,
         description="Minimum distance passed to `scanpy.tl.umap()`.",
@@ -550,6 +587,7 @@ class UMAPParams(_EvaluationConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     key_added: str | None = Field(
         default="X_umap",
         description=(
@@ -561,6 +599,7 @@ class UMAPParams(_EvaluationConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     umap_kwargs: dict[str, Any] | None = Field(
         default=None,
         description=(
@@ -575,6 +614,7 @@ class UMAPParams(_EvaluationConfigBaseModel):
             ],
         },
     )
+
     neighbors_key: str | None = Field(
         default="neighbors",
         description=(
@@ -586,6 +626,7 @@ class UMAPParams(_EvaluationConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     random_state: int | None = Field(
         default=137,
         description=(
@@ -597,6 +638,7 @@ class UMAPParams(_EvaluationConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     overwrite: bool | None = Field(
         default=False,
         description=(
@@ -629,6 +671,7 @@ class UMAPConfig(EvalStepConfig):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     params: UMAPParams | None = Field(
         default_factory=UMAPParams,
         description=(
@@ -652,16 +695,6 @@ class TSNEParams(BaseModel):
     fields are forwarded to `scanpy.tl.tsne()`.
     """
 
-    model_config = ConfigDict(
-        extra="allow",
-        json_schema_extra={
-            "extra_field_behavior": (
-                "Allowed; additional non-null fields are forwarded as keyword "
-                "arguments to `scanpy.tl.tsne()`."
-            ),
-        },
-    )
-
     n_pcs: NonNegativeInt | None = Field(
         default=None,
         description=(
@@ -677,6 +710,7 @@ class TSNEParams(BaseModel):
             ],
         },
     )
+
     use_rep: str | None = Field(
         default=None,
         description=(
@@ -688,6 +722,7 @@ class TSNEParams(BaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     perplexity: PositiveFloat | None = Field(
         default=30.0,
         description="Perplexity passed to `scanpy.tl.tsne()`.",
@@ -699,6 +734,7 @@ class TSNEParams(BaseModel):
             ],
         },
     )
+
     key_added: str | None = Field(
         default="X_tsne",
         description=(
@@ -710,6 +746,7 @@ class TSNEParams(BaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     random_state: int | None = Field(
         default=137,
         description="Random seed passed to `scanpy.tl.tsne()`.",
@@ -718,6 +755,7 @@ class TSNEParams(BaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     overwrite: bool | None = Field(
         default=False,
         description=(
@@ -730,6 +768,16 @@ class TSNEParams(BaseModel):
             "notes": [
                 "A key collision without overwrite is a recoverable step failure."
             ],
+        },
+    )
+
+    model_config = ConfigDict(
+        extra="allow",
+        json_schema_extra={
+            "extra_field_behavior": (
+                "Allowed; additional non-null fields are forwarded as keyword "
+                "arguments to `scanpy.tl.tsne()`."
+            ),
         },
     )
 
@@ -749,6 +797,7 @@ class TSNEConfig(EvalStepConfig):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     params: TSNEParams | None = Field(
         default_factory=TSNEParams,
         description="Parameters controlling Scanpy t-SNE computation.",
@@ -776,6 +825,7 @@ class EvaluationReductionsConfig(_EvaluationConfigBaseModel):
             "null_behavior": "Rejected; a configuration mapping is required.",
         },
     )
+
     umap: UMAPConfig = Field(
         default_factory=UMAPConfig,
         description="Configuration for the UMAP evaluation step.",
@@ -784,6 +834,7 @@ class EvaluationReductionsConfig(_EvaluationConfigBaseModel):
             "null_behavior": "Rejected; a configuration mapping is required.",
         },
     )
+
     tsne: TSNEConfig = Field(
         default_factory=TSNEConfig,
         description="Configuration for the t-SNE evaluation step.",
@@ -807,16 +858,6 @@ class KMeansParams(BaseModel):
     Additional non-null fields are forwarded to `sklearn.cluster.KMeans`.
     """
 
-    model_config = ConfigDict(
-        extra="allow",
-        json_schema_extra={
-            "extra_field_behavior": (
-                "Allowed; additional non-null fields are forwarded as keyword "
-                "arguments to `sklearn.cluster.KMeans`."
-            ),
-        },
-    )
-
     n_clusters: PositiveInt | None = Field(
         default=None,
         description="Number of clusters passed to `sklearn.cluster.KMeans`.",
@@ -833,6 +874,7 @@ class KMeansParams(BaseModel):
             ],
         },
     )
+
     key_added: str | None = Field(
         default="kmeans",
         description=(
@@ -843,6 +885,7 @@ class KMeansParams(BaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     random_state: int | None = Field(
         default=137,
         description="Random seed passed to `sklearn.cluster.KMeans`.",
@@ -851,6 +894,7 @@ class KMeansParams(BaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     n_init: Literal["auto"] | PositiveInt | None = Field(
         default="auto",
         description="Initialization count passed to `sklearn.cluster.KMeans`.",
@@ -859,6 +903,7 @@ class KMeansParams(BaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     overwrite: bool | None = Field(
         default=False,
         description=(
@@ -871,6 +916,16 @@ class KMeansParams(BaseModel):
             "notes": [
                 "A key collision without overwrite is a recoverable step failure."
             ],
+        },
+    )
+
+    model_config = ConfigDict(
+        extra="allow",
+        json_schema_extra={
+            "extra_field_behavior": (
+                "Allowed; additional non-null fields are forwarded as keyword "
+                "arguments to `sklearn.cluster.KMeans`."
+            ),
         },
     )
 
@@ -891,6 +946,7 @@ class KMeansConfig(EvalStepConfig):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     params: KMeansParams | None = Field(
         default_factory=KMeansParams,
         description="Parameters controlling KMeans clustering and output storage.",
@@ -940,6 +996,7 @@ class LeidenParams(_EvaluationConfigBaseModel):
             ],
         },
     )
+
     n_pcs: NonNegativeInt | None = Field(
         default=None,
         description=(
@@ -956,6 +1013,7 @@ class LeidenParams(_EvaluationConfigBaseModel):
             ],
         },
     )
+
     use_rep: str | None = Field(
         default=None,
         description=(
@@ -967,6 +1025,7 @@ class LeidenParams(_EvaluationConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     metric: str | None = Field(
         default="euclidean",
         description="Distance metric passed to `scanpy.pp.neighbors()`.",
@@ -975,6 +1034,7 @@ class LeidenParams(_EvaluationConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     neighbors_kwargs: dict[str, Any] | None = Field(
         default=None,
         description=(
@@ -989,6 +1049,7 @@ class LeidenParams(_EvaluationConfigBaseModel):
             ],
         },
     )
+
     resolution: PositiveFloat | None = Field(
         default=1.0,
         description="Resolution passed to `scanpy.tl.leiden()`.",
@@ -1000,6 +1061,7 @@ class LeidenParams(_EvaluationConfigBaseModel):
             ],
         },
     )
+
     key_added: str | None = Field(
         default="leiden",
         description=(
@@ -1011,6 +1073,7 @@ class LeidenParams(_EvaluationConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     leiden_kwargs: dict[str, Any] | None = Field(
         default=None,
         description=(
@@ -1027,6 +1090,7 @@ class LeidenParams(_EvaluationConfigBaseModel):
             ],
         },
     )
+
     neighbors_key: str | None = Field(
         default="neighbors",
         description=(
@@ -1042,6 +1106,7 @@ class LeidenParams(_EvaluationConfigBaseModel):
             ],
         },
     )
+
     random_state: int | None = Field(
         default=137,
         description=(
@@ -1053,6 +1118,7 @@ class LeidenParams(_EvaluationConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     overwrite: bool | None = Field(
         default=False,
         description=(
@@ -1086,6 +1152,7 @@ class LeidenConfig(EvalStepConfig):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     params: LeidenParams | None = Field(
         default_factory=LeidenParams,
         description=(
@@ -1111,16 +1178,6 @@ class HDBSCANParams(BaseModel):
     BenchRep uses `copy=False` unless overridden.
     """
 
-    model_config = ConfigDict(
-        extra="allow",
-        json_schema_extra={
-            "extra_field_behavior": (
-                "Allowed; additional non-null fields are forwarded as keyword "
-                "arguments to `sklearn.cluster.HDBSCAN`."
-            ),
-        },
-    )
-
     min_cluster_size: Annotated[int, Field(ge=2)] | None = Field(
         default=5,
         description=(
@@ -1131,6 +1188,7 @@ class HDBSCANParams(BaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     min_samples: PositiveInt | None = Field(
         default=None,
         description=(
@@ -1145,6 +1203,7 @@ class HDBSCANParams(BaseModel):
             ],
         },
     )
+
     cluster_selection_epsilon: NonNegativeFloat | None = Field(
         default=0.0,
         description=(
@@ -1156,6 +1215,7 @@ class HDBSCANParams(BaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     metric: str | None = Field(
         default="euclidean",
         description="Distance metric passed to `sklearn.cluster.HDBSCAN`.",
@@ -1164,6 +1224,7 @@ class HDBSCANParams(BaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     cluster_selection_method: Literal["eom", "leaf"] | None = Field(
         default="eom",
         description=(
@@ -1175,6 +1236,7 @@ class HDBSCANParams(BaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     allow_single_cluster: bool | None = Field(
         default=False,
         description=(
@@ -1185,6 +1247,7 @@ class HDBSCANParams(BaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     key_added: str | None = Field(
         default="hdbscan",
         description=(
@@ -1196,6 +1259,7 @@ class HDBSCANParams(BaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     overwrite: bool | None = Field(
         default=False,
         description=(
@@ -1207,6 +1271,16 @@ class HDBSCANParams(BaseModel):
             "notes": [
                 "A key collision without overwrite is a recoverable step failure."
             ],
+        },
+    )
+
+    model_config = ConfigDict(
+        extra="allow",
+        json_schema_extra={
+            "extra_field_behavior": (
+                "Allowed; additional non-null fields are forwarded as keyword "
+                "arguments to `sklearn.cluster.HDBSCAN`."
+            ),
         },
     )
 
@@ -1230,6 +1304,7 @@ class HDBSCANConfig(EvalStepConfig):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     params: HDBSCANParams | None = Field(
         default_factory=HDBSCANParams,
         description=(
@@ -1259,6 +1334,7 @@ class EvaluationClusteringConfig(_EvaluationConfigBaseModel):
             "null_behavior": "Rejected; a configuration mapping is required.",
         },
     )
+
     leiden: LeidenConfig = Field(
         default_factory=LeidenConfig,
         description="Configuration for the Leiden evaluation step.",
@@ -1267,6 +1343,7 @@ class EvaluationClusteringConfig(_EvaluationConfigBaseModel):
             "null_behavior": "Rejected; a configuration mapping is required.",
         },
     )
+
     hdbscan: HDBSCANConfig = Field(
         default_factory=HDBSCANConfig,
         description="Configuration for the HDBSCAN evaluation step.",
@@ -1305,6 +1382,7 @@ class ErrorMapParams(_EvaluationConfigBaseModel):
             ],
         },
     )
+
     denominator_floor: PositiveFloat | None = Field(
         default=None,
         description=(
@@ -1316,6 +1394,7 @@ class ErrorMapParams(_EvaluationConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
         },
     )
+
     data_range: PositiveFloat | None = Field(
         default=None,
         description=(
@@ -1358,6 +1437,7 @@ class EvaluationReconstructionConfig(_EvaluationConfigBaseModel):
             ],
         },
     )
+
     n_examples: PositiveInt | None = Field(
         default=None,
         description="Maximum number of examples included in TIFF export.",
@@ -1370,6 +1450,7 @@ class EvaluationReconstructionConfig(_EvaluationConfigBaseModel):
             ],
         },
     )
+
     error_maps: ErrorMapParams = Field(
         default_factory=ErrorMapParams,
         description=(
@@ -1420,6 +1501,7 @@ class InternalClusteringMetricConfig(EvalMetricGroupConfig):
             ],
         },
     )
+
     selected: RegistrySelection = Field(
         default=None,
         description=(
@@ -1442,6 +1524,7 @@ class InternalClusteringMetricConfig(EvalMetricGroupConfig):
             ],
         },
     )
+
     overwrite: bool | None = Field(
         default=False,
         description=(
@@ -1487,6 +1570,7 @@ class ExternalClusteringMetricConfig(EvalMetricGroupConfig):
             ],
         },
     )
+
     label_key: str = Field(
         default="label",
         description=(
@@ -1498,6 +1582,7 @@ class ExternalClusteringMetricConfig(EvalMetricGroupConfig):
             "null_behavior": "Rejected.",
         },
     )
+
     selected: RegistrySelection = Field(
         default=None,
         description=(
@@ -1520,6 +1605,7 @@ class ExternalClusteringMetricConfig(EvalMetricGroupConfig):
             ],
         },
     )
+
     overwrite: bool | None = Field(
         default=False,
         description=(
@@ -1552,6 +1638,7 @@ class EvaluationClusteringMetricsConfig(_EvaluationConfigBaseModel):
             "null_behavior": "Rejected.",
         },
     )
+
     external: ExternalClusteringMetricConfig = Field(
         default_factory=ExternalClusteringMetricConfig,
         description=(
@@ -1592,6 +1679,7 @@ class EmbeddingMetricConfig(EvalMetricGroupConfig):
             ],
         },
     )
+
     selected: RegistrySelection = Field(
         default=None,
         description=(
@@ -1614,6 +1702,7 @@ class EmbeddingMetricConfig(EvalMetricGroupConfig):
             ],
         },
     )
+
     overwrite: bool | None = Field(
         default=False,
         description=(
@@ -1656,6 +1745,7 @@ class ReconstructionMetricConfig(EvalMetricGroupConfig):
             ],
         },
     )
+
     selected: RegistrySelection = Field(
         default=None,
         description=(
@@ -1677,6 +1767,7 @@ class ReconstructionMetricConfig(EvalMetricGroupConfig):
             ],
         },
     )
+
     reduction: Literal["global", "per_channel", "both"] = Field(
         default="global",
         description=(
@@ -1723,6 +1814,7 @@ class EvaluationCrossValidationConfig(_EvaluationConfigBaseModel):
             ],
         },
     )
+
     n_splits: NSplits = Field(
         default=5,
         description="Number of outer cross-validation folds.",
@@ -1735,6 +1827,7 @@ class EvaluationCrossValidationConfig(_EvaluationConfigBaseModel):
             ],
         },
     )
+
     group_key: (
         Annotated[
             str,
@@ -1756,6 +1849,7 @@ class EvaluationCrossValidationConfig(_EvaluationConfigBaseModel):
             ],
         },
     )
+
     shuffle: bool = Field(
         default=True,
         description="Whether observations or groups are shuffled before splitting.",
@@ -1770,6 +1864,7 @@ class EvaluationCrossValidationConfig(_EvaluationConfigBaseModel):
             ],
         },
     )
+
     random_state: int | None = Field(
         default=137,
         description="Random seed used by shuffled cross-validation splitters.",
@@ -1783,6 +1878,7 @@ class EvaluationCrossValidationConfig(_EvaluationConfigBaseModel):
             ],
         },
     )
+
     scoring: Literal[
         "balanced_accuracy",
         "f1_macro",
@@ -1829,49 +1925,226 @@ class EvaluationCrossValidationConfig(_EvaluationConfigBaseModel):
 
 
 class TuningInnerCVConfig(_EvaluationConfigBaseModel):
-    n_splits: NSplits = 3
+    """Configures inner cross-validation used for hyperparameter selection."""
+
+    n_splits: NSplits = Field(
+        default=3,
+        description="Number of inner cross-validation folds.",
+        json_schema_extra={
+            "omit_behavior": "Uses three inner folds.",
+            "null_behavior": "Rejected.",
+            "notes": [
+                "Inner folds are created separately within each outer training "
+                "fold.",
+            ],
+        },
+    )
 
 
 class EvaluationCVTuningConfig(_EvaluationConfigBaseModel):
-    enabled: bool = False
-    inner_cv: TuningInnerCVConfig | None = None
+    """Configures nested cross-validated hyperparameter tuning.
 
-    @model_validator(mode="after")
-    def validate_tuning(self) -> EvaluationCVTuningConfig:
-        if self.enabled and self.inner_cv is None:
-            raise ValueError(
-                "tuning.inner_cv is required when predictability.tuning.enabled is true."
-            )
-        return self
+    When enabled, list-valued parameters for selected probes define search
+    grids. Hyperparameters are selected within each outer training fold using
+    inner cross-validation, leaving the corresponding outer test fold untouched.
+    """
+
+    enabled: bool = Field(
+        default=False,
+        description="Whether probe hyperparameters are tuned with inner CV.",
+        json_schema_extra={
+            "omit_behavior": "Disables hyperparameter tuning.",
+            "null_behavior": "Rejected.",
+            "notes": [
+                "Enabling tuning requires at least one list-valued parameter "
+                "for a selected probe.",
+                "List-valued probe parameters are rejected while tuning is "
+                "disabled.",
+            ],
+        },
+    )
+
+    inner_cv: TuningInnerCVConfig = Field(
+        default_factory=TuningInnerCVConfig,
+        description="Inner cross-validation settings used during tuning.",
+        json_schema_extra={
+            "omit_behavior": "Uses three inner folds.",
+            "null_behavior": "Rejected.",
+            "notes": [
+                "The inner splitter uses the outer CV strategy, shuffle setting, "
+                "and random seed.",
+            ],
+        },
+    )
 
 
 class DummyProbeConfig(_EvaluationConfigBaseModel):
+    """Configures a task-appropriate non-informative baseline probe."""
+
     strategy: Literal[
         "most_frequent",
         "stratified",
         "uniform",
         "mean",
         "median",
-    ] = "most_frequent"
-    random_state: int | None = 137
+    ] | None = Field(
+        default=None,
+        description="Baseline prediction strategy used by the dummy probe.",
+        json_schema_extra={
+            "omit_behavior": (
+                "Uses `most_frequent` for classification and `mean` for "
+                "regression."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "`most_frequent`, `stratified`, and `uniform` are classification "
+                "strategies.",
+                "`mean` and `median` are regression strategies.",
+            ],
+        },
+    )
+
+    random_state: int | None = Field(
+        default=137,
+        description="Random seed used by randomized dummy strategies.",
+        json_schema_extra={
+            "omit_behavior": "Uses seed 137.",
+            "null_behavior": "Does not use a fixed seed.",
+            "notes": [
+                "Only affects the classification strategies `stratified` and "
+                "`uniform`.",
+            ],
+        },
+    )
 
 
 class LogisticRegressionProbeConfig(BaseModel):
-    model: Literal["logistic_regression"] = "logistic_regression"
-    standardize: bool = True
-    C: PositiveFloatOrList = 1.0
-    class_weight: Literal["balanced"] | None = None
-    max_iter: PositiveInt = 5000
+    """Configures the linear classification probe.
 
-    model_config = ConfigDict(extra="allow")
+    Recognized fields configure BenchRep's standard logistic-regression setup.
+    Additional fields are accepted and forwarded to scikit-learn's
+    `LogisticRegression`. List-valued parameters define hyperparameter grids.
+    """
+
+    model: Literal["logistic_regression"] = Field(
+        default="logistic_regression",
+        description="Discriminator selecting logistic regression.",
+        json_schema_extra={
+            "omit_behavior": "Uses logistic regression.",
+            "null_behavior": "Rejected.",
+        },
+    )
+
+    standardize: bool = Field(
+        default=True,
+        description="Whether embedding features are standardized before fitting.",
+        json_schema_extra={
+            "omit_behavior": "Standardizes embedding features.",
+            "null_behavior": "Rejected.",
+            "notes": [
+                "The scaler is fitted within each cross-validation training fold."
+            ],
+        },
+    )
+
+    C: PositiveFloatOrList = Field(
+        default=1.0,
+        description=(
+            "Inverse regularization strength, or candidate values for tuning."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses `C=1.0`.",
+            "null_behavior": "Rejected.",
+            "notes": [
+                "Smaller values apply stronger regularization.",
+                "A list requires predictability tuning to be enabled.",
+            ],
+        },
+    )
+
+    class_weight: Literal["balanced"] | None = Field(
+        default=None,
+        description="Optional automatic weighting of classes by frequency.",
+        json_schema_extra={
+            "omit_behavior": "Does not apply class weighting.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+
+    max_iter: PositiveInt = Field(
+        default=5000,
+        description="Maximum number of solver iterations.",
+        json_schema_extra={
+            "omit_behavior": "Allows up to 5000 iterations.",
+            "null_behavior": "Rejected.",
+        },
+    )
+
+    model_config = ConfigDict(
+        extra="allow",
+        json_schema_extra={
+            "extra_field_behavior": (
+                "Allowed; additional non-null, non-list fields are forwarded as "
+                "keyword arguments to `sklearn.linear_model.LogisticRegression`. "
+                "List-valued fields define hyperparameter candidates when tuning "
+                "is enabled."
+            ),
+        },
+    )
 
 
 class RidgeProbeConfig(BaseModel):
-    model: Literal["ridge"] = "ridge"
-    standardize: bool = True
-    alpha: PositiveFloatOrList = 1.0
+    """Configures the linear regression probe.
 
-    model_config = ConfigDict(extra="allow")
+    Recognized fields configure BenchRep's standard ridge-regression setup.
+    Additional fields are accepted and interpreted as scikit-learn `Ridge`
+    parameters. List-valued parameters define hyperparameter grids.
+    """
+
+    model: Literal["ridge"] = Field(
+        default="ridge",
+        description="Discriminator selecting ridge regression.",
+        json_schema_extra={
+            "omit_behavior": "Uses ridge regression.",
+            "null_behavior": "Rejected.",
+        },
+    )
+
+    standardize: bool = Field(
+        default=True,
+        description="Whether embedding features are standardized before fitting.",
+        json_schema_extra={
+            "omit_behavior": "Standardizes embedding features.",
+            "null_behavior": "Rejected.",
+            "notes": [
+                "The scaler is fitted within each cross-validation training fold."
+            ],
+        },
+    )
+
+    alpha: PositiveFloatOrList = Field(
+        default=1.0,
+        description="L2 regularization strength, or candidate values for tuning.",
+        json_schema_extra={
+            "omit_behavior": "Uses `alpha=1.0`.",
+            "null_behavior": "Rejected.",
+            "notes": [
+                "Larger values apply stronger regularization.",
+                "A list requires predictability tuning to be enabled.",
+            ],
+        },
+    )
+
+    model_config = ConfigDict(
+        extra="allow",
+        json_schema_extra={
+            "extra_field_behavior": (
+                "Allowed; additional non-null, non-list fields are forwarded as "
+                "keyword arguments to `sklearn.linear_model.Ridge`. List-valued "
+                "fields define hyperparameter candidates when tuning is enabled."
+            ),
+        },
+    )
 
 
 LinearProbeConfig = Annotated[
@@ -1881,52 +2154,405 @@ LinearProbeConfig = Annotated[
 
 
 class KNNProbeConfig(BaseModel):
-    standardize: bool = True
-    n_neighbors: PositiveIntOrList = 15
-    weights: KNNWeightsOrList = "distance"
-    metric: str | list[str] = "euclidean"
+    """Configures the task-dependent nearest-neighbor probe.
 
-    model_config = ConfigDict(extra="allow")
+    Classification uses scikit-learn's `KNeighborsClassifier`, while regression
+    uses `KNeighborsRegressor`. Additional fields are accepted and interpreted
+    as parameters for the task-appropriate estimator. List-valued parameters
+    define hyperparameter grids.
+    """
+
+    standardize: bool = Field(
+        default=True,
+        description="Whether embedding features are standardized before fitting.",
+        json_schema_extra={
+            "omit_behavior": "Standardizes embedding features.",
+            "null_behavior": "Rejected.",
+            "notes": [
+                "The scaler is fitted within each cross-validation training fold."
+            ],
+        },
+    )
+
+    n_neighbors: PositiveIntOrList = Field(
+        default=15,
+        description="Number of neighbors, or candidate values for tuning.",
+        json_schema_extra={
+            "omit_behavior": "Uses 15 neighbors.",
+            "null_behavior": "Rejected.",
+            "notes": [
+                "A list requires predictability tuning to be enabled.",
+            ],
+        },
+    )
+
+    weights: KNNWeightsOrList = Field(
+        default="distance",
+        description="Neighbor weighting strategy, or candidates for tuning.",
+        json_schema_extra={
+            "omit_behavior": "Weights neighbors by inverse distance.",
+            "null_behavior": "Rejected.",
+            "notes": [
+                "`uniform` weights every neighbor equally.",
+                "`distance` gives closer neighbors greater influence.",
+                "A list requires predictability tuning to be enabled.",
+            ],
+        },
+    )
+
+    metric: KNNMetricOrList = Field(
+        default="euclidean",
+        description="Distance metric, or candidate metric names for tuning.",
+        json_schema_extra={
+            "omit_behavior": "Uses Euclidean distance.",
+            "null_behavior": "Rejected.",
+            "notes": [
+                "Metric names are interpreted by scikit-learn.",
+                "A list requires predictability tuning to be enabled.",
+            ],
+        },
+    )
+
+    model_config = ConfigDict(
+        extra="allow",
+        json_schema_extra={
+            "extra_field_behavior": (
+                "Allowed; additional non-null, non-list fields are forwarded as "
+                "keyword arguments to the task-appropriate scikit-learn "
+                "KNeighbors estimator. List-valued fields define hyperparameter "
+                "candidates when tuning is enabled."
+            ),
+        },
+    )
 
 
 class RandomForestProbeConfig(BaseModel):
-    n_estimators: PositiveIntOrList = 500
-    max_depth: MaxDepthParam = None
-    class_weight: Literal["balanced"] | None = None
-    random_state: int | None = 137
-    n_jobs: int | None = -1
+    """Configures the task-dependent random-forest probe.
 
-    model_config = ConfigDict(extra="allow")
+    Classification uses scikit-learn's `RandomForestClassifier`, while
+    regression uses `RandomForestRegressor`. Additional fields are accepted and
+    interpreted as parameters for the task-appropriate estimator. List-valued
+    parameters define hyperparameter grids.
+    """
+
+    n_estimators: PositiveIntOrList = Field(
+        default=500,
+        description="Number of trees, or candidate values for tuning.",
+        json_schema_extra={
+            "omit_behavior": "Uses 500 trees.",
+            "null_behavior": "Rejected.",
+            "notes": [
+                "A list requires predictability tuning to be enabled.",
+            ],
+        },
+    )
+
+    max_depth: MaxDepthParam = Field(
+        default=None,
+        description="Maximum tree depth, or candidate values for tuning.",
+        json_schema_extra={
+            "omit_behavior": "Allows trees to grow without a depth limit.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "A tuning list may include `null` as the unlimited-depth "
+                "candidate.",
+                "A list requires predictability tuning to be enabled.",
+            ],
+        },
+    )
+
+    class_weight: Literal["balanced"] | None = Field(
+        default=None,
+        description="Optional automatic weighting of classification classes.",
+        json_schema_extra={
+            "omit_behavior": "Does not apply class weighting.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Only valid for classification; regression rejects this field.",
+            ],
+        },
+    )
+
+    random_state: int | None = Field(
+        default=137,
+        description="Random seed used by the random-forest estimator.",
+        json_schema_extra={
+            "omit_behavior": "Uses seed 137.",
+            "null_behavior": "Does not use a fixed seed.",
+        },
+    )
+
+    n_jobs: int | None = Field(
+        default=-1,
+        description="Number of parallel worker jobs used when fitting.",
+        json_schema_extra={
+            "omit_behavior": "Uses all available processors.",
+            "null_behavior": "Uses scikit-learn's default job count.",
+            "notes": [
+                "`-1` uses all available processors.",
+            ],
+        },
+    )
+
+    model_config = ConfigDict(
+        extra="allow",
+        json_schema_extra={
+            "extra_field_behavior": (
+                "Allowed; additional non-null, non-list fields are forwarded as "
+                "keyword arguments to the task-appropriate scikit-learn random-"
+                "forest estimator. List-valued fields define hyperparameter "
+                "candidates when tuning is enabled."
+            ),
+        },
+    )
 
 
 class XGBoostProbeConfig(BaseModel):
-    n_estimators: PositiveIntOrList = 300
-    max_depth: PositiveIntOrList | None = None
-    learning_rate: PositiveFloatOrList = 0.01
-    random_state: int | None = 137
-    n_jobs: int | None = -1
+    """Configures the task-dependent optional XGBoost probe.
 
-    model_config = ConfigDict(extra="allow")
+    Classification uses `xgboost.XGBClassifier`, while regression uses
+    `xgboost.XGBRegressor`. XGBoost is imported only when this probe runs.
+    Additional fields are accepted and interpreted as parameters for the
+    task-appropriate estimator. List-valued parameters define hyperparameter
+    grids.
+    """
+
+    n_estimators: PositiveIntOrList = Field(
+        default=300,
+        description="Number of boosting rounds, or candidate values for tuning.",
+        json_schema_extra={
+            "omit_behavior": "Uses 300 boosting rounds.",
+            "null_behavior": "Rejected.",
+            "notes": [
+                "A list requires predictability tuning to be enabled.",
+            ],
+        },
+    )
+
+    max_depth: PositiveIntOrList | None = Field(
+        default=None,
+        description="Maximum tree depth, or candidate values for tuning.",
+        json_schema_extra={
+            "omit_behavior": "Uses the XGBoost backend default.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "A list requires predictability tuning to be enabled.",
+            ],
+        },
+    )
+
+    learning_rate: PositiveFloatOrList = Field(
+        default=0.01,
+        description="Boosting learning rate, or candidate values for tuning.",
+        json_schema_extra={
+            "omit_behavior": "Uses a learning rate of 0.01.",
+            "null_behavior": "Rejected.",
+            "notes": [
+                "A list requires predictability tuning to be enabled.",
+            ],
+        },
+    )
+
+    random_state: int | None = Field(
+        default=137,
+        description="Random seed used by the XGBoost estimator.",
+        json_schema_extra={
+            "omit_behavior": "Uses seed 137.",
+            "null_behavior": "Does not use a fixed seed.",
+        },
+    )
+
+    n_jobs: int | None = Field(
+        default=None,
+        description="Number of parallel worker threads used when fitting.",
+        json_schema_extra={
+            "omit_behavior": (
+                "Uses the XGBoost backend default, which uses all available "
+                "threads."
+            ),
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+
+    model_config = ConfigDict(
+        extra="allow",
+        json_schema_extra={
+            "extra_field_behavior": (
+                "Allowed; additional non-null, non-list fields are forwarded as "
+                "keyword arguments to the task-appropriate XGBoost estimator. "
+                "List-valued fields define hyperparameter candidates when tuning "
+                "is enabled."
+            ),
+        },
+    )
 
 
 class SVMRBFProbeConfig(BaseModel):
-    standardize: bool = True
-    C: PositiveFloatOrList = 1.0
-    gamma: SVMRBFGammaValueOrList = "scale"
-    class_weight: Literal["balanced"] | None = None
-    cache_size: PositiveFloat = 200.0
-    max_iter: MaxIterWithNoLimitSentinel = -1
+    """Configures the task-dependent radial-basis-function SVM probe.
 
-    model_config = ConfigDict(extra="allow")
+    Classification uses scikit-learn's `SVC`, while regression uses `SVR`.
+    Embeddings may be standardized before fitting. Additional fields are
+    accepted and interpreted as parameters for the task-appropriate estimator.
+    List-valued parameters define hyperparameter grids.
+    """
+
+    standardize: bool = Field(
+        default=True,
+        description="Whether embedding features are standardized before fitting.",
+        json_schema_extra={
+            "omit_behavior": "Standardizes embedding features.",
+            "null_behavior": "Rejected.",
+            "notes": [
+                "The scaler is fitted within each cross-validation training fold."
+            ],
+        },
+    )
+
+    C: PositiveFloatOrList = Field(
+        default=1.0,
+        description=(
+            "Inverse regularization strength, or candidate values for tuning."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses `C=1.0`.",
+            "null_behavior": "Rejected.",
+            "notes": [
+                "Smaller values apply stronger regularization.",
+                "A list requires predictability tuning to be enabled.",
+            ],
+        },
+    )
+
+    gamma: SVMRBFGammaValueOrList = Field(
+        default="scale",
+        description="RBF kernel coefficient, or candidate values for tuning.",
+        json_schema_extra={
+            "omit_behavior": "Uses scikit-learn's `scale` heuristic.",
+            "null_behavior": "Rejected.",
+            "notes": [
+                "`scale` derives gamma from feature count and variance.",
+                "`auto` uses the inverse feature count.",
+                "A list requires predictability tuning to be enabled.",
+            ],
+        },
+    )
+
+    class_weight: Literal["balanced"] | None = Field(
+        default=None,
+        description="Optional automatic weighting of classification classes.",
+        json_schema_extra={
+            "omit_behavior": "Does not apply class weighting.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Only valid for classification; regression rejects this field.",
+            ],
+        },
+    )
+
+    cache_size: PositiveFloat = Field(
+        default=200.0,
+        description="Kernel cache size in megabytes.",
+        json_schema_extra={
+            "omit_behavior": "Uses a 200 MB kernel cache.",
+            "null_behavior": "Rejected.",
+        },
+    )
+
+    max_iter: MaxIterWithNoLimitSentinel = Field(
+        default=-1,
+        description="Maximum solver iterations.",
+        json_schema_extra={
+            "omit_behavior": "Runs without an iteration limit.",
+            "null_behavior": "Rejected.",
+            "notes": [
+                "`-1` disables the iteration limit.",
+            ],
+        },
+    )
+
+    model_config = ConfigDict(
+        extra="allow",
+        json_schema_extra={
+            "extra_field_behavior": (
+                "Allowed; additional non-null, non-list fields are forwarded as "
+                "keyword arguments to the task-appropriate scikit-learn SVM "
+                "estimator. List-valued fields define hyperparameter candidates "
+                "when tuning is enabled."
+            ),
+        },
+    )
 
 
 class EvaluationPredictabilityParamsConfig(_EvaluationConfigBaseModel):
-    dummy: DummyProbeConfig = Field(default_factory=DummyProbeConfig)
-    linear: LinearProbeConfig = Field(default_factory=LogisticRegressionProbeConfig)
-    knn: KNNProbeConfig = Field(default_factory=KNNProbeConfig)
-    random_forest: RandomForestProbeConfig = Field(default_factory=RandomForestProbeConfig)
-    xgboost: XGBoostProbeConfig = Field(default_factory=XGBoostProbeConfig)
-    svm_rbf: SVMRBFProbeConfig = Field(default_factory=SVMRBFProbeConfig)
+    """Groups parameter configurations by canonical predictability probe name.
+
+    Only parameters belonging to selected probes are used. List-valued estimator
+    parameters define search grids and therefore require tuning to be enabled.
+    """
+
+    dummy: DummyProbeConfig = Field(
+        default_factory=DummyProbeConfig,
+        description="Parameters for the task-dependent dummy baseline.",
+        json_schema_extra={
+            "omit_behavior": "Uses task-appropriate dummy-probe defaults.",
+            "null_behavior": "Rejected.",
+        },
+    )
+
+    linear: LinearProbeConfig | None = Field(
+        default=None,
+        description="Parameters for the task-dependent linear probe.",
+        json_schema_extra={
+            "omit_behavior": (
+                "Uses logistic regression defaults for classification and ridge "
+                "defaults for regression."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "An explicit mapping must set `model` to `logistic_regression` or "
+                "`ridge`.",
+            ],
+        },
+    )
+
+    knn: KNNProbeConfig = Field(
+        default_factory=KNNProbeConfig,
+        description="Parameters for the task-dependent nearest-neighbor probe.",
+        json_schema_extra={
+            "omit_behavior": "Uses `KNNProbeConfig` defaults.",
+            "null_behavior": "Rejected.",
+        },
+    )
+
+    random_forest: RandomForestProbeConfig = Field(
+        default_factory=RandomForestProbeConfig,
+        description="Parameters for the task-dependent random-forest probe.",
+        json_schema_extra={
+            "omit_behavior": "Uses `RandomForestProbeConfig` defaults.",
+            "null_behavior": "Rejected.",
+        },
+    )
+
+    xgboost: XGBoostProbeConfig = Field(
+        default_factory=XGBoostProbeConfig,
+        description="Parameters for the optional task-dependent XGBoost probe.",
+        json_schema_extra={
+            "omit_behavior": "Uses `XGBoostProbeConfig` defaults.",
+            "null_behavior": "Rejected.",
+            "notes": [
+                "These parameters have no effect unless `xgboost` is selected.",
+            ],
+        },
+    )
+
+    svm_rbf: SVMRBFProbeConfig = Field(
+        default_factory=SVMRBFProbeConfig,
+        description="Parameters for the task-dependent RBF-SVM probe.",
+        json_schema_extra={
+            "omit_behavior": "Uses `SVMRBFProbeConfig` defaults.",
+            "null_behavior": "Rejected.",
+        },
+    )
 
 
 class EvaluationPredictabilityConfig(EvalStepConfig):
@@ -1951,6 +2577,7 @@ class EvaluationPredictabilityConfig(EvalStepConfig):
             ],
         },
     )
+
     selected: RegistrySelection = Field(
         default=None,
         description=(
@@ -1971,7 +2598,23 @@ class EvaluationPredictabilityConfig(EvalStepConfig):
             ],
         },
     )
-    target_key: str = "label"
+
+    target_key: str = Field(
+        default="label",
+        description=(
+            "AnnData observation column containing the prediction target."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses `adata.obs['label']`.",
+            "null_behavior": "Rejected.",
+            "notes": [
+                "Classification accepts categorical targets.",
+                "Regression requires finite numeric targets.",
+                "Results are stored under a namespace keyed by `target_key`.",
+            ],
+        },
+    )
+
     overwrite: bool | None = Field(
         default=False,
         description=(
@@ -1986,10 +2629,46 @@ class EvaluationPredictabilityConfig(EvalStepConfig):
             ],
         },
     )
-    task: Literal["classification", "regression"] = "classification"
-    cv: EvaluationCrossValidationConfig = Field(default_factory=EvaluationCrossValidationConfig)
-    tuning: EvaluationCVTuningConfig = Field(default_factory=EvaluationCVTuningConfig)
-    params: EvaluationPredictabilityParamsConfig = Field(default_factory=EvaluationPredictabilityParamsConfig)
+
+    task: Literal["classification", "regression"] = Field(
+        default="classification",
+        description="Supervised prediction task performed by the probes.",
+        json_schema_extra={
+            "omit_behavior": "Uses classification.",
+            "null_behavior": "Rejected.",
+            "notes": [
+                "The task determines the estimator family, default CV strategy, "
+                "default scorer, and task-dependent probe defaults.",
+            ],
+        },
+    )
+
+    cv: EvaluationCrossValidationConfig = Field(
+        default_factory=EvaluationCrossValidationConfig,
+        description="Outer cross-validation and scoring configuration.",
+        json_schema_extra={
+            "omit_behavior": "Uses task-appropriate five-fold CV defaults.",
+            "null_behavior": "Rejected.",
+        },
+    )
+
+    tuning: EvaluationCVTuningConfig = Field(
+        default_factory=EvaluationCVTuningConfig,
+        description="Nested cross-validated hyperparameter tuning configuration.",
+        json_schema_extra={
+            "omit_behavior": "Disables hyperparameter tuning.",
+            "null_behavior": "Rejected.",
+        },
+    )
+
+    params: EvaluationPredictabilityParamsConfig = Field(
+        default_factory=EvaluationPredictabilityParamsConfig,
+        description="Per-probe estimator parameters and tuning candidates.",
+        json_schema_extra={
+            "omit_behavior": "Uses task-appropriate probe defaults.",
+            "null_behavior": "Rejected.",
+        },
+    )
 
     @model_validator(mode="after")
     def validate_predictability_config(self) -> "EvaluationPredictabilityConfig":

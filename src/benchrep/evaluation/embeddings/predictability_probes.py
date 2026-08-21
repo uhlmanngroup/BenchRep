@@ -194,8 +194,13 @@ def build_random_forest_predictability_probe(
         estimator = RandomForestClassifier(**fixed_params)
 
     elif task == "regression":
-        fixed_params.pop("class_weight", None)
-        param_grid.pop("class_weight", None)
+        class_weight = fixed_params.pop("class_weight", None)
+
+        if class_weight is not None or "class_weight" in param_grid:
+            raise ValueError(
+                "Random forest regression does not support `class_weight`."
+            )
+
         estimator = RandomForestRegressor(**fixed_params)
 
     else:
@@ -275,8 +280,12 @@ def build_svm_rbf_predictability_probe(
         estimator = SVC(kernel="rbf", **fixed_params)
 
     elif task == "regression":
-        fixed_params.pop("class_weight", None)
-        param_grid.pop("class_weight", None)
+        class_weight = fixed_params.pop("class_weight", None)
+
+        if class_weight is not None or "class_weight" in param_grid:
+            raise ValueError(
+                "RBF SVM regression does not support `class_weight`."
+            )
 
         estimator = SVR(kernel="rbf", **fixed_params)
 
