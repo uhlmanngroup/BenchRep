@@ -42,7 +42,7 @@ class _PredictionConfigBaseModel(BaseModel):
 # Source config
 # -------------------------
 class PredictionSourceConfig(_PredictionConfigBaseModel):
-    """Selects the completed training run and checkpoint used for prediction.
+    """Selects the training run and checkpoint used for prediction.
 
     The training manifest anchors prediction to a BenchRep training run. It
     provides the resolved training configuration, run identity, component
@@ -63,19 +63,21 @@ class PredictionSourceConfig(_PredictionConfigBaseModel):
     training_manifest_path: Path | None = Field(
         default=None,
         description=(
-            "Path to a completed BenchRep training manifest. Relative paths are "
-            "resolved against the current working directory. The manifest must "
-            "identify a completed training run and provide the training "
-            "configuration and provenance required for prediction."
+            "Path to a BenchRep training manifest. Relative paths are resolved "
+            "against the current working directory. The manifest must identify a "
+            "training run with an accepted status and provide the configuration and "
+            "provenance required for prediction."
         ),
         json_schema_extra={
             "omit_behavior": (
                 "Must be supplied through the `training_manifest_path` argument "
                 "of entrypoint functions like `predict_ae()` or `predict_vae()`."
             ),
-            "null_behavior": (
-                "Equivalent to omission."
-            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Accepted training statuses are `completed`, "
+                "`completed_with_warnings`, and `completed_after_interruption`.",
+            ],
         },
     )
 
@@ -248,47 +250,44 @@ class PredictionInferenceConfig(_PredictionConfigBaseModel):
 
     seed: int | None = Field(
         default=None,
-        description=(
-            "Global seed passed to `lightning.seed_everything()` before "
-            "prediction. It is also used as the fallback seed for random "
-            "reconstruction-example selection when no export-specific seed is "
-            "configured."
-        ),
+        description="Global random seed used for prediction.",
         json_schema_extra={
             "omit_behavior": "Inherits the training reproducibility seed.",
             "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Passed to `lightning.seed_everything()` before prediction.",
+                "Used as the fallback seed for random reconstruction-example selection "
+                "when no export-specific seed is configured.",
+            ],
         },
     )
 
     seed_workers: bool | None = Field(
         default=None,
-        description=(
-            "Passed as the `workers` argument to "
-            "`lightning.seed_everything()`. When true, Lightning configures "
-            "reproducible seeding for DataLoader worker processes."
-        ),
+        description="Whether DataLoader worker processes receive reproducible seeds.",
         json_schema_extra={
             "omit_behavior": (
                 "Inherits the training DataLoader-worker seeding setting."
             ),
             "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Passed as the `workers` argument to `lightning.seed_everything()`.",
+            ],
         },
     )
 
     deterministic: bool | Literal["warn"] | None = Field(
         default=None,
-        description=(
-            "Prediction override for `lightning.Trainer(deterministic=...)`. "
-            "True requests deterministic algorithms, false disables that "
-            "request, and `warn` requests deterministic execution while warning "
-            "instead of failing when an operation lacks a deterministic "
-            "implementation."
-        ),
+        description="Whether deterministic algorithms are requested during prediction.",
         json_schema_extra={
             "omit_behavior": (
                 "Inherits the training Trainer's deterministic setting."
             ),
             "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "`warn` requests deterministic execution but warns instead of failing "
+                "when an operation lacks a deterministic implementation.",
+            ],
         },
     )
 
@@ -298,16 +297,16 @@ class PredictionInferenceConfig(_PredictionConfigBaseModel):
         "highest",
     ] | None = Field(
         default=None,
-        description=(
-            "Passed to `torch.set_float32_matmul_precision()` before prediction. "
-            "Controls the internal precision used for float32 matrix "
-            "multiplications without changing tensor dtypes."
-        ),
+        description="Internal precision used for float32 matrix multiplications.",
         json_schema_extra={
             "omit_behavior": (
                 "Inherits the training float32 matrix-multiplication precision."
             ),
             "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Passed to `torch.set_float32_matmul_precision()` before prediction.",
+                "Does not change tensor dtypes.",
+            ],
         },
     )
 
@@ -716,12 +715,12 @@ class PredictionExportConfig(_PredictionConfigBaseModel):
 class PredictionConfig(_PredictionConfigBaseModel):
     """Complete configuration for a BenchRep prediction workflow.
 
-    Every prediction run must be linked to a completed training run through its
-    training manifest. BenchRep uses the manifest and recorded resolved training
-    config to locate the selected checkpoint, reconstruct config-built
-    components when possible, and inherit applicable settings. Requirements for
-    prediction data configuration depend on whether an external datamodule is
-    supplied at runtime.
+    Every prediction run must be linked through its training manifest to a
+    training run with an accepted status. BenchRep uses the manifest and
+    recorded resolved training config to locate the selected checkpoint,
+    reconstruct config-built components when possible, and inherit applicable
+    settings. Requirements for prediction data configuration depend on whether
+    an external datamodule is supplied at runtime.
 
     Use `benchrep.inspect_config(PredictionConfig)` to inspect this configuration.
     Nested configuration types shown in the output can be inspected the same
@@ -817,23 +816,19 @@ class PredictionConfig(_PredictionConfigBaseModel):
 
     transforms: list[PredictionTransformConfig] | None = Field(
         default=None,
-        description=(
-            "Ordered transforms applied during prediction. If omitted or null, "
-            "validation-targeted transforms are inherited from the resolved "
-            "training config when available. If training used an external "
-            "datamodule, no configured transforms are inherited. An explicit "
-            "list replaces the inherited transforms, and an empty list applies "
-            "no configured transforms."
-        ),
+        description="Ordered transforms applied during prediction.",
         json_schema_extra={
             "omit_behavior": (
                 "Inherits available validation-targeted training transforms; "
                 "otherwise uses no configured transforms."
             ),
-            "null_behavior": (
-                "Inherits available validation-targeted training transforms; "
-                "otherwise uses no configured transforms."
-            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "An explicit list replaces inherited transforms.",
+                "An empty list applies no configured transforms.",
+                "No configured transforms are inherited when training used an external "
+                "datamodule.",
+            ],
         },
     )
 
@@ -848,8 +843,8 @@ class PredictionConfig(_PredictionConfigBaseModel):
 
     @model_validator(mode="after")
     def validate_prediction_config(
-            self,
-            info: ValidationInfo,
+        self,
+        info: ValidationInfo,
     ) -> PredictionConfig:
         ctx = info.context or {}
         training_manifest_path_overridden = ctx.get(
@@ -858,8 +853,8 @@ class PredictionConfig(_PredictionConfigBaseModel):
         )
 
         if (
-                self.source.training_manifest_path is None
-                and not training_manifest_path_overridden
+            self.source.training_manifest_path is None
+            and not training_manifest_path_overridden
         ):
             raise ValueError(
                 "`source.training_manifest_path` is required unless "

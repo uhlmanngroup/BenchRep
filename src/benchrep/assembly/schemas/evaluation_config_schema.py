@@ -19,7 +19,7 @@ from pydantic import (
 
 RegistrySelection: TypeAlias = Literal["all"] | list[str] | None
 
-NSplits = Annotated[int, Field(ge=2)]
+NSplits: TypeAlias = Annotated[int, Field(ge=2)]
 
 PositiveFloatOrList: TypeAlias = (
     PositiveFloat
@@ -57,7 +57,7 @@ MaxDepthParam: TypeAlias = (
     | Annotated[list[MaxDepthValue], Field(min_length=1)]
 )
 
-ErrorMapKind = Literal[
+ErrorMapKind: TypeAlias = Literal[
     "absolute",
     "squared",
     "signed",
@@ -66,7 +66,7 @@ ErrorMapKind = Literal[
     "normalized_absolute_per_channel",
 ]
 
-HexColor = Annotated[
+HexColor: TypeAlias = Annotated[
     str,
     StringConstraints(pattern=r"^#[0-9A-Fa-f]{6}$"),
 ]
@@ -123,9 +123,7 @@ class EvalStepConfig(_EvaluationConfigBaseModel):
         ),
         json_schema_extra={
             "omit_behavior": "Uses the concrete step's configured defaults.",
-            "null_behavior": (
-                "Uses an empty parameter mapping, allowing runtime defaults to apply."
-            ),
+            "null_behavior": "Equivalent to omission.",
         },
     )
 
@@ -134,9 +132,9 @@ class EvalMetricGroupConfig(_EvaluationConfigBaseModel):
     """Shared configuration for a registry-backed metric group.
 
     Selection is independent of enablement. Once the group runs, `None` uses its
-    curated default selection, `"all"` selects every canonical metric registered
-    in the process, including custom registrations, and a list selects exactly the
-    provided metric names or aliases.
+    curated default selection, `"all"` selects every metric registered in the
+    process, including custom metrics, and a list selects exactly the provided
+    metric names or aliases.
 
     If some selected metrics fail recoverably, successful results are retained and
     the group completes with warnings. If every selected metric fails recoverably,
@@ -167,7 +165,7 @@ class EvalMetricGroupConfig(_EvaluationConfigBaseModel):
             "omit_behavior": "Uses the concrete metric group's curated defaults.",
             "null_behavior": "Equivalent to omission.",
             "notes": [
-                '`"all"` selects every registered metric, including custom registrations.',
+                '`"all"` selects every registered metric, including custom metrics.',
                 "An explicit list selects exactly the provided metric names or aliases.",
                 "An empty list is rejected when the metric group runs.",
                 "Selection does not enable or disable the metric group.",
@@ -822,7 +820,7 @@ class EvaluationReductionsConfig(_EvaluationConfigBaseModel):
         description="Configuration for the PCA evaluation step.",
         json_schema_extra={
             "omit_behavior": "Uses `PCAConfig` defaults.",
-            "null_behavior": "Rejected; a configuration mapping is required.",
+            "null_behavior": "Not allowed; a configuration mapping is required.",
         },
     )
 
@@ -831,7 +829,7 @@ class EvaluationReductionsConfig(_EvaluationConfigBaseModel):
         description="Configuration for the UMAP evaluation step.",
         json_schema_extra={
             "omit_behavior": "Uses `UMAPConfig` defaults.",
-            "null_behavior": "Rejected; a configuration mapping is required.",
+            "null_behavior": "Not allowed; a configuration mapping is required.",
         },
     )
 
@@ -840,7 +838,7 @@ class EvaluationReductionsConfig(_EvaluationConfigBaseModel):
         description="Configuration for the t-SNE evaluation step.",
         json_schema_extra={
             "omit_behavior": "Uses `TSNEConfig` defaults.",
-            "null_behavior": "Rejected; a configuration mapping is required.",
+            "null_behavior": "Not allowed; a configuration mapping is required.",
         },
     )
 
@@ -959,7 +957,7 @@ class KMeansConfig(EvalStepConfig):
     )
 
     @model_validator(mode="after")
-    def validate_kmeans(self) -> "KMeansConfig":
+    def validate_kmeans(self) -> KMeansConfig:
         if self.enabled is True and (
             self.params is None or self.params.n_clusters is None
         ):
@@ -1331,7 +1329,7 @@ class EvaluationClusteringConfig(_EvaluationConfigBaseModel):
         description="Configuration for the KMeans evaluation step.",
         json_schema_extra={
             "omit_behavior": "Uses `KMeansConfig` defaults.",
-            "null_behavior": "Rejected; a configuration mapping is required.",
+            "null_behavior": "Not allowed; a configuration mapping is required.",
         },
     )
 
@@ -1340,7 +1338,7 @@ class EvaluationClusteringConfig(_EvaluationConfigBaseModel):
         description="Configuration for the Leiden evaluation step.",
         json_schema_extra={
             "omit_behavior": "Uses `LeidenConfig` defaults.",
-            "null_behavior": "Rejected; a configuration mapping is required.",
+            "null_behavior": "Not allowed; a configuration mapping is required.",
         },
     )
 
@@ -1349,7 +1347,7 @@ class EvaluationClusteringConfig(_EvaluationConfigBaseModel):
         description="Configuration for the HDBSCAN evaluation step.",
         json_schema_extra={
             "omit_behavior": "Uses `HDBSCANConfig` defaults.",
-            "null_behavior": "Rejected; a configuration mapping is required.",
+            "null_behavior": "Not allowed; a configuration mapping is required.",
         },
     )
 
@@ -1371,7 +1369,7 @@ class ErrorMapParams(_EvaluationConfigBaseModel):
         description="Error-map representations passed to `compute_error_maps()`.",
         json_schema_extra={
             "omit_behavior": "Computes `absolute`, `signed`, and `relative` maps.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
             "notes": [
                 "`signed` returns the residual; `absolute` and `squared` "
                 "return its absolute value or square.",
@@ -1430,7 +1428,7 @@ class EvaluationReconstructionConfig(_EvaluationConfigBaseModel):
         ),
         json_schema_extra={
             "omit_behavior": "Does not export reconstruction TIFFs.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
             "notes": [
                 "If enabled but no reconstruction bundle can be resolved, "
                 "configuration resolution raises an error."
@@ -1458,7 +1456,7 @@ class EvaluationReconstructionConfig(_EvaluationConfigBaseModel):
         ),
         json_schema_extra={
             "omit_behavior": "Uses `ErrorMapParams` defaults.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
             "notes": [
                 "Does not independently enable error-map computation or export."
             ],
@@ -1579,7 +1577,7 @@ class ExternalClusteringMetricConfig(EvalMetricGroupConfig):
         ),
         json_schema_extra={
             "omit_behavior": "Uses `label`.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
         },
     )
 
@@ -1635,7 +1633,7 @@ class EvaluationClusteringMetricsConfig(_EvaluationConfigBaseModel):
         description="Internal metrics evaluating cluster structure in `adata.X`.",
         json_schema_extra={
             "omit_behavior": "Uses `InternalClusteringMetricConfig` defaults.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
         },
     )
 
@@ -1647,7 +1645,7 @@ class EvaluationClusteringMetricsConfig(_EvaluationConfigBaseModel):
         ),
         json_schema_extra={
             "omit_behavior": "Uses `ExternalClusteringMetricConfig` defaults.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
         },
     )
 
@@ -1776,7 +1774,7 @@ class ReconstructionMetricConfig(EvalMetricGroupConfig):
         ),
         json_schema_extra={
             "omit_behavior": "Computes each metric globally.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
         },
     )
 
@@ -1820,7 +1818,7 @@ class EvaluationCrossValidationConfig(_EvaluationConfigBaseModel):
         description="Number of outer cross-validation folds.",
         json_schema_extra={
             "omit_behavior": "Uses five outer folds.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
             "notes": [
                 "The available observations, groups, and class counts are "
                 "validated when predictability evaluation runs.",
@@ -1855,7 +1853,7 @@ class EvaluationCrossValidationConfig(_EvaluationConfigBaseModel):
         description="Whether observations or groups are shuffled before splitting.",
         json_schema_extra={
             "omit_behavior": "Enables shuffling.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
             "notes": [
                 "Grouped strategies preserve group boundaries while shuffling.",
                 "`random_state` is ignored when shuffling is disabled.",
@@ -1932,7 +1930,7 @@ class TuningInnerCVConfig(_EvaluationConfigBaseModel):
         description="Number of inner cross-validation folds.",
         json_schema_extra={
             "omit_behavior": "Uses three inner folds.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
             "notes": [
                 "Inner folds are created separately within each outer training "
                 "fold.",
@@ -1954,7 +1952,7 @@ class EvaluationCVTuningConfig(_EvaluationConfigBaseModel):
         description="Whether probe hyperparameters are tuned with inner CV.",
         json_schema_extra={
             "omit_behavior": "Disables hyperparameter tuning.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
             "notes": [
                 "Enabling tuning requires at least one list-valued parameter "
                 "for a selected probe.",
@@ -1969,7 +1967,7 @@ class EvaluationCVTuningConfig(_EvaluationConfigBaseModel):
         description="Inner cross-validation settings used during tuning.",
         json_schema_extra={
             "omit_behavior": "Uses three inner folds.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
             "notes": [
                 "The inner splitter uses the outer CV strategy, shuffle setting, "
                 "and random seed.",
@@ -2031,7 +2029,7 @@ class LogisticRegressionProbeConfig(BaseModel):
         description="Discriminator selecting logistic regression.",
         json_schema_extra={
             "omit_behavior": "Uses logistic regression.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
         },
     )
 
@@ -2040,7 +2038,7 @@ class LogisticRegressionProbeConfig(BaseModel):
         description="Whether embedding features are standardized before fitting.",
         json_schema_extra={
             "omit_behavior": "Standardizes embedding features.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
             "notes": [
                 "The scaler is fitted within each cross-validation training fold."
             ],
@@ -2054,7 +2052,7 @@ class LogisticRegressionProbeConfig(BaseModel):
         ),
         json_schema_extra={
             "omit_behavior": "Uses `C=1.0`.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
             "notes": [
                 "Smaller values apply stronger regularization.",
                 "A list requires predictability tuning to be enabled.",
@@ -2076,7 +2074,7 @@ class LogisticRegressionProbeConfig(BaseModel):
         description="Maximum number of solver iterations.",
         json_schema_extra={
             "omit_behavior": "Allows up to 5000 iterations.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
         },
     )
 
@@ -2106,7 +2104,7 @@ class RidgeProbeConfig(BaseModel):
         description="Discriminator selecting ridge regression.",
         json_schema_extra={
             "omit_behavior": "Uses ridge regression.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
         },
     )
 
@@ -2115,7 +2113,7 @@ class RidgeProbeConfig(BaseModel):
         description="Whether embedding features are standardized before fitting.",
         json_schema_extra={
             "omit_behavior": "Standardizes embedding features.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
             "notes": [
                 "The scaler is fitted within each cross-validation training fold."
             ],
@@ -2127,7 +2125,7 @@ class RidgeProbeConfig(BaseModel):
         description="L2 regularization strength, or candidate values for tuning.",
         json_schema_extra={
             "omit_behavior": "Uses `alpha=1.0`.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
             "notes": [
                 "Larger values apply stronger regularization.",
                 "A list requires predictability tuning to be enabled.",
@@ -2147,7 +2145,7 @@ class RidgeProbeConfig(BaseModel):
     )
 
 
-LinearProbeConfig = Annotated[
+LinearProbeConfig: TypeAlias = Annotated[
     LogisticRegressionProbeConfig | RidgeProbeConfig,
     Field(discriminator="model"),
 ]
@@ -2167,7 +2165,7 @@ class KNNProbeConfig(BaseModel):
         description="Whether embedding features are standardized before fitting.",
         json_schema_extra={
             "omit_behavior": "Standardizes embedding features.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
             "notes": [
                 "The scaler is fitted within each cross-validation training fold."
             ],
@@ -2179,7 +2177,7 @@ class KNNProbeConfig(BaseModel):
         description="Number of neighbors, or candidate values for tuning.",
         json_schema_extra={
             "omit_behavior": "Uses 15 neighbors.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
             "notes": [
                 "A list requires predictability tuning to be enabled.",
             ],
@@ -2191,7 +2189,7 @@ class KNNProbeConfig(BaseModel):
         description="Neighbor weighting strategy, or candidates for tuning.",
         json_schema_extra={
             "omit_behavior": "Weights neighbors by inverse distance.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
             "notes": [
                 "`uniform` weights every neighbor equally.",
                 "`distance` gives closer neighbors greater influence.",
@@ -2205,7 +2203,7 @@ class KNNProbeConfig(BaseModel):
         description="Distance metric, or candidate metric names for tuning.",
         json_schema_extra={
             "omit_behavior": "Uses Euclidean distance.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
             "notes": [
                 "Metric names are interpreted by scikit-learn.",
                 "A list requires predictability tuning to be enabled.",
@@ -2240,7 +2238,7 @@ class RandomForestProbeConfig(BaseModel):
         description="Number of trees, or candidate values for tuning.",
         json_schema_extra={
             "omit_behavior": "Uses 500 trees.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
             "notes": [
                 "A list requires predictability tuning to be enabled.",
             ],
@@ -2322,7 +2320,7 @@ class XGBoostProbeConfig(BaseModel):
         description="Number of boosting rounds, or candidate values for tuning.",
         json_schema_extra={
             "omit_behavior": "Uses 300 boosting rounds.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
             "notes": [
                 "A list requires predictability tuning to be enabled.",
             ],
@@ -2346,7 +2344,7 @@ class XGBoostProbeConfig(BaseModel):
         description="Boosting learning rate, or candidate values for tuning.",
         json_schema_extra={
             "omit_behavior": "Uses a learning rate of 0.01.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
             "notes": [
                 "A list requires predictability tuning to be enabled.",
             ],
@@ -2401,7 +2399,7 @@ class SVMRBFProbeConfig(BaseModel):
         description="Whether embedding features are standardized before fitting.",
         json_schema_extra={
             "omit_behavior": "Standardizes embedding features.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
             "notes": [
                 "The scaler is fitted within each cross-validation training fold."
             ],
@@ -2415,7 +2413,7 @@ class SVMRBFProbeConfig(BaseModel):
         ),
         json_schema_extra={
             "omit_behavior": "Uses `C=1.0`.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
             "notes": [
                 "Smaller values apply stronger regularization.",
                 "A list requires predictability tuning to be enabled.",
@@ -2428,7 +2426,7 @@ class SVMRBFProbeConfig(BaseModel):
         description="RBF kernel coefficient, or candidate values for tuning.",
         json_schema_extra={
             "omit_behavior": "Uses scikit-learn's `scale` heuristic.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
             "notes": [
                 "`scale` derives gamma from feature count and variance.",
                 "`auto` uses the inverse feature count.",
@@ -2454,7 +2452,7 @@ class SVMRBFProbeConfig(BaseModel):
         description="Kernel cache size in megabytes.",
         json_schema_extra={
             "omit_behavior": "Uses a 200 MB kernel cache.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
         },
     )
 
@@ -2463,7 +2461,7 @@ class SVMRBFProbeConfig(BaseModel):
         description="Maximum solver iterations.",
         json_schema_extra={
             "omit_behavior": "Runs without an iteration limit.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
             "notes": [
                 "`-1` disables the iteration limit.",
             ],
@@ -2495,7 +2493,7 @@ class EvaluationPredictabilityParamsConfig(_EvaluationConfigBaseModel):
         description="Parameters for the task-dependent dummy baseline.",
         json_schema_extra={
             "omit_behavior": "Uses task-appropriate dummy-probe defaults.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
         },
     )
 
@@ -2520,7 +2518,7 @@ class EvaluationPredictabilityParamsConfig(_EvaluationConfigBaseModel):
         description="Parameters for the task-dependent nearest-neighbor probe.",
         json_schema_extra={
             "omit_behavior": "Uses `KNNProbeConfig` defaults.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
         },
     )
 
@@ -2529,7 +2527,7 @@ class EvaluationPredictabilityParamsConfig(_EvaluationConfigBaseModel):
         description="Parameters for the task-dependent random-forest probe.",
         json_schema_extra={
             "omit_behavior": "Uses `RandomForestProbeConfig` defaults.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
         },
     )
 
@@ -2538,7 +2536,7 @@ class EvaluationPredictabilityParamsConfig(_EvaluationConfigBaseModel):
         description="Parameters for the optional task-dependent XGBoost probe.",
         json_schema_extra={
             "omit_behavior": "Uses `XGBoostProbeConfig` defaults.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
             "notes": [
                 "These parameters have no effect unless `xgboost` is selected.",
             ],
@@ -2550,7 +2548,7 @@ class EvaluationPredictabilityParamsConfig(_EvaluationConfigBaseModel):
         description="Parameters for the task-dependent RBF-SVM probe.",
         json_schema_extra={
             "omit_behavior": "Uses `SVMRBFProbeConfig` defaults.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
         },
     )
 
@@ -2606,7 +2604,7 @@ class EvaluationPredictabilityConfig(EvalStepConfig):
         ),
         json_schema_extra={
             "omit_behavior": "Uses `adata.obs['label']`.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
             "notes": [
                 "Classification accepts categorical targets.",
                 "Regression requires finite numeric targets.",
@@ -2635,7 +2633,7 @@ class EvaluationPredictabilityConfig(EvalStepConfig):
         description="Supervised prediction task performed by the probes.",
         json_schema_extra={
             "omit_behavior": "Uses classification.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
             "notes": [
                 "The task determines the estimator family, default CV strategy, "
                 "default scorer, and task-dependent probe defaults.",
@@ -2648,7 +2646,7 @@ class EvaluationPredictabilityConfig(EvalStepConfig):
         description="Outer cross-validation and scoring configuration.",
         json_schema_extra={
             "omit_behavior": "Uses task-appropriate five-fold CV defaults.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
         },
     )
 
@@ -2657,7 +2655,7 @@ class EvaluationPredictabilityConfig(EvalStepConfig):
         description="Nested cross-validated hyperparameter tuning configuration.",
         json_schema_extra={
             "omit_behavior": "Disables hyperparameter tuning.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
         },
     )
 
@@ -2666,12 +2664,12 @@ class EvaluationPredictabilityConfig(EvalStepConfig):
         description="Per-probe estimator parameters and tuning candidates.",
         json_schema_extra={
             "omit_behavior": "Uses task-appropriate probe defaults.",
-            "null_behavior": "Rejected.",
+            "null_behavior": "Not allowed.",
         },
     )
 
     @model_validator(mode="after")
-    def validate_predictability_config(self) -> "EvaluationPredictabilityConfig":
+    def validate_predictability_config(self) -> EvaluationPredictabilityConfig:
         if self.enabled is not True:
             return self
 
@@ -2691,69 +2689,353 @@ class EvaluationPredictabilityConfig(EvalStepConfig):
 
 # Full evaluation metrics config ---
 class EvaluationMetricsConfig(_EvaluationConfigBaseModel):
-    clustering: EvaluationClusteringMetricsConfig = Field(default_factory=EvaluationClusteringMetricsConfig)
-    embedding: EmbeddingMetricConfig = Field(default_factory=EmbeddingMetricConfig)
-    predictability: EvaluationPredictabilityConfig = Field(default_factory=EvaluationPredictabilityConfig)
-    reconstruction: ReconstructionMetricConfig = Field(default_factory=ReconstructionMetricConfig)
+    """Groups evaluation metric and predictability configurations.
+
+    Each nested configuration resolves its own enablement, selection, parameters,
+    prerequisites, and result-storage behavior.
+    """
+
+    clustering: EvaluationClusteringMetricsConfig = Field(
+        default_factory=EvaluationClusteringMetricsConfig,
+        description="Internal and external clustering metric configurations.",
+        json_schema_extra={
+            "omit_behavior": "Uses clustering metric defaults.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+
+    embedding: EmbeddingMetricConfig = Field(
+        default_factory=EmbeddingMetricConfig,
+        description="Embedding summary metric configuration.",
+        json_schema_extra={
+            "omit_behavior": "Uses embedding metric defaults.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+
+    predictability: EvaluationPredictabilityConfig = Field(
+        default_factory=EvaluationPredictabilityConfig,
+        description="Cross-validated embedding predictability configuration.",
+        json_schema_extra={
+            "omit_behavior": "Disables predictability evaluation.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+
+    reconstruction: ReconstructionMetricConfig = Field(
+        default_factory=ReconstructionMetricConfig,
+        description="Reconstruction comparison metric configuration.",
+        json_schema_extra={
+            "omit_behavior": "Uses reconstruction metric defaults.",
+            "null_behavior": "Not allowed.",
+        },
+    )
 
 
 # -------------------------
 # Plots config
 # -------------------------
 class ReconstructionGridConfig(_EvaluationConfigBaseModel):
-    include_error_maps: bool = True
-    random_state: int = 137
+    """Configures paginated reconstruction comparison grids.
+
+    Each grid compares original inputs with their reconstructions for one
+    selected channel. Without stratification, at most 12 examples are sampled
+    into one grid. With stratification, one example is sampled per distinct
+    stratum and the results are divided into pages of at most 12 examples.
+    """
+
+    include_error_maps: bool = Field(
+        default=True,
+        description=(
+            "Whether reconstruction error maps are included alongside inputs "
+            "and reconstructions."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Includes configured reconstruction error maps.",
+            "null_behavior": "Not allowed.",
+            "notes": [
+                "Error maps use the parameters configured under "
+                "`reconstruction.error_maps`.",
+            ],
+        },
+    )
+
+    random_state: int = Field(
+        default=137,
+        description=(
+            "Random seed used to select and order reconstruction examples."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses seed 137.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+
     stratify_by: Annotated[
         str,
         StringConstraints(strip_whitespace=True, min_length=1),
-    ] | None = None
+    ] | None = Field(
+        default=None,
+        description=(
+            "Reconstruction observation field used to sample one example per "
+            "distinct value."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Randomly samples at most 12 examples without stratification.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "The field must contain one scalar value per reconstruction example.",
+                "Stratified selections are divided into pages of at most 12 examples.",
+                "Missing values are treated as one distinct stratum.",
+            ],
+        },
+    )
 
     channel_selection: (
         Literal["all"]
         | NonNegativeInt
         | Annotated[list[NonNegativeInt], Field(min_length=1)]
         | None
-    ) = None
+    ) = Field(
+        default=None,
+        description=(
+            "Zero-based reconstruction channel index or indices included in grids."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Uses channel 0 and warns when multiple channels are available."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                '`"all"` selects every available channel.',
+                "An integer selects one channel.",
+                "A list selects the specified channels and removes duplicates.",
+                "Each selected channel is exported to separate grid files.",
+            ],
+        },
+    )
+
 
 class PlotParams(_EvaluationConfigBaseModel):
-    accent_color: HexColor = "#6A3D9A"
-    color_by: list[str] | None = None
-    dpi: PositiveInt = 300
-    formats: list[Literal["png", "pdf", "svg"]] = Field(default_factory=lambda: ["png"])
+    """Configures shared evaluation plot styling and file output.
+
+    These settings apply to reduction plots, clustering diagnostics, and
+    reconstruction grids where relevant.
+    """
+
+    accent_color: HexColor = Field(
+        default="#6A3D9A",
+        description=(
+            "Hexadecimal color used for uncolored projections and diagnostic plots."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses dark purple (`#6A3D9A`).",
+            "null_behavior": "Not allowed.",
+        },
+    )
+
+    color_by: list[str] | None = Field(
+        default=None,
+        description=(
+            "Additional AnnData observation columns used to color reduction plots."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Does not request additional coloring fields.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Clustering output keys and the external-metric label key are added "
+                "automatically when relevant.",
+                "Duplicate and blank names are removed.",
+                "Fields unavailable when plots are exported are skipped.",
+            ],
+        },
+    )
+
+    dpi: PositiveInt = Field(
+        default=300,
+        description="Resolution in dots per inch used for exported plots.",
+        json_schema_extra={
+            "omit_behavior": "Uses 300 DPI.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+
+    formats: Annotated[
+        list[Literal["png", "pdf", "svg"]],
+        Field(min_length=1),
+    ] = Field(
+        default_factory=lambda: ["png"],
+        description="File formats written for each evaluation plot.",
+        json_schema_extra={
+            "omit_behavior": "Exports PNG files.",
+            "null_behavior": "Not allowed.",
+            "notes": [
+                "Multiple formats produce a separate file for each plot.",
+                "Duplicate formats are exported only once.",
+            ],
+        },
+    )
+
     reconstruction_grid: ReconstructionGridConfig = Field(
-        default_factory=ReconstructionGridConfig
+        default_factory=ReconstructionGridConfig,
+        description="Parameters controlling reconstruction comparison grids.",
+        json_schema_extra={
+            "omit_behavior": "Uses reconstruction-grid defaults.",
+            "null_behavior": "Not allowed.",
+        },
     )
 
 
 class EvaluationPlotsConfig(EvalStepConfig):
-    params: PlotParams | None = Field(default_factory=PlotParams)
+    """Configures evaluation figure exports.
+
+    Plotting operates on available reduction, clustering, and reconstruction
+    outputs. Individual plot categories are exported only when their required
+    data was produced or supplied.
+    """
+
+    enabled: bool | None = Field(
+        default=None,
+        description="Whether evaluation plots are exported when applicable.",
+        json_schema_extra={
+            "omit_behavior": (
+                "Enables plots for available reduction, clustering, and "
+                "reconstruction outputs."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Unavailable plot categories are not exported.",
+                "Plot export failures are recoverable and recorded in the "
+                "evaluation outcome summary.",
+            ],
+        },
+    )
+
+    params: PlotParams | None = Field(
+        default_factory=PlotParams,
+        description="Shared styling, file-output, and reconstruction-grid parameters.",
+        json_schema_extra={
+            "omit_behavior": "Uses `PlotParams` defaults.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
 
 
 # -------------------------
 # Full evaluation configuration
 # -------------------------
 class EvaluationConfig(_EvaluationConfigBaseModel):
-    stage: Literal["evaluation"] = "evaluation"
-    source: EvaluationSourceConfig = Field(default_factory=EvaluationSourceConfig)
-    run: EvaluationRunConfig = Field(default_factory=EvaluationRunConfig)
-    reductions: EvaluationReductionsConfig = Field(default_factory=EvaluationReductionsConfig)
-    clustering: EvaluationClusteringConfig = Field(default_factory=EvaluationClusteringConfig)
-    metrics: EvaluationMetricsConfig = Field(default_factory=EvaluationMetricsConfig)
-    reconstruction: EvaluationReconstructionConfig = Field(default_factory=EvaluationReconstructionConfig)
-    plots: EvaluationPlotsConfig = Field(default_factory=EvaluationPlotsConfig)
+    """Complete configuration for a BenchRep evaluation workflow.
+
+    Evaluation may consume embeddings, reconstructions, or both. The configured
+    pipeline can perform dimensionality reduction, clustering, metric evaluation,
+    predictability probing, and artifact or figure export.
+
+    Use `benchrep.inspect_config(EvaluationConfig)` to inspect this configuration.
+    Nested configuration types shown in the output can be inspected the same
+    way, for example `benchrep.inspect_config(EvaluationSourceConfig)` or
+    `benchrep.inspect_config(ReconstructionMetricConfig)`. Public configuration
+    classes are available from `benchrep.assembly.schemas`.
+
+    Use `benchrep.inspect_registry()` to discover component registries and
+    `benchrep.inspect_registry("<registry>", "<component>")` to inspect a
+    registered implementation.
+
+    For machine-readable discovery, `EvaluationConfig.model_json_schema()` returns
+    standard JSON Schema, while `benchrep.list_registries()` and
+    `benchrep.list_registered_components()` return structured registry data.
+    """
+
+    stage: Literal["evaluation"] = Field(
+        default="evaluation",
+        description="Identifies this configuration as an evaluation workflow.",
+        json_schema_extra={
+            "omit_behavior": "Uses `evaluation`.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+
+    source: EvaluationSourceConfig = Field(
+        default_factory=EvaluationSourceConfig,
+        description="Input artifact and prediction-manifest configuration.",
+        json_schema_extra={
+            "omit_behavior": (
+                "Requires a prediction manifest supplied through the evaluation "
+                "entrypoint; otherwise no evaluation source is available."
+            ),
+            "null_behavior": "Not allowed.",
+        },
+    )
+
+    run: EvaluationRunConfig = Field(
+        default_factory=EvaluationRunConfig,
+        description="Evaluation output location and generated run identity.",
+        json_schema_extra={
+            "omit_behavior": "Uses evaluation run defaults.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+
+    reductions: EvaluationReductionsConfig = Field(
+        default_factory=EvaluationReductionsConfig,
+        description="Embedding dimensionality-reduction configurations.",
+        json_schema_extra={
+            "omit_behavior": "Uses dimensionality-reduction defaults.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+
+    clustering: EvaluationClusteringConfig = Field(
+        default_factory=EvaluationClusteringConfig,
+        description="Embedding clustering configurations.",
+        json_schema_extra={
+            "omit_behavior": "Uses clustering defaults.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+
+    metrics: EvaluationMetricsConfig = Field(
+        default_factory=EvaluationMetricsConfig,
+        description=(
+            "Clustering, embedding, predictability, and reconstruction metric "
+            "configurations."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses evaluation metric defaults.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+
+    reconstruction: EvaluationReconstructionConfig = Field(
+        default_factory=EvaluationReconstructionConfig,
+        description="Reconstruction TIFF export and shared error-map configuration.",
+        json_schema_extra={
+            "omit_behavior": "Uses reconstruction export defaults.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+
+    plots: EvaluationPlotsConfig = Field(
+        default_factory=EvaluationPlotsConfig,
+        description="Evaluation figure-export configuration.",
+        json_schema_extra={
+            "omit_behavior": "Uses evaluation plot defaults.",
+            "null_behavior": "Not allowed.",
+        },
+    )
 
     @model_validator(mode="after")
-    def validate_source(self, info: ValidationInfo) -> "EvaluationConfig":
+    def validate_source(self, info: ValidationInfo) -> EvaluationConfig:
         prediction_manifest_path_overridden = (info.context or {}).get(
             "prediction_manifest_path_overridden",
             False,
         )
 
         if (
-                self.source.embeddings_path is None
-                and self.source.reconstructions_path is None
-                and self.source.prediction_manifest_path is None
-                and not prediction_manifest_path_overridden
+            self.source.embeddings_path is None
+            and self.source.reconstructions_path is None
+            and self.source.prediction_manifest_path is None
+            and not prediction_manifest_path_overridden
         ):
             raise ValueError(
                 "At least one evaluation source must be provided through "

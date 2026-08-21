@@ -477,7 +477,6 @@ def make_evaluation_metrics_config() -> EvaluationMetricsConfig:
             ),
             tuning=EvaluationCVTuningConfig(
                 enabled=False,
-                inner_cv=None,
             ),
             params=EvaluationPredictabilityParamsConfig(
                 dummy=DummyProbeConfig(

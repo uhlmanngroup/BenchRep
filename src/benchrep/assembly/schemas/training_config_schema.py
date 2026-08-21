@@ -92,28 +92,30 @@ class RunConfig(_TrainingConfigBaseModel):
     output_root: Path = Field(
         default=Path("outputs"),
         validate_default=True,
-        description=(
-            "Base directory for BenchRep outputs. Training and linked prediction "
-            "runs write beneath separate stage subdirectories. Manifest-linked "
-            "evaluation infers this base root unless its own output root is set."
-        ),
+        description="Base directory beneath which BenchRep creates workflow outputs.",
         json_schema_extra={
             "omit_behavior": "Uses `outputs/` relative to the working directory.",
             "null_behavior": "Not allowed.",
+            "notes": [
+                "Training and linked prediction runs use separate stage subdirectories.",
+                "Manifest-linked evaluation inherits this base root unless its own "
+                "output root is configured.",
+            ],
         },
     )
 
     project_name: str | None = Field(
         default=None,
-        description=(
-            "Optional prefix for generated run names. It is reused by linked "
-            "prediction runs and propagated to manifest-linked evaluation runs. "
-            "When constructing directory names, unsupported characters are replaced "
-            "with underscores and leading or trailing punctuation is removed."
-        ),
+        description="Optional prefix used to construct generated run names.",
         json_schema_extra={
             "omit_behavior": "No project-name prefix is added.",
             "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "The project name is reused by linked prediction runs and propagated "
+                "to manifest-linked evaluation runs.",
+                "Unsupported filename characters are replaced with underscores, and "
+                "leading or trailing punctuation is removed.",
+            ],
         },
     )
 
@@ -276,41 +278,42 @@ class ReproducibilityConfig(_TrainingConfigBaseModel):
 
     seed: int = Field(
         default=137,
-        description=(
-            "Passed to `lightning.seed_everything()` as the global seed and to "
-            "BenchRep's internal datamodule for reproducible train-validation "
-            "splitting. It also becomes the default seed for linked prediction "
-            "and random reconstruction-example selection."
-        ),
+        description="Global random seed used for training and internal data splitting.",
         json_schema_extra={
             "omit_behavior": "Uses seed 137.",
             "null_behavior": "Not allowed.",
+            "notes": [
+                "Passed to `lightning.seed_everything()` and BenchRep's internal "
+                "datamodule.",
+                "Inherited as the default seed for linked prediction and random "
+                "reconstruction-example selection.",
+            ],
         },
     )
 
     seed_workers: bool = Field(
         default=True,
-        description=(
-            "Passed as the `workers` argument to "
-            "`lightning.seed_everything()`. When true, Lightning configures "
-            "reproducible seeding for DataLoader worker processes."
-        ),
+        description="Whether DataLoader worker processes receive reproducible seeds.",
         json_schema_extra={
             "omit_behavior": "Enables DataLoader-worker seeding.",
             "null_behavior": "Not allowed.",
+            "notes": [
+                "Passed as the `workers` argument to `lightning.seed_everything()`.",
+            ],
         },
     )
 
     float32_matmul_precision: Literal["medium", "high", "highest"] = Field(
         default="highest",
-        description=(
-            "Passed to `torch.set_float32_matmul_precision()` before training and, "
-            "unless overridden, linked prediction. Controls the internal precision "
-            "used for float32 matrix multiplications without changing tensor dtypes."
-        ),
+        description="Internal precision used for float32 matrix multiplications.",
         json_schema_extra={
             "omit_behavior": "Uses `highest`.",
             "null_behavior": "Not allowed.",
+            "notes": [
+                "Passed to `torch.set_float32_matmul_precision()` before training.",
+                "Does not change tensor dtypes.",
+                "Inherited by linked prediction unless explicitly overridden.",
+            ],
         },
     )
 
@@ -333,10 +336,7 @@ class TrainerConfig(_TrainingConfigBaseModel):
 
     max_epochs: PositiveInt | None = Field(
         default=None,
-        description=(
-            "Passed as `max_epochs` to `lightning.Trainer`. Sets the maximum "
-            "number of complete training epochs."
-        ),
+        description="Maximum number of complete training epochs.",
         json_schema_extra={
             "omit_behavior": (
                 "Not passed to `lightning.Trainer`; the Trainer applies its "
@@ -348,10 +348,7 @@ class TrainerConfig(_TrainingConfigBaseModel):
 
     accelerator: str | None = Field(
         default="auto",
-        description=(
-            "Passed as `accelerator` to `lightning.Trainer`. Selects the "
-            "hardware accelerator backend."
-        ),
+        description="Hardware accelerator backend used for training.",
         json_schema_extra={
             "omit_behavior": "Passes `auto`, allowing the Trainer to select.",
             "null_behavior": (
@@ -363,10 +360,7 @@ class TrainerConfig(_TrainingConfigBaseModel):
 
     devices: str | int | list[int] | None = Field(
         default="auto",
-        description=(
-            "Passed as `devices` to `lightning.Trainer`. Selects how many or "
-            "which devices the Trainer uses."
-        ),
+        description="Number or identifiers of devices used for training.",
         json_schema_extra={
             "omit_behavior": "Passes `auto`, allowing the Trainer to select.",
             "null_behavior": (
@@ -378,10 +372,7 @@ class TrainerConfig(_TrainingConfigBaseModel):
 
     log_every_n_steps: PositiveInt | None = Field(
         default=None,
-        description=(
-            "Passed as `log_every_n_steps` to `lightning.Trainer`. Sets the "
-            "number of training steps between metric-logging updates."
-        ),
+        description="Number of training steps between metric-logging updates.",
         json_schema_extra={
             "omit_behavior": (
                 "Not passed to `lightning.Trainer`; the Trainer applies its "
@@ -393,28 +384,23 @@ class TrainerConfig(_TrainingConfigBaseModel):
 
     deterministic: bool | Literal["warn"] | None = Field(
         default=None,
-        description=(
-            "Passed as `deterministic` to `lightning.Trainer`. Controls the use "
-            "of deterministic algorithms. `warn` requests deterministic "
-            "execution but warns instead of failing when an operation has no "
-            "deterministic implementation."
-        ),
+        description="Whether deterministic algorithms are requested during training.",
         json_schema_extra={
             "omit_behavior": (
                 "Not passed to `lightning.Trainer`; the Trainer applies its "
                 "default behavior."
             ),
             "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "`warn` requests deterministic execution but warns instead of failing "
+                "when an operation lacks a deterministic implementation.",
+            ],
         },
     )
 
     benchmark: bool | None = Field(
         default=False,
-        description=(
-            "Passed as `benchmark` to `lightning.Trainer`. Controls cuDNN "
-            "benchmarking, which can improve convolution performance but may "
-            "reduce reproducibility."
-        ),
+        description="Whether cuDNN benchmarking is enabled.",
         json_schema_extra={
             "omit_behavior": (
                 "Passes `False` to `lightning.Trainer` to disable cuDNN benchmarking."
@@ -423,22 +409,25 @@ class TrainerConfig(_TrainingConfigBaseModel):
                 "Not passed to `lightning.Trainer`; the Trainer applies its "
                 "default behavior."
             ),
+            "notes": [
+                "Benchmarking can improve convolution performance but may reduce "
+                "reproducibility.",
+            ],
         },
     )
 
     precision: str | int | None = Field(
         default=None,
-        description=(
-            "Passed as `precision` to `lightning.Trainer`. Selects the "
-            "Trainer's numerical precision mode. Accepted values depend on the "
-            "installed Lightning version."
-        ),
+        description="Numerical precision mode used by the Trainer.",
         json_schema_extra={
             "omit_behavior": (
                 "Not passed to `lightning.Trainer`; the Trainer applies its "
                 "default behavior."
             ),
             "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Accepted values depend on the installed Lightning version.",
+            ],
         },
     )
 
@@ -479,20 +468,20 @@ class LoggerConfig(NamedConfig):
 
     wandb_api_key_path: Path | None = Field(
         default=None,
-        description=(
-            "Optional path to a plain-text W&B API-key file. BenchRep expands "
-            "the user directory, requires a non-empty file, reads and strips "
-            "its contents, and sets `WANDB_API_KEY` before constructing "
-            "`lightning.pytorch.loggers.WandbLogger`. This BenchRep-owned "
-            "setting is not passed to the logger constructor and is only valid "
-            "when the selected logger resolves to WandbLogger."
-        ),
+        description="Optional path to a plain-text W&B API-key file.",
         json_schema_extra={
             "omit_behavior": (
                 "BenchRep does not set `WANDB_API_KEY`; W&B uses its normal "
                 "environment, existing-login, or offline-mode behavior."
             ),
             "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Only valid when the selected logger resolves to `WandbLogger`.",
+                "BenchRep expands the user directory and requires a non-empty file.",
+                "The stripped file contents are assigned to `WANDB_API_KEY` before the "
+                "logger is constructed.",
+                "This BenchRep-owned setting is not forwarded to the logger constructor.",
+            ],
         },
     )
 
@@ -518,81 +507,78 @@ class CheckpointConfig(_TrainingConfigBaseModel):
     monitor: str | None = Field(
         default="val/loss",
         min_length=1,
-        description=(
-            "Metric key passed to "
-            "`lightning.pytorch.callbacks.ModelCheckpoint(monitor=...)`. "
-            "The model must log a metric with this exact key. Set to null to "
-            "disable metric-based ranking and save only the last checkpoint."
-        ),
+        description="Metric key used to rank checkpoints.",
         json_schema_extra={
             "omit_behavior": "Monitors `val/loss`.",
             "null_behavior": (
                 "Disables metric-based ranking. BenchRep forces `save_top_k=0`, "
                 "ignores `mode` and `filename`, and requires `save_last=True`."
             ),
+            "notes": [
+                "The model must log a metric with this exact key.",
+            ],
         },
     )
 
     mode: Literal["min", "max"] = Field(
         default="min",
-        description=(
-            "Direction passed to `ModelCheckpoint(mode=...)` when ranking "
-            "checkpoints: `min` treats lower monitored values as better, while "
-            "`max` treats higher values as better. Has no effect when "
-            "`monitor=None`."
-        ),
+        description="Direction used to rank monitored metric values.",
         json_schema_extra={
             "omit_behavior": "Uses `min`.",
             "null_behavior": "Not allowed.",
+            "notes": [
+                "`min` treats lower values as better; `max` treats higher values as better.",
+                "Has no effect when `monitor=None`.",
+            ],
         },
     )
 
     save_top_k: int = Field(
         default=1,
         ge=-1,
-        description=(
-            "Number passed to `ModelCheckpoint(save_top_k=...)` when metric "
-            "ranking is enabled. A positive value retains that many best "
-            "checkpoints, `0` disables ranked checkpoints, and `-1` retains "
-            "every checkpoint. BenchRep forces this to `0` when `monitor=None`."
-        ),
+        description="Number of metric-ranked checkpoints retained.",
         json_schema_extra={
             "omit_behavior": "Retains the single best ranked checkpoint.",
             "null_behavior": "Not allowed.",
+            "notes": [
+                "A positive value retains that many best checkpoints, `0` disables ranked "
+                "checkpoints, and `-1` retains every checkpoint.",
+                "BenchRep forces this value to `0` when `monitor=None`.",
+            ],
         },
     )
 
     save_last: bool = Field(
         default=True,
-        description=(
-            "Passed to `ModelCheckpoint(save_last=...)`. When true, Lightning "
-            "maintains `last.ckpt` in addition to any metric-ranked checkpoints. "
-            "This is required when ranked checkpointing is disabled."
-        ),
+        description="Whether Lightning maintains a `last.ckpt` checkpoint.",
         json_schema_extra={
             "omit_behavior": "Saves `last.ckpt`.",
             "null_behavior": "Not allowed.",
+            "notes": [
+                "Saved in addition to any metric-ranked checkpoints.",
+                "Required when ranked checkpointing is disabled.",
+            ],
         },
     )
 
     filename: str = Field(
         default="{epoch:03d}-{step}",
         min_length=1,
-        description=(
-            "Filename template passed to `ModelCheckpoint(filename=...)` for "
-            "metric-ranked checkpoints. Lightning resolves placeholders from "
-            "the epoch, step, and logged metrics and appends the checkpoint "
-            "extension. This does not control the `last.ckpt` filename and has "
-            "no effect when `monitor=None`."
-        ),
+        description="Filename template used for metric-ranked checkpoints.",
         json_schema_extra={
             "omit_behavior": "Uses `{epoch:03d}-{step}`.",
             "null_behavior": "Not allowed.",
+            "notes": [
+                "Lightning resolves placeholders from the epoch, step, and logged metrics "
+                "and appends the checkpoint extension.",
+                "Does not control the `last.ckpt` filename.",
+                "Has no effect when `monitor=None`.",
+            ],
         },
     )
 
     @model_validator(mode="after")
-    def validate_checkpoint_output(self) -> "CheckpointConfig":
+    def validate_checkpoint_output(self) -> CheckpointConfig:
         ranked_checkpoint_enabled = (
             self.monitor is not None and self.save_top_k != 0
         )
@@ -628,43 +614,43 @@ class EarlyStoppingConfig(_TrainingConfigBaseModel):
     monitor: str = Field(
         default="val/loss",
         min_length=1,
-        description=(
-            "Metric key passed to `EarlyStopping(monitor=...)`. The model must "
-            "log a metric with this exact key."
-        ),
+        description="Metric key monitored for early stopping.",
         json_schema_extra={
             "omit_behavior": "Monitors `val/loss`.",
             "null_behavior": "Not allowed.",
+            "notes": [
+                "The model must log a metric with this exact key.",
+            ],
         },
     )
 
     mode: Literal["min", "max"] = Field(
         default="min",
-        description=(
-            "Direction used to interpret improvement and thresholds. With `min`, lower "
-            "values are better, improvement means decreasing by at least `min_delta`, "
-            "`stopping_threshold` is reached below the threshold, and "
-            "`divergence_threshold` is crossed above it. With `max`, these directions "
-            "are reversed."
-        ),
+        description="Direction used to interpret improvement and stopping thresholds.",
         json_schema_extra={
             "omit_behavior": "Uses `min`.",
             "null_behavior": "Not allowed.",
+            "notes": [
+                "With `min`, lower values are better, improvement requires decreasing by "
+                "at least `min_delta`, `stopping_threshold` is reached below its value, "
+                "and `divergence_threshold` is crossed above its value.",
+                "With `max`, these directions are reversed.",
+            ],
         },
     )
 
     patience: NonNegativeInt = Field(
         default=3,
-        description=(
-            "Number of consecutive checks that may fail to improve the monitored "
-            "metric by at least `min_delta` before stopping. A sufficient improvement "
-            "resets the counter. Patience counts metric checks, not necessarily epochs, "
-            "and does not apply to immediate stopping, divergence, or non-finite-value "
-            "conditions."
-        ),
+        description="Number of consecutive insufficient-improvement checks allowed.",
         json_schema_extra={
             "omit_behavior": "Allows three checks without sufficient improvement.",
             "null_behavior": "Not allowed.",
+            "notes": [
+                "An improvement of at least `min_delta` resets the counter.",
+                "Patience counts metric checks, not necessarily epochs.",
+                "Does not apply to immediate stopping, divergence, or non-finite-value "
+                "conditions.",
+            ],
         },
     )
 
@@ -682,13 +668,13 @@ class EarlyStoppingConfig(_TrainingConfigBaseModel):
 
     strict: bool = Field(
         default=True,
-        description=(
-            "Whether training should fail when the monitored metric is unavailable. "
-            "When false, Lightning warns instead."
-        ),
+        description="Whether a missing monitored metric fails training.",
         json_schema_extra={
             "omit_behavior": "Fails when the monitored metric is unavailable.",
             "null_behavior": "Not allowed.",
+            "notes": [
+                "When false, Lightning warns instead of raising an error.",
+            ],
         },
     )
 
@@ -730,8 +716,7 @@ class EarlyStoppingConfig(_TrainingConfigBaseModel):
     check_on_train_epoch_end: bool | None = Field(
         default=None,
         description=(
-            "Whether the stopping criterion is checked at the end of each training "
-            "epoch. When null, Lightning chooses based on the validation schedule."
+            "Whether the stopping criterion is checked at the end of each training epoch."
         ),
         json_schema_extra={
             "omit_behavior": "Lets Lightning determine when checks occur.",
@@ -805,33 +790,30 @@ class TorchviewConfig(_TrainingConfigBaseModel):
 
     expand_nested: bool = Field(
         default=True,
-        description=(
-            "Passed to `torchview.draw_graph(expand_nested=...)`. When true, "
-            "torchview draws dashed-border boxes around nested modules to show "
-            "the model's module hierarchy. This affects graph presentation, not "
-            "which execution paths are inspected."
-        ),
+        description="Whether nested modules are visually grouped in the model graph.",
         json_schema_extra={
-            "omit_behavior": (
-                "Nested modules are grouped using dashed-border boxes."
-            ),
+            "omit_behavior": "Nested modules are grouped using dashed-border boxes.",
             "null_behavior": "Not allowed.",
+            "notes": [
+                "Passed to `torchview.draw_graph(expand_nested=...)`.",
+                "Affects graph presentation, not which execution paths are inspected.",
+            ],
         },
     )
 
     depth: int = Field(
         default=10,
         ge=0,
-        description=(
-            "Upper module-hierarchy depth passed to "
-            "`torchview.draw_graph(depth=...)`. The main module has depth 0, "
-            "its direct submodules have depth 1, and each additional nesting "
-            "level increases the depth by one. Nodes deeper than this limit "
-            "are omitted from the visualization."
-        ),
+        description="Maximum module-hierarchy depth included in the model graph.",
         json_schema_extra={
             "omit_behavior": "Shows nodes through module-hierarchy depth 10.",
             "null_behavior": "Not allowed.",
+            "notes": [
+                "Passed to `torchview.draw_graph(depth=...)`.",
+                "The main module has depth 0, direct submodules have depth 1, and each "
+                "additional nesting level increases the depth by one.",
+                "Nodes deeper than this limit are omitted.",
+            ],
         },
     )
 
@@ -1166,7 +1148,7 @@ def _dataset_config_discriminator(value: Any) -> str:
     return "custom"
 
 
-SupportedDatasetConfig = Annotated[
+SupportedDatasetConfig: TypeAlias = Annotated[
     Annotated[CIFAR10DatasetConfig, Tag("cifar10")]
     | Annotated[MNISTDatasetConfig, Tag("mnist")]
     | Annotated[STL10DatasetConfig, Tag("stl10")]
@@ -1300,60 +1282,52 @@ class TrainingConfig(_TrainingConfigBaseModel):
 
     model: ModelConfig | None = Field(
         default=None,
-        description=(
-            "Model to assemble for training. This section is ignored when an "
-            "external model object is supplied."
-        ),
+        description="Model assembled for training.",
         json_schema_extra={
             "omit_behavior": (
                 "Allowed when an external model is supplied; otherwise a model "
                 "configuration is required."
             ),
             "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Ignored when an external model object is supplied.",
+            ],
         },
     )
 
     encoder: EncoderConfig | None = Field(
         default=None,
-        description=(
-            "Encoder to use when assembling the configured model. This section "
-            "is ignored when an external model object is supplied."
-        ),
+        description="Encoder used when assembling the configured model.",
         json_schema_extra={
             "omit_behavior": (
                 "Allowed when an external model is supplied; otherwise an encoder "
                 "configuration is required."
             ),
             "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Ignored when an external model object is supplied.",
+            ],
         },
     )
 
     decoder: DecoderConfig | None = Field(
         default=None,
-        description=(
-            "Decoder to use when required by the configured model. This section "
-            "is ignored when an external model object is supplied."
-        ),
+        description="Decoder used when required by the configured model.",
         json_schema_extra={
             "omit_behavior": (
                 "No decoder is configured. Config-built autoencoders and VAEs "
                 "require this section."
             ),
             "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Ignored when an external model object is supplied.",
+            ],
         },
     )
 
     losses: dict[SupportedLossRole, LossRoleTerms] | None = Field(
         default_factory=dict,
-        description=(
-            "Losses grouped first by role and then by registered component name. "
-            "All configured terms across all roles contribute additively to the "
-            "total loss. A nonempty `custom_objective` mapping may be used alone "
-            "or alongside the standard roles. Without a custom objective, built-in "
-            "autoencoders require `reconstruction`, while built-in VAEs require "
-            "both `reconstruction` and `regularization`. This section is ignored "
-            "when an external model object is supplied."
-        ),
+        description="Loss terms grouped by role and registered component name.",
         json_schema_extra={
             "omit_behavior": (
                 "Uses an empty loss mapping, which does not satisfy the loss "
@@ -1368,56 +1342,57 @@ class TrainingConfig(_TrainingConfigBaseModel):
                 "requirements for standard loss roles.",
                 "BenchRep does not verify that a custom objective reproduces any "
                 "omitted reconstruction or regularization behavior.",
+                "All configured terms across all roles contribute additively to the total loss.",
+                "A nonempty `custom_objective` mapping may be used alone or alongside the "
+                "standard roles.",
+                "Without a custom objective, built-in autoencoders require `reconstruction`, "
+                "while built-in VAEs require both `reconstruction` and `regularization`.",
+                "Ignored when an external model object is supplied.",
             ],
         },
     )
 
     optimizer: OptimizerConfig | None = Field(
         default=None,
-        description=(
-            "Optimizer used to train the config-built model. This section is "
-            "ignored when an external model object is supplied."
-        ),
+        description="Optimizer used to train the config-built model.",
         json_schema_extra={
             "omit_behavior": (
                 "Allowed when an external model is supplied; otherwise an optimizer "
                 "configuration is required."
             ),
             "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Ignored when an external model object is supplied.",
+            ],
         },
     )
 
     dataset: SupportedDatasetConfig | None = Field(
         default=None,
-        description=(
-            "Dataset to build for training. Use "
-            "`benchrep.inspect_registry(\"dataset\")` to inspect registered "
-            "dataset names and aliases. The concrete built-in dataset config "
-            "types shown in this field's annotation can be explored by passing "
-            "the concrete type to `benchrep.inspect_config()`. Parameters for "
-            "user-registered datasets must match the registered dataset constructor. "
-            "This section is ignored when an external datamodule object is supplied."
-        ),
+        description="Dataset built for training.",
         json_schema_extra={
             "omit_behavior": (
                 "Allowed when an external datamodule is supplied; otherwise a "
                 "dataset configuration is required."
             ),
             "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Inspect registered dataset names and aliases with "
+                '`benchrep.inspect_registry("dataset")`.',
+                "Built-in dataset configuration types can be passed to "
+                "`benchrep.inspect_config()` for detailed discovery.",
+                "Parameters for user-registered datasets must match the registered "
+                "dataset constructor.",
+                "Ignored when an external datamodule object is supplied.",
+            ],
         },
     )
 
     transforms: list[TransformConfig] = Field(
         default_factory=list,
         description=(
-            "Ordered transform definitions applied to each dataset sample's "
-            "`x` tensor before batching. Each transform's `apply_to` field "
-            "determines whether it is included in the training pipeline, "
-            "validation pipeline, or both. Relative ordering is preserved "
-            "independently within each resulting pipeline. Validation-targeted "
-            "transforms are also inherited by linked prediction runs when "
-            "prediction transforms are omitted or null. This section is ignored "
-            "when an external datamodule object is supplied."
+            "Ordered transform definitions applied to each dataset sample's `x` tensor "
+            "before batching."
         ),
         json_schema_extra={
             "omit_behavior": (
@@ -1426,6 +1401,15 @@ class TrainingConfig(_TrainingConfigBaseModel):
             "null_behavior": (
                 "Not allowed; use an empty list instead."
             ),
+            "notes": [
+                "`apply_to` determines whether each transform is used for training, "
+                "validation, or both.",
+                "Relative ordering is preserved independently in the resulting training "
+                "and validation pipelines.",
+                "Validation-targeted transforms are inherited by linked prediction runs "
+                "when prediction transforms are omitted or null.",
+                "Ignored when an external datamodule object is supplied.",
+            ],
         },
     )
 
@@ -1433,8 +1417,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
         default_factory=DataModuleConfig,
         description=(
             "Batching, data-loading, and train-validation splitting settings for "
-            "BenchRep's internal datamodule. This section is ignored when an "
-            "external datamodule object is supplied."
+            "BenchRep's internal datamodule."
         ),
         json_schema_extra={
             "omit_behavior": "Uses the defaults defined by `DataModuleConfig`.",
@@ -1442,20 +1425,23 @@ class TrainingConfig(_TrainingConfigBaseModel):
                 "Allowed when an external datamodule is supplied; otherwise a "
                 "datamodule configuration is required."
             ),
+            "notes": [
+                "Ignored when an external datamodule object is supplied.",
+            ],
         },
     )
 
     trainer: TrainerConfig = Field(
         default_factory=TrainerConfig,
-        description=(
-            "Lightning Trainer settings used for training and inherited as defaults by "
-            "linked prediction runs. Declared fields and additional non-null fields are "
-            "passed as keyword arguments to `lightning.Trainer`, except for arguments "
-            "managed internally by BenchRep."
-        ),
+        description="Lightning Trainer settings used during training.",
         json_schema_extra={
             "omit_behavior": "Uses the defaults defined by `TrainerConfig`.",
             "null_behavior": "Not allowed.",
+            "notes": [
+                "Inherited as defaults by linked prediction runs.",
+                "Declared and additional non-null fields are forwarded to "
+                "`lightning.Trainer`, except for arguments managed internally by BenchRep.",
+            ],
         },
     )
 
@@ -1479,26 +1465,26 @@ class TrainingConfig(_TrainingConfigBaseModel):
 
     early_stopping: EarlyStoppingConfig | None = Field(
         default=None,
-        description=(
-            "Optional metric-based early stopping settings. When configured, "
-            "BenchRep adds a Lightning EarlyStopping callback during training."
-        ),
+        description="Optional metric-based early-stopping settings.",
         json_schema_extra={
             "omit_behavior": "Disables early stopping.",
             "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "When configured, BenchRep adds a Lightning `EarlyStopping` callback.",
+            ],
         },
     )
 
     additional_callbacks: list[AdditionalCallbackConfig] = Field(
         default_factory=list,
-        description=(
-            "Additional registered Lightning callbacks instantiated for training. "
-            "These supplement BenchRep-managed checkpointing and early stopping "
-            "and are not inherited by linked prediction runs."
-        ),
+        description="Additional registered Lightning callbacks used during training.",
         json_schema_extra={
             "omit_behavior": "Uses no additional callbacks.",
             "null_behavior": "Not allowed; use an empty list instead.",
+            "notes": [
+                "These supplement BenchRep-managed checkpointing and early stopping.",
+                "They are not inherited by linked prediction runs.",
+            ],
         },
     )
 
@@ -1514,7 +1500,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
     @model_validator(mode="after")
     def validate_additional_callback_requirements(
         self,
-    ) -> "TrainingConfig":
+    ) -> TrainingConfig:
         callback_names = {
             CALLBACKS.resolve_key(callback.name)
             for callback in self.additional_callbacks
@@ -1538,7 +1524,10 @@ class TrainingConfig(_TrainingConfigBaseModel):
         return self
 
     @model_validator(mode="after")
-    def validate_override_requirements(self, info: ValidationInfo) -> "TrainingConfig":
+    def validate_override_requirements(
+            self,
+            info: ValidationInfo,
+    ) -> TrainingConfig:
         ctx = info.context or {}
         model_overridden = ctx.get("model_overridden", False)
         datamodule_overridden = ctx.get("datamodule_overridden", False)
@@ -1556,7 +1545,10 @@ class TrainingConfig(_TrainingConfigBaseModel):
         return self
 
     @model_validator(mode="after")
-    def validate_model_requirements(self, info: ValidationInfo) -> "TrainingConfig":
+    def validate_model_requirements(
+            self,
+            info: ValidationInfo,
+    ) -> TrainingConfig:
         ctx = info.context or {}
         model_overridden = ctx.get("model_overridden", False)
 
