@@ -241,21 +241,25 @@ def _validate_enabled_step_preconditions(
             )
 
     if step_spec.predictability_enabled:
-        _validate_predictability_configuration_preconditions(
-            task=step_spec.predictability_task,
-            probes=step_spec.predictability_probes,
-            cv_params=step_spec.predictability_cv_params,
-        )
+        for target_spec in step_spec.predictability_targets:
+            _validate_predictability_configuration_preconditions(
+                target_key=target_spec.target_key,
+                task=target_spec.task,
+                probes=target_spec.probes,
+                cv_params=target_spec.cv_params,
+            )
 
 
 def _validate_predictability_configuration_preconditions(
     *,
+    target_key: str,
     task: str,
     probes: list[str],
     cv_params: Mapping[str, Any],
 ) -> None:
-    """Validate predictability requirements independent of runtime data."""
+    """Validate data-independent requirements for one predictability target."""
 
+    target_path = f"metrics.predictability.targets[{target_key!r}]"
     method = cv_params.get("method", "stratified_kfold")
 
     if (
@@ -263,15 +267,15 @@ def _validate_predictability_configuration_preconditions(
         and task != "classification"
     ):
         raise ValueError(
-            f"Predictability cv.method={method!r} is only valid for "
+            f"{target_path}.cv.method={method!r} is only valid for "
             "classification."
         )
 
     if "xgboost" in probes and find_spec("xgboost") is None:
         raise ImportError(
-            "The xgboost predictability probe was selected, but xgboost is "
-            "not installed. Install xgboost or remove 'xgboost' from "
-            "metrics.predictability.selected."
+            "The xgboost predictability probe was selected for "
+            f"{target_path}, but xgboost is not installed. Install xgboost or "
+            f"remove 'xgboost' from {target_path}.selected."
         )
 
 

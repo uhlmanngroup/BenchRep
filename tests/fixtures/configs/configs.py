@@ -44,6 +44,7 @@ from benchrep.assembly.schemas.evaluation_config_schema import (
     EvaluationPlotsConfig,
     EvaluationPredictabilityConfig,
     EvaluationPredictabilityParamsConfig,
+    EvaluationPredictabilityTargetConfig,
     EvaluationReconstructionConfig,
     EvaluationReductionsConfig,
     EvaluationRunConfig,
@@ -464,30 +465,33 @@ def make_evaluation_metrics_config() -> EvaluationMetricsConfig:
         ),
         predictability=EvaluationPredictabilityConfig(
             enabled=True,
-            selected=["dummy", "linear"],
-            target_key="continuous_target",
-            task="regression",
-            cv=EvaluationCrossValidationConfig(
-                method="kfold",
-                n_splits=2,
-                group_key=None,
-                shuffle=True,
-                random_state=999,
-                scoring="r2",
-            ),
-            tuning=EvaluationCVTuningConfig(
-                enabled=False,
-            ),
-            params=EvaluationPredictabilityParamsConfig(
-                dummy=DummyProbeConfig(
-                    strategy="mean",
+            targets={
+                "continuous_target": EvaluationPredictabilityTargetConfig(
+                    selected=["dummy", "linear"],
+                    task="regression",
+                    cv=EvaluationCrossValidationConfig(
+                        method="kfold",
+                        n_splits=2,
+                        group_key=None,
+                        shuffle=True,
+                        random_state=999,
+                        scoring="r2",
+                    ),
+                    tuning=EvaluationCVTuningConfig(
+                        enabled=False,
+                    ),
+                    params=EvaluationPredictabilityParamsConfig(
+                        dummy=DummyProbeConfig(
+                            strategy="mean",
+                        ),
+                        linear=RidgeProbeConfig(
+                            model="ridge",
+                            standardize=True,
+                            alpha=0.5,
+                        ),
+                    ),
                 ),
-                linear=RidgeProbeConfig(
-                    model="ridge",
-                    standardize=True,
-                    alpha=0.5,
-                ),
-            ),
+            },
         ),
         reconstruction=ReconstructionMetricConfig(
             enabled=True,

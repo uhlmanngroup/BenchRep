@@ -55,6 +55,7 @@ _CONFIG_REGISTRY_ROUTES: Final[dict[str, tuple[str, ...]]] = {
 
     # Evaluation predictability
     "EvaluationPredictabilityConfig": ("predictability_probe",),
+    "EvaluationPredictabilityTargetConfig": ("predictability_probe",),
     "DummyProbeConfig": ("predictability_probe",),
     "LogisticRegressionProbeConfig": ("predictability_probe",),
     "RidgeProbeConfig": ("predictability_probe",),

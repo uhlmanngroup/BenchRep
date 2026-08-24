@@ -2,8 +2,16 @@ import anndata as ad
 import numpy as np
 import pytest
 
-from benchrep.evaluation.pipelines import AnnDataEvaluationStep, AnnDataEvaluationPipeline
+from benchrep.evaluation.pipelines import (
+    AnnDataEvaluationPipeline,
+    AnnDataEvaluationStep,
+    create_anndata_evaluation_pipeline,
+)
 from benchrep.evaluation.utils import RecoverableEvaluationStepError
+from benchrep.assembly.resolvers.evaluation_config_resolver import (
+    resolve_evaluation_config,
+)
+from benchrep.assembly.schemas import EvaluationConfig
 
 
 def _make_adata() -> ad.AnnData:
@@ -118,3 +126,70 @@ def test_pipeline_discards_failed_step_mutations_before_next_step() -> None:
     assert "committed" in result.obs
     assert "continued" in result.obs
     assert "partial" not in result.obs
+
+
+def test_pipeline_creates_one_predictability_step_per_target() -> None:
+    config = EvaluationConfig.model_validate(
+        {
+            "source": {
+                "embeddings_path": "embeddings.h5ad",
+            },
+            "metrics": {
+                "predictability": {
+                    "enabled": True,
+                    "targets": {
+                        "label": {
+                            "selected": ["dummy"],
+                            "task": "classification",
+                        },
+                        "continuous intensity": {
+                            "selected": ["linear"],
+                            "overwrite": True,
+                            "task": "regression",
+                            "params": {
+                                "linear": {
+                                    "model": "ridge",
+                                    "alpha": 0.5,
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        }
+    )
+
+    run_spec = resolve_evaluation_config(config)
+    pipeline = create_anndata_evaluation_pipeline(run_spec)
+
+    predictability_steps = [
+        step
+        for step in pipeline.steps
+        if step.name.startswith("predictability_metrics_")
+    ]
+
+    assert [
+        step.name
+        for step in predictability_steps
+    ] == [
+        "predictability_metrics_label",
+        "predictability_metrics_continuous intensity",
+    ]
+
+    classification_step, regression_step = predictability_steps
+
+    assert classification_step.enabled is True
+    assert classification_step.params["target_key"] == "label"
+    assert classification_step.params["task"] == "classification"
+    assert classification_step.params["selected"] == ["dummy"]
+    assert classification_step.params["overwrite"] is False
+
+    assert regression_step.enabled is True
+    assert (
+        regression_step.params["target_key"]
+        == "continuous intensity"
+    )
+    assert regression_step.params["task"] == "regression"
+    assert regression_step.params["selected"] == ["linear"]
+    assert regression_step.params["probe_params"]["linear"]["alpha"] == 0.5
+    assert regression_step.params["overwrite"] is True

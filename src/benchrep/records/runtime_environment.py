@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from benchrep.assembly.resolvers import PredictionRunSpec
     from benchrep.assembly.resolvers.evaluation_config_resolver import (
         EvaluationRunSpec,
+        PredictabilityTargetSpec,
     )
     from benchrep.assembly.schemas import TrainingConfig
     from benchrep.interfaces.model_families import ModelFamilySpec
@@ -311,6 +312,65 @@ def collect_prediction_environment_context(
     }
 
 
+def _collect_predictability_target_environment_context(
+    *,
+    target_spec: PredictabilityTargetSpec,
+    enabled: bool,
+) -> dict[str, Any]:
+    """Collect resolved reproducibility context for one predictability target."""
+
+    cv_params = dict(target_spec.cv_params)
+    tuning_params = dict(target_spec.tuning_params)
+    cv_shuffle = bool(cv_params.get("shuffle", False))
+    cv_uses_randomness = enabled and cv_shuffle
+
+    tuning_enabled = (
+        enabled
+        and bool(tuning_params.get("enabled", False))
+    )
+    tuning_uses_randomness = tuning_enabled and cv_shuffle
+
+    probes: dict[str, dict[str, Any]] = {}
+
+    for probe_name in target_spec.probes:
+        params = dict(target_spec.probe_params.get(probe_name, {}))
+
+        if probe_name == "dummy":
+            uses_randomness = (
+                enabled
+                and params.get("strategy") in {"stratified", "uniform"}
+            )
+        else:
+            uses_randomness = (
+                enabled
+                and probe_name in {"random_forest", "xgboost"}
+            )
+
+        probes[probe_name] = {
+            **params,
+            "uses_randomness": uses_randomness,
+        }
+
+    return {
+        "task": target_spec.task,
+        "selected_probes": list(target_spec.probes),
+        "cross_validation": {
+            **cv_params,
+            "uses_randomness": cv_uses_randomness,
+        },
+        "tuning": {
+            **tuning_params,
+            "uses_randomness": tuning_uses_randomness,
+            "random_state": (
+                cv_params.get("random_state")
+                if tuning_uses_randomness
+                else None
+            ),
+        },
+        "probes": probes,
+    }
+
+
 def collect_evaluation_environment_context(
     *,
     run_spec: EvaluationRunSpec,
@@ -318,36 +378,16 @@ def collect_evaluation_environment_context(
     """Collect resolved reproducibility context for evaluation."""
     step_spec = run_spec.step_spec
 
-    cv_params = step_spec.predictability_cv_params
-    probe_params = step_spec.predictability_probe_params
-    selected_probes = set(step_spec.predictability_probes)
-
     predictability_enabled = step_spec.predictability_enabled
-
-    cv_shuffle = bool(cv_params.get("shuffle", False))
-    cv_uses_randomness = (
-        predictability_enabled and cv_shuffle
-    )
-
-    dummy_params = probe_params.get("dummy", {})
-    dummy_enabled = (
-        predictability_enabled
-        and "dummy" in selected_probes
-    )
-    dummy_strategy = dummy_params.get("strategy")
-    dummy_uses_randomness = (
-        dummy_enabled
-        and dummy_strategy in {"stratified", "uniform"}
-    )
-
-    random_forest_enabled = (
-        predictability_enabled
-        and "random_forest" in selected_probes
-    )
-    xgboost_enabled = (
-        predictability_enabled
-        and "xgboost" in selected_probes
-    )
+    predictability_targets = {
+        target_spec.target_key: (
+            _collect_predictability_target_environment_context(
+                target_spec=target_spec,
+                enabled=predictability_enabled,
+            )
+        )
+        for target_spec in step_spec.predictability_targets
+    }
 
     reconstruction_grid_params = (
         step_spec.plot_params.get(
@@ -393,62 +433,7 @@ def collect_evaluation_environment_context(
                 },
                 "predictability": {
                     "enabled": predictability_enabled,
-                    "cross_validation": {
-                        "method": (
-                            cv_params.get("method")
-                            if predictability_enabled
-                            else None
-                        ),
-                        "shuffle": (
-                            cv_shuffle
-                            if predictability_enabled
-                            else None
-                        ),
-                        "uses_randomness": cv_uses_randomness,
-                        "random_state": (
-                            cv_params.get("random_state")
-                            if cv_uses_randomness
-                            else None
-                        ),
-                    },
-                    "probes": {
-                        "dummy": {
-                            "enabled": dummy_enabled,
-                            "strategy": (
-                                dummy_strategy
-                                if dummy_enabled
-                                else None
-                            ),
-                            "uses_randomness": (
-                                dummy_uses_randomness
-                            ),
-                            "random_state": (
-                                dummy_params.get("random_state")
-                                if dummy_uses_randomness
-                                else None
-                            ),
-                        },
-                        "random_forest": {
-                            "enabled": random_forest_enabled,
-                            "random_state": (
-                                probe_params
-                                .get("random_forest", {})
-                                .get("random_state")
-                                if random_forest_enabled
-                                else None
-                            ),
-                        },
-                        "xgboost": {
-                            "enabled": xgboost_enabled,
-                            "random_state": (
-                                probe_params
-                                .get("xgboost", {})
-                                .get("random_state")
-                                if xgboost_enabled
-                                else None
-                            ),
-                        },
-                    },
+                    "targets": predictability_targets,
                 },
                 "reconstruction_grid": {
                     "enabled": reconstruction_grid_enabled,

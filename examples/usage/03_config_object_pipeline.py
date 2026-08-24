@@ -54,6 +54,7 @@ from benchrep.assembly.schemas import (
     EvaluationPlotsConfig,
     EvaluationPredictabilityConfig,
     EvaluationPredictabilityParamsConfig,
+    EvaluationPredictabilityTargetConfig,
     EvaluationReconstructionConfig,
     EvaluationReductionsConfig,
     EvaluationSourceConfig,
@@ -290,34 +291,37 @@ def build_evaluation_config(
             ),
             predictability=EvaluationPredictabilityConfig(
                 enabled=True,
-                selected=[
-                    "dummy",
-                    "linear",
-                ],
-                target_key="label",
-                task="classification",
-                cv=EvaluationCrossValidationConfig(
-                    method="stratified_kfold",
-                    n_splits=5,
-                    shuffle=True,
-                    random_state=137,
-                    scoring="balanced_accuracy",
-                ),
-                tuning=EvaluationCVTuningConfig(
-                    enabled=False,
-                ),
-                params=EvaluationPredictabilityParamsConfig(
-                    dummy=DummyProbeConfig(
-                        strategy="most_frequent",
-                        random_state=137,
+                targets={
+                    "label": EvaluationPredictabilityTargetConfig(
+                        selected=[
+                            "dummy",
+                            "linear",
+                        ],
+                        task="classification",
+                        cv=EvaluationCrossValidationConfig(
+                            method="stratified_kfold",
+                            n_splits=5,
+                            shuffle=True,
+                            random_state=137,
+                            scoring="balanced_accuracy",
+                        ),
+                        tuning=EvaluationCVTuningConfig(
+                            enabled=False,
+                        ),
+                        params=EvaluationPredictabilityParamsConfig(
+                            dummy=DummyProbeConfig(
+                                strategy="most_frequent",
+                                random_state=137,
+                            ),
+                            linear=LogisticRegressionProbeConfig(
+                                standardize=True,
+                                C=1.0,
+                                class_weight="balanced",
+                                max_iter=5000,
+                            ),
+                        ),
                     ),
-                    linear=LogisticRegressionProbeConfig(
-                        standardize=True,
-                        C=1.0,
-                        class_weight="balanced",
-                        max_iter=5000,
-                    ),
-                ),
+                },
             ),
             reconstruction=ReconstructionMetricConfig(
                 enabled=True,

@@ -233,7 +233,7 @@ def build_xgboost_predictability_probe(
         raise ImportError(
             "The xgboost predictability probe was selected, but xgboost is not "
             "installed. Install the optional xgboost dependency or remove "
-            "'xgboost' from metrics.predictability.selected."
+            "'xgboost' from the selected predictability probes."
         ) from error
 
     params = dict(params)

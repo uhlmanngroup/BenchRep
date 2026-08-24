@@ -474,24 +474,24 @@ def create_anndata_evaluation_pipeline(
         )
     )
 
-    predictability_target_key = step_spec.predictability_target_key
-    steps.append(
-        AnnDataEvaluationStep(
-            name=f"predictability_metrics_{predictability_target_key}",
-            category="metrics",
-            fn=compute_predictability_metrics,
-            params={
-                "target_key": predictability_target_key,
-                "task": step_spec.predictability_task,
-                "selected": step_spec.predictability_probes,
-                "probe_params": step_spec.predictability_probe_params,
-                "cv_params": step_spec.predictability_cv_params,
-                "tuning_params": step_spec.predictability_tuning_params,
-                "overwrite": step_spec.predictability_overwrite,
-            },
-            enabled=step_spec.predictability_enabled,
+    for target_spec in step_spec.predictability_targets:
+        steps.append(
+            AnnDataEvaluationStep(
+                name=f"predictability_metrics_{target_spec.target_key}",
+                category="metrics",
+                fn=compute_predictability_metrics,
+                params={
+                    "target_key": target_spec.target_key,
+                    "task": target_spec.task,
+                    "selected": target_spec.probes,
+                    "probe_params": target_spec.probe_params,
+                    "cv_params": target_spec.cv_params,
+                    "tuning_params": target_spec.tuning_params,
+                    "overwrite": target_spec.overwrite,
+                },
+                enabled=step_spec.predictability_enabled,
+            )
         )
-    )
 
     return AnnDataEvaluationPipeline(steps=steps)
 

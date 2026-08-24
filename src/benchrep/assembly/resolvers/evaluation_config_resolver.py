@@ -26,6 +26,7 @@ from benchrep.assembly.resolvers.utils import (
 )
 from benchrep.assembly.schemas.evaluation_config_schema import (
     EvaluationConfig,
+    EvaluationPredictabilityTargetConfig,
     EvaluationRunConfig,
     LogisticRegressionProbeConfig,
     RidgeProbeConfig,
@@ -127,6 +128,17 @@ PredictabilityTask = Literal["classification", "regression"]
 
 
 @dataclass(frozen=True)
+class PredictabilityTargetSpec:
+    target_key: str
+    task: PredictabilityTask
+    probes: list[str]
+    probe_params: dict[str, dict[str, Any]]
+    cv_params: dict[str, Any]
+    tuning_params: dict[str, Any]
+    overwrite: bool
+
+
+@dataclass(frozen=True)
 class EvaluationStepSpec:
     pca_enabled: bool
     pca_params: dict[str, Any]
@@ -164,13 +176,7 @@ class EvaluationStepSpec:
     embedding_metrics_overwrite: bool
 
     predictability_enabled: bool
-    predictability_target_key: str
-    predictability_task: PredictabilityTask
-    predictability_probes: list[str]
-    predictability_probe_params: dict[str, dict[str, Any]]
-    predictability_cv_params: dict[str, Any]
-    predictability_tuning_params: dict[str, Any]
-    predictability_overwrite: bool
+    predictability_targets: tuple[PredictabilityTargetSpec, ...]
 
     reconstruction_metrics_enabled: bool
     reconstruction_metrics: list[str]
@@ -794,61 +800,29 @@ def resolve_step_spec(
         available=has_embeddings,
         name="Predictability evaluation",
     )
-    predictability_task: PredictabilityTask = predictability_config.task
+    resolved_predictability_targets: list[
+        PredictabilityTargetSpec
+    ] = []
 
-    predictability_probes = _resolve_registry_selection(
-        selected=predictability_config.selected,
-        default_selection=DEFAULT_PREDICTABILITY_PROBES,
-        registry=EVAL_PREDICTABILITY_PROBES,
-    )
+    for target_key, target_config in predictability_config.targets.items():
+        try:
+            target_spec = _resolve_predictability_target(
+                target_key=target_key,
+                target_config=target_config,
+                enabled=predictability_enabled,
+            )
+        except (KeyError, TypeError, ValueError) as error:
+            target_path = (
+                f"metrics.predictability.targets[{target_key!r}]"
+            )
+            raise ValueError(
+                f"Failed to resolve {target_path}. Original error "
+                f"({type(error).__name__}): {error}"
+            ) from error
 
-    if predictability_enabled and not predictability_probes:
-        raise ValueError(
-            "metrics.predictability.selected cannot be empty when predictability "
-            "is enabled."
-        )
+        resolved_predictability_targets.append(target_spec)
 
-    predictability_probe_params = resolve_registry_param_keys(
-        params=params_to_dict(predictability_config.params),
-        registry=EVAL_PREDICTABILITY_PROBES,
-    )
-    predictability_probe_params = _resolve_predictability_probe_params(
-        task=predictability_task,
-        probe_params=predictability_probe_params,
-    )
-    predictability_cv_params = params_to_dict(predictability_config.cv)
-    predictability_tuning_params = params_to_dict(predictability_config.tuning)
-    predictability_cv_params["method"] = _resolve_predictability_cv_method(
-        task=predictability_task,
-        cv_params=predictability_cv_params,
-    )
-
-    predictability_cv_params["scoring"] = _resolve_predictability_scoring(
-        task=predictability_task,
-        cv_params=predictability_cv_params,
-    )
-
-    if predictability_enabled:
-        _validate_predictability_dummy_strategy(
-            task=predictability_task,
-            probes=predictability_probes,
-            probe_params=predictability_probe_params,
-        )
-        _validate_predictability_linear_model(
-            task=predictability_task,
-            probes=predictability_probes,
-            probe_params=predictability_probe_params,
-        )
-        _validate_predictability_class_weight(
-            task=predictability_task,
-            probes=predictability_probes,
-            probe_params=predictability_probe_params,
-        )
-        _validate_predictability_tuning_grid(
-            probes=predictability_probes,
-            tuning_params=predictability_tuning_params,
-            probe_params=predictability_probe_params,
-        )
+    predictability_targets = tuple(resolved_predictability_targets)
 
     reconstruction_metrics_enabled = resolve_enabled_if_available(
         configured=evaluation_config.metrics.reconstruction.enabled,
@@ -950,13 +924,7 @@ def resolve_step_spec(
 
         # None = False
         predictability_enabled=predictability_enabled,
-        predictability_target_key=predictability_config.target_key,
-        predictability_task=predictability_task,
-        predictability_probes=predictability_probes,
-        predictability_probe_params=predictability_probe_params,
-        predictability_cv_params=predictability_cv_params,
-        predictability_tuning_params=predictability_tuning_params,
-        predictability_overwrite=predictability_config.overwrite is True,
+        predictability_targets=predictability_targets,
 
         # True if not disabled and reconstructions are available
         reconstruction_metrics_enabled=reconstruction_metrics_enabled,
@@ -1153,7 +1121,7 @@ def _resolve_predictability_cv_method(
         and method in {"stratified_kfold", "stratified_group_kfold"}
     ):
         raise ValueError(
-            f"metrics.predictability.cv.method={method!r} is not valid for "
+            f"cv.method={method!r} is not valid for "
             "task='regression'."
         )
 
@@ -1187,7 +1155,7 @@ def _resolve_predictability_scoring(
 
     if scoring not in valid_scorers:
         raise ValueError(
-            f"metrics.predictability.cv.scoring={scoring!r} "
+            f"cv.scoring={scoring!r} "
             f"is not valid for task={task!r}."
         )
 
@@ -1256,7 +1224,7 @@ def _validate_predictability_dummy_strategy(
 
     if strategy not in valid_strategies:
         raise ValueError(
-            "metrics.predictability.params.dummy.strategy must be one of "
+            "params.dummy.strategy must be one of "
             f"{sorted(valid_strategies)} when task={task!r}."
         )
 
@@ -1274,13 +1242,13 @@ def _validate_predictability_linear_model(
 
     if task == "classification" and linear_model != "logistic_regression":
         raise ValueError(
-            "metrics.predictability.params.linear.model must be "
+            "params.linear.model must be "
             "'logistic_regression' when task='classification'."
         )
 
     if task == "regression" and linear_model != "ridge":
         raise ValueError(
-            "metrics.predictability.params.linear.model must be "
+            "params.linear.model must be "
             "'ridge' when task='regression'."
         )
 
@@ -1330,15 +1298,92 @@ def _validate_predictability_tuning_grid(
 
     if tuning_enabled and not has_grid_params:
         raise ValueError(
-            "metrics.predictability.tuning.enabled=True, but no list-valued "
+            "tuning.enabled=True, but no list-valued "
             "hyperparameters were found for the selected probes."
         )
 
     if not tuning_enabled and has_grid_params:
         raise ValueError(
-            "metrics.predictability.tuning.enabled=False, but list-valued "
+            "tuning.enabled=False, but list-valued "
             "hyperparameters were found for the selected probes."
         )
+
+
+def _resolve_predictability_target(
+    *,
+    target_key: str,
+    target_config: EvaluationPredictabilityTargetConfig,
+    enabled: bool,
+) -> PredictabilityTargetSpec:
+    """Resolve one predictability target and its task-dependent settings."""
+
+    task: PredictabilityTask = target_config.task
+
+    probes = _resolve_registry_selection(
+        selected=target_config.selected,
+        default_selection=DEFAULT_PREDICTABILITY_PROBES,
+        registry=EVAL_PREDICTABILITY_PROBES,
+    )
+
+    if enabled and not probes:
+        raise ValueError(
+            "metrics.predictability.targets"
+            f"[{target_key!r}].selected cannot be empty when predictability "
+            "is enabled."
+        )
+
+    probe_params = resolve_registry_param_keys(
+        params=params_to_dict(target_config.params),
+        registry=EVAL_PREDICTABILITY_PROBES,
+    )
+    probe_params = _resolve_predictability_probe_params(
+        task=task,
+        probe_params=probe_params,
+    )
+
+    cv_params = params_to_dict(target_config.cv)
+    cv_params["method"] = _resolve_predictability_cv_method(
+        task=task,
+        cv_params=cv_params,
+    )
+    cv_params["scoring"] = _resolve_predictability_scoring(
+        task=task,
+        cv_params=cv_params,
+    )
+
+    tuning_params = params_to_dict(target_config.tuning)
+
+    if enabled:
+        _validate_predictability_dummy_strategy(
+            task=task,
+            probes=probes,
+            probe_params=probe_params,
+        )
+        _validate_predictability_linear_model(
+            task=task,
+            probes=probes,
+            probe_params=probe_params,
+        )
+        _validate_predictability_class_weight(
+            task=task,
+            probes=probes,
+            probe_params=probe_params,
+        )
+        _validate_predictability_tuning_grid(
+            probes=probes,
+            tuning_params=tuning_params,
+            probe_params=probe_params,
+        )
+
+    return PredictabilityTargetSpec(
+        target_key=target_key,
+        task=task,
+        probes=probes,
+        probe_params=probe_params,
+        cv_params=cv_params,
+        tuning_params=tuning_params,
+        overwrite=target_config.overwrite is True,
+    )
 
 
 def _resolve_prediction_manifest_path(

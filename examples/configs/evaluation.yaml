@@ -124,67 +124,68 @@ metrics:
 
   predictability:
     enabled: true
-    selected: [ "svm_rbf" ] # [ "dummy", "linear", "knn", "random_forest", "xgboost", "svm_rbf" ]
-    # omit = default probe set; must be a non-empty list if provided; null is invalid
+    targets:
+      label: # mapping key is the adata.obs column to predict from adata.X
+        selected: [ "svm_rbf" ] # [ "dummy", "linear", "knn", "random_forest", "xgboost", "svm_rbf" ]
+        # omit = default probe set; must be a non-empty list if provided; null is invalid
 
-    target_key: label # obs column to predict from adata.X
-    task: classification # classification | regression
+        task: classification # classification | regression
 
-    cv:
-      method: stratified_kfold # kfold | stratified_kfold | group_kfold | stratified_group_kfold
-      n_splits: 5
-      group_key: null # required for group_kfold / stratified_group_kfold; obs column defining groups
-      shuffle: true # supported for kfold/stratified_kfold/stratified_group_kfold; must be false for group_kfold
-      random_state: 137
-      scoring: balanced_accuracy
-      # null/omit = balanced_accuracy for classification, r2 for regression
-      # classification: balanced_accuracy | f1_macro | f1_weighted | accuracy
-      # regression: r2 | neg_mean_absolute_error | neg_root_mean_squared_error
-    tuning:
-      enabled: true # true = nested CV using list-valued probe params; false = all params must be scalar
-      inner_cv:
-        n_splits: 3
+        cv:
+          method: stratified_kfold # kfold | stratified_kfold | group_kfold | stratified_group_kfold
+          n_splits: 5
+          group_key: null # required for group_kfold / stratified_group_kfold; obs column defining groups
+          shuffle: true # supported for kfold/stratified_kfold/stratified_group_kfold; must be false for group_kfold
+          random_state: 137
+          scoring: balanced_accuracy
+          # null/omit = balanced_accuracy for classification, r2 for regression
+          # classification: balanced_accuracy | f1_macro | f1_weighted | accuracy
+          # regression: r2 | neg_mean_absolute_error | neg_root_mean_squared_error
+        tuning:
+          enabled: true # true = nested CV using list-valued probe params; false = all params must be scalar
+          inner_cv:
+            n_splits: 3
 
-    params:
-      dummy:
-        strategy: most_frequent
-        # classification: most_frequent | stratified | uniform
-        # regression: mean | median
+        params:
+          dummy:
+            strategy: most_frequent
+            # classification: most_frequent | stratified | uniform
+            # regression: mean | median
 
-      linear:
-        model: logistic_regression # classification default; for regression set to ridge
-        standardize: true
-        C: [ 0.01, 0.1, 1.0, 10.0 ] # logistic regression inverse regularization strength; list = tune
-        class_weight: balanced # null or balanced
-        max_iter: 5000
+          linear:
+            model: logistic_regression # classification default; for regression set to ridge
+            standardize: true
+            C: [ 0.01, 0.1, 1.0, 10.0 ] # logistic regression inverse regularization strength; list = tune
+            class_weight: balanced # null or balanced
+            max_iter: 5000
 
-      knn:
-        standardize: true
-        n_neighbors: [ 5, 15, 30 ] # list = tune
-        weights: [ "uniform", "distance" ]
-        metric: euclidean # any sklearn-compatible kNN metric string; list = tune
+          knn:
+            standardize: true
+            n_neighbors: [ 5, 15, 30 ] # list = tune
+            weights: [ "uniform", "distance" ]
+            metric: euclidean # any sklearn-compatible kNN metric string; list = tune
 
-      random_forest:
-        n_estimators: 500 # list = tune
-        max_depth: [ null, 10, 30 ] # null = unrestricted tree depth; list = tune
-        class_weight: balanced # null or balanced
-        random_state: 137
-        n_jobs: -1 # passed to sklearn; -1 uses all available cores
+          random_forest:
+            n_estimators: 500 # list = tune
+            max_depth: [ null, 10, 30 ] # null = unrestricted tree depth; list = tune
+            class_weight: balanced # null or balanced
+            random_state: 137
+            n_jobs: -1 # passed to sklearn; -1 uses all available cores
 
-      xgboost:
-        n_estimators: 300
-        max_depth: [ 3, 6 ]
-        learning_rate: [ 0.03, 0.1 ]
-        random_state: 137
-        n_jobs: -1 # passed to xgboost; optional dependency
+          xgboost:
+            n_estimators: 300
+            max_depth: [ 3, 6 ]
+            learning_rate: [ 0.03, 0.1 ]
+            random_state: 137
+            n_jobs: -1 # passed to xgboost; optional dependency
 
-      svm_rbf:
-        standardize: true
-        C: [ 0.1, 1.0, 10.0 ] # inverse regularization strength; list = tune
-        gamma: [ "scale", "auto" ] # RBF kernel width; list = tune
-        class_weight: balanced # classification only; null or balanced
-        cache_size: 5000 # MB used by sklearn's kernel cache
-        max_iter: -1 # -1 = no iteration limit
+          svm_rbf:
+            standardize: true
+            C: [ 0.1, 1.0, 10.0 ] # inverse regularization strength; list = tune
+            gamma: [ "scale", "auto" ] # RBF kernel width; list = tune
+            class_weight: balanced # classification only; null or balanced
+            cache_size: 5000 # MB used by sklearn's kernel cache
+            max_iter: -1 # -1 = no iteration limit
 
   reconstruction: # independent reconstruction metrics; always computed over all loaded reconstructions
     enabled: true # true = force on if reconstructions exist; false = off; null = on only if reconstructions exist

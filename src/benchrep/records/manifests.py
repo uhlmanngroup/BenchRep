@@ -1058,19 +1058,23 @@ def _build_evaluation_anndata_output_locations(
 
     predictability = metrics.get("predictability", {})
     if isinstance(predictability, Mapping):
-        for target_key in predictability:
-            if target_key == step_spec.predictability_target_key:
-                output_locations[
-                    f"predictability_metrics_{target_key}"
-                ] = {
-                    "metrics": _anndata_location(
-                        "uns",
-                        "benchrep",
-                        "metrics",
-                        "predictability",
-                        target_key,
-                    )
-                }
+        for target_spec in step_spec.predictability_targets:
+            target_key = target_spec.target_key
+
+            if target_key not in predictability:
+                continue
+
+            output_locations[
+                f"predictability_metrics_{target_key}"
+            ] = {
+                "metrics": _anndata_location(
+                    "uns",
+                    "benchrep",
+                    "metrics",
+                    "predictability",
+                    target_key,
+                )
+            }
 
     clustering_metrics = metrics.get("clustering", {})
     if isinstance(clustering_metrics, Mapping):

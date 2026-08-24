@@ -220,7 +220,9 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
         symbol="EVAL_PREDICTABILITY_PROBES",
         registry=EVAL_PREDICTABILITY_PROBES,
         runtime_instance_override_supported=False,
-        config_locations=("EvaluationConfig.metrics.predictability",),
+        config_locations=(
+            "EvaluationConfig.metrics.predictability.targets[*]",
+        ),
     ),
     "reconstruction_metric": ComponentRegistryInfo(
         symbol="EVAL_RECONSTRUCTION_METRICS",

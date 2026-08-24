@@ -43,26 +43,27 @@ metrics:
     enabled: false
   predictability:
     enabled: true
-    selected: [dummy, linear]
-    target_key: label
-    task: classification
-    cv:
-      method: stratified_kfold
-      n_splits: 2
-      shuffle: true
-      random_state: 137
-      scoring: balanced_accuracy
-    tuning:
-      enabled: false
-    params:
-      dummy:
-        strategy: most_frequent
-      linear:
-        model: logistic_regression
-        standardize: true
-        C: 1.0
-        class_weight: null
-        max_iter: 500
+    targets:
+      label:
+        selected: [ dummy, linear ]
+        task: classification
+        cv:
+          method: stratified_kfold
+          n_splits: 2
+          shuffle: true
+          random_state: 137
+          scoring: balanced_accuracy
+        tuning:
+          enabled: false
+        params:
+          dummy:
+            strategy: most_frequent
+          linear:
+            model: logistic_regression
+            standardize: true
+            C: 1.0
+            class_weight: null
+            max_iter: 500
   reconstruction:
     enabled: true
     selected: [mse, mae]

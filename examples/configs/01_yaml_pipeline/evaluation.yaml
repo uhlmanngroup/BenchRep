@@ -66,33 +66,34 @@ metrics:
 
   predictability:
     enabled: true
-    selected:
-      - dummy
-      - linear
-    target_key: label
-    task: classification
+    targets:
+      label:
+        selected:
+          - dummy
+          - linear
+        task: classification
 
-    cv:
-      method: stratified_kfold
-      n_splits: 5
-      shuffle: true
-      random_state: 137
-      scoring: balanced_accuracy
+        cv:
+          method: stratified_kfold
+          n_splits: 5
+          shuffle: true
+          random_state: 137
+          scoring: balanced_accuracy
 
-    tuning:
-      enabled: false
+        tuning:
+          enabled: false
 
-    params:
-      dummy:
-        strategy: most_frequent
-        random_state: 137
+        params:
+          dummy:
+            strategy: most_frequent
+            random_state: 137
 
-      linear:
-        model: logistic_regression
-        standardize: true
-        C: 1.0
-        class_weight: balanced
-        max_iter: 5000
+          linear:
+            model: logistic_regression
+            standardize: true
+            C: 1.0
+            class_weight: balanced
+            max_iter: 5000
 
   reconstruction:
     enabled: true

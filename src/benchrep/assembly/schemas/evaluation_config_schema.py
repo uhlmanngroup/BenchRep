@@ -19,6 +19,11 @@ from pydantic import (
 
 RegistrySelection: TypeAlias = Literal["all"] | list[str] | None
 
+PredictabilityTargetKey: TypeAlias = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1),
+]
+
 NSplits: TypeAlias = Annotated[int, Field(ge=2)]
 
 PositiveFloatOrList: TypeAlias = (
@@ -2553,28 +2558,14 @@ class EvaluationPredictabilityParamsConfig(_EvaluationConfigBaseModel):
     )
 
 
-class EvaluationPredictabilityConfig(EvalStepConfig):
-    """Configures cross-validated probes of embedding predictability.
+class EvaluationPredictabilityTargetConfig(_EvaluationConfigBaseModel):
+    """Configures cross-validated probes for one prediction target.
 
-    Registered probe builders construct supervised estimators that predict
-    `target_key` from the embedding matrix. Results are stored under
-    `adata.uns["benchrep"]["metrics"]["predictability"][target_key]`. Existing
-    results for the same target cause a recoverable step failure unless
-    overwriting is enabled.
+    The enclosing `targets` mapping supplies the `adata.obs` target key.
+    Registered probe builders construct supervised estimators that predict that
+    target from the embedding matrix. Results are stored under
+    `adata.uns["benchrep"]["metrics"]["predictability"][target_key]`.
     """
-
-    enabled: bool | None = Field(
-        default=None,
-        description="Whether predictability probes are evaluated.",
-        json_schema_extra={
-            "omit_behavior": "Disables predictability evaluation.",
-            "null_behavior": "Equivalent to omission.",
-            "notes": [
-                "With `enabled=True`, unavailable embeddings or target data produce "
-                "an error instead of disabling the step.",
-            ],
-        },
-    )
 
     selected: RegistrySelection = Field(
         default=None,
@@ -2597,27 +2588,11 @@ class EvaluationPredictabilityConfig(EvalStepConfig):
         },
     )
 
-    target_key: str = Field(
-        default="label",
-        description=(
-            "AnnData observation column containing the prediction target."
-        ),
-        json_schema_extra={
-            "omit_behavior": "Uses `adata.obs['label']`.",
-            "null_behavior": "Not allowed.",
-            "notes": [
-                "Classification accepts categorical targets.",
-                "Regression requires finite numeric targets.",
-                "Results are stored under a namespace keyed by `target_key`.",
-            ],
-        },
-    )
-
     overwrite: bool | None = Field(
         default=False,
         description=(
-            "Whether BenchRep may replace existing predictability results for "
-            "`target_key`."
+            "Whether BenchRep may replace existing predictability results for this "
+            "target."
         ),
         json_schema_extra={
             "omit_behavior": "Does not replace existing results.",
@@ -2668,20 +2643,75 @@ class EvaluationPredictabilityConfig(EvalStepConfig):
         },
     )
 
+
+class EvaluationPredictabilityConfig(EvalStepConfig):
+    """Configures embedding predictability for one or more targets.
+
+    Each key in `targets` names an `adata.obs` column. Every configured target
+    is evaluated independently using its own task, probes, cross-validation,
+    tuning, parameters, and overwrite policy.
+    """
+
+    enabled: bool | None = Field(
+        default=None,
+        description="Whether predictability probes are evaluated.",
+        json_schema_extra={
+            "omit_behavior": "Disables predictability evaluation.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "With `enabled=True`, unavailable embeddings or configured "
+                "target data produce an error instead of disabling the step.",
+            ],
+        },
+    )
+
+    targets: dict[
+        PredictabilityTargetKey,
+        EvaluationPredictabilityTargetConfig,
+    ] = Field(
+        default_factory=lambda: {
+            "label": EvaluationPredictabilityTargetConfig(),
+        },
+        description=(
+            "Prediction targets keyed by their `adata.obs` column names."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Evaluates `adata.obs['label']` as a classification target using "
+                "the target-level defaults."
+            ),
+            "null_behavior": "Not allowed.",
+            "notes": [
+                "Each target has independent probe, cross-validation, tuning, "
+                "parameter, and overwrite settings.",
+                "Results are stored under a namespace matching the target key.",
+                "An empty mapping is rejected when predictability is enabled.",
+            ],
+        },
+    )
+
     @model_validator(mode="after")
     def validate_predictability_config(self) -> EvaluationPredictabilityConfig:
         if self.enabled is not True:
             return self
 
-        if self.selected == []:
+        if not self.targets:
             raise ValueError(
-                "predictability.selected cannot be empty when predictability is enabled."
+                "predictability.targets cannot be empty when predictability is "
+                "enabled."
             )
 
-        if self.target_key.strip() == "":
+        empty_selection_targets = [
+            target_key
+            for target_key, target_config in self.targets.items()
+            if target_config.selected == []
+        ]
+
+        if empty_selection_targets:
             raise ValueError(
-                "predictability.target_key must be a non-empty string when "
-                "predictability is enabled."
+                "predictability target selections cannot be empty when "
+                "predictability is enabled; empty selections found for "
+                f"{empty_selection_targets}."
             )
 
         return self
