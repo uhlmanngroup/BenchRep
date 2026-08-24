@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
+
+
+ResolvedT = TypeVar("ResolvedT")
 
 
 def resolve_optional(
-    override_value: Any,
-    fallback_value: Any,
+    override_value: ResolvedT | None,
+    fallback_value: ResolvedT | None,
     *,
     field_name: str,
-) -> Any:
+) -> ResolvedT:
     if override_value is not None:
         return override_value
 
@@ -137,8 +140,6 @@ def get_optional_nested_value(
     current: Any = data
 
     for depth, current_key in enumerate(keys):
-        dotted_path = ".".join(keys[: depth + 1])
-
         if not isinstance(current, dict):
             parent_path = ".".join(keys[:depth])
             raise TypeError(

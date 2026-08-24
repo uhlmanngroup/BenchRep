@@ -9,7 +9,7 @@ import anndata as ad
 
 from benchrep.assembly.config import (
     compose_effective_config,
-    SupportedConfigComponent,
+    SupportedEvaluationConfigComponent,
 )
 from benchrep.assembly.resolvers import resolve_evaluation_config
 from benchrep.assembly.schemas import EvaluationConfig
@@ -63,7 +63,7 @@ class EvaluationWorkflowResult:
 def evaluate(
         config_path: Path | str | None = None,
         full_config_object: EvaluationConfig | None = None,
-        config_components: Mapping[str, SupportedConfigComponent] | None = None,
+        config_components: Mapping[str, SupportedEvaluationConfigComponent] | None = None,
         prediction_manifest_path: Path | str | None = None,
 ) -> EvaluationWorkflowResult:
     register_builtins()

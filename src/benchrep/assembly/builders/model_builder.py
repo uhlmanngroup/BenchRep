@@ -8,8 +8,6 @@ import inspect
 import torch
 from torch import nn
 
-import lightning as L
-
 from benchrep.records import get_run_logger
 from benchrep.architecture.encoders import BaseEncoder
 from benchrep.architecture.decoders import BaseDecoder
@@ -37,6 +35,7 @@ from benchrep.assembly.registries.core import (
     REGULARIZATION_LOSSES,
     CUSTOM_OBJECTIVE_LOSSES,
 )
+from benchrep.interfaces.model_families import SupportedModel
 
 
 def build_model(
@@ -45,7 +44,7 @@ def build_model(
     prediction_reconstruction_latent_source: (
         Literal["mean", "sample"] | None
     ) = None,
-) -> L.LightningModule:
+) -> SupportedModel:
     """Build a model from config.
 
     This is the public model-builder entry point. It reads ``config.model.name``
@@ -69,8 +68,8 @@ def build_model(
 
     Returns
     -------
-    L.LightningModule
-        Instantiated Lightning model ready to be passed to a Lightning Trainer.
+    SupportedModel
+        Instantiated BenchRep autoencoder or variational autoencoder.
     """
     run_log = get_run_logger()
 

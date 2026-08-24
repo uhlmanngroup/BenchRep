@@ -51,7 +51,7 @@ from benchrep.interfaces.models import (
 )
 from benchrep.assembly.config import (
     compose_effective_config,
-    SupportedConfigComponent,
+    SupportedTrainingConfigComponent,
 )
 from benchrep.assembly.schemas import TrainingConfig
 from benchrep.assembly.builders import (
@@ -82,7 +82,7 @@ class TrainingWorkflowResult:
 def train_ae(
         config_path: Path | str | None = None,
         full_config_object: TrainingConfig | None = None,
-        config_components: Mapping[str, SupportedConfigComponent] | None = None,
+        config_components: Mapping[str, SupportedTrainingConfigComponent] | None = None,
         model: BenchRepAutoencoderModel | None = None,
         datamodule: L.LightningDataModule | None = None,
         compatibility_policy: CompatibilityPolicy = "error",
@@ -101,7 +101,7 @@ def train_ae(
 def train_vae(
         config_path: Path | str | None = None,
         full_config_object: TrainingConfig | None = None,
-        config_components: Mapping[str, SupportedConfigComponent] | None = None,
+        config_components: Mapping[str, SupportedTrainingConfigComponent] | None = None,
         model: BenchRepVAEModel | None = None,
         datamodule: L.LightningDataModule | None = None,
         compatibility_policy: CompatibilityPolicy = "error",
@@ -121,7 +121,7 @@ def _train(
         model_family: ModelFamilySpec,
         config_path: Path | str | None = None,
         full_config_object: TrainingConfig | None = None,
-        config_components: Mapping[str, SupportedConfigComponent] | None = None,
+        config_components: Mapping[str, SupportedTrainingConfigComponent] | None = None,
         model: SupportedModel | None = None,
         datamodule: L.LightningDataModule | None = None,
         compatibility_policy: CompatibilityPolicy = "error"

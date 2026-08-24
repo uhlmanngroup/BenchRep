@@ -100,8 +100,8 @@ class PredictionRunSpec:
     max_batches: int | None
 
     seed: int | None
-    seed_workers: bool | None
-    float32_matmul_precision: str | None
+    seed_workers: bool
+    float32_matmul_precision: Literal["medium", "high", "highest"]
     reconstruction_latent_source: ReconstructionLatentSource | None
 
     export_spec: PredictionExportSpec

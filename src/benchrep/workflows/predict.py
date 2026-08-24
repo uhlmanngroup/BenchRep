@@ -10,7 +10,7 @@ import torch
 
 from benchrep.assembly.config import (
     compose_effective_config,
-    SupportedConfigComponent,
+    SupportedPredictionConfigComponent,
 )
 from benchrep.assembly.builders import (
     build_dataset,
@@ -79,7 +79,7 @@ class PredictionWorkflowResult:
 def predict_ae(
         config_path: Path | str | None = None,
         full_config_object: PredictionConfig | None = None,
-        config_components: Mapping[str, SupportedConfigComponent] | None = None,
+        config_components: Mapping[str, SupportedPredictionConfigComponent] | None = None,
         training_manifest_path: Path | str | None = None,
         model: BenchRepAutoencoderModel | None = None,
         datamodule: L.LightningDataModule | None = None,
@@ -100,7 +100,7 @@ def predict_ae(
 def predict_vae(
         config_path: Path | str | None = None,
         full_config_object: PredictionConfig | None = None,
-        config_components: Mapping[str, SupportedConfigComponent] | None = None,
+        config_components: Mapping[str, SupportedPredictionConfigComponent] | None = None,
         training_manifest_path: Path | str | None = None,
         model: BenchRepVAEModel | None = None,
         datamodule: L.LightningDataModule | None = None,
@@ -120,9 +120,9 @@ def predict_vae(
 
 def _predict(
         model_family: ModelFamilySpec,
-        config_path: Path | str,
+        config_path: Path | str | None,
         full_config_object: PredictionConfig | None = None,
-        config_components: Mapping[str, SupportedConfigComponent] | None = None,
+        config_components: Mapping[str, SupportedPredictionConfigComponent] | None = None,
         training_manifest_path: Path | str | None = None,
         model: SupportedModel | None = None,
         datamodule: L.LightningDataModule | None = None,
@@ -290,14 +290,13 @@ def _predict(
     )
     run_log.info("Global seed set to %s", run_spec.seed)
 
-    if run_spec.float32_matmul_precision is not None:
-        torch.set_float32_matmul_precision(
-            run_spec.float32_matmul_precision
-        )
-        run_log.info(
-            "float32 matmul precision set to '%s'",
-            run_spec.float32_matmul_precision,
-        )
+    torch.set_float32_matmul_precision(
+        run_spec.float32_matmul_precision
+    )
+    run_log.info(
+        "float32 matmul precision set to '%s'",
+        run_spec.float32_matmul_precision,
+    )
 
     # Build dataset and datamodule
     if not datamodule_is_external:
@@ -306,6 +305,7 @@ def _predict(
 
         assert dataset_config is not None
         assert datamodule_config is not None
+        assert run_spec.transform_configs is not None
 
         prediction_pipeline = build_transform_pipeline(
             run_spec.transform_configs,
@@ -403,7 +403,7 @@ def _predict(
 
     try:
         with capture_console_streams(log_out_dir=run_context.log_dir, capture_stdout=False):
-            predictions = trainer.predict(
+            raw_predictions = trainer.predict(
                 model,
                 datamodule=datamodule,
                 return_predictions=True,
@@ -426,6 +426,9 @@ def _predict(
 
         raise
 
+    predictions: list[Any] = (
+        [] if raw_predictions is None else raw_predictions
+    )
     n_prediction_batches = len(predictions)
     run_log.info("Finished prediction")
     run_log.info("Prediction returned %s batches.", n_prediction_batches)
