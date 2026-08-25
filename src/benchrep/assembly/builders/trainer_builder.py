@@ -49,7 +49,11 @@ def build_trainer(
         early_stopping_config: EarlyStoppingConfig | None = None,
         additional_callback_configs: list[AdditionalCallbackConfig] | None = None,
         max_batches: int | None = None,
-) -> tuple[L.Trainer, ModelCheckpoint | None]:
+) -> tuple[
+    L.Trainer,
+    ModelCheckpoint | None,
+    EarlyStopping | None,
+]:
     """Build a Lightning Trainer for a BenchRep workflow stage.
 
     This is the public Trainer builder for BenchRep workflows. It translates a
@@ -99,10 +103,14 @@ def build_trainer(
 
     Returns
     -------
-    tuple[lightning.Trainer, ModelCheckpoint | None]
-        The instantiated Lightning Trainer and, for training runs, the
-        ModelCheckpoint callback. Prediction runs return ``None`` for the
-        checkpoint callback.
+    tuple[
+        lightning.Trainer,
+        ModelCheckpoint | None,
+        EarlyStopping | None,
+    ]
+        The Trainer and BenchRep-managed checkpoint and early-stopping
+        callbacks. Callbacks that do not apply to the requested stage are
+        returned as None.
 
     Raises
     ------
@@ -141,6 +149,8 @@ def build_trainer(
             "during training and disables checkpointing during prediction."
         )
 
+    early_stopping_callback: EarlyStopping | None = None
+
     if stage == "training":
         if checkpoint_config is None:
             raise ValueError("Training requires checkpoint_config.")
@@ -163,11 +173,10 @@ def build_trainer(
         callbacks: list[Callback] = [checkpoint_callback]
 
         if early_stopping_config is not None:
-            callbacks.append(
-                _build_early_stopping_callback(
-                    early_stopping_config,
-                )
+            early_stopping_callback = _build_early_stopping_callback(
+                early_stopping_config
             )
+            callbacks.append(early_stopping_callback)
 
         callbacks.extend(
             _build_additional_callbacks(
@@ -265,7 +274,7 @@ def build_trainer(
             "Available options: 'training', 'prediction'."
         )
 
-    return trainer, checkpoint_callback
+    return trainer, checkpoint_callback, early_stopping_callback
 
 
 def _require_logger_backend(logger_name: str) -> None:

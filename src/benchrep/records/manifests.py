@@ -29,6 +29,7 @@ from benchrep.records.runtime_environment import (
     get_runtime_environment_filename,
 )
 from benchrep.runtime.status import (
+    EarlyStoppingRecord,
     TrainingStatusReport,
     PredictionStatusReport,
     build_outcome_summary,
@@ -48,6 +49,7 @@ def write_training_manifest(
     model_family: ModelFamilySpec,
     run_context: RunContext,
     checkpoint_callback: ModelCheckpoint,
+    early_stopping_record: EarlyStoppingRecord | None,
     torchview_graph_path: Path | None = None,
     created_at: str,
     completed_at: str,
@@ -113,6 +115,19 @@ def write_training_manifest(
         "torchview_requested": config.inspection.torchview.enabled,
         "torchview_graph_path": paths_to_strings(torchview_graph_path),
     }
+
+    early_stopping = (
+        {
+            "triggered": early_stopping_record.triggered,
+            "reason": early_stopping_record.reason,
+            "monitor": early_stopping_record.monitor,
+            "stopped_epoch": early_stopping_record.stopped_epoch,
+            "best_score": early_stopping_record.best_score,
+            "wait_count": early_stopping_record.wait_count,
+        }
+        if early_stopping_record is not None
+        else None
+    )
 
     summary = {
         "model_source": model_source,
@@ -241,6 +256,7 @@ def write_training_manifest(
             },
         },
         "records": records,
+        "early_stopping": early_stopping,
         "checkpoints": checkpoints,
         "summary": summary,
     }

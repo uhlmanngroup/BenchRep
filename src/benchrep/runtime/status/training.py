@@ -4,6 +4,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
 
+import torch
+
+from lightning.pytorch.callbacks import EarlyStopping
+
 
 TrainingStatus = Literal[
     "completed",
@@ -30,6 +34,16 @@ class TrainingStatusReport:
     interruption_signal: TrainingInterruptionSignal | None
 
 
+@dataclass(frozen=True)
+class EarlyStoppingRecord:
+    triggered: bool
+    reason: str
+    monitor: str
+    stopped_epoch: int
+    best_score: float | None
+    wait_count: int
+
+
 def build_training_status_report(
     *,
     errors: Sequence[str],
@@ -54,4 +68,31 @@ def build_training_status_report(
         status=status,
         issues=issues,
         interruption_signal=interruption_signal,
+    )
+
+
+def build_early_stopping_record(
+    callback: EarlyStopping | None,
+) -> EarlyStoppingRecord | None:
+    if callback is None:
+        return None
+
+    reason = callback.stopping_reason.name.lower()
+    best_score_tensor = torch.as_tensor(
+        callback.best_score
+    ).detach().cpu()
+
+    best_score = (
+        float(best_score_tensor)
+        if torch.isfinite(best_score_tensor)
+        else None
+    )
+
+    return EarlyStoppingRecord(
+        triggered=reason != "not_stopped",
+        reason=reason,
+        monitor=callback.monitor,
+        stopped_epoch=int(callback.stopped_epoch),
+        best_score=best_score,
+        wait_count=int(callback.wait_count),
     )

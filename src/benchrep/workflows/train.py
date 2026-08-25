@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from typing import Literal
 
 import lightning as L
-from lightning.pytorch.callbacks import ModelCheckpoint
+from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
 from lightning.pytorch.utilities.exceptions import SIGTERMException
 
 import torch
@@ -17,6 +17,8 @@ from benchrep.runtime.train_run_validation import (
     validate_training_checkpoint_outputs,
 )
 from benchrep.runtime.status import (
+    EarlyStoppingRecord,
+    build_early_stopping_record,
     TrainingInterruptionSignal,
     TrainingStatusReport,
     build_training_status_report,
@@ -73,6 +75,7 @@ class TrainingWorkflowResult:
     datamodule: L.LightningDataModule
     trainer: L.Trainer
     checkpoint_callback: ModelCheckpoint
+    early_stopping_callback: EarlyStopping | None
     torchview_graph_path: Path | None
     status_report: TrainingStatusReport
     manifest_path: Path
@@ -295,7 +298,7 @@ def _train(
         compatibility_policy=compatibility_policy,
     )
 
-    trainer, checkpoint_callback = build_trainer(
+    trainer, checkpoint_callback, early_stopping_callback = build_trainer(
         trainer_config=train_config.trainer,
         stage=train_config.stage,
         run_context=run_context,
@@ -387,6 +390,26 @@ def _train(
 
         raise
 
+    early_stopping_record = build_early_stopping_record(
+        early_stopping_callback
+    )
+
+    if early_stopping_record is not None:
+        run_log.info(
+            "Early stopping outcome: %s; reason=%s; monitor=%s; "
+            "stopped_epoch=%s; best_score=%s; wait_count=%s",
+            (
+                "triggered"
+                if early_stopping_record.triggered
+                else "not_triggered"
+            ),
+            early_stopping_record.reason,
+            early_stopping_record.monitor,
+            early_stopping_record.stopped_epoch,
+            early_stopping_record.best_score,
+            early_stopping_record.wait_count,
+        )
+
     run_log.info("Finished training")
     completed_at = now_isoformat()
 
@@ -466,6 +489,7 @@ def _train(
         model_family=model_family,
         run_context=run_context,
         checkpoint_callback=checkpoint_callback,
+        early_stopping_record=early_stopping_record,
         torchview_graph_path=torchview_graph_path,
         created_at=created_at,
         completed_at=completed_at,
@@ -499,6 +523,7 @@ def _train(
         datamodule=datamodule,
         trainer=trainer,
         checkpoint_callback=checkpoint_callback,
+        early_stopping_callback=early_stopping_callback,
         status_report=status_report,
         manifest_path=manifest_path,
         torchview_graph_path=torchview_graph_path,

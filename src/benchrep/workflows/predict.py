@@ -367,7 +367,7 @@ def _predict(
     run_log.info("Loaded checkpoint weights into prediction model.")
 
     # Build trainer and predict
-    trainer, _ = build_trainer(
+    trainer, _, _ = build_trainer(
         trainer_config=run_spec.trainer_config,
         stage=run_spec.stage,
         run_context=run_context,
