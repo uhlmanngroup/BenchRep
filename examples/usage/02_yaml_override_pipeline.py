@@ -20,9 +20,9 @@ from benchrep import (
 )
 from benchrep.assembly.schemas import (
     # Training schema
-    EncoderConfig,
-    DecoderConfig,
-    RunConfig,
+    TrainingEncoderConfig,
+    TrainingDecoderConfig,
+    TrainingRunConfig,
     CIFAR10DatasetConfig,
     CIFAR10DatasetParams,
     TrainingConfig,
@@ -60,7 +60,7 @@ def main() -> None:
     inspect_registry("decoder", "upsample_conv2d")
 
     # First, let's customize the project name by overriding the run
-    run_config = RunConfig(
+    run_config = TrainingRunConfig(
         # A config component replaces the complete matching YAML section.
         # Omitted fields therefore use schema defaults rather than original YAML values.
         output_root=Path("outputs"),
@@ -87,7 +87,7 @@ def main() -> None:
     )
 
     # Since CIFAR-10 has a different input shape, let's also update the encoder and decoder parameters.
-    encoder_config = EncoderConfig(
+    encoder_config = TrainingEncoderConfig(
         name="conv2d",
         params={
             "input_shape": [3, 32, 32],
@@ -100,7 +100,7 @@ def main() -> None:
         },
     )
     # The decoder output shape must also match the new dataset shape.
-    decoder_config = DecoderConfig(
+    decoder_config = TrainingDecoderConfig(
         name="upsample_conv2d",
         params={
             "output_shape": [3, 32, 32],

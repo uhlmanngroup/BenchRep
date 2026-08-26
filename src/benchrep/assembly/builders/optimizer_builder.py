@@ -6,12 +6,12 @@ import torch
 from torch import nn
 
 from benchrep.assembly.registries.utils import normalize_name
-from benchrep.assembly.schemas import OptimizerConfig
+from benchrep.assembly.schemas import TrainingOptimizerConfig
 from benchrep.assembly.registries.core import OPTIMIZERS
 
 
 def build_optimizer_factory(
-    optimizer_config: OptimizerConfig,
+    optimizer_config: TrainingOptimizerConfig,
 ) -> Callable[[Iterable[nn.Parameter]], torch.optim.Optimizer]:
     """Build a delayed optimizer factory from config.
 

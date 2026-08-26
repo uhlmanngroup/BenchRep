@@ -21,10 +21,10 @@ from benchrep.assembly.builders.optimizer_builder import build_optimizer_factory
 from benchrep.assembly.registries.utils import normalize_name
 from benchrep.assembly.schemas import (
     TrainingConfig,
-    DecoderConfig,
-    EncoderConfig,
-    LossTermConfig,
-    OptimizerConfig,
+    TrainingDecoderConfig,
+    TrainingEncoderConfig,
+    TrainingLossTermConfig,
+    TrainingOptimizerConfig,
 )
 from benchrep.assembly.registries.core import (
     DECODERS,
@@ -148,22 +148,22 @@ def build_model(
 
 
 def build_autoencoder(
-    encoder: EncoderConfig | BaseEncoder,
-    decoder: DecoderConfig | BaseDecoder,
+    encoder: TrainingEncoderConfig | BaseEncoder,
+    decoder: TrainingDecoderConfig | BaseDecoder,
     optimizer: (
-            OptimizerConfig |
+            TrainingOptimizerConfig |
             Callable[[Iterable[nn.Parameter]], torch.optim.Optimizer]
     ),
-    reconstruction_losses: dict[str, LossTermConfig | LossTerm],
+    reconstruction_losses: dict[str, TrainingLossTermConfig | LossTerm],
     custom_objective_losses: dict[
         str,
-        LossTermConfig | LossTerm,
+        TrainingLossTermConfig | LossTerm,
     ],
 ) -> Autoencoder:
     run_log = get_run_logger()
 
     # Resolve configs objs into instantiated components where needed
-    if isinstance(encoder, EncoderConfig):
+    if isinstance(encoder, TrainingEncoderConfig):
         encoder_name = encoder.name
         encoder = _build_encoder(encoder)
         run_log.info("Built encoder from config: %s -> %s",
@@ -173,7 +173,7 @@ def build_autoencoder(
         run_log.info("Using provided encoder: %s",
                      type(encoder).__name__)
 
-    if isinstance(decoder, DecoderConfig):
+    if isinstance(decoder, TrainingDecoderConfig):
         decoder_name = decoder.name
         decoder = _build_decoder(
             decoder,
@@ -187,7 +187,7 @@ def build_autoencoder(
         run_log.info("Using provided decoder: %s",
                      type(decoder).__name__)
 
-    if isinstance(optimizer, OptimizerConfig):
+    if isinstance(optimizer, TrainingOptimizerConfig):
         optimizer_name = optimizer.name
         optimizer_cls = OPTIMIZERS.get(optimizer_name) # Use registry as optimizer is built as a factory
         optimizer_factory = build_optimizer_factory(optimizer)
@@ -245,18 +245,18 @@ def build_autoencoder(
 
 
 def build_vae(
-    encoder: EncoderConfig | BaseEncoder,
-    decoder: DecoderConfig | BaseDecoder,
+    encoder: TrainingEncoderConfig | BaseEncoder,
+    decoder: TrainingDecoderConfig | BaseDecoder,
     optimizer: (
-            OptimizerConfig |
+            TrainingOptimizerConfig |
             Callable[[Iterable[nn.Parameter]], torch.optim.Optimizer]
     ),
     latent_dim: int,
-    reconstruction_losses: dict[str, LossTermConfig | LossTerm],
-    regularization_losses: dict[str, LossTermConfig | LossTerm],
+    reconstruction_losses: dict[str, TrainingLossTermConfig | LossTerm],
+    regularization_losses: dict[str, TrainingLossTermConfig | LossTerm],
     custom_objective_losses: dict[
         str,
-        LossTermConfig | LossTerm,
+        TrainingLossTermConfig | LossTerm,
     ],
     prediction_reconstruction_latent_source: (
             Literal["mean", "sample"]
@@ -265,7 +265,7 @@ def build_vae(
     run_log = get_run_logger()
 
     # Resolve configs objs into instantiated components where needed
-    if isinstance(encoder, EncoderConfig):
+    if isinstance(encoder, TrainingEncoderConfig):
         encoder_name = encoder.name
         encoder = _build_encoder(encoder)
         run_log.info("Built encoder from config: %s -> %s",
@@ -275,7 +275,7 @@ def build_vae(
         run_log.info("Using provided encoder: %s",
                      type(encoder).__name__)
 
-    if isinstance(decoder, DecoderConfig):
+    if isinstance(decoder, TrainingDecoderConfig):
         decoder_name = decoder.name
         decoder = _build_decoder(
             decoder,
@@ -289,7 +289,7 @@ def build_vae(
         run_log.info("Using provided decoder: %s",
                      type(decoder).__name__)
 
-    if isinstance(optimizer, OptimizerConfig):
+    if isinstance(optimizer, TrainingOptimizerConfig):
         optimizer_name = optimizer.name
         optimizer_cls = OPTIMIZERS.get(optimizer_name) # Use registry as optimizer is built as a factory
         optimizer_factory = build_optimizer_factory(optimizer)
@@ -393,7 +393,7 @@ def build_vae(
     )
 
 
-def _build_encoder(encoder_config: EncoderConfig) -> BaseEncoder:
+def _build_encoder(encoder_config: TrainingEncoderConfig) -> BaseEncoder:
     encoder_name = normalize_name(
         encoder_config.name,
         field_name="config.encoder.name",
@@ -403,7 +403,7 @@ def _build_encoder(encoder_config: EncoderConfig) -> BaseEncoder:
 
 
 def _build_decoder(
-    decoder_config: DecoderConfig,
+    decoder_config: TrainingDecoderConfig,
     input_dim: int,
     encoder: BaseEncoder | None = None,
 ) -> BaseDecoder:
@@ -461,7 +461,7 @@ def _build_decoder(
 
 
 def _build_reconstruction_losses(
-    reconstruction_losses: dict[str, LossTermConfig | LossTerm],
+    reconstruction_losses: dict[str, TrainingLossTermConfig | LossTerm],
 ) -> dict[str, LossTerm]:
     loss_terms: dict[str, LossTerm] = {}
 
@@ -479,7 +479,7 @@ def _build_reconstruction_losses(
 
 
 def _build_regularization_losses(
-    regularization_losses: dict[str, LossTermConfig | LossTerm],
+    regularization_losses: dict[str, TrainingLossTermConfig | LossTerm],
 ) -> dict[str, LossTerm]:
     loss_terms: dict[str, LossTerm] = {}
 
@@ -499,7 +499,7 @@ def _build_regularization_losses(
 def _build_custom_objective_losses(
     custom_objective_losses: dict[
         str,
-        LossTermConfig | LossTerm,
+        TrainingLossTermConfig | LossTerm,
     ],
 ) -> dict[str, LossTerm]:
     loss_terms: dict[str, LossTerm] = {}

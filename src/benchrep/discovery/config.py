@@ -22,47 +22,47 @@ from benchrep.discovery.registry import _resolve_registry, _support_label
 _CONFIG_REGISTRY_ROUTES: Final[dict[str, tuple[str, ...]]] = {
     # Training and prediction
     "DatasetConfig": ("dataset",),
-    "TransformConfig": ("transform",),
+    "TrainingTransformConfig": ("transform",),
     "PredictionTransformConfig": ("transform",),
-    "EncoderConfig": ("encoder",),
-    "DecoderConfig": ("decoder",),
-    "ModelConfig": ("model",),
-    "LossTermConfig": (
+    "TrainingEncoderConfig": ("encoder",),
+    "TrainingDecoderConfig": ("decoder",),
+    "TrainingModelConfig": ("model",),
+    "TrainingLossTermConfig": (
         "reconstruction_loss",
         "regularization_loss",
         "custom_objective_loss",
     ),
-    "OptimizerConfig": ("optimizer",),
-    "LoggerConfig": ("logger",),
+    "TrainingOptimizerConfig": ("optimizer",),
+    "TrainingLoggerConfig": ("logger",),
 
     # Evaluation reductions
     "EvaluationReductionsConfig": ("reduction",),
-    "PCAConfig": ("reduction",),
-    "UMAPConfig": ("reduction",),
-    "TSNEConfig": ("reduction",),
+    "EvaluationPCAConfig": ("reduction",),
+    "EvaluationUMAPConfig": ("reduction",),
+    "EvaluationTSNEConfig": ("reduction",),
 
     # Evaluation clustering
     "EvaluationClusteringConfig": ("clustering_method",),
-    "KMeansConfig": ("clustering_method",),
-    "LeidenConfig": ("clustering_method",),
-    "HDBSCANConfig": ("clustering_method",),
+    "EvaluationKMeansConfig": ("clustering_method",),
+    "EvaluationLeidenConfig": ("clustering_method",),
+    "EvaluationHDBSCANConfig": ("clustering_method",),
 
     # Evaluation metrics
-    "InternalClusteringMetricConfig": ("internal_clustering_metric",),
-    "ExternalClusteringMetricConfig": ("external_clustering_metric",),
-    "EmbeddingMetricConfig": ("embedding_metric",),
-    "ReconstructionMetricConfig": ("reconstruction_metric",),
+    "EvaluationInternalClusteringMetricConfig": ("internal_clustering_metric",),
+    "EvaluationExternalClusteringMetricConfig": ("external_clustering_metric",),
+    "EvaluationEmbeddingMetricConfig": ("embedding_metric",),
+    "EvaluationReconstructionMetricConfig": ("reconstruction_metric",),
 
     # Evaluation predictability
     "EvaluationPredictabilityConfig": ("predictability_probe",),
     "EvaluationPredictabilityTargetConfig": ("predictability_probe",),
-    "DummyProbeConfig": ("predictability_probe",),
-    "LogisticRegressionProbeConfig": ("predictability_probe",),
-    "RidgeProbeConfig": ("predictability_probe",),
-    "KNNProbeConfig": ("predictability_probe",),
-    "RandomForestProbeConfig": ("predictability_probe",),
-    "XGBoostProbeConfig": ("predictability_probe",),
-    "SVMRBFProbeConfig": ("predictability_probe",),
+    "EvaluationDummyProbeConfig": ("predictability_probe",),
+    "EvaluationLogisticRegressionProbeConfig": ("predictability_probe",),
+    "EvaluationRidgeProbeConfig": ("predictability_probe",),
+    "EvaluationKNNProbeConfig": ("predictability_probe",),
+    "EvaluationRandomForestProbeConfig": ("predictability_probe",),
+    "EvaluationXGBoostProbeConfig": ("predictability_probe",),
+    "EvaluationSVMRBFProbeConfig": ("predictability_probe",),
 }
 
 
@@ -183,7 +183,7 @@ def _print_config_customization(
 
         return
 
-    if _is_benchrep_schema_type(config, "DataModuleConfig"):
+    if _is_benchrep_schema_type(config, "TrainingDataModuleConfig"):
         print("\nCustomization:")
         print("  registry: none")
         print("  custom registration: not supported")

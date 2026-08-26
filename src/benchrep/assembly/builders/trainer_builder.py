@@ -17,11 +17,11 @@ from lightning.pytorch.utilities.exceptions import SIGTERMException
 from benchrep.records import get_run_logger
 from benchrep.assembly.registries.core import CALLBACKS, LOGGERS
 from benchrep.assembly.schemas import (
-    AdditionalCallbackConfig,
-    CheckpointConfig,
-    EarlyStoppingConfig,
-    LoggerConfig,
-    TrainerConfig,
+    TrainingAdditionalCallbackConfig,
+    TrainingCheckpointConfig,
+    TrainingEarlyStoppingConfig,
+    TrainingLoggerConfig,
+    TrainingTrainerConfig,
 )
 from benchrep.runtime import RunContext
 
@@ -41,13 +41,13 @@ _LOGGER_INSTALL_EXTRAS: dict[str, str] = {
 
 def build_trainer(
         *,
-        trainer_config: TrainerConfig,
+        trainer_config: TrainingTrainerConfig,
         stage: Literal["training", "prediction"],
         run_context: RunContext,
-        logger_config: LoggerConfig | None = None,
-        checkpoint_config: CheckpointConfig | None = None,
-        early_stopping_config: EarlyStoppingConfig | None = None,
-        additional_callback_configs: list[AdditionalCallbackConfig] | None = None,
+        logger_config: TrainingLoggerConfig | None = None,
+        checkpoint_config: TrainingCheckpointConfig | None = None,
+        early_stopping_config: TrainingEarlyStoppingConfig | None = None,
+        additional_callback_configs: list[TrainingAdditionalCallbackConfig] | None = None,
         max_batches: int | None = None,
 ) -> tuple[
     L.Trainer,
@@ -57,7 +57,7 @@ def build_trainer(
     """Build a Lightning Trainer for a BenchRep workflow stage.
 
     This is the public Trainer builder for BenchRep workflows. It translates a
-    validated ``TrainerConfig`` into a Lightning ``Trainer`` while enforcing the
+    validated ``TrainingTrainerConfig`` into a Lightning ``Trainer`` while enforcing the
     Trainer arguments that BenchRep owns internally.
 
     The ``stage`` argument controls stage-specific Trainer behavior. During
@@ -295,7 +295,7 @@ def _require_logger_backend(logger_name: str) -> None:
     )
 
 
-def _build_logger(logger_config: LoggerConfig | None) -> Logger | bool:
+def _build_logger(logger_config: TrainingLoggerConfig | None) -> Logger | bool:
     """Build a Lightning logger from a BenchRep logger config.
 
     `logger_config.params` is passed directly to the selected Lightning logger.
@@ -337,7 +337,7 @@ def _build_logger(logger_config: LoggerConfig | None) -> Logger | bool:
 
 def _prepare_wandb_api_key(
     logger_cls: type[Logger],
-    logger_config: LoggerConfig,
+    logger_config: TrainingLoggerConfig,
 ) -> None:
     if logger_config.wandb_api_key_path is None:
         return
@@ -364,7 +364,7 @@ def _prepare_wandb_api_key(
 
 
 def _build_checkpoint_callback(
-    checkpoint_config: CheckpointConfig,
+    checkpoint_config: TrainingCheckpointConfig,
     checkpoint_dir: Path,
 ) -> ModelCheckpoint:
     if checkpoint_config.monitor is None:
@@ -405,7 +405,7 @@ class _BenchRepModelCheckpoint(ModelCheckpoint):
 
 
 def _build_early_stopping_callback(
-    config: EarlyStoppingConfig,
+    config: TrainingEarlyStoppingConfig,
 ) -> EarlyStopping:
     params = config.model_dump(exclude_none=True)
 
@@ -424,7 +424,7 @@ def _build_early_stopping_callback(
 
 
 def _build_additional_callbacks(
-    configs: list[AdditionalCallbackConfig],
+    configs: list[TrainingAdditionalCallbackConfig],
 ) -> list[Callback]:
     callbacks: list[Callback] = []
 

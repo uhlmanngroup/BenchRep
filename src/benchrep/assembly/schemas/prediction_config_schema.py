@@ -164,7 +164,7 @@ class PredictionDataConfig(_PredictionConfigBaseModel):
     `batch_size` and `num_workers` apply when BenchRep constructs the prediction
     datamodule. By default, they inherit the corresponding settings from a
     config-built training datamodule. If no reconstructable training datamodule
-    configuration is available, BenchRep starts from the `DataModuleConfig`
+    configuration is available, BenchRep starts from the `TrainingDataModuleConfig`
     defaults when constructing a new prediction datamodule.
 
     When a datamodule is supplied directly to the prediction entrypoint,
@@ -184,7 +184,7 @@ class PredictionDataConfig(_PredictionConfigBaseModel):
         json_schema_extra={
             "omit_behavior": (
                 "Inherits the config-built training datamodule's batch size "
-                "when available; otherwise uses the `DataModuleConfig` default."
+                "when available; otherwise uses the `TrainingDataModuleConfig` default."
             ),
             "null_behavior": "Equivalent to omission.",
             "notes": [
@@ -203,7 +203,7 @@ class PredictionDataConfig(_PredictionConfigBaseModel):
         json_schema_extra={
             "omit_behavior": (
                 "Inherits the config-built training datamodule's worker count "
-                "when available; otherwise uses the `DataModuleConfig` default."
+                "when available; otherwise uses the `TrainingDataModuleConfig` default."
             ),
             "null_behavior": "Equivalent to omission.",
             "notes": [

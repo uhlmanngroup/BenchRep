@@ -17,22 +17,22 @@ from benchrep import (
 )
 from benchrep.assembly.schemas import (
 # Training schema
-    CheckpointConfig,
-    DataModuleConfig,
-    DecoderConfig,
-    EncoderConfig,
-    InspectionConfig,
-    LossTermConfig,
+    TrainingCheckpointConfig,
+    TrainingDataModuleConfig,
+    TrainingDecoderConfig,
+    TrainingEncoderConfig,
+    TrainingInspectionConfig,
+    TrainingLossTermConfig,
     MNISTDatasetConfig,
     MNISTDatasetParams,
-    ModelConfig,
-    OptimizerConfig,
-    ReproducibilityConfig,
-    RunConfig,
-    TorchviewConfig,
-    TrainerConfig,
+    TrainingModelConfig,
+    TrainingOptimizerConfig,
+    TrainingReproducibilityConfig,
+    TrainingRunConfig,
+    TrainingTorchviewConfig,
+    TrainingTrainerConfig,
     TrainingConfig,
-    TransformConfig,
+    TrainingTransformConfig,
 # Prediction schema
     PredictionConfig,
     PredictionDataConfig,
@@ -42,9 +42,9 @@ from benchrep.assembly.schemas import (
     PredictionReconstructionsExportConfig,
     PredictionSourceConfig,
 # Evaluation schema
-    DummyProbeConfig,
-    EmbeddingMetricConfig,
-    ErrorMapParams,
+    EvaluationDummyProbeConfig,
+    EvaluationEmbeddingMetricConfig,
+    EvaluationErrorMapParams,
     EvaluationClusteringConfig,
     EvaluationClusteringMetricsConfig,
     EvaluationConfig,
@@ -58,30 +58,30 @@ from benchrep.assembly.schemas import (
     EvaluationReconstructionConfig,
     EvaluationReductionsConfig,
     EvaluationSourceConfig,
-    ExternalClusteringMetricConfig,
-    InternalClusteringMetricConfig,
-    KMeansConfig,
-    KMeansParams,
-    LeidenConfig,
-    LogisticRegressionProbeConfig,
-    PCAConfig,
-    PCAParams,
-    PlotParams,
-    ReconstructionGridConfig,
-    ReconstructionMetricConfig,
-    TSNEConfig,
-    UMAPConfig,
-    UMAPParams,
+    EvaluationExternalClusteringMetricConfig,
+    EvaluationInternalClusteringMetricConfig,
+    EvaluationKMeansConfig,
+    EvaluationKMeansParams,
+    EvaluationLeidenConfig,
+    EvaluationLogisticRegressionProbeConfig,
+    EvaluationPCAConfig,
+    EvaluationPCAParams,
+    EvaluationPlotParams,
+    EvaluationReconstructionGridConfig,
+    EvaluationReconstructionMetricConfig,
+    EvaluationTSNEConfig,
+    EvaluationUMAPConfig,
+    EvaluationUMAPParams,
 )
 
 
 def build_training_config() -> TrainingConfig:
     return TrainingConfig(
-        run=RunConfig(
+        run=TrainingRunConfig(
             output_root=Path("outputs"),
             project_name="02_config_object_pipeline",
         ),
-        reproducibility=ReproducibilityConfig(
+        reproducibility=TrainingReproducibilityConfig(
             seed=137,
             seed_workers=True,
             float32_matmul_precision="highest",
@@ -94,7 +94,7 @@ def build_training_config() -> TrainingConfig:
             ),
         ),
         transforms=[
-            TransformConfig(
+            TrainingTransformConfig(
                 name="to_dtype",
                 apply_to=["training", "validation"],
                 params={
@@ -103,7 +103,7 @@ def build_training_config() -> TrainingConfig:
                 },
             ),
         ],
-        datamodule=DataModuleConfig(
+        datamodule=TrainingDataModuleConfig(
             batch_size=128,
             val_fraction=0.1,
             num_workers=4,
@@ -111,13 +111,13 @@ def build_training_config() -> TrainingConfig:
             persistent_workers=True,
             drop_last=False,
         ),
-        model=ModelConfig(
+        model=TrainingModelConfig(
             name="vae",
             params={
                 "latent_dim": 32,
             },
         ),
-        encoder=EncoderConfig(
+        encoder=TrainingEncoderConfig(
             name="conv2d",
             params={
                 "input_shape": [1, 28, 28],
@@ -129,7 +129,7 @@ def build_training_config() -> TrainingConfig:
                 "normalization": "batchnorm",
             },
         ),
-        decoder=DecoderConfig(
+        decoder=TrainingDecoderConfig(
             name="upsample_conv2d",
             params={
                 "output_shape": [1, 28, 28],
@@ -140,27 +140,27 @@ def build_training_config() -> TrainingConfig:
         ),
         losses={
             "reconstruction": {
-                "mse": LossTermConfig(
+                "mse": TrainingLossTermConfig(
                     weight=0.8,
                     params={"reduction": "mean"},
                 ),
-                "mae": LossTermConfig(
+                "mae": TrainingLossTermConfig(
                     weight=0.2,
                     params={"reduction": "mean"},
                 ),
             },
             "regularization": {
-                "gaussian_kld": LossTermConfig(
+                "gaussian_kld": TrainingLossTermConfig(
                     weight=0.0001,
                     params={"reduction": "mean"},
                 ),
             },
         },
-        optimizer=OptimizerConfig(
+        optimizer=TrainingOptimizerConfig(
             name="adam",
             params={"lr": 0.001},
         ),
-        trainer=TrainerConfig(
+        trainer=TrainingTrainerConfig(
             max_epochs=5,
             accelerator="auto",
             devices="auto",
@@ -169,14 +169,14 @@ def build_training_config() -> TrainingConfig:
             benchmark=False,
             precision="32-true",
         ),
-        checkpointing=CheckpointConfig(
+        checkpointing=TrainingCheckpointConfig(
             monitor="val/loss",
             mode="min",
             save_top_k=1,
             save_last=True,
         ),
-        inspection=InspectionConfig(
-            torchview=TorchviewConfig(enabled=False),
+        inspection=TrainingInspectionConfig(
+            torchview=TrainingTorchviewConfig(enabled=False),
         ),
     )
 
@@ -226,16 +226,16 @@ def build_evaluation_config(
             prediction_manifest_path=prediction_manifest_path,
         ),
         reductions=EvaluationReductionsConfig(
-            pca=PCAConfig(
+            pca=EvaluationPCAConfig(
                 enabled=True,
-                params=PCAParams(
+                params=EvaluationPCAParams(
                     n_components=30,
                     random_state=137,
                 ),
             ),
-            umap=UMAPConfig(
+            umap=EvaluationUMAPConfig(
                 enabled=True,
-                params=UMAPParams(
+                params=EvaluationUMAPParams(
                     n_neighbors=15,
                     n_pcs=30,
                     min_dist=0.1,
@@ -243,32 +243,32 @@ def build_evaluation_config(
                     random_state=137,
                 ),
             ),
-            tsne=TSNEConfig(
+            tsne=EvaluationTSNEConfig(
                 enabled=False,
             ),
         ),
         clustering=EvaluationClusteringConfig(
-            kmeans=KMeansConfig(
+            kmeans=EvaluationKMeansConfig(
                 enabled=True,
-                params=KMeansParams(
+                params=EvaluationKMeansParams(
                     n_clusters=10,
                     random_state=137,
                 ),
             ),
-            leiden=LeidenConfig(
+            leiden=EvaluationLeidenConfig(
                 enabled=False,
             ),
         ),
         metrics=EvaluationMetricsConfig(
             clustering=EvaluationClusteringMetricsConfig(
-                internal=InternalClusteringMetricConfig(
+                internal=EvaluationInternalClusteringMetricConfig(
                     enabled=True,
                     selected=[
                         "calinski_harabasz",
                         "davies_bouldin",
                     ],
                 ),
-                external=ExternalClusteringMetricConfig(
+                external=EvaluationExternalClusteringMetricConfig(
                     enabled=True,
                     label_key="label",
                     selected=[
@@ -278,7 +278,7 @@ def build_evaluation_config(
                     ],
                 ),
             ),
-            embedding=EmbeddingMetricConfig(
+            embedding=EvaluationEmbeddingMetricConfig(
                 enabled=True,
                 selected=[
                     "mean",
@@ -309,11 +309,11 @@ def build_evaluation_config(
                             enabled=False,
                         ),
                         params=EvaluationPredictabilityParamsConfig(
-                            dummy=DummyProbeConfig(
+                            dummy=EvaluationDummyProbeConfig(
                                 strategy="most_frequent",
                                 random_state=137,
                             ),
-                            linear=LogisticRegressionProbeConfig(
+                            linear=EvaluationLogisticRegressionProbeConfig(
                                 standardize=True,
                                 C=1.0,
                                 class_weight="balanced",
@@ -323,7 +323,7 @@ def build_evaluation_config(
                     ),
                 },
             ),
-            reconstruction=ReconstructionMetricConfig(
+            reconstruction=EvaluationReconstructionMetricConfig(
                 enabled=True,
                 selected=[
                     "mae",
@@ -337,21 +337,21 @@ def build_evaluation_config(
         reconstruction=EvaluationReconstructionConfig(
             export_tiffs=False,
             n_examples=None,
-            error_maps=ErrorMapParams(
+            error_maps=EvaluationErrorMapParams(
                 kinds=["absolute"],
                 denominator_floor=None,
             ),
         ),
         plots=EvaluationPlotsConfig(
             enabled=True,
-            params=PlotParams(
+            params=EvaluationPlotParams(
                 color_by=[
                     "label",
                     "kmeans",
                 ],
                 dpi=150,
                 formats=["png"],
-                reconstruction_grid=ReconstructionGridConfig(
+                reconstruction_grid=EvaluationReconstructionGridConfig(
                     include_error_maps=True,
                     random_state=137,
                     stratify_by="label",

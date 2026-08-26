@@ -86,7 +86,7 @@ class NamedConfig(_TrainingConfigBaseModel):
 # -------------------------
 # Run/output configuration
 # -------------------------
-class RunConfig(_TrainingConfigBaseModel):
+class TrainingRunConfig(_TrainingConfigBaseModel):
     """Output location and run identity shared by linked workflows."""
 
     output_root: Path = Field(
@@ -128,7 +128,7 @@ class RunConfig(_TrainingConfigBaseModel):
 # -------------------------
 # Architecture configuration
 # -------------------------
-class ModelConfig(NamedConfig):
+class TrainingModelConfig(NamedConfig):
     """Selects the BenchRep model family and its assembly parameters.
 
     Use `benchrep.inspect_registry("model")` to inspect available model names
@@ -142,7 +142,7 @@ class ModelConfig(NamedConfig):
     """
 
 
-class EncoderConfig(NamedConfig):
+class TrainingEncoderConfig(NamedConfig):
     """Selects and configures an encoder from the encoder registry.
 
     Use `benchrep.inspect_registry("encoder")` to inspect available names and
@@ -156,7 +156,7 @@ class EncoderConfig(NamedConfig):
     """
 
 
-class DecoderConfig(NamedConfig):
+class TrainingDecoderConfig(NamedConfig):
     """Selects and configures a decoder from the decoder registry.
 
     Use `benchrep.inspect_registry("decoder")` to inspect available names and
@@ -178,7 +178,7 @@ class DecoderConfig(NamedConfig):
 # -------------------------
 # Optimization/loss configuration
 # -------------------------
-class LossTermConfig(_TrainingConfigBaseModel):
+class TrainingLossTermConfig(_TrainingConfigBaseModel):
     """Configuration for one weighted term in a role-specific loss mapping.
 
     The surrounding mapping key is the registered component name. Its parent role
@@ -241,12 +241,12 @@ class LossTermConfig(_TrainingConfigBaseModel):
 
 
 LossRoleTerms: TypeAlias = Annotated[
-    dict[str, LossTermConfig],
+    dict[str, TrainingLossTermConfig],
     Field(min_length=1),
 ]
 
 
-class OptimizerConfig(NamedConfig):
+class TrainingOptimizerConfig(NamedConfig):
     """Selects and configures an optimizer from the optimizer registry.
 
     Use `benchrep.inspect_registry("optimizer")` to inspect available names and
@@ -269,7 +269,7 @@ class OptimizerConfig(NamedConfig):
 # -------------------------
 # Training/runtime configuration
 # -------------------------
-class ReproducibilityConfig(_TrainingConfigBaseModel):
+class TrainingReproducibilityConfig(_TrainingConfigBaseModel):
     """Controls training randomness and float32 matrix-multiplication precision.
 
     These settings are recorded with the training run and used as defaults by
@@ -318,7 +318,7 @@ class ReproducibilityConfig(_TrainingConfigBaseModel):
     )
 
 
-class TrainerConfig(_TrainingConfigBaseModel):
+class TrainingTrainerConfig(_TrainingConfigBaseModel):
     """Configuration forwarded to `lightning.Trainer`.
 
     All declared fields and additional non-null fields are passed as keyword
@@ -442,7 +442,7 @@ class TrainerConfig(_TrainingConfigBaseModel):
     )
 
 
-class LoggerConfig(NamedConfig):
+class TrainingLoggerConfig(NamedConfig):
     """Selects and configures a training logger from the logger registry.
 
     Use `benchrep.inspect_registry("logger")` to inspect available names and
@@ -486,7 +486,7 @@ class LoggerConfig(NamedConfig):
     )
 
 
-class CheckpointConfig(_TrainingConfigBaseModel):
+class TrainingCheckpointConfig(_TrainingConfigBaseModel):
     """Controls checkpoint creation during training.
 
     BenchRep constructs a
@@ -578,7 +578,7 @@ class CheckpointConfig(_TrainingConfigBaseModel):
     )
 
     @model_validator(mode="after")
-    def validate_checkpoint_output(self) -> CheckpointConfig:
+    def validate_checkpoint_output(self) -> TrainingCheckpointConfig:
         ranked_checkpoint_enabled = (
             self.monitor is not None and self.save_top_k != 0
         )
@@ -596,7 +596,7 @@ class CheckpointConfig(_TrainingConfigBaseModel):
 # -------------------------
 # Early stopping configuration
 # -------------------------
-class EarlyStoppingConfig(_TrainingConfigBaseModel):
+class TrainingEarlyStoppingConfig(_TrainingConfigBaseModel):
     """Configures metric-based early stopping during training.
 
     BenchRep constructs a `lightning.pytorch.callbacks.EarlyStopping`
@@ -738,7 +738,7 @@ class EarlyStoppingConfig(_TrainingConfigBaseModel):
 # -------------------------
 # Additional callback configuration
 # -------------------------
-class AdditionalCallbackConfig(NamedConfig):
+class TrainingAdditionalCallbackConfig(NamedConfig):
     """Selects and configures one additional registered Lightning callback.
 
     `name` identifies a callback in BenchRep's callback registry. `params` are
@@ -753,7 +753,7 @@ class AdditionalCallbackConfig(NamedConfig):
 # -------------------------
 # Inspection configuration
 # -------------------------
-class TorchviewConfig(_TrainingConfigBaseModel):
+class TrainingTorchviewConfig(_TrainingConfigBaseModel):
     """Configures best-effort model-graph export with torchview.
 
     When enabled, BenchRep performs this inspection after training completes.
@@ -818,15 +818,15 @@ class TorchviewConfig(_TrainingConfigBaseModel):
     )
 
 
-class InspectionConfig(_TrainingConfigBaseModel):
+class TrainingInspectionConfig(_TrainingConfigBaseModel):
     """Groups optional, best-effort inspection outputs for a training run."""
 
-    torchview: TorchviewConfig = Field(
-        default_factory=TorchviewConfig,
+    torchview: TrainingTorchviewConfig = Field(
+        default_factory=TrainingTorchviewConfig,
         description="Configuration for optional torchview model-graph export.",
         json_schema_extra={
             "omit_behavior": (
-                "Uses the default TorchviewConfig, for which export is disabled."
+                "Uses the default TrainingTorchviewConfig, for which export is disabled."
             ),
             "null_behavior": (
                 "Not allowed; set `torchview.enabled=False` to disable export."
@@ -841,7 +841,7 @@ class InspectionConfig(_TrainingConfigBaseModel):
 ParamsT = TypeVar("ParamsT")
 
 
-class TransformConfig(NamedConfig):
+class TrainingTransformConfig(NamedConfig):
     """Configuration for one transform in an ordered transform sequence.
 
     Use `benchrep.inspect_registry("transform")` to inspect available names and
@@ -1157,7 +1157,7 @@ SupportedDatasetConfig: TypeAlias = Annotated[
 ]
 
 
-class DataModuleConfig(_TrainingConfigBaseModel):
+class TrainingDataModuleConfig(_TrainingConfigBaseModel):
     """Configures batching, data loading, and train-validation splitting."""
 
     batch_size: PositiveInt = Field(
@@ -1240,7 +1240,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
 
     Use `benchrep.inspect_config(TrainingConfig)` to inspect this configuration.
     Nested configuration types shown in the output can be inspected the same
-    way, for example `benchrep.inspect_config(TrainerConfig)` or
+    way, for example `benchrep.inspect_config(TrainingTrainerConfig)` or
     `benchrep.inspect_config(MNISTDatasetConfig)`. Public configuration classes
     are available from `benchrep.assembly.schemas`.
 
@@ -1262,25 +1262,25 @@ class TrainingConfig(_TrainingConfigBaseModel):
         },
     )
 
-    run: RunConfig = Field(
-        default_factory=RunConfig,
+    run: TrainingRunConfig = Field(
+        default_factory=TrainingRunConfig,
         description="Output location and run-identification settings.",
         json_schema_extra={
-            "omit_behavior": "Uses the defaults defined by `RunConfig`.",
+            "omit_behavior": "Uses the defaults defined by `TrainingRunConfig`.",
             "null_behavior": "Not allowed.",
         },
     )
 
-    reproducibility: ReproducibilityConfig = Field(
-        default_factory=ReproducibilityConfig,
+    reproducibility: TrainingReproducibilityConfig = Field(
+        default_factory=TrainingReproducibilityConfig,
         description="Training randomness and numerical reproducibility settings.",
         json_schema_extra={
-            "omit_behavior": "Uses the defaults defined by `ReproducibilityConfig`.",
+            "omit_behavior": "Uses the defaults defined by `TrainingReproducibilityConfig`.",
             "null_behavior": "Not allowed.",
         },
     )
 
-    model: ModelConfig | None = Field(
+    model: TrainingModelConfig | None = Field(
         default=None,
         description="Model assembled for training.",
         json_schema_extra={
@@ -1295,7 +1295,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
         },
     )
 
-    encoder: EncoderConfig | None = Field(
+    encoder: TrainingEncoderConfig | None = Field(
         default=None,
         description="Encoder used when assembling the configured model.",
         json_schema_extra={
@@ -1310,7 +1310,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
         },
     )
 
-    decoder: DecoderConfig | None = Field(
+    decoder: TrainingDecoderConfig | None = Field(
         default=None,
         description="Decoder used when required by the configured model.",
         json_schema_extra={
@@ -1352,7 +1352,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
         },
     )
 
-    optimizer: OptimizerConfig | None = Field(
+    optimizer: TrainingOptimizerConfig | None = Field(
         default=None,
         description="Optimizer used to train the config-built model.",
         json_schema_extra={
@@ -1388,7 +1388,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
         },
     )
 
-    transforms: list[TransformConfig] = Field(
+    transforms: list[TrainingTransformConfig] = Field(
         default_factory=list,
         description=(
             "Ordered transform definitions applied to each dataset sample's `x` tensor "
@@ -1413,14 +1413,14 @@ class TrainingConfig(_TrainingConfigBaseModel):
         },
     )
 
-    datamodule: DataModuleConfig | None = Field(
-        default_factory=DataModuleConfig,
+    datamodule: TrainingDataModuleConfig | None = Field(
+        default_factory=TrainingDataModuleConfig,
         description=(
             "Batching, data-loading, and train-validation splitting settings for "
             "BenchRep's internal datamodule."
         ),
         json_schema_extra={
-            "omit_behavior": "Uses the defaults defined by `DataModuleConfig`.",
+            "omit_behavior": "Uses the defaults defined by `TrainingDataModuleConfig`.",
             "null_behavior": (
                 "Allowed when an external datamodule is supplied; otherwise a "
                 "datamodule configuration is required."
@@ -1431,11 +1431,11 @@ class TrainingConfig(_TrainingConfigBaseModel):
         },
     )
 
-    trainer: TrainerConfig = Field(
-        default_factory=TrainerConfig,
+    trainer: TrainingTrainerConfig = Field(
+        default_factory=TrainingTrainerConfig,
         description="Lightning Trainer settings used during training.",
         json_schema_extra={
-            "omit_behavior": "Uses the defaults defined by `TrainerConfig`.",
+            "omit_behavior": "Uses the defaults defined by `TrainingTrainerConfig`.",
             "null_behavior": "Not allowed.",
             "notes": [
                 "Inherited as defaults by linked prediction runs.",
@@ -1445,7 +1445,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
         },
     )
 
-    logger: LoggerConfig | None = Field(
+    logger: TrainingLoggerConfig | None = Field(
         default=None,
         description="Optional experiment logger used during training.",
         json_schema_extra={
@@ -1454,16 +1454,16 @@ class TrainingConfig(_TrainingConfigBaseModel):
         },
     )
 
-    checkpointing: CheckpointConfig = Field(
-        default_factory=CheckpointConfig,
+    checkpointing: TrainingCheckpointConfig = Field(
+        default_factory=TrainingCheckpointConfig,
         description="Checkpoint creation and selection settings for training.",
         json_schema_extra={
-            "omit_behavior": "Uses the defaults defined by `CheckpointConfig`.",
+            "omit_behavior": "Uses the defaults defined by `TrainingCheckpointConfig`.",
             "null_behavior": "Not allowed.",
         },
     )
 
-    early_stopping: EarlyStoppingConfig | None = Field(
+    early_stopping: TrainingEarlyStoppingConfig | None = Field(
         default=None,
         description="Optional metric-based early-stopping settings.",
         json_schema_extra={
@@ -1475,7 +1475,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
         },
     )
 
-    additional_callbacks: list[AdditionalCallbackConfig] = Field(
+    additional_callbacks: list[TrainingAdditionalCallbackConfig] = Field(
         default_factory=list,
         description="Additional registered Lightning callbacks used during training.",
         json_schema_extra={
@@ -1488,11 +1488,11 @@ class TrainingConfig(_TrainingConfigBaseModel):
         },
     )
 
-    inspection: InspectionConfig = Field(
-        default_factory=InspectionConfig,
+    inspection: TrainingInspectionConfig = Field(
+        default_factory=TrainingInspectionConfig,
         description="Optional best-effort torchview model-graph export settings.",
         json_schema_extra={
-            "omit_behavior": "Uses the defaults defined by `InspectionConfig`.",
+            "omit_behavior": "Uses the defaults defined by `TrainingInspectionConfig`.",
             "null_behavior": "Not allowed.",
         },
     )

@@ -8,21 +8,21 @@ import pytest
 from benchrep import evaluate, predict_vae, train_vae
 from benchrep.assembly.schemas import (
     CustomDatasetConfig,
-    DecoderConfig,
-    EmbeddingMetricConfig,
-    EncoderConfig,
+    TrainingDecoderConfig,
+    EvaluationEmbeddingMetricConfig,
+    TrainingEncoderConfig,
     EvaluationClusteringMetricsConfig,
     EvaluationMetricsConfig,
     EvaluationPlotsConfig,
     EvaluationPredictabilityConfig,
-    ExternalClusteringMetricConfig,
-    InternalClusteringMetricConfig,
-    LoggerConfig,
-    AdditionalCallbackConfig,
-    LossTermConfig,
-    OptimizerConfig,
-    ReconstructionMetricConfig,
-    TransformConfig,
+    EvaluationExternalClusteringMetricConfig,
+    EvaluationInternalClusteringMetricConfig,
+    TrainingLoggerConfig,
+    TrainingAdditionalCallbackConfig,
+    TrainingLossTermConfig,
+    TrainingOptimizerConfig,
+    EvaluationReconstructionMetricConfig,
+    TrainingTransformConfig,
 )
 from benchrep.discovery.registry import _COMPONENT_REGISTRIES
 from tests.fixtures.registered_components import (
@@ -99,20 +99,20 @@ def test_custom_registered_components_work_end_to_end(
         config_components={
             "dataset": dataset_config,
             "transforms": [
-                TransformConfig(
+                TrainingTransformConfig(
                     name="custom_test_transform",
                     apply_to=["validation"],
                     params={"scale": 1.0},
                 ),
             ],
-            "encoder": EncoderConfig(
+            "encoder": TrainingEncoderConfig(
                 name="custom_test_encoder",
                 params={
                     "input_shape": [1, 28, 28],
                     "output_dim": 8,
                 },
             ),
-            "decoder": DecoderConfig(
+            "decoder": TrainingDecoderConfig(
                 name="custom_test_decoder",
                 params={
                     "output_shape": [1, 28, 28],
@@ -120,17 +120,17 @@ def test_custom_registered_components_work_end_to_end(
             ),
             "losses": {
                 "reconstruction": {
-                    "custom_test_reconstruction_loss": LossTermConfig(
+                    "custom_test_reconstruction_loss": TrainingLossTermConfig(
                         weight=1.0,
                     ),
                 },
                 "regularization": {
-                    "custom_test_regularization_loss": LossTermConfig(
+                    "custom_test_regularization_loss": TrainingLossTermConfig(
                         weight=0.0001,
                     ),
                 },
                 "custom_objective": {
-                    "custom_test_objective_loss": LossTermConfig(
+                    "custom_test_objective_loss": TrainingLossTermConfig(
                         weight=0.1,
                         params={
                             "regularization_weight": 0.0001,
@@ -138,16 +138,16 @@ def test_custom_registered_components_work_end_to_end(
                     ),
                 },
             },
-            "optimizer": OptimizerConfig(
+            "optimizer": TrainingOptimizerConfig(
                 name="custom_test_optimizer",
                 params={"lr": 0.001},
             ),
-            "logger": LoggerConfig(
+            "logger": TrainingLoggerConfig(
                 name="custom_test_logger",
                 params={},
             ),
             "additional_callbacks": [
-                AdditionalCallbackConfig(
+                TrainingAdditionalCallbackConfig(
                     name="custom_test_callback",
                     params={
                         "marker": "configured_from_test",
@@ -192,7 +192,7 @@ def test_custom_registered_components_work_end_to_end(
         config_components={
             "metrics": EvaluationMetricsConfig(
                 clustering=EvaluationClusteringMetricsConfig(
-                    internal=InternalClusteringMetricConfig(
+                    internal=EvaluationInternalClusteringMetricConfig(
                         enabled=True,
                         selected=["custom_test_internal_metric"],
                         params={
@@ -201,7 +201,7 @@ def test_custom_registered_components_work_end_to_end(
                             },
                         },
                     ),
-                    external=ExternalClusteringMetricConfig(
+                    external=EvaluationExternalClusteringMetricConfig(
                         enabled=True,
                         label_key="label",
                         selected=["custom_test_external_metric"],
@@ -212,7 +212,7 @@ def test_custom_registered_components_work_end_to_end(
                         },
                     ),
                 ),
-                embedding=EmbeddingMetricConfig(
+                embedding=EvaluationEmbeddingMetricConfig(
                     enabled=True,
                     selected=["custom_test_embedding_metric"],
                     params={
@@ -224,7 +224,7 @@ def test_custom_registered_components_work_end_to_end(
                 predictability=EvaluationPredictabilityConfig(
                     enabled=False,
                 ),
-                reconstruction=ReconstructionMetricConfig(
+                reconstruction=EvaluationReconstructionMetricConfig(
                     enabled=True,
                     selected=[
                         "custom_test_reconstruction_metric",

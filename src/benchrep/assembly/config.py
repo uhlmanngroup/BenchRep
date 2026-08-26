@@ -23,23 +23,23 @@ from pydantic import BaseModel
 
 from benchrep.assembly.schemas.training_config_schema import (
     TrainingConfig,
-    RunConfig,
-    ReproducibilityConfig,
-    ModelConfig,
-    EncoderConfig,
-    DecoderConfig,
+    TrainingRunConfig,
+    TrainingReproducibilityConfig,
+    TrainingModelConfig,
+    TrainingEncoderConfig,
+    TrainingDecoderConfig,
     SupportedLossRole,
-    LossTermConfig,
-    OptimizerConfig,
-    TransformConfig,
+    TrainingLossTermConfig,
+    TrainingOptimizerConfig,
+    TrainingTransformConfig,
     SupportedDatasetConfig,
-    DataModuleConfig,
-    TrainerConfig,
-    LoggerConfig,
-    CheckpointConfig,
-    EarlyStoppingConfig,
-    AdditionalCallbackConfig,
-    InspectionConfig,
+    TrainingDataModuleConfig,
+    TrainingTrainerConfig,
+    TrainingLoggerConfig,
+    TrainingCheckpointConfig,
+    TrainingEarlyStoppingConfig,
+    TrainingAdditionalCallbackConfig,
+    TrainingInspectionConfig,
 )
 from benchrep.assembly.schemas.prediction_config_schema import (
     PredictionConfig,
@@ -79,30 +79,30 @@ ConfigSource: TypeAlias = Literal[
 
 LossesConfig: TypeAlias = dict[
     SupportedLossRole,
-    dict[str, LossTermConfig],
+    dict[str, TrainingLossTermConfig],
 ]
 
-TransformsConfig: TypeAlias = list[TransformConfig]
-AdditionalCallbacksConfig: TypeAlias = list[AdditionalCallbackConfig]
+TransformsConfig: TypeAlias = list[TrainingTransformConfig]
+AdditionalCallbacksConfig: TypeAlias = list[TrainingAdditionalCallbackConfig]
 PredictionTransformsConfig: TypeAlias = list[PredictionTransformConfig]
 
 SupportedTrainingConfigComponent: TypeAlias = (
-        RunConfig
-        | ReproducibilityConfig
-        | ModelConfig
-        | EncoderConfig
-        | DecoderConfig
+        TrainingRunConfig
+        | TrainingReproducibilityConfig
+        | TrainingModelConfig
+        | TrainingEncoderConfig
+        | TrainingDecoderConfig
         | LossesConfig
-        | OptimizerConfig
+        | TrainingOptimizerConfig
         | TransformsConfig
         | SupportedDatasetConfig
-        | DataModuleConfig
-        | TrainerConfig
-        | LoggerConfig
-        | CheckpointConfig
-        | EarlyStoppingConfig
+        | TrainingDataModuleConfig
+        | TrainingTrainerConfig
+        | TrainingLoggerConfig
+        | TrainingCheckpointConfig
+        | TrainingEarlyStoppingConfig
         | AdditionalCallbacksConfig
-        | InspectionConfig
+        | TrainingInspectionConfig
 )
 
 SupportedPredictionConfigComponent: TypeAlias = (
@@ -240,7 +240,7 @@ def compose_effective_config(
     Component behavior
     ------------------
     ``config_components`` is a mapping from top-level config field name to the
-    corresponding typed config section, for example ``{"run": RunConfig(...)}``
+    corresponding typed config section, for example ``{"run": TrainingRunConfig(...)}``
     or ``{"metrics": EvaluationMetricsConfig(...)}``. Component merging is
     shallow by design: a provided component replaces the entire matching
     top-level section rather than recursively patching nested fields.
@@ -528,7 +528,7 @@ def _normalize_config_components(
 
         if key == "transforms" and schema in {TrainingConfig, PredictionConfig}:
             transform_config_type = (
-                TransformConfig
+                TrainingTransformConfig
                 if schema is TrainingConfig
                 else PredictionTransformConfig
             )
@@ -559,18 +559,18 @@ def _normalize_config_components(
             if not isinstance(component, list):
                 raise TypeError(
                     "Training config component 'additional_callbacks' must "
-                    "be a list of AdditionalCallbackConfig objects, got "
+                    "be a list of TrainingAdditionalCallbackConfig objects, got "
                     f"{type(component).__name__}."
                 )
 
             if not all(
-                isinstance(callback, AdditionalCallbackConfig)
+                isinstance(callback, TrainingAdditionalCallbackConfig)
                 for callback in component
             ):
                 raise TypeError(
                     "Every item in TrainingConfig component "
                     "'additional_callbacks' must be an "
-                    "AdditionalCallbackConfig object."
+                    "TrainingAdditionalCallbackConfig object."
                 )
 
             normalized[key] = [

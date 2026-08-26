@@ -6,7 +6,7 @@ from pathlib import Path
 
 from lightning.pytorch.callbacks import ModelCheckpoint
 
-from benchrep.assembly.schemas import CheckpointConfig
+from benchrep.assembly.schemas import TrainingCheckpointConfig
 from benchrep.runtime.utils import (
     CompatibilityPolicy,
     PreconditionResult,
@@ -145,7 +145,7 @@ def validate_train_contract_compatibility(
 
 def validate_training_checkpoint_outputs(
     *,
-    checkpoint_config: CheckpointConfig,
+    checkpoint_config: TrainingCheckpointConfig,
     checkpoint_callback: ModelCheckpoint,
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """Return checkpoint errors and warnings found after training."""

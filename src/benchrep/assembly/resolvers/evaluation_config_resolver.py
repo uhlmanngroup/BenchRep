@@ -28,8 +28,8 @@ from benchrep.assembly.schemas.evaluation_config_schema import (
     EvaluationConfig,
     EvaluationPredictabilityTargetConfig,
     EvaluationRunConfig,
-    LogisticRegressionProbeConfig,
-    RidgeProbeConfig,
+    EvaluationLogisticRegressionProbeConfig,
+    EvaluationRidgeProbeConfig,
 )
 from benchrep.runtime.status import ACCEPTABLE_PREDICTION_STATUSES
 
@@ -1189,9 +1189,9 @@ def _resolve_predictability_probe_params(
 
     if "linear" not in resolved_params:
         if task == "classification":
-            linear_config = LogisticRegressionProbeConfig()
+            linear_config = EvaluationLogisticRegressionProbeConfig()
         elif task == "regression":
-            linear_config = RidgeProbeConfig()
+            linear_config = EvaluationRidgeProbeConfig()
         else:
             raise ValueError(
                 "task must be either 'classification' or 'regression', "

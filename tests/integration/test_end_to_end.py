@@ -25,9 +25,9 @@ from tests.fixtures.datasets import TinySyntheticDataset
 from benchrep.assembly.registries.core import DATASETS
 from benchrep.architecture.models import VAE
 from benchrep.assembly.schemas import (
-    AdditionalCallbackConfig,
-    EarlyStoppingConfig,
-    LoggerConfig,
+    TrainingAdditionalCallbackConfig,
+    TrainingEarlyStoppingConfig,
+    TrainingLoggerConfig,
     PredictionInferenceConfig,
 )
 
@@ -342,19 +342,19 @@ def test_training_callbacks_are_not_inherited_by_prediction(
             / "training_tiny_synthetic_ae.yaml"
         ),
         config_components={
-            "logger": LoggerConfig(
+            "logger": TrainingLoggerConfig(
                 name="csv",
                 params={
                     "save_dir": str(tmp_path / "lightning_logs"),
                 },
             ),
-            "early_stopping": EarlyStoppingConfig(
+            "early_stopping": TrainingEarlyStoppingConfig(
                 monitor="val/loss",
                 mode="min",
                 patience=3,
             ),
             "additional_callbacks": [
-                AdditionalCallbackConfig(
+                TrainingAdditionalCallbackConfig(
                     name="learning_rate_monitor",
                     params={
                         "logging_interval": "epoch",

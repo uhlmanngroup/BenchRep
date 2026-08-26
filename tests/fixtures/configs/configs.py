@@ -1,24 +1,24 @@
 from pathlib import Path
 
 from benchrep.assembly.schemas.training_config_schema import (
-    CheckpointConfig,
+    TrainingCheckpointConfig,
     CustomDatasetConfig,
-    DataModuleConfig,
-    DecoderConfig,
-    EncoderConfig,
-    InspectionConfig,
-    LoggerConfig,
-    LossTermConfig,
+    TrainingDataModuleConfig,
+    TrainingDecoderConfig,
+    TrainingEncoderConfig,
+    TrainingInspectionConfig,
+    TrainingLoggerConfig,
+    TrainingLossTermConfig,
     MNISTDatasetConfig,
     MNISTDatasetParams,
-    ModelConfig,
-    OptimizerConfig,
-    ReproducibilityConfig,
-    RunConfig,
-    TorchviewConfig,
-    TrainerConfig,
+    TrainingModelConfig,
+    TrainingOptimizerConfig,
+    TrainingReproducibilityConfig,
+    TrainingRunConfig,
+    TrainingTorchviewConfig,
+    TrainingTrainerConfig,
     TrainingConfig,
-    TransformConfig,
+    TrainingTransformConfig,
 )
 from benchrep.assembly.schemas.prediction_config_schema import (
     PredictionConfig,
@@ -32,9 +32,9 @@ from benchrep.assembly.schemas.prediction_config_schema import (
 )
 
 from benchrep.assembly.schemas.evaluation_config_schema import (
-    DummyProbeConfig,
-    ErrorMapParams,
-    EmbeddingMetricConfig,
+    EvaluationDummyProbeConfig,
+    EvaluationErrorMapParams,
+    EvaluationEmbeddingMetricConfig,
     EvaluationCVTuningConfig,
     EvaluationClusteringConfig,
     EvaluationClusteringMetricsConfig,
@@ -49,52 +49,52 @@ from benchrep.assembly.schemas.evaluation_config_schema import (
     EvaluationReductionsConfig,
     EvaluationRunConfig,
     EvaluationSourceConfig,
-    ExternalClusteringMetricConfig,
-    InternalClusteringMetricConfig,
-    KMeansConfig,
-    KMeansParams,
-    LeidenConfig,
-    LeidenParams,
-    PCAConfig,
-    PCAParams,
-    PlotParams,
-    ReconstructionGridConfig,
-    ReconstructionMetricConfig,
-    RidgeProbeConfig,
-    TSNEConfig,
-    TSNEParams,
-    UMAPConfig,
-    UMAPParams,
+    EvaluationExternalClusteringMetricConfig,
+    EvaluationInternalClusteringMetricConfig,
+    EvaluationKMeansConfig,
+    EvaluationKMeansParams,
+    EvaluationLeidenConfig,
+    EvaluationLeidenParams,
+    EvaluationPCAConfig,
+    EvaluationPCAParams,
+    EvaluationPlotParams,
+    EvaluationReconstructionGridConfig,
+    EvaluationReconstructionMetricConfig,
+    EvaluationRidgeProbeConfig,
+    EvaluationTSNEConfig,
+    EvaluationTSNEParams,
+    EvaluationUMAPConfig,
+    EvaluationUMAPParams,
 )
 
 
 # -------------------------
 # Training config components
 # -------------------------
-def make_training_run_config() -> RunConfig:
-    return RunConfig(
+def make_training_run_config() -> TrainingRunConfig:
+    return TrainingRunConfig(
         output_root=Path("overridden_outputs"),
         project_name="overridden_project",
     )
 
 
-def make_training_reproducibility_config() -> ReproducibilityConfig:
-    return ReproducibilityConfig(
+def make_training_reproducibility_config() -> TrainingReproducibilityConfig:
+    return TrainingReproducibilityConfig(
         seed=999,
         seed_workers=False,
         float32_matmul_precision="medium",
     )
 
 
-def make_training_model_config() -> ModelConfig:
-    return ModelConfig(
+def make_training_model_config() -> TrainingModelConfig:
+    return TrainingModelConfig(
         name="ae",
         params={},
     )
 
 
-def make_training_encoder_config() -> EncoderConfig:
-    return EncoderConfig(
+def make_training_encoder_config() -> TrainingEncoderConfig:
+    return TrainingEncoderConfig(
         name="mlp",
         params={
             "input_shape": [1, 28, 28],
@@ -107,8 +107,8 @@ def make_training_encoder_config() -> EncoderConfig:
     )
 
 
-def make_training_decoder_config() -> DecoderConfig:
-    return DecoderConfig(
+def make_training_decoder_config() -> TrainingDecoderConfig:
+    return TrainingDecoderConfig(
         name="mlp",
         params={
             "output_shape": [1, 28, 28],
@@ -123,15 +123,15 @@ def make_training_decoder_config() -> DecoderConfig:
 
 def make_training_losses_config() -> dict[
     str,
-    dict[str, LossTermConfig],
+    dict[str, TrainingLossTermConfig],
 ]:
     return {
         "reconstruction": {
-            "mse": LossTermConfig(
+            "mse": TrainingLossTermConfig(
                 weight=0.75,
                 params={"reduction": "mean"},
             ),
-            "mae": LossTermConfig(
+            "mae": TrainingLossTermConfig(
                 weight=0.25,
                 params={"reduction": "mean"},
             ),
@@ -139,8 +139,8 @@ def make_training_losses_config() -> dict[
     }
 
 
-def make_training_optimizer_config() -> OptimizerConfig:
-    return OptimizerConfig(
+def make_training_optimizer_config() -> TrainingOptimizerConfig:
+    return TrainingOptimizerConfig(
         name="adamw",
         params={
             "lr": 0.0005,
@@ -174,9 +174,9 @@ def make_training_mnist_dataset_config() -> MNISTDatasetConfig:
     )
 
 
-def make_training_transforms_config() -> list[TransformConfig]:
+def make_training_transforms_config() -> list[TrainingTransformConfig]:
     return [
-        TransformConfig(
+        TrainingTransformConfig(
             name="to_dtype",
             apply_to=["validation"],
             params={
@@ -184,7 +184,7 @@ def make_training_transforms_config() -> list[TransformConfig]:
                 "scale": True,
             },
         ),
-        TransformConfig(
+        TrainingTransformConfig(
             name="random_horizontal_flip",
             apply_to=["training"],
             params={
@@ -194,8 +194,8 @@ def make_training_transforms_config() -> list[TransformConfig]:
     ]
 
 
-def make_training_datamodule_config() -> DataModuleConfig:
-    return DataModuleConfig(
+def make_training_datamodule_config() -> TrainingDataModuleConfig:
+    return TrainingDataModuleConfig(
         batch_size=16,
         val_fraction=0.2,
         num_workers=2,
@@ -205,8 +205,8 @@ def make_training_datamodule_config() -> DataModuleConfig:
     )
 
 
-def make_training_trainer_config() -> TrainerConfig:
-    return TrainerConfig(
+def make_training_trainer_config() -> TrainingTrainerConfig:
+    return TrainingTrainerConfig(
         max_epochs=2,
         accelerator="cpu",
         devices=1,
@@ -217,8 +217,8 @@ def make_training_trainer_config() -> TrainerConfig:
     )
 
 
-def make_training_logger_config() -> LoggerConfig:
-    return LoggerConfig(
+def make_training_logger_config() -> TrainingLoggerConfig:
+    return TrainingLoggerConfig(
         name="csv",
         params={
             "save_dir": "overridden_logs",
@@ -227,8 +227,8 @@ def make_training_logger_config() -> LoggerConfig:
     )
 
 
-def make_training_checkpoint_config() -> CheckpointConfig:
-    return CheckpointConfig(
+def make_training_checkpoint_config() -> TrainingCheckpointConfig:
+    return TrainingCheckpointConfig(
         monitor="val/loss",
         mode="min",
         save_top_k=2,
@@ -237,9 +237,9 @@ def make_training_checkpoint_config() -> CheckpointConfig:
     )
 
 
-def make_training_inspection_config() -> InspectionConfig:
-    return InspectionConfig(
-        torchview=TorchviewConfig(
+def make_training_inspection_config() -> TrainingInspectionConfig:
+    return TrainingInspectionConfig(
+        torchview=TrainingTorchviewConfig(
             enabled=True,
             expand_nested=False,
             depth=4,
@@ -380,18 +380,18 @@ def make_evaluation_run_config() -> EvaluationRunConfig:
 
 def make_evaluation_reductions_config() -> EvaluationReductionsConfig:
     return EvaluationReductionsConfig(
-        pca=PCAConfig(
+        pca=EvaluationPCAConfig(
             enabled=True,
-            params=PCAParams(
+            params=EvaluationPCAParams(
                 n_components=3,
                 key_added="X_pca_overridden",
                 random_state=999,
                 overwrite=True,
             ),
         ),
-        umap=UMAPConfig(
+        umap=EvaluationUMAPConfig(
             enabled=False,
-            params=UMAPParams(
+            params=EvaluationUMAPParams(
                 n_neighbors=7,
                 n_pcs=3,
                 min_dist=0.2,
@@ -402,9 +402,9 @@ def make_evaluation_reductions_config() -> EvaluationReductionsConfig:
                 overwrite=True,
             ),
         ),
-        tsne=TSNEConfig(
+        tsne=EvaluationTSNEConfig(
             enabled=True,
-            params=TSNEParams(
+            params=EvaluationTSNEParams(
                 n_pcs=3,
                 perplexity=5.0,
                 key_added="X_tsne_overridden",
@@ -417,9 +417,9 @@ def make_evaluation_reductions_config() -> EvaluationReductionsConfig:
 
 def make_evaluation_clustering_config() -> EvaluationClusteringConfig:
     return EvaluationClusteringConfig(
-        kmeans=KMeansConfig(
+        kmeans=EvaluationKMeansConfig(
             enabled=True,
-            params=KMeansParams(
+            params=EvaluationKMeansParams(
                 n_clusters=3,
                 key_added="kmeans_overridden",
                 random_state=999,
@@ -427,9 +427,9 @@ def make_evaluation_clustering_config() -> EvaluationClusteringConfig:
                 overwrite=True,
             ),
         ),
-        leiden=LeidenConfig(
+        leiden=EvaluationLeidenConfig(
             enabled=True,
-            params=LeidenParams(
+            params=EvaluationLeidenParams(
                 resolution=0.5,
                 n_neighbors=7,
                 n_pcs=3,
@@ -448,19 +448,19 @@ def make_evaluation_clustering_config() -> EvaluationClusteringConfig:
 def make_evaluation_metrics_config() -> EvaluationMetricsConfig:
     return EvaluationMetricsConfig(
         clustering=EvaluationClusteringMetricsConfig(
-            internal=InternalClusteringMetricConfig(
+            internal=EvaluationInternalClusteringMetricConfig(
                 enabled=True,
                 selected=["davies_bouldin"],
                 params=None,
             ),
-            external=ExternalClusteringMetricConfig(
+            external=EvaluationExternalClusteringMetricConfig(
                 enabled=True,
                 label_key="label_str",
                 selected=["homogeneity"],
                 params=None,
             ),
         ),
-        embedding=EmbeddingMetricConfig(
+        embedding=EvaluationEmbeddingMetricConfig(
             enabled=False,
         ),
         predictability=EvaluationPredictabilityConfig(
@@ -481,10 +481,10 @@ def make_evaluation_metrics_config() -> EvaluationMetricsConfig:
                         enabled=False,
                     ),
                     params=EvaluationPredictabilityParamsConfig(
-                        dummy=DummyProbeConfig(
+                        dummy=EvaluationDummyProbeConfig(
                             strategy="mean",
                         ),
-                        linear=RidgeProbeConfig(
+                        linear=EvaluationRidgeProbeConfig(
                             model="ridge",
                             standardize=True,
                             alpha=0.5,
@@ -493,7 +493,7 @@ def make_evaluation_metrics_config() -> EvaluationMetricsConfig:
                 ),
             },
         ),
-        reconstruction=ReconstructionMetricConfig(
+        reconstruction=EvaluationReconstructionMetricConfig(
             enabled=True,
             selected=["rmse"],
             params=None,
@@ -507,7 +507,7 @@ def make_evaluation_reconstruction_config(
     return EvaluationReconstructionConfig(
         export_tiffs=False,
         n_examples=2,
-        error_maps=ErrorMapParams(
+        error_maps=EvaluationErrorMapParams(
             kinds=["squared"],
             denominator_floor=1e-6,
         ),
@@ -517,12 +517,12 @@ def make_evaluation_reconstruction_config(
 def make_evaluation_plots_config() -> EvaluationPlotsConfig:
     return EvaluationPlotsConfig(
         enabled=True,
-        params=PlotParams(
+        params=EvaluationPlotParams(
             accent_color="#336699",
             color_by=["group"],
             dpi=96,
             formats=["svg"],
-            reconstruction_grid=ReconstructionGridConfig(
+            reconstruction_grid=EvaluationReconstructionGridConfig(
                 include_error_maps=False,
                 random_state=999,
                 stratify_by="group",

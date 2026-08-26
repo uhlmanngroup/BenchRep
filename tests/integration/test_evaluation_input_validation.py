@@ -14,7 +14,7 @@ from benchrep.assembly.schemas import (
     EvaluationRunConfig,
     EvaluationSourceConfig,
     EvaluationReductionsConfig,
-    UMAPConfig,
+    EvaluationUMAPConfig,
 )
 
 
@@ -38,7 +38,7 @@ def test_evaluate_rejects_nonfinite_embeddings(
             run_name="nonfinite_embeddings",
         ),
         reductions=EvaluationReductionsConfig(
-            umap=UMAPConfig(enabled=False),
+            umap=EvaluationUMAPConfig(enabled=False),
         ),
     )
 

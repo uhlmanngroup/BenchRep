@@ -16,8 +16,8 @@ from benchrep.architecture.data import (
     TransformStep,
 )
 from benchrep.assembly.schemas import (
-    DataModuleConfig,
-    TransformConfig,
+    TrainingDataModuleConfig,
+    TrainingTransformConfig,
     SupportedDatasetConfig,
 )
 from benchrep.assembly.schemas.training_config_schema import NamedConfig
@@ -36,7 +36,7 @@ class TransformPipelineBundle:
 def build_datamodule(
     *,
     dataset: BaseDataset,
-    datamodule_config: DataModuleConfig,
+    datamodule_config: TrainingDataModuleConfig,
     seed: int | None = None,
     stage: Literal["training", "prediction"],
     training_pipeline: TransformPipeline | None = None,
@@ -174,7 +174,7 @@ def build_dataset(
 
 
 def build_transform_pipelines(
-    transform_configs: Sequence[TransformConfig],
+    transform_configs: Sequence[TrainingTransformConfig],
 ) -> TransformPipelineBundle:
     """Build ordered training and validation transform pipelines.
 
@@ -251,7 +251,7 @@ def _build_transform_step(
 
 def _instantiate_datamodule(
     *,
-    datamodule_config: DataModuleConfig,
+    datamodule_config: TrainingDataModuleConfig,
     seed: int | None = None,
     train_dataset: Any | None = None,
     val_dataset: Any | None = None,

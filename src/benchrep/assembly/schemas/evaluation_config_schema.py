@@ -94,7 +94,7 @@ class _EvaluationConfigBaseModel(BaseModel):
     )
 
 
-class EvalStepConfig(_EvaluationConfigBaseModel):
+class EvaluationStepConfig(_EvaluationConfigBaseModel):
     """Shared configuration for an optional evaluation step.
 
     Evaluation steps use tri-state enablement. `True` explicitly enables the
@@ -133,7 +133,7 @@ class EvalStepConfig(_EvaluationConfigBaseModel):
     )
 
 
-class EvalMetricGroupConfig(_EvaluationConfigBaseModel):
+class EvaluationMetricGroupConfig(_EvaluationConfigBaseModel):
     """Shared configuration for a registry-backed metric group.
 
     Selection is independent of enablement. Once the group runs, `None` uses its
@@ -404,7 +404,7 @@ class EvaluationRunConfig(_EvaluationConfigBaseModel):
 # -------------------------
 # Reductions config
 # -------------------------
-class PCAParams(BaseModel):
+class EvaluationPCAParams(BaseModel):
     """Controls scikit-learn PCA computation and AnnData storage.
 
     PCA is fitted to `adata.X`. Coordinates are stored in
@@ -475,7 +475,7 @@ class PCAParams(BaseModel):
     )
 
 
-class PCAConfig(EvalStepConfig):
+class EvaluationPCAConfig(EvaluationStepConfig):
     """Configures PCA as an evaluation step.
 
     PCA operates directly on `adata.X`. It is enabled automatically when
@@ -493,17 +493,17 @@ class PCAConfig(EvalStepConfig):
         },
     )
 
-    params: PCAParams | None = Field(
-        default_factory=PCAParams,
+    params: EvaluationPCAParams | None = Field(
+        default_factory=EvaluationPCAParams,
         description="Parameters controlling PCA computation and output storage.",
         json_schema_extra={
-            "omit_behavior": "Uses `PCAParams` defaults.",
+            "omit_behavior": "Uses `EvaluationPCAParams` defaults.",
             "null_behavior": "Equivalent to omission.",
         },
     )
 
 
-class UMAPParams(_EvaluationConfigBaseModel):
+class EvaluationUMAPParams(_EvaluationConfigBaseModel):
     """Controls Scanpy neighbor-graph construction and UMAP computation.
 
     Coordinates are stored in `adata.obsm[key_added]`. Neighbor metadata is
@@ -658,7 +658,7 @@ class UMAPParams(_EvaluationConfigBaseModel):
     )
 
 
-class UMAPConfig(EvalStepConfig):
+class EvaluationUMAPConfig(EvaluationStepConfig):
     """Configures the optional Scanpy UMAP evaluation step.
 
     UMAP requires embeddings and the optional Scanpy dependency. It is disabled
@@ -675,19 +675,19 @@ class UMAPConfig(EvalStepConfig):
         },
     )
 
-    params: UMAPParams | None = Field(
-        default_factory=UMAPParams,
+    params: EvaluationUMAPParams | None = Field(
+        default_factory=EvaluationUMAPParams,
         description=(
             "Parameters passed to neighbor-graph construction and UMAP."
         ),
         json_schema_extra={
-            "omit_behavior": "Uses `UMAPParams` defaults.",
+            "omit_behavior": "Uses `EvaluationUMAPParams` defaults.",
             "null_behavior": "Equivalent to omission.",
         },
     )
 
 
-class TSNEParams(BaseModel):
+class EvaluationTSNEParams(BaseModel):
     """Controls Scanpy t-SNE computation and AnnData storage.
 
     Coordinates are stored in `adata.obsm[key_added]`, with BenchRep provenance
@@ -785,7 +785,7 @@ class TSNEParams(BaseModel):
     )
 
 
-class TSNEConfig(EvalStepConfig):
+class EvaluationTSNEConfig(EvaluationStepConfig):
     """Configures the optional Scanpy t-SNE evaluation step.
 
     t-SNE requires embeddings. It is disabled by default and raises an error if
@@ -801,11 +801,11 @@ class TSNEConfig(EvalStepConfig):
         },
     )
 
-    params: TSNEParams | None = Field(
-        default_factory=TSNEParams,
+    params: EvaluationTSNEParams | None = Field(
+        default_factory=EvaluationTSNEParams,
         description="Parameters controlling Scanpy t-SNE computation.",
         json_schema_extra={
-            "omit_behavior": "Uses `TSNEParams` defaults.",
+            "omit_behavior": "Uses `EvaluationTSNEParams` defaults.",
             "null_behavior": "Equivalent to omission.",
         },
     )
@@ -820,29 +820,29 @@ class EvaluationReductionsConfig(_EvaluationConfigBaseModel):
     compute one internally.
     """
 
-    pca: PCAConfig = Field(
-        default_factory=PCAConfig,
+    pca: EvaluationPCAConfig = Field(
+        default_factory=EvaluationPCAConfig,
         description="Configuration for the PCA evaluation step.",
         json_schema_extra={
-            "omit_behavior": "Uses `PCAConfig` defaults.",
+            "omit_behavior": "Uses `EvaluationPCAConfig` defaults.",
             "null_behavior": "Not allowed; a configuration mapping is required.",
         },
     )
 
-    umap: UMAPConfig = Field(
-        default_factory=UMAPConfig,
+    umap: EvaluationUMAPConfig = Field(
+        default_factory=EvaluationUMAPConfig,
         description="Configuration for the UMAP evaluation step.",
         json_schema_extra={
-            "omit_behavior": "Uses `UMAPConfig` defaults.",
+            "omit_behavior": "Uses `EvaluationUMAPConfig` defaults.",
             "null_behavior": "Not allowed; a configuration mapping is required.",
         },
     )
 
-    tsne: TSNEConfig = Field(
-        default_factory=TSNEConfig,
+    tsne: EvaluationTSNEConfig = Field(
+        default_factory=EvaluationTSNEConfig,
         description="Configuration for the t-SNE evaluation step.",
         json_schema_extra={
-            "omit_behavior": "Uses `TSNEConfig` defaults.",
+            "omit_behavior": "Uses `EvaluationTSNEConfig` defaults.",
             "null_behavior": "Not allowed; a configuration mapping is required.",
         },
     )
@@ -851,7 +851,7 @@ class EvaluationReductionsConfig(_EvaluationConfigBaseModel):
 # -------------------------
 # Clustering config
 # -------------------------
-class KMeansParams(BaseModel):
+class EvaluationKMeansParams(BaseModel):
     """Controls scikit-learn KMeans clustering and AnnData storage.
 
     KMeans is fitted directly to `adata.X`. Cluster labels are stored as
@@ -933,7 +933,7 @@ class KMeansParams(BaseModel):
     )
 
 
-class KMeansConfig(EvalStepConfig):
+class EvaluationKMeansConfig(EvaluationStepConfig):
     """Configures the optional scikit-learn KMeans evaluation step.
 
     KMeans clusters `adata.X` directly and does not consume reduction outputs.
@@ -950,11 +950,11 @@ class KMeansConfig(EvalStepConfig):
         },
     )
 
-    params: KMeansParams | None = Field(
-        default_factory=KMeansParams,
+    params: EvaluationKMeansParams | None = Field(
+        default_factory=EvaluationKMeansParams,
         description="Parameters controlling KMeans clustering and output storage.",
         json_schema_extra={
-            "omit_behavior": "Uses `KMeansParams` defaults.",
+            "omit_behavior": "Uses `EvaluationKMeansParams` defaults.",
             "null_behavior": (
                 "Accepted while KMeans is disabled; rejected when it is enabled."
             ),
@@ -962,7 +962,7 @@ class KMeansConfig(EvalStepConfig):
     )
 
     @model_validator(mode="after")
-    def validate_kmeans(self) -> KMeansConfig:
+    def validate_kmeans(self) -> EvaluationKMeansConfig:
         if self.enabled is True and (
             self.params is None or self.params.n_clusters is None
         ):
@@ -974,7 +974,7 @@ class KMeansConfig(EvalStepConfig):
         return self
 
 
-class LeidenParams(_EvaluationConfigBaseModel):
+class EvaluationLeidenParams(_EvaluationConfigBaseModel):
     """Controls Scanpy neighbor-graph construction and Leiden clustering.
 
     Cluster labels are stored in `adata.obs[key_added]`. Neighbor metadata is
@@ -1138,7 +1138,7 @@ class LeidenParams(_EvaluationConfigBaseModel):
     )
 
 
-class LeidenConfig(EvalStepConfig):
+class EvaluationLeidenConfig(EvaluationStepConfig):
     """Configures the optional Scanpy Leiden evaluation step.
 
     Leiden constructs its own neighbor graph and does not cluster UMAP
@@ -1156,20 +1156,20 @@ class LeidenConfig(EvalStepConfig):
         },
     )
 
-    params: LeidenParams | None = Field(
-        default_factory=LeidenParams,
+    params: EvaluationLeidenParams | None = Field(
+        default_factory=EvaluationLeidenParams,
         description=(
             "Parameters controlling neighbor construction, Leiden clustering, "
             "and output storage."
         ),
         json_schema_extra={
-            "omit_behavior": "Uses `LeidenParams` defaults.",
+            "omit_behavior": "Uses `EvaluationLeidenParams` defaults.",
             "null_behavior": "Equivalent to omission.",
         },
     )
 
 
-class HDBSCANParams(BaseModel):
+class EvaluationHDBSCANParams(BaseModel):
     """Controls scikit-learn HDBSCAN clustering and AnnData storage.
 
     HDBSCAN clusters `adata.X` directly. Labels are stored as categorical
@@ -1288,7 +1288,7 @@ class HDBSCANParams(BaseModel):
     )
 
 
-class HDBSCANConfig(EvalStepConfig):
+class EvaluationHDBSCANConfig(EvaluationStepConfig):
     """Configures the optional scikit-learn HDBSCAN evaluation step.
 
     HDBSCAN clusters `adata.X` directly and does not consume reduction outputs.
@@ -1308,13 +1308,13 @@ class HDBSCANConfig(EvalStepConfig):
         },
     )
 
-    params: HDBSCANParams | None = Field(
-        default_factory=HDBSCANParams,
+    params: EvaluationHDBSCANParams | None = Field(
+        default_factory=EvaluationHDBSCANParams,
         description=(
             "Parameters controlling HDBSCAN clustering and output storage."
         ),
         json_schema_extra={
-            "omit_behavior": "Uses `HDBSCANParams` defaults.",
+            "omit_behavior": "Uses `EvaluationHDBSCANParams` defaults.",
             "null_behavior": "Equivalent to omission.",
         },
     )
@@ -1329,29 +1329,29 @@ class EvaluationClusteringConfig(_EvaluationConfigBaseModel):
     from its configured representation.
     """
 
-    kmeans: KMeansConfig = Field(
-        default_factory=KMeansConfig,
+    kmeans: EvaluationKMeansConfig = Field(
+        default_factory=EvaluationKMeansConfig,
         description="Configuration for the KMeans evaluation step.",
         json_schema_extra={
-            "omit_behavior": "Uses `KMeansConfig` defaults.",
+            "omit_behavior": "Uses `EvaluationKMeansConfig` defaults.",
             "null_behavior": "Not allowed; a configuration mapping is required.",
         },
     )
 
-    leiden: LeidenConfig = Field(
-        default_factory=LeidenConfig,
+    leiden: EvaluationLeidenConfig = Field(
+        default_factory=EvaluationLeidenConfig,
         description="Configuration for the Leiden evaluation step.",
         json_schema_extra={
-            "omit_behavior": "Uses `LeidenConfig` defaults.",
+            "omit_behavior": "Uses `EvaluationLeidenConfig` defaults.",
             "null_behavior": "Not allowed; a configuration mapping is required.",
         },
     )
 
-    hdbscan: HDBSCANConfig = Field(
-        default_factory=HDBSCANConfig,
+    hdbscan: EvaluationHDBSCANConfig = Field(
+        default_factory=EvaluationHDBSCANConfig,
         description="Configuration for the HDBSCAN evaluation step.",
         json_schema_extra={
-            "omit_behavior": "Uses `HDBSCANConfig` defaults.",
+            "omit_behavior": "Uses `EvaluationHDBSCANConfig` defaults.",
             "null_behavior": "Not allowed; a configuration mapping is required.",
         },
     )
@@ -1360,7 +1360,7 @@ class EvaluationClusteringConfig(_EvaluationConfigBaseModel):
 # -------------------------
 # Reconstruction artifacts config
 # -------------------------
-class ErrorMapParams(_EvaluationConfigBaseModel):
+class EvaluationErrorMapParams(_EvaluationConfigBaseModel):
     """Controls error maps used by TIFF and reconstruction-grid exports.
 
     This block does not enable error-map output independently. Each
@@ -1454,13 +1454,13 @@ class EvaluationReconstructionConfig(_EvaluationConfigBaseModel):
         },
     )
 
-    error_maps: ErrorMapParams = Field(
-        default_factory=ErrorMapParams,
+    error_maps: EvaluationErrorMapParams = Field(
+        default_factory=EvaluationErrorMapParams,
         description=(
             "Error-map settings shared by TIFF and reconstruction-grid exports."
         ),
         json_schema_extra={
-            "omit_behavior": "Uses `ErrorMapParams` defaults.",
+            "omit_behavior": "Uses `EvaluationErrorMapParams` defaults.",
             "null_behavior": "Not allowed.",
             "notes": [
                 "Does not independently enable error-map computation or export."
@@ -1474,7 +1474,7 @@ class EvaluationReconstructionConfig(_EvaluationConfigBaseModel):
 # -------------------------
 
 # Clustering ---
-class InternalClusteringMetricConfig(EvalMetricGroupConfig):
+class EvaluationInternalClusteringMetricConfig(EvaluationMetricGroupConfig):
     """Configures internal metrics for each enabled clustering result.
 
     Registered metrics receive `adata.X` and the corresponding cluster labels.
@@ -1544,7 +1544,7 @@ class InternalClusteringMetricConfig(EvalMetricGroupConfig):
     )
 
 
-class ExternalClusteringMetricConfig(EvalMetricGroupConfig):
+class EvaluationExternalClusteringMetricConfig(EvaluationMetricGroupConfig):
     """Configures label-referenced metrics for each enabled clustering result.
 
     Registered metrics receive reference labels from `adata.obs[label_key]` and
@@ -1633,30 +1633,30 @@ class EvaluationClusteringMetricsConfig(_EvaluationConfigBaseModel):
     both internal and external metrics.
     """
 
-    internal: InternalClusteringMetricConfig = Field(
-        default_factory=InternalClusteringMetricConfig,
+    internal: EvaluationInternalClusteringMetricConfig = Field(
+        default_factory=EvaluationInternalClusteringMetricConfig,
         description="Internal metrics evaluating cluster structure in `adata.X`.",
         json_schema_extra={
-            "omit_behavior": "Uses `InternalClusteringMetricConfig` defaults.",
+            "omit_behavior": "Uses `EvaluationInternalClusteringMetricConfig` defaults.",
             "null_behavior": "Not allowed.",
         },
     )
 
-    external: ExternalClusteringMetricConfig = Field(
-        default_factory=ExternalClusteringMetricConfig,
+    external: EvaluationExternalClusteringMetricConfig = Field(
+        default_factory=EvaluationExternalClusteringMetricConfig,
         description=(
             "External metrics comparing cluster assignments with reference "
             "labels."
         ),
         json_schema_extra={
-            "omit_behavior": "Uses `ExternalClusteringMetricConfig` defaults.",
+            "omit_behavior": "Uses `EvaluationExternalClusteringMetricConfig` defaults.",
             "null_behavior": "Not allowed.",
         },
     )
 
 
 # Embedding ---
-class EmbeddingMetricConfig(EvalMetricGroupConfig):
+class EvaluationEmbeddingMetricConfig(EvaluationMetricGroupConfig):
     """Configures metrics computed directly from the embedding matrix.
 
     Registered metrics receive `adata.X`. Their returned values are validated
@@ -1722,7 +1722,7 @@ class EmbeddingMetricConfig(EvalMetricGroupConfig):
 
 
 # Reconstruction ---
-class ReconstructionMetricConfig(EvalMetricGroupConfig):
+class EvaluationReconstructionMetricConfig(EvaluationMetricGroupConfig):
     """Configures metrics comparing inputs with their reconstructions.
 
     Registered metrics receive the input and reconstruction arrays. Their
@@ -1927,7 +1927,7 @@ class EvaluationCrossValidationConfig(_EvaluationConfigBaseModel):
         return self
 
 
-class TuningInnerCVConfig(_EvaluationConfigBaseModel):
+class EvaluationTuningInnerCVConfig(_EvaluationConfigBaseModel):
     """Configures inner cross-validation used for hyperparameter selection."""
 
     n_splits: NSplits = Field(
@@ -1967,8 +1967,8 @@ class EvaluationCVTuningConfig(_EvaluationConfigBaseModel):
         },
     )
 
-    inner_cv: TuningInnerCVConfig = Field(
-        default_factory=TuningInnerCVConfig,
+    inner_cv: EvaluationTuningInnerCVConfig = Field(
+        default_factory=EvaluationTuningInnerCVConfig,
         description="Inner cross-validation settings used during tuning.",
         json_schema_extra={
             "omit_behavior": "Uses three inner folds.",
@@ -1981,7 +1981,7 @@ class EvaluationCVTuningConfig(_EvaluationConfigBaseModel):
     )
 
 
-class DummyProbeConfig(_EvaluationConfigBaseModel):
+class EvaluationDummyProbeConfig(_EvaluationConfigBaseModel):
     """Configures a task-appropriate non-informative baseline probe."""
 
     strategy: Literal[
@@ -2021,7 +2021,7 @@ class DummyProbeConfig(_EvaluationConfigBaseModel):
     )
 
 
-class LogisticRegressionProbeConfig(BaseModel):
+class EvaluationLogisticRegressionProbeConfig(BaseModel):
     """Configures the linear classification probe.
 
     Recognized fields configure BenchRep's standard logistic-regression setup.
@@ -2096,7 +2096,7 @@ class LogisticRegressionProbeConfig(BaseModel):
     )
 
 
-class RidgeProbeConfig(BaseModel):
+class EvaluationRidgeProbeConfig(BaseModel):
     """Configures the linear regression probe.
 
     Recognized fields configure BenchRep's standard ridge-regression setup.
@@ -2150,13 +2150,13 @@ class RidgeProbeConfig(BaseModel):
     )
 
 
-LinearProbeConfig: TypeAlias = Annotated[
-    LogisticRegressionProbeConfig | RidgeProbeConfig,
+EvaluationLinearProbeConfig: TypeAlias = Annotated[
+    EvaluationLogisticRegressionProbeConfig | EvaluationRidgeProbeConfig,
     Field(discriminator="model"),
 ]
 
 
-class KNNProbeConfig(BaseModel):
+class EvaluationKNNProbeConfig(BaseModel):
     """Configures the task-dependent nearest-neighbor probe.
 
     Classification uses scikit-learn's `KNeighborsClassifier`, while regression
@@ -2229,7 +2229,7 @@ class KNNProbeConfig(BaseModel):
     )
 
 
-class RandomForestProbeConfig(BaseModel):
+class EvaluationRandomForestProbeConfig(BaseModel):
     """Configures the task-dependent random-forest probe.
 
     Classification uses scikit-learn's `RandomForestClassifier`, while
@@ -2310,7 +2310,7 @@ class RandomForestProbeConfig(BaseModel):
     )
 
 
-class XGBoostProbeConfig(BaseModel):
+class EvaluationXGBoostProbeConfig(BaseModel):
     """Configures the task-dependent optional XGBoost probe.
 
     Classification uses `xgboost.XGBClassifier`, while regression uses
@@ -2390,7 +2390,7 @@ class XGBoostProbeConfig(BaseModel):
     )
 
 
-class SVMRBFProbeConfig(BaseModel):
+class EvaluationSVMRBFProbeConfig(BaseModel):
     """Configures the task-dependent radial-basis-function SVM probe.
 
     Classification uses scikit-learn's `SVC`, while regression uses `SVR`.
@@ -2493,8 +2493,8 @@ class EvaluationPredictabilityParamsConfig(_EvaluationConfigBaseModel):
     parameters define search grids and therefore require tuning to be enabled.
     """
 
-    dummy: DummyProbeConfig = Field(
-        default_factory=DummyProbeConfig,
+    dummy: EvaluationDummyProbeConfig = Field(
+        default_factory=EvaluationDummyProbeConfig,
         description="Parameters for the task-dependent dummy baseline.",
         json_schema_extra={
             "omit_behavior": "Uses task-appropriate dummy-probe defaults.",
@@ -2502,7 +2502,7 @@ class EvaluationPredictabilityParamsConfig(_EvaluationConfigBaseModel):
         },
     )
 
-    linear: LinearProbeConfig | None = Field(
+    linear: EvaluationLinearProbeConfig | None = Field(
         default=None,
         description="Parameters for the task-dependent linear probe.",
         json_schema_extra={
@@ -2518,29 +2518,29 @@ class EvaluationPredictabilityParamsConfig(_EvaluationConfigBaseModel):
         },
     )
 
-    knn: KNNProbeConfig = Field(
-        default_factory=KNNProbeConfig,
+    knn: EvaluationKNNProbeConfig = Field(
+        default_factory=EvaluationKNNProbeConfig,
         description="Parameters for the task-dependent nearest-neighbor probe.",
         json_schema_extra={
-            "omit_behavior": "Uses `KNNProbeConfig` defaults.",
+            "omit_behavior": "Uses `EvaluationKNNProbeConfig` defaults.",
             "null_behavior": "Not allowed.",
         },
     )
 
-    random_forest: RandomForestProbeConfig = Field(
-        default_factory=RandomForestProbeConfig,
+    random_forest: EvaluationRandomForestProbeConfig = Field(
+        default_factory=EvaluationRandomForestProbeConfig,
         description="Parameters for the task-dependent random-forest probe.",
         json_schema_extra={
-            "omit_behavior": "Uses `RandomForestProbeConfig` defaults.",
+            "omit_behavior": "Uses `EvaluationRandomForestProbeConfig` defaults.",
             "null_behavior": "Not allowed.",
         },
     )
 
-    xgboost: XGBoostProbeConfig = Field(
-        default_factory=XGBoostProbeConfig,
+    xgboost: EvaluationXGBoostProbeConfig = Field(
+        default_factory=EvaluationXGBoostProbeConfig,
         description="Parameters for the optional task-dependent XGBoost probe.",
         json_schema_extra={
-            "omit_behavior": "Uses `XGBoostProbeConfig` defaults.",
+            "omit_behavior": "Uses `EvaluationXGBoostProbeConfig` defaults.",
             "null_behavior": "Not allowed.",
             "notes": [
                 "These parameters have no effect unless `xgboost` is selected.",
@@ -2548,11 +2548,11 @@ class EvaluationPredictabilityParamsConfig(_EvaluationConfigBaseModel):
         },
     )
 
-    svm_rbf: SVMRBFProbeConfig = Field(
-        default_factory=SVMRBFProbeConfig,
+    svm_rbf: EvaluationSVMRBFProbeConfig = Field(
+        default_factory=EvaluationSVMRBFProbeConfig,
         description="Parameters for the task-dependent RBF-SVM probe.",
         json_schema_extra={
-            "omit_behavior": "Uses `SVMRBFProbeConfig` defaults.",
+            "omit_behavior": "Uses `EvaluationSVMRBFProbeConfig` defaults.",
             "null_behavior": "Not allowed.",
         },
     )
@@ -2644,7 +2644,7 @@ class EvaluationPredictabilityTargetConfig(_EvaluationConfigBaseModel):
     )
 
 
-class EvaluationPredictabilityConfig(EvalStepConfig):
+class EvaluationPredictabilityConfig(EvaluationStepConfig):
     """Configures embedding predictability for one or more targets.
 
     Each key in `targets` names an `adata.obs` column. Every configured target
@@ -2734,8 +2734,8 @@ class EvaluationMetricsConfig(_EvaluationConfigBaseModel):
         },
     )
 
-    embedding: EmbeddingMetricConfig = Field(
-        default_factory=EmbeddingMetricConfig,
+    embedding: EvaluationEmbeddingMetricConfig = Field(
+        default_factory=EvaluationEmbeddingMetricConfig,
         description="Embedding summary metric configuration.",
         json_schema_extra={
             "omit_behavior": "Uses embedding metric defaults.",
@@ -2752,8 +2752,8 @@ class EvaluationMetricsConfig(_EvaluationConfigBaseModel):
         },
     )
 
-    reconstruction: ReconstructionMetricConfig = Field(
-        default_factory=ReconstructionMetricConfig,
+    reconstruction: EvaluationReconstructionMetricConfig = Field(
+        default_factory=EvaluationReconstructionMetricConfig,
         description="Reconstruction comparison metric configuration.",
         json_schema_extra={
             "omit_behavior": "Uses reconstruction metric defaults.",
@@ -2765,7 +2765,7 @@ class EvaluationMetricsConfig(_EvaluationConfigBaseModel):
 # -------------------------
 # Plots config
 # -------------------------
-class ReconstructionGridConfig(_EvaluationConfigBaseModel):
+class EvaluationReconstructionGridConfig(_EvaluationConfigBaseModel):
     """Configures paginated reconstruction comparison grids.
 
     Each grid compares original inputs with their reconstructions for one
@@ -2846,7 +2846,7 @@ class ReconstructionGridConfig(_EvaluationConfigBaseModel):
     )
 
 
-class PlotParams(_EvaluationConfigBaseModel):
+class EvaluationPlotParams(_EvaluationConfigBaseModel):
     """Configures shared evaluation plot styling and file output.
 
     These settings apply to reduction plots, clustering diagnostics, and
@@ -2906,8 +2906,8 @@ class PlotParams(_EvaluationConfigBaseModel):
         },
     )
 
-    reconstruction_grid: ReconstructionGridConfig = Field(
-        default_factory=ReconstructionGridConfig,
+    reconstruction_grid: EvaluationReconstructionGridConfig = Field(
+        default_factory=EvaluationReconstructionGridConfig,
         description="Parameters controlling reconstruction comparison grids.",
         json_schema_extra={
             "omit_behavior": "Uses reconstruction-grid defaults.",
@@ -2916,7 +2916,7 @@ class PlotParams(_EvaluationConfigBaseModel):
     )
 
 
-class EvaluationPlotsConfig(EvalStepConfig):
+class EvaluationPlotsConfig(EvaluationStepConfig):
     """Configures evaluation figure exports.
 
     Plotting operates on available reduction, clustering, and reconstruction
@@ -2941,11 +2941,11 @@ class EvaluationPlotsConfig(EvalStepConfig):
         },
     )
 
-    params: PlotParams | None = Field(
-        default_factory=PlotParams,
+    params: EvaluationPlotParams | None = Field(
+        default_factory=EvaluationPlotParams,
         description="Shared styling, file-output, and reconstruction-grid parameters.",
         json_schema_extra={
-            "omit_behavior": "Uses `PlotParams` defaults.",
+            "omit_behavior": "Uses `EvaluationPlotParams` defaults.",
             "null_behavior": "Equivalent to omission.",
         },
     )
@@ -2964,7 +2964,7 @@ class EvaluationConfig(_EvaluationConfigBaseModel):
     Use `benchrep.inspect_config(EvaluationConfig)` to inspect this configuration.
     Nested configuration types shown in the output can be inspected the same
     way, for example `benchrep.inspect_config(EvaluationSourceConfig)` or
-    `benchrep.inspect_config(ReconstructionMetricConfig)`. Public configuration
+    `benchrep.inspect_config(EvaluationReconstructionMetricConfig)`. Public configuration
     classes are available from `benchrep.assembly.schemas`.
 
     Use `benchrep.inspect_registry()` to discover component registries and

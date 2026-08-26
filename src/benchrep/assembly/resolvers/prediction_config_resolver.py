@@ -13,8 +13,8 @@ from benchrep.assembly.schemas import (
     PredictionExportConfig,
     parse_training_config,
     SupportedDatasetConfig,
-    DataModuleConfig,
-    TrainerConfig,
+    TrainingDataModuleConfig,
+    TrainingTrainerConfig,
 )
 from benchrep.assembly.resolvers.utils import (
     resolve_optional,
@@ -93,10 +93,10 @@ class PredictionRunSpec:
     dataset_config: SupportedDatasetConfig | None
     transform_configs: tuple[PredictionTransformConfig, ...] | None
     transform_source: PredictionTransformSource
-    datamodule_config: DataModuleConfig | None
+    datamodule_config: TrainingDataModuleConfig | None
     batch_size: int | None
     num_workers: int | None
-    trainer_config: TrainerConfig
+    trainer_config: TrainingTrainerConfig
     max_batches: int | None
 
     seed: int | None
@@ -218,7 +218,7 @@ def resolve_prediction_config(
                     not training_datamodule_external
                     and training_config.datamodule is not None
             )
-            else DataModuleConfig()
+            else TrainingDataModuleConfig()
         )
 
         batch_size = resolve_optional(
