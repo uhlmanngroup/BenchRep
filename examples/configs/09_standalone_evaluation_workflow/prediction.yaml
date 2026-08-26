@@ -1,0 +1,42 @@
+stage: prediction
+
+source:
+  training_manifest_path: null
+  checkpoint: best
+
+dataset:
+  name: enriched_mnist
+  params:
+    root: examples/data/mnist
+    split: test
+    download: true
+
+# Inherit the validation transform recorded during training
+transforms: null
+
+data:
+  batch_size: 512
+  num_workers: 4
+  max_batches: null
+
+inference:
+  seed: null
+  seed_workers: null
+  deterministic: null
+  float32_matmul_precision: null
+  reconstruction_latent_source: null
+
+exports:
+  mode: standard
+
+  embeddings:
+    enabled: true
+
+  reconstructions:
+    enabled: true
+    n_examples: 500
+    selection: random
+    stratify_by: digit_label
+    seed: 137
+    include_input: true
+    include_prediction: true

@@ -1,0 +1,107 @@
+stage: training
+
+run:
+  output_root: outputs
+  project_name: 09_standalone_evaluation_workflow
+
+reproducibility:
+  seed: 137
+  seed_workers: true
+  float32_matmul_precision: high
+
+model:
+  name: vae
+  params:
+    latent_dim: 64
+
+encoder:
+  name: conv2d
+  params:
+    input_shape: [2, 28, 28]
+    output_dim: 64
+    kernel_size: 3
+    padding: 1
+    normalization: batchnorm
+    blocks:
+      - out_channels: 32
+      - out_channels: 64
+        stride: 2
+      - out_channels: 128
+        stride: 2
+
+decoder:
+  name: upsample_conv2d
+  params:
+    output_shape: [2, 28, 28]
+    channels: [64, 32]
+    upsample_mode: bilinear
+    upsample_align_corners: false
+    normalization: batchnorm
+    output_activation: sigmoid
+
+losses:
+  reconstruction:
+    mse:
+      weight: 1.0
+      params:
+        reduction: mean
+  regularization:
+    gaussian_kld:
+      weight: 0.0001
+      params:
+        reduction: mean
+
+optimizer:
+  name: adamw
+  params:
+    lr: 0.001
+    weight_decay: 0.00001
+
+dataset:
+  name: enriched_mnist
+  params:
+    root: examples/data/mnist
+    split: train
+    download: true
+
+transforms:
+  - name: to_dtype
+    apply_to: [ training, validation ]
+    params:
+      dtype: float32
+      scale: true
+
+datamodule:
+  batch_size: 128
+  val_fraction: 0.1
+  num_workers: 2
+  pin_memory: auto
+  persistent_workers: true
+  drop_last: false
+
+trainer:
+  max_epochs: 50
+  accelerator: auto
+  devices: auto
+  log_every_n_steps: 20
+  deterministic: true
+  benchmark: false
+  precision: 16-mixed
+
+logger: null
+
+checkpointing:
+  monitor: val/loss
+  mode: min
+  save_top_k: 1
+  save_last: true
+
+early_stopping:
+  monitor: val/loss
+  mode: min
+  patience: 5
+  min_delta: 0.0001
+
+inspection:
+  torchview:
+    enabled: false

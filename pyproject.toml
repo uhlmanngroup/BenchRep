@@ -54,6 +54,9 @@ xgboost = ["xgboost"]
 test = [
     "pytest>=8",
 ]
+artifact_generation = [
+    "scikit-image>=0.24,<1",
+]
 
 
 [tool.pytest.ini_options]

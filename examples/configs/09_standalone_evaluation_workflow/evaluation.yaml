@@ -1,0 +1,293 @@
+stage: evaluation
+
+source:
+  prediction_manifest_path: null
+  embeddings_path: null
+  reconstructions_path: null
+
+run:
+  output_root: outputs
+  run_name: 09_standalone_evaluation_workflow
+
+reductions:
+  pca:
+    enabled: true
+    params:
+      n_components: 30
+      key_added: X_pca
+      random_state: 137
+      overwrite: false
+
+  umap:
+    enabled: true
+    params:
+      n_neighbors: 15
+      n_pcs: null
+      use_rep: X
+      metric: euclidean
+      neighbors_kwargs:
+        knn: true
+        method: umap
+      min_dist: 0.1
+      key_added: X_umap
+      umap_kwargs:
+        spread: 1.0
+        negative_sample_rate: 5
+      neighbors_key: umap_neighbors
+      random_state: 137
+      overwrite: false
+
+  tsne:
+    enabled: true
+    params:
+      n_pcs: 30
+      use_rep: X_pca
+      perplexity: 30.0
+      key_added: X_tsne
+      random_state: 137
+      overwrite: false
+      learning_rate: 200.0
+
+clustering:
+  kmeans:
+    enabled: true
+    params:
+      n_clusters: 10
+      key_added: kmeans
+      random_state: 137
+      n_init: auto
+      overwrite: false
+
+  leiden:
+    enabled: true
+    params:
+      n_neighbors: 15
+      n_pcs: null
+      use_rep: X
+      metric: euclidean
+      neighbors_kwargs:
+        knn: true
+        method: gauss
+      resolution: 1.0
+      key_added: leiden
+      leiden_kwargs:
+        flavor: igraph
+        n_iterations: 2
+        directed: false
+        use_weights: true
+      neighbors_key: leiden_neighbors
+      random_state: 137
+      overwrite: false
+
+  hdbscan:
+    enabled: true
+    params:
+      min_cluster_size: 20
+      min_samples: 5
+      cluster_selection_epsilon: 0.0
+      metric: euclidean
+      cluster_selection_method: eom
+      allow_single_cluster: false
+      key_added: hdbscan
+      overwrite: false
+
+metrics:
+  clustering:
+    internal:
+      enabled: true
+      selected:
+        - silhouette
+        - calinski_harabasz
+        - davies_bouldin
+      overwrite: false
+
+    external:
+      enabled: true
+      label_key: digit_label
+      selected:
+        - adjusted_mutual_info
+        - adjusted_rand_index
+        - homogeneity
+      overwrite: false
+
+  embedding:
+    enabled: true
+    selected:
+      - mean
+      - median
+      - standard_deviation
+      - minimum
+      - maximum
+      - quantiles
+    params:
+      standard_deviation:
+        ddof: 0
+      quantiles:
+        q: [ 0.25, 0.5, 0.75 ]
+    overwrite: false
+
+  predictability:
+    enabled: true
+    targets:
+      digit_label:
+        selected:
+          - dummy
+          - linear
+          - knn
+          - random_forest
+          - svm_rbf
+        task: classification
+        cv:
+          method: stratified_group_kfold
+          n_splits: 5
+          group_key: acquisition_batch
+          shuffle: true
+          random_state: 137
+          scoring: balanced_accuracy
+        tuning:
+          enabled: false
+        params:
+          dummy:
+            strategy: most_frequent
+          linear:
+            model: logistic_regression
+            standardize: true
+            C: 1.0
+            class_weight: balanced
+            max_iter: 5000
+          knn:
+            standardize: true
+            n_neighbors: 15
+            weights: distance
+            metric: euclidean
+          random_forest:
+            n_estimators: 500
+            max_depth: null
+            class_weight: balanced
+            random_state: 137
+            n_jobs: -1
+          svm_rbf:
+            standardize: true
+            C: 1.0
+            gamma: scale
+            class_weight: balanced
+            cache_size: 5000
+            max_iter: -1
+        overwrite: false
+
+      mean_stroke_width:
+        selected:
+          - dummy
+          - linear
+          - knn
+          - random_forest
+          - xgboost
+          - svm_rbf
+        task: regression
+        cv:
+          method: group_kfold
+          n_splits: 5
+          group_key: acquisition_batch
+          shuffle: true
+          random_state: 137
+          scoring: r2
+        tuning:
+          enabled: false
+        params:
+          dummy:
+            strategy: mean
+          linear:
+            model: ridge
+            standardize: true
+            alpha: 1.0
+          knn:
+            standardize: true
+            n_neighbors: 15
+            weights: distance
+            metric: euclidean
+          random_forest:
+            n_estimators: 500
+            max_depth: null
+            random_state: 137
+            n_jobs: -1
+          xgboost:
+            n_estimators: 300
+            max_depth: 6
+            learning_rate: 0.05
+            random_state: 137
+            n_jobs: -1
+          svm_rbf:
+            standardize: true
+            C: 1.0
+            gamma: scale
+            cache_size: 5000
+            max_iter: -1
+        overwrite: false
+
+      acquisition_batch:
+        selected:
+          - dummy
+          - linear
+        task: classification
+        cv:
+          method: stratified_kfold
+          n_splits: 5
+          shuffle: true
+          random_state: 137
+          scoring: balanced_accuracy
+        tuning:
+          enabled: true
+          inner_cv:
+            n_splits: 3
+        params:
+          dummy:
+            strategy: most_frequent
+          linear:
+            model: logistic_regression
+            standardize: true
+            C: [ 0.1, 1.0, 10.0 ]
+            class_weight: balanced
+            max_iter: 5000
+        overwrite: false
+
+  reconstruction:
+    enabled: true
+    selected:
+      - mae
+      - mse
+      - rmse
+      - max_absolute_error
+    reduction: both
+
+reconstruction:
+  export_tiffs: true
+  n_examples: 12
+  error_maps:
+    kinds:
+      - absolute
+      - squared
+      - signed
+      - relative
+      - normalized_absolute_global
+      - normalized_absolute_per_channel
+    denominator_floor: 1.0e-8
+    data_range: 1.0
+
+plots:
+  enabled: true
+  params:
+    accent_color: "#6A3D9A"
+    color_by:
+      - digit_label
+      - mean_stroke_width
+      - acquisition_batch
+    dpi: 300
+    formats:
+      - png
+      - pdf
+      - svg
+    reconstruction_grid:
+      include_error_maps: true
+      random_state: 137
+      stratify_by: digit_label
+      channel_selection: all
