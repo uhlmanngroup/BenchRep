@@ -17,7 +17,7 @@ def parse_training_config(
     return TrainingConfig.model_validate(
         raw_config,
         context={
-            "model_overridden": model_overridden,
+            "model_is_external": model_overridden,
             "datamodule_overridden": datamodule_overridden,
         }
     )
@@ -34,7 +34,7 @@ def parse_prediction_config(
     return PredictionConfig.model_validate(
         raw_config,
         context={
-            "model_overridden": model_overridden,
+            "model_is_external": model_overridden,
             "datamodule_overridden": datamodule_overridden,
             "training_manifest_path_overridden": (
                 training_manifest_path_overridden

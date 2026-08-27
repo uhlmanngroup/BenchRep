@@ -4,10 +4,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypeVar, Literal
 
+from benchrep.assembly.schemas.runtime_override_config_schema import (
+    RuntimeComponentOverrideConfig,
+)
+
 
 ResolvedT = TypeVar("ResolvedT")
 
-ComponentSource = Literal["config", "external_object"]
+ComponentSource = Literal[
+    "config",
+    "external_instance",
+    "external_class",
+]
 
 
 @dataclass(frozen=True)
@@ -16,6 +24,67 @@ class RunIdentitySpec:
     project_name: str | None
     model_name: str
 
+
+def resolve_component_source(
+    component: object | None,
+    *,
+    expected_base_class: type[Any],
+    component_name: str,
+) -> ComponentSource:
+    """Validate and classify an optional runtime component override."""
+    if component is None:
+        return "config"
+
+    if isinstance(component, type):
+        if not issubclass(component, expected_base_class):
+            raise TypeError(
+                f"`{component_name}` class must inherit from "
+                f"`{expected_base_class.__name__}`."
+            )
+
+        return "external_class"
+
+    if not isinstance(component, expected_base_class):
+        raise TypeError(
+            f"`{component_name}` must be an instance or subclass of "
+            f"`{expected_base_class.__name__}`."
+        )
+
+    return "external_instance"
+
+
+def get_component_override_name(component: object) -> str:
+    """Return the class name for an external instance or class."""
+    if isinstance(component, type):
+        return component.__name__
+
+    return type(component).__name__
+
+
+def resolve_runtime_override_config(
+    config: RuntimeComponentOverrideConfig | None,
+    *,
+    source: ComponentSource,
+    config_path: str,
+) -> RuntimeComponentOverrideConfig | None:
+    """Resolve configuration for an external instance or class override."""
+    if source == "config":
+        if config is not None:
+            raise ValueError(
+                f"`{config_path}` requires an external component override."
+            )
+
+        return None
+
+    resolved_config = config or RuntimeComponentOverrideConfig()
+
+    if source == "external_instance" and resolved_config.params:
+        raise ValueError(
+            f"`{config_path}.params` cannot be used with an instantiated "
+            "component. Pass the component class instead."
+        )
+
+    return resolved_config
 
 def resolve_optional(
     override_value: ResolvedT | None,
@@ -33,7 +102,6 @@ def resolve_optional(
         )
 
     return fallback_value
-
 
 
 def get_required_nested_str(

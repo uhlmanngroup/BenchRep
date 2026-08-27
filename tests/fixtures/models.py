@@ -35,6 +35,7 @@ class CompatibleExternalAutoencoder(BenchRepAutoencoderModel):
     ) -> None:
         super().__init__()
 
+        self.latent_dim = latent_dim
         self.lr = lr
         self.compressor = nn.Sequential(
             nn.Flatten(),

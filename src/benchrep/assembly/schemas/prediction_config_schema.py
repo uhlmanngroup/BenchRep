@@ -863,7 +863,7 @@ class PredictionConfig(_PredictionConfigBaseModel):
     ) -> PredictionConfig:
         ctx = info.context or {}
 
-        model_overridden = ctx.get("model_overridden", False)
+        model_overridden = ctx.get("model_is_external", False)
         datamodule_overridden = ctx.get(
             "datamodule_overridden",
             False,

@@ -1550,7 +1550,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
             info: ValidationInfo,
     ) -> TrainingConfig:
         ctx = info.context or {}
-        model_overridden = ctx.get("model_overridden", False)
+        model_overridden = ctx.get("model_is_external", False)
         datamodule_overridden = ctx.get("datamodule_overridden", False)
 
         if self.overrides.model is not None and not model_overridden:
@@ -1586,7 +1586,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
             info: ValidationInfo,
     ) -> TrainingConfig:
         ctx = info.context or {}
-        model_overridden = ctx.get("model_overridden", False)
+        model_overridden = ctx.get("model_is_external", False)
 
         if model_overridden:
             return self

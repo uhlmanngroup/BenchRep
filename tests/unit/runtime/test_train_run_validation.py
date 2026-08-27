@@ -61,7 +61,7 @@ def test_fully_internal_run_requires_no_compatibility_checks() -> None:
 def test_compatible_external_model_with_internal_datamodule_passes() -> None:
     result = validate_train_contract_compatibility(
         run_spec=_make_run_spec(
-            model_source="external_object",
+            model_source="external_instance",
             datamodule_source="config",
         ),
         model=CompatibleExternalAutoencoder(),
@@ -77,7 +77,7 @@ def test_private_batch_external_model_with_internal_datamodule_is_rejected() -> 
     ):
         validate_train_contract_compatibility(
             run_spec=_make_run_spec(
-                model_source="external_object",
+                model_source="external_instance",
                 datamodule_source="config",
             ),
             model=PrivateBatchExternalAutoencoder(),
@@ -96,7 +96,7 @@ def test_plain_lightning_model_is_rejected_as_external_model() -> None:
     ):
         validate_train_contract_compatibility(
             run_spec=_make_run_spec(
-                model_source="external_object",
+                model_source="external_instance",
                 datamodule_source="config",
             ),
             model=model,
@@ -107,7 +107,7 @@ def test_internal_model_with_external_datamodule_requests_runtime_wrapping() -> 
     result = validate_train_contract_compatibility(
         run_spec=_make_run_spec(
             model_source="config",
-            datamodule_source="external_object",
+            datamodule_source="external_instance",
         ),
         model=CompatibleExternalAutoencoder(),
     )
@@ -124,8 +124,8 @@ def test_internal_model_with_external_datamodule_requests_runtime_wrapping() -> 
 def test_external_model_and_datamodule_may_use_private_batch_contract() -> None:
     result = validate_train_contract_compatibility(
         run_spec=_make_run_spec(
-            model_source="external_object",
-            datamodule_source="external_object",
+            model_source="external_instance",
+            datamodule_source="external_instance",
         ),
         model=PrivateBatchExternalAutoencoder(),
     )
@@ -145,7 +145,7 @@ def test_warning_policy_continues_after_batch_annotation_failures(
 
     result = validate_train_contract_compatibility(
         run_spec=_make_run_spec(
-            model_source="external_object",
+            model_source="external_instance",
             datamodule_source="config",
             compatibility_policy="warn",
         ),

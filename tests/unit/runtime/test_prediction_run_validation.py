@@ -31,10 +31,10 @@ def _make_prediction_run_spec(
             spec=PredictionRunSpec,
             model_family=AUTOENCODER_FAMILY,
             model_source=(
-                "external_object" if model_is_external else "config"
+                "external_instance" if model_is_external else "config"
             ),
             datamodule_source=(
-                "external_object" if datamodule_is_external else "config"
+                "external_instance" if datamodule_is_external else "config"
             ),
             compatibility_policy=compatibility_policy,
         ),

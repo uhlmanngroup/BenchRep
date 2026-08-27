@@ -18,15 +18,21 @@ from benchrep.assembly.builders import (
     build_transform_pipeline,
     build_model,
     build_trainer,
+    build_runtime_component,
 )
 from benchrep.interfaces.models import BenchRepAutoencoderModel, BenchRepVAEModel
 from benchrep.interfaces.model_families import (
     SupportedModel,
+    SupportedModelBaseClass,
     ModelFamilySpec,
     AUTOENCODER_FAMILY,
     VAE_FAMILY,
 )
 from benchrep.assembly.resolvers import resolve_prediction_config, PredictionRunSpec
+from benchrep.assembly.resolvers.utils import (
+    get_component_override_name,
+    resolve_component_source,
+)
 from benchrep.assembly.schemas import PredictionConfig
 from benchrep.records import (
     save_config_records,
@@ -81,8 +87,16 @@ def predict_ae(
         full_config_object: PredictionConfig | None = None,
         config_components: Mapping[str, SupportedPredictionConfigComponent] | None = None,
         training_manifest_path: Path | str | None = None,
-        model: BenchRepAutoencoderModel | None = None,
-        datamodule: L.LightningDataModule | None = None,
+        model: (
+                BenchRepAutoencoderModel
+                | type[BenchRepAutoencoderModel]
+                | None
+        ) = None,
+        datamodule: (
+                L.LightningDataModule
+                | type[L.LightningDataModule]
+                | None
+        ) = None,
         compatibility_policy: CompatibilityPolicy = "error",
 ) -> PredictionWorkflowResult:
     return _predict(
@@ -102,8 +116,16 @@ def predict_vae(
         full_config_object: PredictionConfig | None = None,
         config_components: Mapping[str, SupportedPredictionConfigComponent] | None = None,
         training_manifest_path: Path | str | None = None,
-        model: BenchRepVAEModel | None = None,
-        datamodule: L.LightningDataModule | None = None,
+        model: (
+                BenchRepVAEModel
+                | type[BenchRepVAEModel]
+                | None
+        ) = None,
+        datamodule: (
+                L.LightningDataModule
+                | type[L.LightningDataModule]
+                | None
+        ) = None,
         compatibility_policy: CompatibilityPolicy = "error",
 ) -> PredictionWorkflowResult:
     return _predict(
@@ -124,14 +146,33 @@ def _predict(
         full_config_object: PredictionConfig | None = None,
         config_components: Mapping[str, SupportedPredictionConfigComponent] | None = None,
         training_manifest_path: Path | str | None = None,
-        model: SupportedModel | None = None,
-        datamodule: L.LightningDataModule | None = None,
+        model: (
+                SupportedModel
+                | SupportedModelBaseClass
+                | None
+        ) = None,
+        datamodule: (
+                L.LightningDataModule
+                | type[L.LightningDataModule]
+                | None
+        ) = None,
         compatibility_policy: CompatibilityPolicy = "error",
 ) -> PredictionWorkflowResult:
     register_builtins()
 
-    model_is_external = model is not None
-    datamodule_is_external = datamodule is not None
+    model_source = resolve_component_source(
+        model,
+        expected_base_class=model_family.model_base_class,
+        component_name="model",
+    )
+    datamodule_source = resolve_component_source(
+        datamodule,
+        expected_base_class=L.LightningDataModule,
+        component_name="datamodule",
+    )
+
+    model_is_external = model_source != "config"
+    datamodule_is_external = datamodule_source != "config"
 
     # Training manifest override
     if training_manifest_path is not None:
@@ -161,11 +202,11 @@ def _predict(
         prediction_config=pred_config,
         model_family=model_family,
         training_manifest_path_override=training_manifest_path,
-        model_overridden=model_is_external,
-        datamodule_overridden=datamodule_is_external,
+        model_source=model_source,
+        datamodule_source=datamodule_source,
         model_override_name=(
-            type(model).__name__
-            if model_is_external
+            get_component_override_name(model)
+            if model is not None
             else None
         ),
         compatibility_policy=compatibility_policy,
@@ -289,6 +330,14 @@ def _predict(
     )
 
     # Build dataset and datamodule
+    datamodule = build_runtime_component(
+        datamodule,
+        override_config=(
+            resolved_prediction_config.overrides.datamodule
+        ),
+        component_name="datamodule",
+    )
+
     if not datamodule_is_external:
         dataset_config = run_spec.dataset_config
         datamodule_config = run_spec.datamodule_config
@@ -319,6 +368,12 @@ def _predict(
         )
 
     # Build or use model
+    model = build_runtime_component(
+        model,
+        override_config=resolved_prediction_config.overrides.model,
+        component_name="model",
+    )
+
     if not model_is_external:
         assert run_spec.training_config.model is not None
         assert run_spec.training_config.encoder is not None

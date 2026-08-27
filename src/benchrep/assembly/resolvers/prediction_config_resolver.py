@@ -6,7 +6,6 @@ from typing import Any, Literal
 
 from benchrep.assembly.config import load_yaml
 from benchrep.assembly.schemas import (
-    RuntimeComponentOverrideConfig,
     PredictionTransformConfig,
     PredictionConfig,
     TrainingConfig,
@@ -24,6 +23,7 @@ from benchrep.assembly.resolvers.utils import (
     get_required_nested_str,
     ComponentSource,
     RunIdentitySpec,
+    resolve_runtime_override_config,
 )
 from benchrep.assembly.registries.utils import normalize_name
 from benchrep.interfaces.model_families import (
@@ -121,8 +121,8 @@ def resolve_prediction_config(
     prediction_config: PredictionConfig,
     model_family: ModelFamilySpec,
     training_manifest_path_override: Path | str | None = None,
-    model_overridden: bool = False,
-    datamodule_overridden: bool = False,
+    model_source: ComponentSource = "config",
+    datamodule_source: ComponentSource = "config",
     model_override_name: str | None = None,
     compatibility_policy: Literal["error", "warn"] = "error",
 ) -> PredictionRunSpec:
@@ -138,6 +138,9 @@ def resolve_prediction_config(
         raise ValueError(
             "`compatibility_policy` must be either 'error' or 'warn'."
         )
+
+    model_is_external = model_source != "config"
+    datamodule_is_external = datamodule_source != "config"
 
     prediction_config, training_manifest_path = _resolve_training_manifest_path(
         prediction_config=prediction_config,
@@ -157,7 +160,7 @@ def resolve_prediction_config(
 
     _validate_prediction_model_source(
         training_model_external=training_model_external,
-        model_overridden=model_overridden,
+        model_is_external=model_is_external,
     )
 
     resolved_training_config_path = get_required_nested_path(
@@ -178,7 +181,7 @@ def resolve_prediction_config(
         training_model_provenance=training_model_provenance,
         training_config=training_config,
         model_family=model_family,
-        model_overridden=model_overridden,
+        model_is_external=model_is_external,
     )
 
     checkpoint_selection = prediction_config.source.checkpoint
@@ -211,7 +214,7 @@ def resolve_prediction_config(
         base_dir=training_manifest_path.parent,
     )
 
-    if datamodule_overridden:
+    if datamodule_is_external:
         dataset_config = None
         transform_configs = None
         transform_source: PredictionTransformSource = "external_datamodule"
@@ -311,7 +314,7 @@ def resolve_prediction_config(
             prediction_config.inference.reconstruction_latent_source
         ),
         model_family=model_family,
-        model_overridden=model_overridden,
+        model_is_external=model_is_external,
     )
 
     export_spec = resolve_prediction_exports(
@@ -332,7 +335,7 @@ def resolve_prediction_config(
         ),
     }
 
-    if not datamodule_overridden:
+    if not datamodule_is_external:
         assert dataset_config is not None
         assert transform_configs is not None
 
@@ -360,24 +363,17 @@ def resolve_prediction_config(
 
     # Record required runtime overrides so resolved-config replay can't
     # silently fall back to config-built components.
-    resolved_model_override = (
-        prediction_config.overrides.model
-        if model_overridden
-        else None
+    resolved_model_override = resolve_runtime_override_config(
+        prediction_config.overrides.model,
+        source=model_source,
+        config_path="overrides.model",
     )
-    if model_overridden and resolved_model_override is None:
-        resolved_model_override = RuntimeComponentOverrideConfig()
 
-    resolved_datamodule_override = (
-        prediction_config.overrides.datamodule
-        if datamodule_overridden
-        else None
+    resolved_datamodule_override = resolve_runtime_override_config(
+        prediction_config.overrides.datamodule,
+        source=datamodule_source,
+        config_path="overrides.datamodule",
     )
-    if (
-        datamodule_overridden
-        and resolved_datamodule_override is None
-    ):
-        resolved_datamodule_override = RuntimeComponentOverrideConfig()
 
     resolved_overrides = prediction_config.overrides.model_copy(
         update={
@@ -391,7 +387,7 @@ def resolve_prediction_config(
     )
 
     # Remove config-driven data settings that the external datamodule overrides.
-    if datamodule_overridden:
+    if datamodule_is_external:
         resolved_data_config = prediction_config.data.model_copy(
             update={
                 "batch_size": None,
@@ -407,14 +403,7 @@ def resolve_prediction_config(
             },
         )
 
-    model_source: ComponentSource = (
-        "external_object" if model_overridden else "config"
-    )
-    datamodule_source: ComponentSource = (
-        "external_object" if datamodule_overridden else "config"
-    )
-
-    if model_overridden:
+    if model_is_external:
         if model_override_name is None:
             raise ValueError(
                 "`model_override_name` is required when the prediction "
@@ -769,13 +758,14 @@ def _load_training_manifest(path: Path) -> dict[str, Any]:
 def _validate_prediction_model_source(
     *,
     training_model_external: bool,
-    model_overridden: bool,
+    model_is_external: bool,
 ) -> None:
-    if training_model_external and not model_overridden:
+    if training_model_external and not model_is_external:
         raise ValueError(
             "Training manifest indicates that the trained model came from an external "
-            "Python object, but no model override was provided to the prediction entrypoint. "
-            "Pass a compatible model instance that can load the recorded checkpoint."
+            "Python class or instance, but no model override was provided to the "
+            "prediction entrypoint. Pass a compatible model class or instance that can "
+            "load the recorded checkpoint."
         )
 
 
@@ -784,7 +774,7 @@ def _validate_prediction_model_family(
     training_model_provenance: dict[str, Any],
     training_config: TrainingConfig,
     model_family: ModelFamilySpec,
-    model_overridden: bool,
+    model_is_external: bool,
 ) -> None:
     recorded_family = training_model_provenance.get("family")
 
@@ -795,7 +785,7 @@ def _validate_prediction_model_family(
             f"prediction family={model_family.name!r}."
         )
 
-    if model_overridden:
+    if model_is_external:
         return
 
     assert training_config.model is not None
@@ -819,11 +809,11 @@ def _resolve_reconstruction_latent_source(
     *,
     configured_source: ReconstructionLatentSource | None,
     model_family: ModelFamilySpec,
-    model_overridden: bool,
+    model_is_external: bool,
 ) -> ReconstructionLatentSource | None:
     """Resolve the latent source used for prediction-time VAE reconstruction."""
     if configured_source is None:
-        if model_overridden:
+        if model_is_external:
             return None
 
         if model_family == VAE_FAMILY:
@@ -831,7 +821,7 @@ def _resolve_reconstruction_latent_source(
 
         return None
 
-    if model_overridden:
+    if model_is_external:
         if model_family == VAE_FAMILY:
             raise ValueError(
                 "`inference.reconstruction_latent_source` cannot be set when "

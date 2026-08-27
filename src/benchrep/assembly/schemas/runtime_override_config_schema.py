@@ -6,45 +6,29 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
-    field_validator,
 )
 
 
 class RuntimeComponentOverrideConfig(BaseModel):
-    """Records that a workflow requires an externally supplied component."""
+    """Configuration for an externally supplied component."""
 
     model_config = ConfigDict(extra="forbid")
 
     params: dict[str, Any] = Field(
         default_factory=dict,
         description=(
-            "Keyword arguments used when BenchRep instantiates an externally "
+            "Keyword arguments passed when BenchRep instantiates an externally "
             "supplied component class."
         ),
         json_schema_extra={
             "omit_behavior": "Uses no constructor parameters.",
             "null_behavior": "Not allowed.",
             "notes": [
-                "Non-empty parameters are reserved for future class overrides.",
-                "Current runtime overrides must be instantiated objects.",
+                "Parameters are passed only to class overrides.",
+                "Parameters must be empty when an instantiated object is supplied.",
             ],
         },
     )
-
-    @field_validator("params")
-    @classmethod
-    def reject_unsupported_constructor_params(
-        cls,
-        value: dict[str, Any],
-    ) -> dict[str, Any]:
-        if value:
-            raise ValueError(
-                "External component constructor parameters are not supported "
-                "yet because runtime overrides currently require instantiated "
-                "objects."
-            )
-
-        return value
 
 
 class RuntimeOverridesConfig(BaseModel):

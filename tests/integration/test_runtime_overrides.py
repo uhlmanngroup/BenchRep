@@ -8,6 +8,11 @@ from pydantic import ValidationError
 import yaml
 
 from benchrep.assembly.registries.core import DATASETS
+from benchrep.assembly.resolvers.utils import ComponentSource
+from benchrep.assembly.schemas import (
+    RuntimeComponentOverrideConfig,
+    RuntimeOverridesConfig,
+)
 from benchrep.workflows import train_ae, predict_ae, evaluate
 from benchrep.workflows.predict import PredictionWorkflowResult
 from benchrep.workflows.train import TrainingWorkflowResult
@@ -16,7 +21,10 @@ from tests.fixtures.datasets import (
     CompatibleAutoencoderBatchDataset,
     PrivateImageBatchDataset,
 )
-from tests.fixtures.datamodules import ExternalDataModule
+from tests.fixtures.datamodules import (
+    ExternalDataModule,
+    ParameterizedExternalDataModule,
+)
 from tests.fixtures.models import (
     CompatibleExternalAutoencoder,
     PrivateBatchExternalAutoencoder,
@@ -193,7 +201,7 @@ def test_internal_model_with_standard_external_datamodule(
         training_result=training_result,
         prediction_result=prediction_result,
         expected_model_source="config",
-        expected_datamodule_source="external_object",
+        expected_datamodule_source="external_instance",
     )
 
 
@@ -250,8 +258,8 @@ def test_standard_external_model_with_standard_external_datamodule(
     _assert_successful_train_predict(
         training_result=training_result,
         prediction_result=prediction_result,
-        expected_model_source="external_object",
-        expected_datamodule_source="external_object",
+        expected_model_source="external_instance",
+        expected_datamodule_source="external_instance",
     )
 
 
@@ -278,9 +286,155 @@ def test_standard_external_model_with_internal_datamodule(
     _assert_successful_train_predict(
         training_result=training_result,
         prediction_result=prediction_result,
-        expected_model_source="external_object",
+        expected_model_source="external_instance",
         expected_datamodule_source="config",
     )
+
+
+def test_external_model_class_is_built_from_configured_params(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _register_internal_dataset()
+    monkeypatch.chdir(tmp_path)
+
+    model_params = {
+        "latent_dim": 6,
+        "lr": 2e-3,
+    }
+    overrides = RuntimeOverridesConfig(
+        model=RuntimeComponentOverrideConfig(params=model_params),
+    )
+
+    training_result = train_ae(
+        config_path=TRAINING_CONFIG_PATH,
+        config_components={"overrides": overrides},
+        model=CompatibleExternalAutoencoder,
+        compatibility_policy="error",
+    )
+
+    prediction_result = predict_ae(
+        config_path=PREDICTION_CONFIG_PATH,
+        config_components={"overrides": overrides},
+        training_manifest_path=training_result.manifest_path,
+        model=CompatibleExternalAutoencoder,
+        compatibility_policy="error",
+    )
+
+    assert isinstance(training_result.model, CompatibleExternalAutoencoder)
+    assert training_result.model.latent_dim == 6
+    assert training_result.model.lr == 2e-3
+    assert training_result.config.overrides.model is not None
+    assert training_result.config.overrides.model.params == model_params
+
+    assert isinstance(prediction_result.model, CompatibleExternalAutoencoder)
+    assert prediction_result.model.latent_dim == 6
+    assert prediction_result.model.lr == 2e-3
+    assert prediction_result.config.overrides.model is not None
+    assert prediction_result.config.overrides.model.params == model_params
+
+    _assert_successful_train_predict(
+        training_result=training_result,
+        prediction_result=prediction_result,
+        expected_model_source="external_class",
+        expected_datamodule_source="config",
+    )
+
+
+def test_external_datamodule_class_is_built_from_configured_params(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    datamodule_params = {
+        "train_samples": 20,
+        "val_samples": 6,
+        "predict_samples": 32,
+        "batch_size": 8,
+        "seed": 200,
+    }
+    overrides = RuntimeOverridesConfig(
+        datamodule=RuntimeComponentOverrideConfig(
+            params=datamodule_params,
+        ),
+    )
+
+    training_result = train_ae(
+        config_path=TRAINING_CONFIG_PATH,
+        config_components={"overrides": overrides},
+        datamodule=ParameterizedExternalDataModule,
+        compatibility_policy="error",
+    )
+
+    prediction_result = predict_ae(
+        config_path=PREDICTION_CONFIG_PATH,
+        config_components={"overrides": overrides},
+        training_manifest_path=training_result.manifest_path,
+        datamodule=ParameterizedExternalDataModule,
+        compatibility_policy="error",
+    )
+
+    expected_sample_counts = {
+        "train": 20,
+        "validation": 6,
+        "prediction": 32,
+    }
+
+    assert isinstance(
+        training_result.datamodule,
+        ParameterizedExternalDataModule,
+    )
+    assert training_result.datamodule.sample_counts == expected_sample_counts
+    assert training_result.datamodule.seed == 200
+    assert training_result.config.overrides.datamodule is not None
+    assert (
+        training_result.config.overrides.datamodule.params
+        == datamodule_params
+    )
+
+    assert isinstance(
+        prediction_result.datamodule,
+        ParameterizedExternalDataModule,
+    )
+    assert prediction_result.datamodule.sample_counts == expected_sample_counts
+    assert prediction_result.datamodule.seed == 200
+    assert prediction_result.config.overrides.datamodule is not None
+    assert (
+        prediction_result.config.overrides.datamodule.params
+        == datamodule_params
+    )
+
+    _assert_successful_train_predict(
+        training_result=training_result,
+        prediction_result=prediction_result,
+        expected_model_source="config",
+        expected_datamodule_source="external_class",
+    )
+
+
+def test_external_instance_rejects_constructor_params(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _register_internal_dataset()
+    monkeypatch.chdir(tmp_path)
+
+    overrides = RuntimeOverridesConfig(
+        model=RuntimeComponentOverrideConfig(
+            params={"latent_dim": 6},
+        ),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"overrides\.model\.params.*instantiated component",
+    ):
+        train_ae(
+            config_path=TRAINING_CONFIG_PATH,
+            config_components={"overrides": overrides},
+            model=CompatibleExternalAutoencoder(),
+        )
 
 
 def test_standard_external_model_with_private_external_datamodule(
@@ -361,8 +515,8 @@ def test_private_external_model_with_private_external_datamodule(
     _assert_successful_train_predict(
         training_result=training_result,
         prediction_result=prediction_result,
-        expected_model_source="external_object",
-        expected_datamodule_source="external_object",
+        expected_model_source="external_instance",
+        expected_datamodule_source="external_instance",
     )
 
 
@@ -407,7 +561,7 @@ def test_external_model_allows_missing_model_config_sections(
     _assert_successful_train_predict(
         training_result=training_result,
         prediction_result=prediction_result,
-        expected_model_source="external_object",
+        expected_model_source="external_instance",
         expected_datamodule_source="config",
     )
 
@@ -455,7 +609,7 @@ def test_external_datamodule_allows_missing_data_config_sections(
         training_result=training_result,
         prediction_result=prediction_result,
         expected_model_source="config",
-        expected_datamodule_source="external_object",
+        expected_datamodule_source="external_instance",
     )
 
 
@@ -513,8 +667,8 @@ def test_external_model_and_datamodule_allow_all_related_sections_missing(
     _assert_successful_train_predict(
         training_result=training_result,
         prediction_result=prediction_result,
-        expected_model_source="external_object",
-        expected_datamodule_source="external_object",
+        expected_model_source="external_instance",
+        expected_datamodule_source="external_instance",
     )
 
 
@@ -609,11 +763,21 @@ def _assert_successful_train_predict(
     *,
     training_result: TrainingWorkflowResult,
     prediction_result: PredictionWorkflowResult,
-    expected_model_source: str,
-    expected_datamodule_source: str,
+    expected_model_source: ComponentSource,
+    expected_datamodule_source: ComponentSource,
 ) -> None:
     assert training_result.manifest_path.is_file()
     assert prediction_result.manifest_path.is_file()
+    assert training_result.run_spec.model_source == expected_model_source
+    assert (
+        training_result.run_spec.datamodule_source
+        == expected_datamodule_source
+    )
+    assert prediction_result.run_spec.model_source == expected_model_source
+    assert (
+        prediction_result.run_spec.datamodule_source
+        == expected_datamodule_source
+    )
     assert training_result.checkpoint_callback.best_model_path
     assert Path(
         training_result.checkpoint_callback.best_model_path

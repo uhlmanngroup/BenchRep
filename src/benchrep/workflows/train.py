@@ -45,6 +45,7 @@ from benchrep.records import (
 from benchrep.records.utils import now_isoformat
 from benchrep.interfaces.model_families import (
     SupportedModel,
+    SupportedModelBaseClass,
     ModelFamilySpec,
     AUTOENCODER_FAMILY,
     VAE_FAMILY,
@@ -64,8 +65,13 @@ from benchrep.assembly.builders import (
     build_transform_pipelines,
     build_model,
     build_trainer,
+    build_runtime_component,
 )
 from benchrep.assembly.registries.builtins import register_builtins
+from benchrep.assembly.resolvers.utils import (
+    get_component_override_name,
+    resolve_component_source,
+)
 
 
 @dataclass
@@ -88,8 +94,16 @@ def train_ae(
         config_path: Path | str | None = None,
         full_config_object: TrainingConfig | None = None,
         config_components: Mapping[str, SupportedTrainingConfigComponent] | None = None,
-        model: BenchRepAutoencoderModel | None = None,
-        datamodule: L.LightningDataModule | None = None,
+        model: (
+                BenchRepAutoencoderModel
+                | type[BenchRepAutoencoderModel]
+                | None
+        ) = None,
+        datamodule: (
+                L.LightningDataModule
+                | type[L.LightningDataModule]
+                | None
+        ) = None,
         compatibility_policy: CompatibilityPolicy = "error",
 ) -> TrainingWorkflowResult:
     return _train(
@@ -107,8 +121,16 @@ def train_vae(
         config_path: Path | str | None = None,
         full_config_object: TrainingConfig | None = None,
         config_components: Mapping[str, SupportedTrainingConfigComponent] | None = None,
-        model: BenchRepVAEModel | None = None,
-        datamodule: L.LightningDataModule | None = None,
+        model: (
+                BenchRepVAEModel
+                | type[BenchRepVAEModel]
+                | None
+        ) = None,
+        datamodule: (
+                L.LightningDataModule
+                | type[L.LightningDataModule]
+                | None
+        ) = None,
         compatibility_policy: CompatibilityPolicy = "error",
 ) -> TrainingWorkflowResult:
     return _train(
@@ -127,14 +149,33 @@ def _train(
         config_path: Path | str | None = None,
         full_config_object: TrainingConfig | None = None,
         config_components: Mapping[str, SupportedTrainingConfigComponent] | None = None,
-        model: SupportedModel | None = None,
-        datamodule: L.LightningDataModule | None = None,
+        model: (
+                SupportedModel
+                | SupportedModelBaseClass
+                | None
+        ) = None,
+        datamodule: (
+                L.LightningDataModule
+                | type[L.LightningDataModule]
+                | None
+        ) = None,
         compatibility_policy: CompatibilityPolicy = "error"
 ) -> TrainingWorkflowResult:
     register_builtins()
 
-    model_is_external = model is not None
-    datamodule_is_external = datamodule is not None
+    model_source = resolve_component_source(
+        model,
+        expected_base_class=model_family.model_base_class,
+        component_name="model",
+    )
+    datamodule_source = resolve_component_source(
+        datamodule,
+        expected_base_class=L.LightningDataModule,
+        component_name="datamodule",
+    )
+
+    model_is_external = model_source != "config"
+    datamodule_is_external = datamodule_source != "config"
 
     # Compose and parse config
     config_composition_result = compose_effective_config(
@@ -149,11 +190,11 @@ def _train(
     run_spec = resolve_training_config(
         training_config=config_composition_result.effective_config,
         model_family=model_family,
-        model_overridden=model_is_external,
-        datamodule_overridden=datamodule_is_external,
+        model_source=model_source,
+        datamodule_source=datamodule_source,
         model_override_name=(
-            type(model).__name__
-            if model_is_external
+            get_component_override_name(model)
+            if model is not None
             else None
         ),
         compatibility_policy=compatibility_policy,
@@ -206,8 +247,15 @@ def _train(
             resolved_training_config.reproducibility.float32_matmul_precision,
         )
 
+    datamodule = build_runtime_component(
+        datamodule,
+        override_config=(
+            resolved_training_config.overrides.datamodule
+        ),
+        component_name="datamodule",
+    )
+
     if not datamodule_is_external:
-        # Avoid confusing type checker...
         dataset_config = resolved_training_config.dataset
         datamodule_config = resolved_training_config.datamodule
 
@@ -254,6 +302,12 @@ def _train(
             "config sections will be ignored regardless of whether they came from "
             "YAML, a full config object, or config_components."
         )
+
+    model = build_runtime_component(
+        model,
+        override_config=resolved_training_config.overrides.model,
+        component_name="model",
+    )
 
     if not model_is_external:
         model = build_model(config=resolved_training_config)
