@@ -21,12 +21,14 @@ from benchrep.interfaces.model_families import VAE_FAMILY
 if TYPE_CHECKING:
     import lightning as L
 
-    from benchrep.assembly.resolvers import PredictionRunSpec
+    from benchrep.assembly.resolvers import (
+        TrainingRunSpec,
+        PredictionRunSpec,
+    )
     from benchrep.assembly.resolvers.evaluation_config_resolver import (
         EvaluationRunSpec,
         PredictabilityTargetSpec,
     )
-    from benchrep.assembly.schemas import TrainingConfig
     from benchrep.interfaces.model_families import ModelFamilySpec
 
 
@@ -122,16 +124,16 @@ def collect_runtime_environment(
 
 def collect_training_environment_context(
     *,
-    training_config: TrainingConfig,
+    run_spec: TrainingRunSpec,
     trainer: L.Trainer,
-    datamodule_source: Literal["config", "external_object"],
 ) -> dict[str, Any]:
     """Collect runtime and reproducibility context for training."""
-    datamodule_config = training_config.datamodule
+    resolved_training_config = run_spec.training_config
+    datamodule_config = resolved_training_config.datamodule
 
     configured_num_workers = (
         datamodule_config.num_workers
-        if datamodule_source == "config"
+        if run_spec.datamodule_source == "config"
         and datamodule_config is not None
         else None
     )
@@ -139,39 +141,39 @@ def collect_training_environment_context(
     return {
         "execution": {
             "configured": {
-                "accelerator": training_config.trainer.accelerator,
-                "devices": training_config.trainer.devices,
+                "accelerator": resolved_training_config.trainer.accelerator,
+                "devices": resolved_training_config.trainer.devices,
                 "strategy": getattr(
-                    training_config.trainer,
+                    resolved_training_config.trainer,
                     "strategy",
                     None,
                 ),
                 "num_nodes": getattr(
-                    training_config.trainer,
+                    resolved_training_config.trainer,
                     "num_nodes",
                     None,
                 ),
-                "precision": training_config.trainer.precision,
+                "precision": resolved_training_config.trainer.precision,
             },
             "resolved": _collect_trainer_runtime_state(trainer),
         },
         "reproducibility": {
             "configured": {
-                "global_seed": training_config.reproducibility.seed,
+                "global_seed": resolved_training_config.reproducibility.seed,
                 "seed_workers": (
-                    training_config.reproducibility.seed_workers
+                    resolved_training_config.reproducibility.seed_workers
                 ),
                 "float32_matmul_precision": (
-                    training_config.reproducibility
+                    resolved_training_config.reproducibility
                     .float32_matmul_precision
                 ),
                 "deterministic": (
-                    training_config.trainer.deterministic
+                    resolved_training_config.trainer.deterministic
                 ),
-                "benchmark": training_config.trainer.benchmark,
+                "benchmark": resolved_training_config.trainer.benchmark,
             },
             "data_loading": {
-                "datamodule_source": datamodule_source,
+                "datamodule_source": run_spec.datamodule_source,
                 "num_workers": configured_num_workers,
             },
             "runtime_state": _collect_torch_runtime_state(),

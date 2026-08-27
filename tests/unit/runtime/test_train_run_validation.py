@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Literal
 from unittest.mock import Mock
 
 import lightning as L
 import pytest
 
+from benchrep.assembly.resolvers.training_config_resolver import (
+    TrainingComponentSource,
+    TrainingRunIdentitySpec,
+    TrainingRunSpec,
+)
 from benchrep.interfaces.model_families import AUTOENCODER_FAMILY
 from benchrep.runtime.train_run_validation import (
     validate_train_contract_compatibility,
@@ -16,13 +23,34 @@ from tests.fixtures.models import (
 )
 
 
+def _make_run_spec(
+    *,
+    model_source: TrainingComponentSource,
+    datamodule_source: TrainingComponentSource,
+    compatibility_policy: Literal["error", "warn"] = "error",
+) -> TrainingRunSpec:
+    return TrainingRunSpec(
+        stage="training",
+        training_config=Mock(),
+        model_family=AUTOENCODER_FAMILY,
+        model_source=model_source,
+        datamodule_source=datamodule_source,
+        compatibility_policy=compatibility_policy,
+        run_identity=TrainingRunIdentitySpec(
+            output_root=Path("."),
+            project_name=None,
+            model_name="test_model",
+        ),
+    )
+
+
 def test_fully_internal_run_requires_no_compatibility_checks() -> None:
     result = validate_train_contract_compatibility(
-        model_family=AUTOENCODER_FAMILY,
+        run_spec=_make_run_spec(
+            model_source="config",
+            datamodule_source="config",
+        ),
         model=CompatibleExternalAutoencoder(),
-        model_is_external=False,
-        datamodule_is_external=False,
-        compatibility_policy="error",
     )
 
     assert result == PreconditionResult()
@@ -30,11 +58,11 @@ def test_fully_internal_run_requires_no_compatibility_checks() -> None:
 
 def test_compatible_external_model_with_internal_datamodule_passes() -> None:
     result = validate_train_contract_compatibility(
-        model_family=AUTOENCODER_FAMILY,
+        run_spec=_make_run_spec(
+            model_source="external_object",
+            datamodule_source="config",
+        ),
         model=CompatibleExternalAutoencoder(),
-        model_is_external=True,
-        datamodule_is_external=False,
-        compatibility_policy="error",
     )
 
     assert result == PreconditionResult()
@@ -46,11 +74,11 @@ def test_private_batch_external_model_with_internal_datamodule_is_rejected() -> 
         match=r"training_step.*missing required field.*x",
     ):
         validate_train_contract_compatibility(
-            model_family=AUTOENCODER_FAMILY,
+            run_spec=_make_run_spec(
+                model_source="external_object",
+                datamodule_source="config",
+            ),
             model=PrivateBatchExternalAutoencoder(),
-            model_is_external=True,
-            datamodule_is_external=False,
-            compatibility_policy="error",
         )
 
 
@@ -65,21 +93,21 @@ def test_plain_lightning_model_is_rejected_as_external_model() -> None:
         ),
     ):
         validate_train_contract_compatibility(
-            model_family=AUTOENCODER_FAMILY,
+            run_spec=_make_run_spec(
+                model_source="external_object",
+                datamodule_source="config",
+            ),
             model=model,
-            model_is_external=True,
-            datamodule_is_external=False,
-            compatibility_policy="error",
         )
 
 
 def test_internal_model_with_external_datamodule_requests_runtime_wrapping() -> None:
     result = validate_train_contract_compatibility(
-        model_family=AUTOENCODER_FAMILY,
+        run_spec=_make_run_spec(
+            model_source="config",
+            datamodule_source="external_object",
+        ),
         model=CompatibleExternalAutoencoder(),
-        model_is_external=False,
-        datamodule_is_external=True,
-        compatibility_policy="error",
     )
 
     assert result.should_wrap_batch_contract_errors is True
@@ -93,11 +121,11 @@ def test_internal_model_with_external_datamodule_requests_runtime_wrapping() -> 
 
 def test_external_model_and_datamodule_may_use_private_batch_contract() -> None:
     result = validate_train_contract_compatibility(
-        model_family=AUTOENCODER_FAMILY,
+        run_spec=_make_run_spec(
+            model_source="external_object",
+            datamodule_source="external_object",
+        ),
         model=PrivateBatchExternalAutoencoder(),
-        model_is_external=True,
-        datamodule_is_external=True,
-        compatibility_policy="error",
     )
 
     assert result == PreconditionResult()
@@ -114,11 +142,12 @@ def test_warning_policy_continues_after_batch_annotation_failures(
     )
 
     result = validate_train_contract_compatibility(
-        model_family=AUTOENCODER_FAMILY,
+        run_spec=_make_run_spec(
+            model_source="external_object",
+            datamodule_source="config",
+            compatibility_policy="warn",
+        ),
         model=PrivateBatchExternalAutoencoder(),
-        model_is_external=True,
-        datamodule_is_external=False,
-        compatibility_policy="warn",
     )
 
     assert run_logger.warning.call_count == 2

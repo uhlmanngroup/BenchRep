@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import lightning as L
 
 from pathlib import Path
@@ -8,11 +10,9 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 
 from benchrep.assembly.schemas import TrainingCheckpointConfig
 from benchrep.runtime.utils import (
-    CompatibilityPolicy,
     PreconditionResult,
     run_compatibility_check,
 )
-from benchrep.interfaces.model_families import ModelFamilySpec
 from benchrep.interfaces.compatibility import (
     validate_external_model,
     sanity_check_training_step_batch_annotation,
@@ -20,14 +20,21 @@ from benchrep.interfaces.compatibility import (
     sanity_check_predict_step_return_annotation,
 )
 
+if TYPE_CHECKING:
+    from benchrep.assembly.resolvers.training_config_resolver import (
+        TrainingRunSpec,
+    )
+
 
 def validate_train_contract_compatibility(
-        model_family: ModelFamilySpec,
+        run_spec: TrainingRunSpec,
         model: L.LightningModule,
-        model_is_external: bool = False,
-        datamodule_is_external: bool = False,
-        compatibility_policy: CompatibilityPolicy = "error",
 ) -> PreconditionResult:
+    model_family = run_spec.model_family
+    model_is_external = run_spec.model_source != "config"
+    datamodule_is_external = run_spec.datamodule_source != "config"
+    compatibility_policy = run_spec.compatibility_policy
+
     external_model_only = model_is_external and not datamodule_is_external
     external_datamodule_only = datamodule_is_external and not model_is_external
     fully_internal_run = not model_is_external and not datamodule_is_external

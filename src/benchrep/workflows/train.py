@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Mapping
-from typing import Literal
 
 import lightning as L
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
@@ -16,8 +15,11 @@ from benchrep.runtime.train_run_validation import (
     validate_train_contract_compatibility,
     validate_training_checkpoint_outputs,
 )
+from benchrep.assembly.resolvers import (
+    TrainingRunSpec,
+    resolve_training_config,
+)
 from benchrep.runtime.status import (
-    EarlyStoppingRecord,
     build_early_stopping_record,
     TrainingInterruptionSignal,
     TrainingStatusReport,
@@ -63,13 +65,13 @@ from benchrep.assembly.builders import (
     build_model,
     build_trainer,
 )
-from benchrep.assembly.registries.utils import normalize_name
 from benchrep.assembly.registries.builtins import register_builtins
 
 
 @dataclass
 class TrainingWorkflowResult:
     config: TrainingConfig
+    run_spec: TrainingRunSpec
     run_context: RunContext
     model: SupportedModel
     datamodule: L.LightningDataModule
@@ -131,20 +133,8 @@ def _train(
 ) -> TrainingWorkflowResult:
     register_builtins()
 
-    if compatibility_policy not in {"error", "warn"}:
-        raise ValueError(
-            "compatibility_policy must be 'error' or 'warn'."
-        )
-
-    # Override flags
     model_is_external = model is not None
-    model_source: Literal["config", "external_object"] = (
-        "external_object" if model_is_external else "config"
-    )
     datamodule_is_external = datamodule is not None
-    datamodule_source: Literal["config", "external_object"] = (
-        "external_object" if datamodule_is_external else "config"
-    )
 
     # Compose and parse config
     config_composition_result = compose_effective_config(
@@ -156,38 +146,26 @@ def _train(
         external_datamodule=datamodule_is_external,
     )
 
-    train_config = config_composition_result.effective_config
+    run_spec = resolve_training_config(
+        training_config=config_composition_result.effective_config,
+        model_family=model_family,
+        model_overridden=model_is_external,
+        datamodule_overridden=datamodule_is_external,
+        model_override_name=(
+            type(model).__name__
+            if model_is_external
+            else None
+        ),
+        compatibility_policy=compatibility_policy,
+    )
 
-    if not model_is_external:
-        assert train_config.model is not None
-        assert train_config.encoder is not None
-
-        configured_model_name = normalize_name(
-            train_config.model.name,
-            field_name="config.model.name",
-        )
-
-        if configured_model_name not in model_family.config_model_names:
-            raise ValueError(
-                "Configured model is incompatible with the selected training "
-                "model family: "
-                f"family={model_family.name!r}, "
-                f"configured_model={configured_model_name!r}, "
-                f"expected one of {model_family.config_model_names!r}."
-            )
-
-        # Setup paths
-        model_name = f"{train_config.model.name}_{train_config.encoder.name}"
-        if train_config.decoder is not None:
-            model_name = f"{model_name}_{train_config.decoder.name}"
-    else:
-        model_name = f"{model_family.name}_external_{type(model).__name__}"
+    resolved_training_config = run_spec.training_config
 
     run_context = RunContext.create(
-        output_root=train_config.run.output_root,
-        stage=train_config.stage,
-        project_name=train_config.run.project_name,
-        model_name=model_name,
+        output_root=run_spec.run_identity.output_root,
+        stage=run_spec.stage,
+        project_name=run_spec.run_identity.project_name,
+        model_name=run_spec.run_identity.model_name,
     )
 
     created_at = now_isoformat()
@@ -208,37 +186,37 @@ def _train(
     # Bookkeeping --- config
     save_config_records(
         original_config_path=config_composition_result.original_config_path,
-        resolved_config=train_config,
+        resolved_config=resolved_training_config,
         config_out_dir=run_context.config_dir,
     )
 
     # Enforce reproducibility
     L.seed_everything(
-        train_config.reproducibility.seed,
-        workers=train_config.reproducibility.seed_workers,
+        resolved_training_config.reproducibility.seed,
+        workers=resolved_training_config.reproducibility.seed_workers,
     )
-    run_log.info("Global seed set to %s", train_config.reproducibility.seed)
+    run_log.info("Global seed set to %s", resolved_training_config.reproducibility.seed)
 
-    if train_config.reproducibility.float32_matmul_precision is not None:
+    if resolved_training_config.reproducibility.float32_matmul_precision is not None:
         torch.set_float32_matmul_precision(
-            train_config.reproducibility.float32_matmul_precision
+            resolved_training_config.reproducibility.float32_matmul_precision
         )
         run_log.info(
             "float32 matmul precision set to '%s'",
-            train_config.reproducibility.float32_matmul_precision,
+            resolved_training_config.reproducibility.float32_matmul_precision,
         )
 
     if not datamodule_is_external:
         # Avoid confusing type checker...
-        dataset_config = train_config.dataset
-        datamodule_config = train_config.datamodule
+        dataset_config = resolved_training_config.dataset
+        datamodule_config = resolved_training_config.datamodule
 
         assert dataset_config is not None
         assert datamodule_config is not None
 
         validation_transform_names = tuple(
             transform.name
-            for transform in train_config.transforms
+            for transform in resolved_training_config.transforms
             if "validation" in transform.apply_to
         )
 
@@ -255,7 +233,7 @@ def _train(
             )
 
         transform_pipelines = build_transform_pipelines(
-            train_config.transforms,
+            resolved_training_config.transforms,
         )
 
         dataset = build_dataset(
@@ -265,8 +243,8 @@ def _train(
         datamodule = build_datamodule(
             dataset=dataset,
             datamodule_config=datamodule_config,
-            seed=train_config.reproducibility.seed,
-            stage=train_config.stage,
+            seed=resolved_training_config.reproducibility.seed,
+            stage=run_spec.stage,
             training_pipeline=transform_pipelines.training,
             validation_pipeline=transform_pipelines.validation,
         )
@@ -278,7 +256,7 @@ def _train(
         )
 
     if not model_is_external:
-        model = build_model(config=train_config)
+        model = build_model(config=resolved_training_config)
     else:
         run_log.info(
             "External model was provided; model/encoder/decoder/losses/optimizer "
@@ -291,21 +269,18 @@ def _train(
     assert datamodule is not None
 
     precondition_result = validate_train_contract_compatibility(
-        model_family=model_family,
+        run_spec=run_spec,
         model=model,
-        model_is_external=model_is_external,
-        datamodule_is_external=datamodule_is_external,
-        compatibility_policy=compatibility_policy,
     )
 
     trainer, checkpoint_callback, early_stopping_callback = build_trainer(
-        trainer_config=train_config.trainer,
-        stage=train_config.stage,
+        trainer_config=resolved_training_config.trainer,
+        stage=run_spec.stage,
         run_context=run_context,
-        logger_config=train_config.logger,
-        checkpoint_config=train_config.checkpointing,
-        early_stopping_config=train_config.early_stopping,
-        additional_callback_configs=train_config.additional_callbacks,
+        logger_config=resolved_training_config.logger,
+        checkpoint_config=resolved_training_config.checkpointing,
+        early_stopping_config=resolved_training_config.early_stopping,
+        additional_callback_configs=resolved_training_config.additional_callbacks,
     )
 
     if checkpoint_callback is None:
@@ -313,18 +288,17 @@ def _train(
 
     training_environment_context = (
         collect_training_environment_context(
-            training_config=train_config,
+            run_spec=run_spec,
             trainer=trainer,
-            datamodule_source=datamodule_source,
         )
     )
 
     runtime_environment_path = write_runtime_environment(
         output_path=(
             run_context.metadata_dir
-            / get_runtime_environment_filename(train_config.stage)
+            / get_runtime_environment_filename(run_spec.stage)
         ),
-        stage=train_config.stage,
+        stage=run_spec.stage,
         run_name=run_context.run_name,
         workflow_context=training_environment_context,
     )
@@ -416,7 +390,7 @@ def _train(
     # Log checkpoint errors and warnings
     checkpoint_errors, checkpoint_warnings = (
         validate_training_checkpoint_outputs(
-            checkpoint_config=train_config.checkpointing,
+            checkpoint_config=resolved_training_config.checkpointing,
             checkpoint_callback=checkpoint_callback,
         )
     )
@@ -436,15 +410,15 @@ def _train(
     # Export torchview graph if possible
     torchview_graph_path = None
 
-    if train_config.inspection.torchview.enabled:
+    if resolved_training_config.inspection.torchview.enabled:
         try:
             dummy_input_size = infer_dummy_input_size(datamodule)
             torchview_graph_path = export_torchview_graph(
                 model=model,
                 input_size=dummy_input_size,
                 output_path=run_context.training_architecture_dir / "model_graph.png",
-                expand_nested=train_config.inspection.torchview.expand_nested,
-                depth=train_config.inspection.torchview.depth,
+                expand_nested=resolved_training_config.inspection.torchview.expand_nested,
+                depth=resolved_training_config.inspection.torchview.depth,
             )
 
             if torchview_graph_path is not None:
@@ -486,7 +460,7 @@ def _train(
     training_manifest = write_training_manifest(
         config_composition_result=config_composition_result,
         output_path=manifest_path,
-        model_family=model_family,
+        run_spec=run_spec,
         run_context=run_context,
         checkpoint_callback=checkpoint_callback,
         early_stopping_record=early_stopping_record,
@@ -494,9 +468,7 @@ def _train(
         created_at=created_at,
         completed_at=completed_at,
         status_report=status_report,
-        model_source=model_source,
         model_class_name=type(model).__name__,
-        datamodule_source=datamodule_source,
         datamodule_class_name=type(datamodule).__name__,
     )
 
@@ -517,7 +489,8 @@ def _train(
         )
 
     return TrainingWorkflowResult(
-        config=train_config,
+        config=resolved_training_config,
+        run_spec=run_spec,
         run_context=run_context,
         model=model,
         datamodule=datamodule,

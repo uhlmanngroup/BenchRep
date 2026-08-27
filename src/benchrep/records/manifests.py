@@ -11,7 +11,11 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 
 from benchrep.assembly.schemas import TrainingConfig, PredictionConfig, EvaluationConfig
 from benchrep.assembly.config import ConfigCompositionResult
-from benchrep.assembly.resolvers import PredictionRunSpec, EvaluationRunSpec
+from benchrep.assembly.resolvers import (
+    TrainingRunSpec,
+    PredictionRunSpec,
+    EvaluationRunSpec,
+)
 from benchrep.records.prediction_exports import PredictionExportPaths
 from benchrep.records.evaluation_exports import EvaluationExportPaths
 from benchrep.records.logs import (
@@ -46,7 +50,7 @@ def write_training_manifest(
     *,
     config_composition_result: ConfigCompositionResult[TrainingConfig],
     output_path: Path,
-    model_family: ModelFamilySpec,
+    run_spec: TrainingRunSpec,
     run_context: RunContext,
     checkpoint_callback: ModelCheckpoint,
     early_stopping_record: EarlyStoppingRecord | None,
@@ -54,16 +58,14 @@ def write_training_manifest(
     created_at: str,
     completed_at: str,
     status_report: TrainingStatusReport,
-    model_source: str = "config",
     model_class_name: str,
-    datamodule_source: str = "config",
     datamodule_class_name: str,
 ) -> dict[str, Any]:
     # Source flags
-    model_is_external = model_source != "config"
-    datamodule_is_external = datamodule_source != "config"
+    model_is_external = run_spec.model_source != "config"
+    datamodule_is_external = run_spec.datamodule_source != "config"
 
-    config = config_composition_result.effective_config
+    config = run_spec.training_config
 
     configured_model = config.model.name if config.model is not None else None
     configured_encoder = config.encoder.name if config.encoder is not None else None
@@ -130,10 +132,10 @@ def write_training_manifest(
     )
 
     summary = {
-        "model_source": model_source,
-        "datamodule_source": datamodule_source,
+        "model_source": run_spec.model_source,
+        "datamodule_source": run_spec.datamodule_source,
         "model": model_class_name if model_is_external else configured_model,
-        "model_family": model_family.name,
+        "model_family": run_spec.model_family.name,
         "encoder": None if model_is_external else configured_encoder,
         "decoder": None if model_is_external else configured_decoder,
         "dataset": (
@@ -234,8 +236,8 @@ def write_training_manifest(
                 ),
             },
             "model": {
-                "source": model_source,
-                "family": model_family.name,
+                "source": run_spec.model_source,
+                "family": run_spec.model_family.name,
                 "class_name": model_class_name,
                 "config_reconstructable": not model_is_external,
                 "configured_model": None if model_is_external else configured_model,
@@ -245,7 +247,7 @@ def write_training_manifest(
             "dataset": configured_dataset,
             "transforms": configured_transforms,
             "datamodule": {
-                "source": datamodule_source,
+                "source": run_spec.datamodule_source,
                 "class_name": datamodule_class_name,
                 "config_reconstructable": (
                         not datamodule_is_external
