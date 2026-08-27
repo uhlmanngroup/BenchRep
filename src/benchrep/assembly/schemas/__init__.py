@@ -1,3 +1,7 @@
+from benchrep.assembly.schemas.runtime_override_config_schema import (
+    RuntimeComponentOverrideConfig,
+    RuntimeOverridesConfig,
+)
 from benchrep.assembly.schemas.training_config_schema import (
     TrainingConfig,
     TrainingReproducibilityConfig,
@@ -89,6 +93,8 @@ from benchrep.assembly.schemas.parsing import (
 )
 
 __all__ = [
+    "RuntimeComponentOverrideConfig",
+    "RuntimeOverridesConfig",
     "TrainingConfig",
     "TrainingReproducibilityConfig",
     "TrainingDataModuleConfig",

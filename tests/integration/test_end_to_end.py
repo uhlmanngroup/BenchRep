@@ -305,7 +305,7 @@ def _assert_vae_reconstruction_provenance(
     reproducibility = runtime_environment["workflow"]["reproducibility"]
 
     assert (
-        reproducibility["requested_overrides"]
+        reproducibility["resolved_config"]
         ["reconstruction_latent_source"]
         == configured_source
     )

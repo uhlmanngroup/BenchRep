@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from benchrep.assembly.config import load_yaml
 from benchrep.assembly.schemas import (
+    RuntimeComponentOverrideConfig,
     PredictionTransformConfig,
     PredictionConfig,
     TrainingConfig,
@@ -16,10 +17,13 @@ from benchrep.assembly.schemas import (
     TrainingDataModuleConfig,
     TrainingTrainerConfig,
 )
+from benchrep.assembly.schemas.training_config_schema import Float32MatmulPrecision
 from benchrep.assembly.resolvers.utils import (
     resolve_optional,
     get_required_nested_path,
     get_required_nested_str,
+    ComponentSource,
+    RunIdentitySpec,
 )
 from benchrep.assembly.registries.utils import normalize_name
 from benchrep.interfaces.model_families import (
@@ -78,12 +82,18 @@ class PredictionExportSpec:
 @dataclass(frozen=True)
 class PredictionRunSpec:
     stage: Literal["prediction"]
+    model_family: ModelFamilySpec
+    model_source: ComponentSource
+    datamodule_source: ComponentSource
+    compatibility_policy: Literal["error", "warn"]
+    run_identity: RunIdentitySpec
     prediction_config: PredictionConfig
     training_config: TrainingConfig
     training_manifest: dict[str, Any]
 
     training_manifest_path: Path
     resolved_training_config_path: Path
+    checkpoint_selection: Literal["best", "last"] | Path
     checkpoint_path: Path
     checkpoint_source: PredictionCheckpointSource
 
@@ -101,7 +111,7 @@ class PredictionRunSpec:
 
     seed: int | None
     seed_workers: bool
-    float32_matmul_precision: Literal["medium", "high", "highest"]
+    float32_matmul_precision: Float32MatmulPrecision
     reconstruction_latent_source: ReconstructionLatentSource | None
 
     export_spec: PredictionExportSpec
@@ -113,6 +123,8 @@ def resolve_prediction_config(
     training_manifest_path_override: Path | str | None = None,
     model_overridden: bool = False,
     datamodule_overridden: bool = False,
+    model_override_name: str | None = None,
+    compatibility_policy: Literal["error", "warn"] = "error",
 ) -> PredictionRunSpec:
     """Resolve prediction configuration against its linked training run.
 
@@ -121,6 +133,12 @@ def resolve_prediction_config(
       and prediction data settings, inherits applicable runtime settings, and
       returns the complete runtime specification used by the prediction workflow.
       """
+
+    if compatibility_policy not in {"error", "warn"}:
+        raise ValueError(
+            "`compatibility_policy` must be either 'error' or 'warn'."
+        )
+
     prediction_config, training_manifest_path = _resolve_training_manifest_path(
         prediction_config=prediction_config,
         training_manifest_path_override=training_manifest_path_override,
@@ -163,10 +181,21 @@ def resolve_prediction_config(
         model_overridden=model_overridden,
     )
 
+    checkpoint_selection = prediction_config.source.checkpoint
+
     checkpoint_path, checkpoint_source = _resolve_checkpoint_path(
-        checkpoint=prediction_config.source.checkpoint,
+        checkpoint=checkpoint_selection,
         training_manifest=training_manifest,
         manifest_path=training_manifest_path,
+    )
+
+    # Materialize the actual checkpoint path resolved for this run.
+    prediction_config = prediction_config.model_copy(
+        update={
+            "source": prediction_config.source.model_copy(
+                update={"checkpoint": checkpoint_path},
+            ),
+        },
     )
 
     training_run_name = get_required_nested_str(
@@ -271,7 +300,7 @@ def resolve_prediction_config(
         }
     )
 
-    float32_matmul_precision = resolve_optional(
+    float32_matmul_precision: Float32MatmulPrecision = resolve_optional(
         prediction_config.inference.float32_matmul_precision,
         training_config.reproducibility.float32_matmul_precision,
         field_name="inference.float32_matmul_precision",
@@ -291,13 +320,133 @@ def resolve_prediction_config(
         model_family=model_family,
     )
 
+    # Materialize only values inherited from the linked training workflow.
+    resolved_config_updates: dict[str, Any] = {
+        "inference": prediction_config.inference.model_copy(
+            update={
+                "seed": seed,
+                "seed_workers": seed_workers,
+                "deterministic": deterministic,
+                "float32_matmul_precision": float32_matmul_precision,
+            },
+        ),
+    }
+
+    if not datamodule_overridden:
+        assert dataset_config is not None
+        assert transform_configs is not None
+
+        # An omitted dataset inherits the training dataset.
+        resolved_config_updates["dataset"] = dataset_config
+
+        if transform_source == "training_config":
+            resolved_config_updates["transforms"] = list(
+                transform_configs,
+            )
+
+        if not training_datamodule_external:
+            resolved_config_updates["data"] = (
+                prediction_config.data.model_copy(
+                    update={
+                        "batch_size": batch_size,
+                        "num_workers": num_workers,
+                    },
+                )
+            )
+
+    prediction_config = prediction_config.model_copy(
+        update=resolved_config_updates,
+    )
+
+    # Record required runtime overrides so resolved-config replay can't
+    # silently fall back to config-built components.
+    resolved_model_override = (
+        prediction_config.overrides.model
+        if model_overridden
+        else None
+    )
+    if model_overridden and resolved_model_override is None:
+        resolved_model_override = RuntimeComponentOverrideConfig()
+
+    resolved_datamodule_override = (
+        prediction_config.overrides.datamodule
+        if datamodule_overridden
+        else None
+    )
+    if (
+        datamodule_overridden
+        and resolved_datamodule_override is None
+    ):
+        resolved_datamodule_override = RuntimeComponentOverrideConfig()
+
+    resolved_overrides = prediction_config.overrides.model_copy(
+        update={
+            "model": resolved_model_override,
+            "datamodule": resolved_datamodule_override,
+        },
+    )
+
+    prediction_config = prediction_config.model_copy(
+        update={"overrides": resolved_overrides},
+    )
+
+    # Remove config-driven data settings that the external datamodule overrides.
+    if datamodule_overridden:
+        resolved_data_config = prediction_config.data.model_copy(
+            update={
+                "batch_size": None,
+                "num_workers": None,
+            },
+        )
+
+        prediction_config = prediction_config.model_copy(
+            update={
+                "dataset": None,
+                "transforms": None,
+                "data": resolved_data_config,
+            },
+        )
+
+    model_source: ComponentSource = (
+        "external_object" if model_overridden else "config"
+    )
+    datamodule_source: ComponentSource = (
+        "external_object" if datamodule_overridden else "config"
+    )
+
+    if model_overridden:
+        if model_override_name is None:
+            raise ValueError(
+                "`model_override_name` is required when the prediction "
+                "model is overridden."
+            )
+
+        model_name = (
+            f"{model_family.name}_external_{model_override_name}"
+        )
+    else:
+        assert training_config.model is not None
+        model_name = training_config.model.name
+
+    run_identity = RunIdentitySpec(
+        output_root=training_config.run.output_root,
+        project_name=training_config.run.project_name,
+        model_name=model_name,
+    )
+
     return PredictionRunSpec(
         stage=prediction_config.stage,
+        model_family=model_family,
+        model_source=model_source,
+        compatibility_policy=compatibility_policy,
+        run_identity=run_identity,
+        datamodule_source=datamodule_source,
         prediction_config=prediction_config,
         training_config=training_config,
         training_manifest=training_manifest,
         training_manifest_path=training_manifest_path,
         resolved_training_config_path=resolved_training_config_path,
+        checkpoint_selection=checkpoint_selection,
         checkpoint_path=checkpoint_path,
         checkpoint_source=checkpoint_source,
         training_run_name=training_run_name,

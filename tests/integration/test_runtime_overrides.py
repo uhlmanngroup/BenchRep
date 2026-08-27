@@ -401,7 +401,7 @@ def test_external_model_allows_missing_model_config_sections(
     assert training_result.config.model is None
     assert training_result.config.encoder is None
     assert training_result.config.decoder is None
-    assert training_result.config.losses == {}
+    assert training_result.config.losses is None
     assert training_result.config.optimizer is None
 
     _assert_successful_train_predict(
@@ -506,7 +506,7 @@ def test_external_model_and_datamodule_allow_all_related_sections_missing(
     assert training_result.config.model is None
     assert training_result.config.encoder is None
     assert training_result.config.decoder is None
-    assert training_result.config.losses == {}
+    assert training_result.config.losses is None
     assert training_result.config.optimizer is None
     assert training_result.config.dataset is None
 

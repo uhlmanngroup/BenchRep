@@ -24,15 +24,21 @@ def parse_training_config(
 
 
 def parse_prediction_config(
-        raw_config: dict[str, Any],
-        *,
-        training_manifest_path_overridden: bool = False,
+    raw_config: dict[str, Any],
+    *,
+    model_overridden: bool = False,
+    datamodule_overridden: bool = False,
+    training_manifest_path_overridden: bool = False,
 ) -> PredictionConfig:
     """Validate a raw config dictionary and return a typed prediction config."""
     return PredictionConfig.model_validate(
         raw_config,
         context={
-            "training_manifest_path_overridden": training_manifest_path_overridden,
+            "model_overridden": model_overridden,
+            "datamodule_overridden": datamodule_overridden,
+            "training_manifest_path_overridden": (
+                training_manifest_path_overridden
+            ),
         },
     )
 

@@ -64,6 +64,9 @@ from benchrep.assembly.schemas.parsing import (
     parse_prediction_config,
     parse_evaluation_config,
 )
+from benchrep.assembly.schemas.runtime_override_config_schema import (
+    RuntimeOverridesConfig,
+)
 
 
 SUPPORTED_CONFIG_SCHEMAS = (TrainingConfig, PredictionConfig, EvaluationConfig)
@@ -87,7 +90,8 @@ AdditionalCallbacksConfig: TypeAlias = list[TrainingAdditionalCallbackConfig]
 PredictionTransformsConfig: TypeAlias = list[PredictionTransformConfig]
 
 SupportedTrainingConfigComponent: TypeAlias = (
-        TrainingRunConfig
+        RuntimeOverridesConfig
+        | TrainingRunConfig
         | TrainingReproducibilityConfig
         | TrainingModelConfig
         | TrainingEncoderConfig
@@ -106,7 +110,8 @@ SupportedTrainingConfigComponent: TypeAlias = (
 )
 
 SupportedPredictionConfigComponent: TypeAlias = (
-        PredictionSourceConfig
+        RuntimeOverridesConfig
+        | PredictionSourceConfig
         | SupportedDatasetConfig
         | PredictionDataConfig
         | PredictionInferenceConfig
@@ -634,7 +639,11 @@ def _parse_effective_config(
     if schema is PredictionConfig:
         return parse_prediction_config(
             raw_config=raw_config,
-            training_manifest_path_overridden=training_manifest_path_overridden,
+            model_overridden=external_model,
+            datamodule_overridden=external_datamodule,
+            training_manifest_path_overridden=(
+                training_manifest_path_overridden
+            ),
         )
 
     if schema is EvaluationConfig:

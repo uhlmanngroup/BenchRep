@@ -273,19 +273,19 @@ def write_prediction_manifest(
     config_composition_result: ConfigCompositionResult[PredictionConfig],
     output_path: Path,
     run_spec: PredictionRunSpec,
-    model_family: ModelFamilySpec,
     run_context: RunContext,
     export_paths: PredictionExportPaths,
     created_at: str,
     completed_at: str,
     status_report: PredictionStatusReport,
-    model_source: str = "config",
     model_class_name: str,
-    datamodule_source: str = "config",
     datamodule_class_name: str,
     n_batches: int,
     n_observations: int | None,
 ) -> dict[str, Any]:
+    model_family = run_spec.model_family
+    model_source = run_spec.model_source
+    datamodule_source = run_spec.datamodule_source
     training_provenance = run_spec.training_manifest.get("provenance", {})
     training_status = run_spec.training_manifest.get("status")
     training_status_report = run_spec.training_manifest.get("status_report")
@@ -376,7 +376,7 @@ def write_prediction_manifest(
     )
 
     summary = {
-        "project_name": run_spec.training_config.run.project_name,
+        "project_name": run_spec.run_identity.project_name,
         "model_source": model_source,
         "datamodule_source": datamodule_source,
         "model": model_class_name if model_is_external else configured_model,
@@ -467,7 +467,7 @@ def write_prediction_manifest(
             "training_status": training_status,
             "training_interruption_signal": training_interruption_signal,
             "resolved_training_config_path": str(run_spec.resolved_training_config_path),
-            "checkpoint_selection": str(run_spec.prediction_config.source.checkpoint),
+            "checkpoint_selection": str(run_spec.checkpoint_selection),
             "checkpoint_source": run_spec.checkpoint_source,
             "checkpoint_path": str(run_spec.checkpoint_path),
         },

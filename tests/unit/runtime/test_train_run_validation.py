@@ -8,9 +8,11 @@ import lightning as L
 import pytest
 
 from benchrep.assembly.resolvers.training_config_resolver import (
-    TrainingComponentSource,
-    TrainingRunIdentitySpec,
     TrainingRunSpec,
+)
+from benchrep.assembly.resolvers.utils import (
+    ComponentSource,
+    RunIdentitySpec,
 )
 from benchrep.interfaces.model_families import AUTOENCODER_FAMILY
 from benchrep.runtime.train_run_validation import (
@@ -25,8 +27,8 @@ from tests.fixtures.models import (
 
 def _make_run_spec(
     *,
-    model_source: TrainingComponentSource,
-    datamodule_source: TrainingComponentSource,
+    model_source: ComponentSource,
+    datamodule_source: ComponentSource,
     compatibility_policy: Literal["error", "warn"] = "error",
 ) -> TrainingRunSpec:
     return TrainingRunSpec(
@@ -36,7 +38,7 @@ def _make_run_spec(
         model_source=model_source,
         datamodule_source=datamodule_source,
         compatibility_policy=compatibility_policy,
-        run_identity=TrainingRunIdentitySpec(
+        run_identity=RunIdentitySpec(
             output_root=Path("."),
             project_name=None,
             model_name="test_model",

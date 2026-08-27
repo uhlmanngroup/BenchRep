@@ -9,7 +9,6 @@ import lightning as L
 import torch
 
 from benchrep.runtime.utils import (
-    CompatibilityPolicy,
     PreconditionResult,
     run_compatibility_check,
 )
@@ -32,12 +31,13 @@ class PredictSourceInputsResult:
 
 
 def validate_predict_contract_compatibility(
-        model_family: ModelFamilySpec,
+        run_spec: PredictionRunSpec,
         model: L.LightningModule,
-        model_is_external: bool = False,
-        datamodule_is_external: bool = False,
-        compatibility_policy: CompatibilityPolicy = "error",
 ) -> PreconditionResult:
+    model_family = run_spec.model_family
+    model_is_external = run_spec.model_source != "config"
+    datamodule_is_external = run_spec.datamodule_source != "config"
+    compatibility_policy = run_spec.compatibility_policy
     external_model_only = model_is_external and not datamodule_is_external
     external_datamodule_only = datamodule_is_external and not model_is_external
     fully_internal_run = not model_is_external and not datamodule_is_external

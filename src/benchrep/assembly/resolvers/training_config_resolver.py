@@ -1,28 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import torch
 
 from benchrep.assembly.schemas import (
+    RuntimeComponentOverrideConfig,
     TrainingCheckpointConfig,
     TrainingConfig,
     TrainingDataModuleConfig,
 )
 from benchrep.interfaces.model_families import ModelFamilySpec
 from benchrep.assembly.registries.utils import normalize_name
-
-
-TrainingComponentSource = Literal["config", "external_object"]
-
-
-@dataclass(frozen=True)
-class TrainingRunIdentitySpec:
-    output_root: Path
-    project_name: str | None
-    model_name: str
+from benchrep.assembly.resolvers.utils import ComponentSource, RunIdentitySpec
 
 
 @dataclass(frozen=True)
@@ -30,10 +21,10 @@ class TrainingRunSpec:
     stage: Literal["training"]
     training_config: TrainingConfig
     model_family: ModelFamilySpec
-    model_source: TrainingComponentSource
-    datamodule_source: TrainingComponentSource
+    model_source: ComponentSource
+    datamodule_source: ComponentSource
     compatibility_policy: Literal["error", "warn"]
-    run_identity: TrainingRunIdentitySpec
+    run_identity: RunIdentitySpec
 
 
 def resolve_training_config(
@@ -61,11 +52,60 @@ def resolve_training_config(
         training_config.checkpointing,
     )
 
-    resolved_config = training_config.model_copy(
+    resolved_model_override = (
+        training_config.overrides.model
+        if model_overridden
+        else None
+    )
+    if model_overridden and resolved_model_override is None:
+        resolved_model_override = RuntimeComponentOverrideConfig()
+
+    resolved_datamodule_override = (
+        training_config.overrides.datamodule
+        if datamodule_overridden
+        else None
+    )
+    if (
+            datamodule_overridden
+            and resolved_datamodule_override is None
+    ):
+        resolved_datamodule_override = RuntimeComponentOverrideConfig()
+
+    resolved_overrides = training_config.overrides.model_copy(
         update={
-            "datamodule": resolved_datamodule,
-            "checkpointing": resolved_checkpointing,
+            "model": resolved_model_override,
+            "datamodule": resolved_datamodule_override,
         },
+    )
+
+    resolved_updates: dict[str, Any] = {
+        "overrides": resolved_overrides,
+        "datamodule": resolved_datamodule,
+        "checkpointing": resolved_checkpointing,
+    }
+
+    if model_overridden:
+        resolved_updates.update(
+            {
+                "model": None,
+                "encoder": None,
+                "decoder": None,
+                "losses": None,
+                "optimizer": None,
+            }
+        )
+
+    if datamodule_overridden:
+        resolved_updates.update(
+            {
+                "dataset": None,
+                "transforms": [],
+                "datamodule": None,
+            }
+        )
+
+    resolved_config = training_config.model_copy(
+        update=resolved_updates,
     )
 
     model_name = _resolve_training_model_name(
@@ -75,11 +115,11 @@ def resolve_training_config(
         model_override_name=model_override_name,
     )
 
-    model_source: TrainingComponentSource = (
+    model_source: ComponentSource = (
         "external_object" if model_overridden else "config"
     )
 
-    datamodule_source: TrainingComponentSource = (
+    datamodule_source: ComponentSource = (
         "external_object" if datamodule_overridden else "config"
     )
 
@@ -90,7 +130,7 @@ def resolve_training_config(
         model_source=model_source,
         datamodule_source=datamodule_source,
         compatibility_policy=compatibility_policy,
-        run_identity=TrainingRunIdentitySpec(
+        run_identity=RunIdentitySpec(
             output_root=resolved_config.run.output_root,
             project_name=resolved_config.run.project_name,
             model_name=model_name,

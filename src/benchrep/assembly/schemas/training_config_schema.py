@@ -22,6 +22,9 @@ from benchrep.architecture.models import (
     Autoencoder,
     VAE,
 )
+from benchrep.assembly.schemas.runtime_override_config_schema import (
+    RuntimeOverridesConfig,
+)
 
 
 # Helper for model and datamodule overrides
@@ -43,6 +46,12 @@ _LOGGER_REQUIRED_ADDITIONAL_CALLBACKS = frozenset({
     "device_stats_monitor",
     "learning_rate_monitor",
 })
+
+Float32MatmulPrecision: TypeAlias = Literal[
+    "medium",
+    "high",
+    "highest",
+]
 
 
 # -------------------------
@@ -303,7 +312,7 @@ class TrainingReproducibilityConfig(_TrainingConfigBaseModel):
         },
     )
 
-    float32_matmul_precision: Literal["medium", "high", "highest"] = Field(
+    float32_matmul_precision: Float32MatmulPrecision = Field(
         default="highest",
         description="Internal precision used for float32 matrix multiplications.",
         json_schema_extra={
@@ -1262,6 +1271,18 @@ class TrainingConfig(_TrainingConfigBaseModel):
         },
     )
 
+    overrides: RuntimeOverridesConfig = Field(
+        default_factory=RuntimeOverridesConfig,
+        description=(
+            "External model or datamodule requirements and constructor "
+            "parameters."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Requires no external runtime components.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+
     run: TrainingRunConfig = Field(
         default_factory=TrainingRunConfig,
         description="Output location and run-identification settings.",
@@ -1531,6 +1552,21 @@ class TrainingConfig(_TrainingConfigBaseModel):
         ctx = info.context or {}
         model_overridden = ctx.get("model_overridden", False)
         datamodule_overridden = ctx.get("datamodule_overridden", False)
+
+        if self.overrides.model is not None and not model_overridden:
+            raise ValueError(
+                "`overrides.model` requires a model override to be supplied "
+                "to the training entrypoint."
+            )
+
+        if (
+            self.overrides.datamodule is not None
+            and not datamodule_overridden
+        ):
+            raise ValueError(
+                "`overrides.datamodule` requires a datamodule override to be "
+                "supplied to the training entrypoint."
+            )
 
         if not model_overridden:
             _require_present(self.model, "model")

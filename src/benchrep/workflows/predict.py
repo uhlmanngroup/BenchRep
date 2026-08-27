@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import lightning as L
 import torch
@@ -130,19 +130,8 @@ def _predict(
 ) -> PredictionWorkflowResult:
     register_builtins()
 
-    if compatibility_policy not in {"error", "warn"}:
-        raise ValueError(
-            "compatibility_policy must be 'error' or 'warn'."
-        )
-
     model_is_external = model is not None
-    model_source: Literal["config", "external_object"] = (
-        "external_object" if model_is_external else "config"
-    )
     datamodule_is_external = datamodule is not None
-    datamodule_source: Literal["config", "external_object"] = (
-        "external_object" if datamodule_is_external else "config"
-    )
 
     # Training manifest override
     if training_manifest_path is not None:
@@ -174,20 +163,21 @@ def _predict(
         training_manifest_path_override=training_manifest_path,
         model_overridden=model_is_external,
         datamodule_overridden=datamodule_is_external,
+        model_override_name=(
+            type(model).__name__
+            if model_is_external
+            else None
+        ),
+        compatibility_policy=compatibility_policy,
     )
 
-    # Setup paths
-    if not model_is_external:
-        assert run_spec.training_config.model is not None
-        model_name = f"{run_spec.training_config.model.name}"
-    else:
-        model_name = f"{model_family.name}_external_{type(model).__name__}"
+    resolved_prediction_config = run_spec.prediction_config
 
     run_context = RunContext.create(
-        output_root=run_spec.training_config.run.output_root,
+        output_root=run_spec.run_identity.output_root,
         stage=run_spec.stage,
-        project_name=run_spec.training_config.run.project_name,
-        model_name=model_name,
+        project_name=run_spec.run_identity.project_name,
+        model_name=run_spec.run_identity.model_name,
     )
     created_at = now_isoformat()
 
@@ -208,7 +198,7 @@ def _predict(
     run_log.info(
         "Resolved checkpoint: source=%s, selection=%s, path='%s'",
         run_spec.checkpoint_source,
-        run_spec.prediction_config.source.checkpoint,
+        run_spec.checkpoint_selection,
         run_spec.checkpoint_path,
     )
     run_log.info(
@@ -225,7 +215,7 @@ def _predict(
         run_spec.export_spec.reconstructions.seed,
     )
 
-    if model_is_external and model_family == VAE_FAMILY:
+    if model_is_external and run_spec.model_family == VAE_FAMILY:
         warning = (
             "External VAE controls its own prediction logic. BenchRep cannot "
             "determine whether reconstructions are generated from the posterior "
@@ -236,9 +226,9 @@ def _predict(
         inference_warnings.append(warning)
         run_log.warning(warning)
 
-    elif model_family == VAE_FAMILY:
+    elif run_spec.model_family == VAE_FAMILY:
         configured_source = (
-            run_spec.prediction_config.inference.reconstruction_latent_source
+            resolved_prediction_config.inference.reconstruction_latent_source
         )
         effective_source = run_spec.reconstruction_latent_source
         assert effective_source is not None
@@ -279,7 +269,7 @@ def _predict(
     # Bookkeeping --- config
     save_config_records(
         original_config_path=config_composition_result.original_config_path,
-        resolved_config=run_spec.prediction_config,
+        resolved_config=resolved_prediction_config,
         config_out_dir=run_context.config_dir,
     )
 
@@ -350,11 +340,8 @@ def _predict(
     assert datamodule is not None
 
     precondition_result = validate_predict_contract_compatibility(
-        model_family=model_family,
+        run_spec=run_spec,
         model=model,
-        model_is_external=model_is_external,
-        datamodule_is_external=datamodule_is_external,
-        compatibility_policy=compatibility_policy,
     )
 
     inference_warnings.extend(precondition_result.warnings)
@@ -378,9 +365,6 @@ def _predict(
         collect_prediction_environment_context(
             run_spec=run_spec,
             trainer=trainer,
-            model_family=model_family,
-            model_source=model_source,
-            datamodule_source=datamodule_source,
         )
     )
 
@@ -436,7 +420,7 @@ def _predict(
     try:
         validate_prediction_outputs(
             predictions=predictions,
-            model_family=model_family,
+            model_family=run_spec.model_family,
         )
 
     except Exception as exc:
@@ -562,15 +546,12 @@ def _predict(
         config_composition_result=config_composition_result,
         output_path=manifest_path,
         run_spec=run_spec,
-        model_family=model_family,
         run_context=run_context,
         export_paths=export_paths,
         created_at=created_at,
         completed_at=completed_at,
         status_report=status_report,
-        model_source=model_source,
         model_class_name=type(model).__name__,
-        datamodule_source=datamodule_source,
         datamodule_class_name=type(datamodule).__name__,
         n_batches=n_prediction_batches,
         n_observations=n_predicted_observations,
@@ -608,7 +589,7 @@ def _predict(
         )
 
     return PredictionWorkflowResult(
-        config=run_spec.prediction_config,
+        config=resolved_prediction_config,
         run_spec=run_spec,
         run_context=run_context,
         datamodule=datamodule,

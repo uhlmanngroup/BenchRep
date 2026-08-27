@@ -19,6 +19,9 @@ from benchrep.assembly.schemas.training_config_schema import (
     NamedConfig,
     SupportedDatasetConfig,
 )
+from benchrep.assembly.schemas.runtime_override_config_schema import (
+    RuntimeOverridesConfig,
+)
 
 
 # -------------------------
@@ -746,6 +749,18 @@ class PredictionConfig(_PredictionConfigBaseModel):
         },
     )
 
+    overrides: RuntimeOverridesConfig = Field(
+        default_factory=RuntimeOverridesConfig,
+        description=(
+            "External model or datamodule requirements and constructor "
+            "parameters."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Requires no external runtime components.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+
     source: PredictionSourceConfig = Field(
         default_factory=PredictionSourceConfig,
         description="Training-manifest and checkpoint-selection settings.",
@@ -847,6 +862,28 @@ class PredictionConfig(_PredictionConfigBaseModel):
         info: ValidationInfo,
     ) -> PredictionConfig:
         ctx = info.context or {}
+
+        model_overridden = ctx.get("model_overridden", False)
+        datamodule_overridden = ctx.get(
+            "datamodule_overridden",
+            False,
+        )
+
+        if self.overrides.model is not None and not model_overridden:
+            raise ValueError(
+                "`overrides.model` requires a model override to be supplied "
+                "to the prediction entrypoint."
+            )
+
+        if (
+            self.overrides.datamodule is not None
+            and not datamodule_overridden
+        ):
+            raise ValueError(
+                "`overrides.datamodule` requires a datamodule override to be "
+                "supplied to the prediction entrypoint."
+            )
+
         training_manifest_path_overridden = ctx.get(
             "training_manifest_path_overridden",
             False,

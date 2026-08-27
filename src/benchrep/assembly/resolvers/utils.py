@@ -1,10 +1,20 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, TypeVar, Literal
 
 
 ResolvedT = TypeVar("ResolvedT")
+
+ComponentSource = Literal["config", "external_object"]
+
+
+@dataclass(frozen=True)
+class RunIdentitySpec:
+    output_root: Path
+    project_name: str | None
+    model_name: str
 
 
 def resolve_optional(

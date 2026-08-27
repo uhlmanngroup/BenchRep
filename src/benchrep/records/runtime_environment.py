@@ -29,7 +29,6 @@ if TYPE_CHECKING:
         EvaluationRunSpec,
         PredictabilityTargetSpec,
     )
-    from benchrep.interfaces.model_families import ModelFamilySpec
 
 
 RuntimeEnvironmentStage = Literal[
@@ -180,17 +179,16 @@ def collect_training_environment_context(
         },
     }
 
-
 def collect_prediction_environment_context(
-    *,
-    run_spec: PredictionRunSpec,
-    trainer: L.Trainer,
-    model_family: ModelFamilySpec,
-    model_source: Literal["config", "external_object"],
-    datamodule_source: Literal["config", "external_object"],
+        *,
+        run_spec: PredictionRunSpec,
+        trainer: L.Trainer,
 ) -> dict[str, Any]:
     """Collect runtime and reproducibility context for prediction."""
     prediction_config = run_spec.prediction_config
+    model_family = run_spec.model_family
+    model_source = run_spec.model_source
+    datamodule_source = run_spec.datamodule_source
     reconstruction_spec = run_spec.export_spec.reconstructions
 
     reconstruction_export_uses_randomness = (
@@ -233,7 +231,7 @@ def collect_prediction_environment_context(
             },
         },
         "reproducibility": {
-            "requested_overrides": {
+            "resolved_config": {
                 "global_seed": prediction_config.inference.seed,
                 "seed_workers": (
                     prediction_config.inference.seed_workers
@@ -300,14 +298,14 @@ def collect_prediction_environment_context(
             },
             "data_loading": {
                 "datamodule_source": datamodule_source,
-                "requested_batch_size": (
+                "resolved_config_batch_size": (
                     prediction_config.data.batch_size
                 ),
-                "resolved_batch_size": run_spec.batch_size,
-                "requested_num_workers": (
+                "effective_batch_size": run_spec.batch_size,
+                "resolved_config_num_workers": (
                     prediction_config.data.num_workers
                 ),
-                "resolved_num_workers": run_spec.num_workers,
+                "effective_num_workers": run_spec.num_workers,
             },
             "runtime_state": _collect_torch_runtime_state(),
         },
