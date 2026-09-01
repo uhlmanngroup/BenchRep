@@ -108,6 +108,17 @@ def _resolve_registry_selection(
 # -------------------------
 # Resolved specs
 # -------------------------
+EvaluationInheritableField = Literal[
+    "run.output_root",
+    "reconstruction.n_examples",
+]
+
+EvaluationArtifactSource = Literal[
+    "direct_path",
+    "prediction_manifest",
+]
+
+
 @dataclass(frozen=True)
 class EvaluationReconstructionInputSpec:
     input_path: Path | None
@@ -120,7 +131,9 @@ class EvaluationReconstructionInputSpec:
 @dataclass(frozen=True)
 class EvaluationInputSpec:
     embeddings_path: Path | None
+    embeddings_source: EvaluationArtifactSource | None
     reconstructions: EvaluationReconstructionInputSpec | None
+    reconstructions_source: EvaluationArtifactSource | None
     prediction_manifest_path: Path | None
 
 
@@ -204,6 +217,7 @@ class EvaluationRunSpec:
     evaluation_config: EvaluationConfig
     prediction_manifest: dict[str, Any] | None
     run_identity: EvaluationRunIdentitySpec
+    inherited_config_fields: frozenset[EvaluationInheritableField]
     input_spec: EvaluationInputSpec
     step_spec: EvaluationStepSpec
 
@@ -235,6 +249,9 @@ def resolve_evaluation_config(
     EvaluationRunSpec
         Fully resolved evaluation runtime specification.
     """
+
+    inherited_config_fields: set[EvaluationInheritableField] = set()
+
     # Resolve prediction manifest
     evaluation_config, prediction_manifest_path = _resolve_prediction_manifest_path(
         evaluation_config=evaluation_config,
@@ -255,6 +272,16 @@ def resolve_evaluation_config(
         manifest_base_dir=manifest_base_dir,
     )
 
+    embeddings_source: EvaluationArtifactSource | None = (
+        None
+        if embeddings_path is None
+        else (
+            "direct_path"
+            if evaluation_config.source.embeddings_path is not None
+            else "prediction_manifest"
+        )
+    )
+
     # Resolve reconstructions: manual path overrides manifest
     reconstructions = resolve_reconstructions(
         reconstructions_path=evaluation_config.source.reconstructions_path,
@@ -262,6 +289,24 @@ def resolve_evaluation_config(
         manifest_base_dir=manifest_base_dir,
         n_examples=evaluation_config.reconstruction.n_examples,
     )
+
+    reconstructions_source: EvaluationArtifactSource | None = (
+        None
+        if reconstructions is None
+        else (
+            "direct_path"
+            if evaluation_config.source.reconstructions_path is not None
+            else "prediction_manifest"
+        )
+    )
+
+    if (
+        reconstructions_source == "prediction_manifest"
+        and evaluation_config.reconstruction.n_examples is None
+        and reconstructions is not None
+        and reconstructions.n_examples is not None
+    ):
+        inherited_config_fields.add("reconstruction.n_examples")
 
     has_embeddings = embeddings_path is not None
     has_reconstructions = reconstructions is not None
@@ -279,6 +324,22 @@ def resolve_evaluation_config(
         manifest_base_dir=manifest_base_dir,
     )
 
+    if (
+            evaluation_config.run.output_root is None
+            and prediction_manifest is not None
+    ):
+        assert manifest_base_dir is not None
+
+        prediction_output_dir = get_optional_nested_path(
+            prediction_manifest,
+            "run",
+            "output_dir",
+            base_dir=manifest_base_dir,
+        )
+
+        if prediction_output_dir is not None:
+            inherited_config_fields.add("run.output_root")
+
     # Resolve step spec (some configs need further downstream resolution)
     step_spec = resolve_step_spec(
         evaluation_config=evaluation_config,
@@ -286,9 +347,59 @@ def resolve_evaluation_config(
         has_reconstructions=has_reconstructions,
     )
 
+    # Materialize effective artifact paths and values inherited from prediction.
+    resolved_reconstructions_path = (
+        evaluation_config.source.reconstructions_path
+    )
+
+    if (
+            resolved_reconstructions_path is None
+            and reconstructions_source == "prediction_manifest"
+            and reconstructions is not None
+    ):
+        assert reconstructions.input_path is not None
+        resolved_reconstructions_path = reconstructions.input_path.parent.resolve()
+
+    resolved_source_config = evaluation_config.source.model_copy(
+        update={
+            "prediction_manifest_path": prediction_manifest_path,
+            "embeddings_path": embeddings_path,
+            "reconstructions_path": resolved_reconstructions_path,
+        },
+    )
+
+    resolved_run_config = evaluation_config.run
+
+    if "run.output_root" in inherited_config_fields:
+        resolved_run_config = evaluation_config.run.model_copy(
+            update={"output_root": run_identity.output_root},
+        )
+
+    resolved_reconstruction_config = evaluation_config.reconstruction
+
+    if "reconstruction.n_examples" in inherited_config_fields:
+        assert reconstructions is not None
+        assert reconstructions.n_examples is not None
+
+        resolved_reconstruction_config = (
+            evaluation_config.reconstruction.model_copy(
+                update={"n_examples": reconstructions.n_examples},
+            )
+        )
+
+    evaluation_config = evaluation_config.model_copy(
+        update={
+            "source": resolved_source_config,
+            "run": resolved_run_config,
+            "reconstruction": resolved_reconstruction_config,
+        },
+    )
+
     input_spec = EvaluationInputSpec(
         embeddings_path=embeddings_path,
+        embeddings_source=embeddings_source,
         reconstructions=reconstructions,
+        reconstructions_source=reconstructions_source,
         prediction_manifest_path=prediction_manifest_path,
     )
 
@@ -297,6 +408,9 @@ def resolve_evaluation_config(
         evaluation_config=evaluation_config,
         prediction_manifest=prediction_manifest,
         run_identity=run_identity,
+        inherited_config_fields=frozenset[EvaluationInheritableField](
+            inherited_config_fields
+        ),
         input_spec=input_spec,
         step_spec=step_spec,
     )
@@ -530,6 +644,12 @@ def resolve_run_identity(
         output_root = run_config.output_root.resolve()
 
     elif prediction_manifest is not None:
+        if manifest_base_dir is None:
+            raise ValueError(
+                "manifest_base_dir is required when resolving run identity "
+                "from a prediction manifest."
+            )
+
         prediction_output_dir = get_optional_nested_path(
             prediction_manifest,
             "run",
@@ -1104,6 +1224,12 @@ def _resolve_predictability_cv_method(
 
     method = cv_params.get("method")
 
+    if method is not None and not isinstance(method, str):
+        raise TypeError(
+            "cv.method must be a string or None, "
+            f"got {type(method).__name__}."
+        )
+
     if method is None:
         if task == "classification":
             return "stratified_kfold"
@@ -1134,6 +1260,12 @@ def _resolve_predictability_scoring(
     cv_params: dict[str, Any],
 ) -> str:
     scoring = cv_params.get("scoring")
+
+    if scoring is not None and not isinstance(scoring, str):
+        raise TypeError(
+            "cv.scoring must be a string or None, "
+            f"got {type(scoring).__name__}."
+        )
 
     if scoring is None:
         if task == "classification":

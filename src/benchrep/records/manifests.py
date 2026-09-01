@@ -616,19 +616,8 @@ def write_evaluation_manifest(
         if isinstance(summary_value, Mapping):
             prediction_summary = summary_value
 
-    if run_spec.input_spec.embeddings_path is None:
-        embeddings_source = None
-    elif config.source.embeddings_path is not None:
-        embeddings_source = "direct_path"
-    else:
-        embeddings_source = "prediction_manifest"
-
-    if reconstruction_spec is None:
-        reconstructions_source = None
-    elif config.source.reconstructions_path is not None:
-        reconstructions_source = "direct_path"
-    else:
-        reconstructions_source = "prediction_manifest"
+    embeddings_source = run_spec.input_spec.embeddings_source
+    reconstructions_source = run_spec.input_spec.reconstructions_source
 
     if run_spec.input_spec.prediction_manifest_path is None:
         source_mode = "direct"
@@ -752,6 +741,13 @@ def write_evaluation_manifest(
                     ),
                 },
             },
+        },
+        "config_inheritance": {
+            "inherited_from_prediction": (
+                "not_applicable"
+                if run_spec.input_spec.prediction_manifest_path is None
+                else sorted(run_spec.inherited_config_fields)
+            ),
         },
         "provenance": provenance,
         "records": records,

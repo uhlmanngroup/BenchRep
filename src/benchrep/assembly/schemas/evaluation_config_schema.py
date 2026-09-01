@@ -71,10 +71,19 @@ ErrorMapKind: TypeAlias = Literal[
     "normalized_absolute_per_channel",
 ]
 
+PlotFormat: TypeAlias = Literal["png", "pdf", "svg"]
+
 HexColor: TypeAlias = Annotated[
     str,
     StringConstraints(pattern=r"^#[0-9A-Fa-f]{6}$"),
 ]
+
+def _default_error_map_kinds() -> list[ErrorMapKind]:
+    return ["absolute", "signed", "relative"]
+
+
+def _default_plot_formats() -> list[PlotFormat]:
+    return ["png"]
 
 
 # -------------------------
@@ -1369,7 +1378,7 @@ class EvaluationErrorMapParams(_EvaluationConfigBaseModel):
     """
 
     kinds: list[ErrorMapKind] = Field(
-        default_factory=lambda: ["absolute", "signed", "relative"],
+        default_factory=_default_error_map_kinds,
         min_length=1,
         description="Error-map representations passed to `compute_error_maps()`.",
         json_schema_extra={
@@ -1445,9 +1454,14 @@ class EvaluationReconstructionConfig(_EvaluationConfigBaseModel):
         default=None,
         description="Maximum number of examples included in TIFF export.",
         json_schema_extra={
-            "omit_behavior": "Uses all available reconstruction examples.",
+            "omit_behavior": (
+                "Uses the exported reconstruction count from the prediction "
+                "manifest when reconstruction inputs are manifest-sourced; "
+                "otherwise uses all available reconstruction examples."
+            ),
             "null_behavior": "Equivalent to omission.",
             "notes": [
+                "A manifest-derived count is materialized into the resolved config.",
                 "Values above the available count are capped.",
                 "Does not limit reconstruction metrics or reconstruction grids.",
             ],
@@ -2891,10 +2905,10 @@ class EvaluationPlotParams(_EvaluationConfigBaseModel):
     )
 
     formats: Annotated[
-        list[Literal["png", "pdf", "svg"]],
+        list[PlotFormat],
         Field(min_length=1),
     ] = Field(
-        default_factory=lambda: ["png"],
+        default_factory=_default_plot_formats,
         description="File formats written for each evaluation plot.",
         json_schema_extra={
             "omit_behavior": "Exports PNG files.",

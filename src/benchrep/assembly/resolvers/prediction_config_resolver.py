@@ -503,7 +503,9 @@ def resolve_prediction_config(
         model_source=model_source,
         compatibility_policy=compatibility_policy,
         run_identity=run_identity,
-        inherited_config_fields=frozenset(inherited_config_fields),
+        inherited_config_fields=frozenset[PredictionInheritableField](
+            inherited_config_fields
+        ),
         datamodule_source=datamodule_source,
         prediction_config=prediction_config,
         training_config=training_config,
