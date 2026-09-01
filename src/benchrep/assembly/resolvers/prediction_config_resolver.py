@@ -53,6 +53,19 @@ PredictionTransformSource = Literal[
 
 ReconstructionLatentSource = Literal["mean", "sample"]
 
+PredictionInheritableField = Literal[
+    "dataset",
+    "transforms",
+    "data.batch_size",
+    "data.num_workers",
+    "inference.seed",
+    "inference.seed_workers",
+    "inference.deterministic",
+    "inference.float32_matmul_precision",
+    "overrides.model",
+    "exports.reconstructions.seed",
+]
+
 
 @dataclass(frozen=True)
 class PredictionEmbeddingsExportSpec:
@@ -87,6 +100,7 @@ class PredictionRunSpec:
     datamodule_source: ComponentSource
     compatibility_policy: Literal["error", "warn"]
     run_identity: RunIdentitySpec
+    inherited_config_fields: frozenset[PredictionInheritableField]
     prediction_config: PredictionConfig
     training_config: TrainingConfig
     training_manifest: dict[str, Any]
@@ -141,6 +155,9 @@ def resolve_prediction_config(
 
     model_is_external = model_source != "config"
     datamodule_is_external = datamodule_source != "config"
+
+    # Record inheritance before materialization replaces omitted config values.
+    inherited_config_fields: set[PredictionInheritableField] = set()
 
     prediction_config, training_manifest_path = _resolve_training_manifest_path(
         prediction_config=prediction_config,
@@ -229,6 +246,7 @@ def resolve_prediction_config(
             dataset_config = None
         else:
             dataset_config = training_config.dataset
+            inherited_config_fields.add("dataset")
 
         if dataset_config is None:
             raise ValueError(
@@ -243,15 +261,23 @@ def resolve_prediction_config(
             training_config=training_config,
             training_datamodule_external=training_datamodule_external,
         )
+        if transform_source == "training_config":
+            inherited_config_fields.add("transforms")
 
-        base_datamodule_config = (
-            training_config.datamodule
-            if (
-                    not training_datamodule_external
-                    and training_config.datamodule is not None
-            )
-            else TrainingDataModuleConfig()
-        )
+        if (
+            not training_datamodule_external
+            and training_config.datamodule is not None
+        ):
+            base_datamodule_config = training_config.datamodule
+
+            if prediction_config.data.batch_size is None:
+                inherited_config_fields.add("data.batch_size")
+
+            if prediction_config.data.num_workers is None:
+                inherited_config_fields.add("data.num_workers")
+        else:
+            # BenchRep defaults are not inheritance from training.
+            base_datamodule_config = TrainingDataModuleConfig()
 
         batch_size = resolve_optional(
             prediction_config.data.batch_size,
@@ -309,6 +335,23 @@ def resolve_prediction_config(
         field_name="inference.float32_matmul_precision",
     )
 
+    seed_inherited_from_training = prediction_config.inference.seed is None
+
+    if seed_inherited_from_training:
+        inherited_config_fields.add("inference.seed")
+
+    if prediction_config.inference.seed_workers is None:
+        inherited_config_fields.add("inference.seed_workers")
+
+    if prediction_config.inference.float32_matmul_precision is None:
+        inherited_config_fields.add("inference.float32_matmul_precision")
+
+    if (
+            prediction_config.inference.deterministic is None
+            and training_config.trainer.deterministic is not None
+    ):
+        inherited_config_fields.add("inference.deterministic")
+
     reconstruction_latent_source = _resolve_reconstruction_latent_source(
         configured_source=(
             prediction_config.inference.reconstruction_latent_source
@@ -323,6 +366,14 @@ def resolve_prediction_config(
         model_family=model_family,
     )
 
+    # The export seed inherits from training only through an inherited
+    # inference seed, not through an explicitly configured prediction seed.
+    if (
+        prediction_config.exports.reconstructions.seed is None
+        and seed_inherited_from_training
+    ):
+        inherited_config_fields.add("exports.reconstructions.seed")
+
     # Materialize only values inherited from the linked training workflow.
     resolved_config_updates: dict[str, Any] = {
         "inference": prediction_config.inference.model_copy(
@@ -334,6 +385,18 @@ def resolve_prediction_config(
             },
         ),
     }
+
+    # Persist the export seed when its fallback ultimately came from training.
+    if "exports.reconstructions.seed" in inherited_config_fields:
+        resolved_config_updates["exports"] = prediction_config.exports.model_copy(
+            update={
+                "reconstructions": (
+                    prediction_config.exports.reconstructions.model_copy(
+                        update={"seed": export_spec.reconstructions.seed},
+                    )
+                ),
+            },
+        )
 
     if not datamodule_is_external:
         assert dataset_config is not None
@@ -361,10 +424,21 @@ def resolve_prediction_config(
         update=resolved_config_updates,
     )
 
-    # Record required runtime overrides so resolved-config replay can't
-    # silently fall back to config-built components.
+    model_override_config = prediction_config.overrides.model
+
+    # A supplied prediction section replaces training constructor parameters.
+    # Otherwise, inherit them only when BenchRep will instantiate a model class.
+    if (
+        model_source == "external_class"
+        and model_override_config is None
+    ):
+        model_override_config = training_config.overrides.model
+
+        if model_override_config is not None:
+            inherited_config_fields.add("overrides.model")
+
     resolved_model_override = resolve_runtime_override_config(
-        prediction_config.overrides.model,
+        model_override_config,
         source=model_source,
         config_path="overrides.model",
     )
@@ -429,6 +503,7 @@ def resolve_prediction_config(
         model_source=model_source,
         compatibility_policy=compatibility_policy,
         run_identity=run_identity,
+        inherited_config_fields=frozenset(inherited_config_fields),
         datamodule_source=datamodule_source,
         prediction_config=prediction_config,
         training_config=training_config,

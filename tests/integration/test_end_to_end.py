@@ -116,7 +116,6 @@ def test_internal_end_to_end(
             prediction_result,
             configured_source=None,
             effective_source="mean",
-            resolution="benchrep_default",
             uses_randomness=False,
         )
 
@@ -244,7 +243,6 @@ def test_internal_vae_prediction_can_reconstruct_from_sample(
         prediction_result,
         configured_source="sample",
         effective_source="sample",
-        resolution="prediction_config",
         uses_randomness=True,
     )
 
@@ -275,7 +273,6 @@ def _assert_vae_reconstruction_provenance(
     *,
     configured_source: str | None,
     effective_source: str,
-    resolution: str,
     uses_randomness: bool,
 ) -> None:
     with prediction_result.manifest_path.open(
@@ -288,11 +285,7 @@ def _assert_vae_reconstruction_provenance(
         ["reconstruction_latent_source"]
     )
 
-    assert recorded_source == {
-        "configured": configured_source,
-        "effective": effective_source,
-        "resolution": resolution,
-    }
+    assert recorded_source == configured_source
 
     runtime_environment_path = (
         prediction_result.run_context.metadata_dir

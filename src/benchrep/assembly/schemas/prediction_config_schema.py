@@ -863,27 +863,7 @@ class PredictionConfig(_PredictionConfigBaseModel):
     ) -> PredictionConfig:
         ctx = info.context or {}
 
-        model_overridden = ctx.get("model_is_external", False)
-        datamodule_overridden = ctx.get(
-            "datamodule_overridden",
-            False,
-        )
-
-        if self.overrides.model is not None and not model_overridden:
-            raise ValueError(
-                "`overrides.model` requires a model override to be supplied "
-                "to the prediction entrypoint."
-            )
-
-        if (
-            self.overrides.datamodule is not None
-            and not datamodule_overridden
-        ):
-            raise ValueError(
-                "`overrides.datamodule` requires a datamodule override to be "
-                "supplied to the prediction entrypoint."
-            )
-
+        # Runtime override requirements are checked by the resolver.
         training_manifest_path_overridden = ctx.get(
             "training_manifest_path_overridden",
             False,

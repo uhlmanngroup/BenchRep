@@ -27,7 +27,6 @@ from benchrep.records.utils import (
     paths_to_strings,
     count_paths,
 )
-from benchrep.interfaces.model_families import ModelFamilySpec, VAE_FAMILY
 from benchrep.runtime import RunContext
 from benchrep.records.runtime_environment import (
     get_runtime_environment_filename,
@@ -310,19 +309,6 @@ def write_prediction_manifest(
     model_is_external = model_source != "config"
     datamodule_is_external = datamodule_source != "config"
 
-    configured_reconstruction_latent_source = (
-        run_spec.prediction_config.inference.reconstruction_latent_source
-    )
-
-    if model_family != VAE_FAMILY:
-        reconstruction_latent_source_resolution = "not_applicable"
-    elif model_is_external:
-        reconstruction_latent_source_resolution = "external_model"
-    elif configured_reconstruction_latent_source is None:
-        reconstruction_latent_source_resolution = "benchrep_default"
-    else:
-        reconstruction_latent_source_resolution = "prediction_config"
-
     configured_model = (
         run_spec.training_config.model.name
         if run_spec.training_config.model is not None
@@ -386,7 +372,6 @@ def write_prediction_manifest(
         "dataset": (
             configured_dataset["name"] if configured_dataset is not None else None
         ),
-        "transform_source": run_spec.transform_source,
         "transforms": (
             {
                 "prediction": [
@@ -471,6 +456,11 @@ def write_prediction_manifest(
             "checkpoint_source": run_spec.checkpoint_source,
             "checkpoint_path": str(run_spec.checkpoint_path),
         },
+        "config_inheritance": {
+            "inherited_from_training": sorted(
+                run_spec.inherited_config_fields,
+            ),
+        },
         "provenance": {
             "training": training_provenance,
             "prediction": {
@@ -500,19 +490,12 @@ def write_prediction_manifest(
                     "configured_encoder": None if model_is_external else configured_encoder,
                     "configured_decoder": None if model_is_external else configured_decoder,
                 },
-                "inference": {
-                    "reconstruction_latent_source": {
-                        "configured": (
-                            configured_reconstruction_latent_source
-                        ),
-                        "effective": run_spec.reconstruction_latent_source,
-                        "resolution": (
-                            reconstruction_latent_source_resolution
-                        ),
-                    },
-                },
+                "inference": (
+                    run_spec.prediction_config.inference.model_dump(
+                        mode="json",
+                    )
+                ),
                 "dataset": configured_dataset,
-                "transform_source": run_spec.transform_source,
                 "transforms": configured_transforms,
                 "datamodule": {
                     "source": datamodule_source,

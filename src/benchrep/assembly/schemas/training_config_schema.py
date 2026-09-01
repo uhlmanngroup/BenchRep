@@ -1550,23 +1550,16 @@ class TrainingConfig(_TrainingConfigBaseModel):
             info: ValidationInfo,
     ) -> TrainingConfig:
         ctx = info.context or {}
-        model_overridden = ctx.get("model_is_external", False)
-        datamodule_overridden = ctx.get("datamodule_overridden", False)
 
-        if self.overrides.model is not None and not model_overridden:
-            raise ValueError(
-                "`overrides.model` requires a model override to be supplied "
-                "to the training entrypoint."
-            )
-
-        if (
-            self.overrides.datamodule is not None
-            and not datamodule_overridden
-        ):
-            raise ValueError(
-                "`overrides.datamodule` requires a datamodule override to be "
-                "supplied to the training entrypoint."
-            )
+        # Config declares external intent; the resolver checks actual overrides.
+        model_overridden = (
+                ctx.get("model_is_external", False)
+                or self.overrides.model is not None
+        )
+        datamodule_overridden = (
+                ctx.get("datamodule_overridden", False)
+                or self.overrides.datamodule is not None
+        )
 
         if not model_overridden:
             _require_present(self.model, "model")
@@ -1586,7 +1579,13 @@ class TrainingConfig(_TrainingConfigBaseModel):
             info: ValidationInfo,
     ) -> TrainingConfig:
         ctx = info.context or {}
-        model_overridden = ctx.get("model_is_external", False)
+
+        # Config markers declare external intent before entrypoint arguments
+        # exist. The resolver verifies that those components were actually supplied.
+        model_overridden = (
+                ctx.get("model_is_external", False)
+                or self.overrides.model is not None
+        )
 
         if model_overridden:
             return self
