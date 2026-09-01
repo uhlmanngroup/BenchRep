@@ -64,6 +64,8 @@ filterwarnings = [
     "ignore:GPU available but not used.*:UserWarning",
     "ignore:.*LeafSpec.*:FutureWarning",
     "ignore:The '.*_dataloader' does not have many workers.*:UserWarning",
+    "ignore:The argument 'device' of Tensor\\.pin_memory\\(\\) is deprecated.*:DeprecationWarning",
+    "ignore:The argument 'device' of Tensor\\.is_pinned\\(\\) is deprecated.*:DeprecationWarning",
 ]
 
 [tool.setuptools.packages.find]
