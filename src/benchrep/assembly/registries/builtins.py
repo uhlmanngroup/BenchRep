@@ -76,6 +76,7 @@ def register_builtins() -> None:
             TRANSFORMS,
             ENCODERS,
             DECODERS,
+            HEADS,
             MODELS,
             RECONSTRUCTION_LOSSES,
             REGULARIZATION_LOSSES,
@@ -104,6 +105,10 @@ def register_builtins() -> None:
             MLPEncoder,
             Conv2DEncoder,
             TorchvisionResNet,
+        )
+        from benchrep.architecture.heads import (
+            GaussianVariationalHead,
+            MLPHead,
         )
         from benchrep.architecture.losses import (
             MSEReconstructionLoss,
@@ -188,8 +193,20 @@ def register_builtins() -> None:
         )
 
         # --- Architecture and training ---
-        ENCODERS._register_builtin("mlp", MLPEncoder, "dense", "fully_connected", "fc")
-        ENCODERS._register_builtin("conv2d", Conv2DEncoder, "conv", "cnn", "convolutional")
+        ENCODERS._register_builtin(
+            "mlp",
+            MLPEncoder,
+            "dense",
+            "fully_connected",
+            "fc",
+        )
+        ENCODERS._register_builtin(
+            "conv2d",
+            Conv2DEncoder,
+            "conv",
+            "cnn",
+            "convolutional",
+        )
         ENCODERS._register_builtin(
             "torchvision_resnet",
             TorchvisionResNet,
@@ -208,6 +225,20 @@ def register_builtins() -> None:
             "upsample_conv",
             "upconv",
             "resize_conv",
+        )
+
+        HEADS._register_builtin(
+            "mlp",
+            MLPHead,
+            "dense",
+            "fully_connected",
+            "fc",
+        )
+        HEADS._register_builtin(
+            "gaussian_variational",
+            GaussianVariationalHead,
+            "variational",
+            "gaussian",
         )
 
         MODELS._register_builtin("autoencoder", Autoencoder, "ae")

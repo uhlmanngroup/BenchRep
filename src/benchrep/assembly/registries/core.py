@@ -177,6 +177,7 @@ TRANSFORMS = Registry("transform")
 # Architecture and training
 ENCODERS = Registry("encoder")
 DECODERS = Registry("decoder")
+HEADS = Registry("head")
 MODELS = Registry(
     "model",
     custom_registration_supported=False,
