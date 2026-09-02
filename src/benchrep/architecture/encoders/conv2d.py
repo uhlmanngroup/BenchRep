@@ -11,6 +11,7 @@ from benchrep.architecture.utils import (
     IntPair,
     validate_int_pair,
     resolve_activation,
+    resolve_normalization,
 )
 from benchrep.architecture.encoders.base import BaseEncoder
 
@@ -29,7 +30,7 @@ class Conv2DBlockSpec:
     padding: IntPair = 0
     dilation: IntPair = 1
     bias: bool = True
-    normalization: str | None = None # 'batchnorm', 'instancenorm', 'groupnorm'
+    normalization: str | None = None
     normalization_groups: int | None = None
     activation: type[nn.Module] = nn.ReLU
     dropout: float = 0.0
@@ -69,40 +70,12 @@ class Conv2DBlock(nn.Module):
         validate_int_pair(spec.padding, name="padding", min_value=0)
         validate_int_pair(spec.dilation, name="dilation", min_value=0, allow_equal_min=False)
 
-        normalization = (
-            spec.normalization.lower()
-            if spec.normalization is not None
-            else None
+        normalization_layer = resolve_normalization(
+            spec.normalization,
+            num_features=spec.out_channels,
+            layout="spatial_2d",
+            num_groups=spec.normalization_groups,
         )
-        valid_normalizations = (None, "batchnorm", "instancenorm", "groupnorm")
-
-        if normalization not in valid_normalizations:
-            raise ValueError(
-                "normalization must be one of "
-                f"{valid_normalizations}, got {spec.normalization!r}."
-            )
-
-        groupnorm_groups: int | None = None
-        if normalization == "groupnorm":
-            groupnorm_groups = spec.normalization_groups
-            out_channels = spec.out_channels
-            if groupnorm_groups is None:
-                raise ValueError("normalization_groups is required when normalization='groupnorm'.")
-
-            if groupnorm_groups <= 0:
-                raise ValueError(
-                    f"normalization_groups must be positive, got {groupnorm_groups}."
-                )
-
-            if out_channels % groupnorm_groups != 0:
-                raise ValueError(
-                    "For GroupNorm, out_channels must be divisible by normalization_groups. "
-                    f"Got out_channels={out_channels}, normalization_groups={groupnorm_groups}."
-                )
-        elif spec.normalization_groups is not None:
-            raise ValueError(
-                "normalization_groups is only valid when normalization='groupnorm'."
-            )
 
         pooling = spec.pooling.lower() if spec.pooling is not None else None
         valid_pooling = (None, "max", "avg")
@@ -136,17 +109,8 @@ class Conv2DBlock(nn.Module):
             )
         ]
 
-        if normalization == "batchnorm":
-            layers.append(nn.BatchNorm2d(spec.out_channels))
-        elif normalization == "instancenorm":
-            layers.append(nn.InstanceNorm2d(spec.out_channels))
-        elif normalization == "groupnorm":
-            layers.append(
-                nn.GroupNorm(
-                    num_groups=groupnorm_groups,
-                    num_channels=spec.out_channels,
-                )
-            )
+        if normalization_layer is not None:
+            layers.append(normalization_layer)
 
         layers.append(spec.activation())
 
