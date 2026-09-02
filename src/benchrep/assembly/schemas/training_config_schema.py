@@ -25,6 +25,13 @@ from benchrep.architecture.models import (
 from benchrep.assembly.schemas.runtime_override_config_schema import (
     RuntimeOverridesConfig,
 )
+from benchrep.assembly.schemas.composite_model_config_schema import (
+    CompositeModelAssemblyStepConfig,
+    CompositeModelBatchMetadataConfig,
+    CompositeModelComponentConfig,
+    CompositeModelInputConfig,
+    CompositeModelOutputConfig,
+)
 
 
 # Helper for model and datamodule overrides
@@ -1346,6 +1353,28 @@ class TrainingConfig(_TrainingConfigBaseModel):
         },
     )
 
+    inputs: dict[str, CompositeModelInputConfig] | None = Field(
+        default=None,
+        min_length=1,
+    )
+
+    batch_metadata: dict[str, CompositeModelBatchMetadataConfig] | None = None
+
+    outputs: dict[str, CompositeModelOutputConfig] | None = Field(
+        default=None,
+        min_length=1,
+    )
+
+    components: dict[str, CompositeModelComponentConfig] | None = Field(
+        default=None,
+        min_length=1,
+    )
+
+    assembly: dict[str, CompositeModelAssemblyStepConfig] | None = Field(
+        default=None,
+        min_length=1,
+    )
+
     losses: dict[SupportedLossRole, LossRoleTerms] | None = Field(
         default_factory=dict,
         description="Loss terms grouped by role and registered component name.",
@@ -1563,9 +1592,19 @@ class TrainingConfig(_TrainingConfigBaseModel):
 
         if not model_overridden:
             _require_present(self.model, "model")
-            _require_present(self.encoder, "encoder")
             _require_present(self.losses, "losses")
             _require_present(self.optimizer, "optimizer")
+
+            assert self.model is not None
+
+            model_name = normalize_name(
+                self.model.name,
+                field_name="model.name",
+            )
+
+            if model_name != "composite":
+                _require_present(self.encoder, "encoder")
+                _require_present(self.decoder, "decoder")
 
         if not datamodule_overridden:
             _require_present(self.dataset, "dataset")
@@ -1591,7 +1630,6 @@ class TrainingConfig(_TrainingConfigBaseModel):
             return self
 
         assert self.model is not None
-        assert self.encoder is not None
         assert self.losses is not None
         assert self.optimizer is not None
 
@@ -1599,6 +1637,12 @@ class TrainingConfig(_TrainingConfigBaseModel):
             self.model.name,
             field_name="model.name",
         )
+
+        if model_name == "composite":
+            return self
+
+        assert self.encoder is not None
+        assert self.decoder is not None
 
         model_cls = MODELS.get(model_name)
 
@@ -1666,3 +1710,185 @@ class TrainingConfig(_TrainingConfigBaseModel):
                 )
 
         return self
+
+    @model_validator(mode="after")
+    def validate_composite_requirements(
+            self,
+            info: ValidationInfo,
+    ) -> TrainingConfig:
+        ctx = info.context or {}
+
+        model_overridden = (
+                ctx.get("model_is_external", False)
+                or self.overrides.model is not None
+        )
+
+        if model_overridden or self.model is None:
+            return self
+
+        model_name = normalize_name(
+            self.model.name,
+            field_name="model.name",
+        )
+
+        # Reject composite-model sections when using canonical models
+        composite_sections = {
+            "inputs": self.inputs,
+            "batch_metadata": self.batch_metadata,
+            "outputs": self.outputs,
+            "components": self.components,
+            "assembly": self.assembly,
+        }
+
+        if model_name != "composite":
+            configured = [
+                name
+                for name, value in composite_sections.items()
+                if value is not None
+            ]
+
+            if configured:
+                raise ValueError(
+                    "Composite model configuration sections may only be used with "
+                    "`model.name: composite`: "
+                    + ", ".join(configured)
+                )
+
+            return self
+
+        # Require composite-model sections and reject canonical architecture sections when using composite-model
+        _require_present(self.inputs, "inputs")
+        _require_present(self.outputs, "outputs")
+        _require_present(self.components, "components")
+        _require_present(self.assembly, "assembly")
+
+        assert self.inputs is not None
+        assert self.outputs is not None
+        assert self.components is not None
+        assert self.assembly is not None
+
+        if self.encoder is not None or self.decoder is not None:
+            raise ValueError(
+                "Composite models define architecture through `components` and `assembly`; "
+                "top-level `encoder` and `decoder` sections are not supported."
+            )
+
+        # Validate composite-model input declarations
+        sample_inputs = [
+            name
+            for name, config in self.inputs.items()
+            if config.role == "sample"
+        ]
+
+        if len(sample_inputs) != 1:
+            raise ValueError(
+                "Composite models require exactly one input with `role: sample`; "
+                f"found {len(sample_inputs)}. Multimodal models with multiple primary "
+                "samples are not supported."
+            )
+
+        if self.batch_metadata is not None:
+            index_fields = [
+                name
+                for name, config in self.batch_metadata.items()
+                if config.role == "index"
+            ]
+
+            if len(index_fields) > 1:
+                raise ValueError(
+                    "Composite models support at most one batch metadata field "
+                    "with `role: index`."
+                )
+
+        # Validate assembly component references
+        unknown_components = sorted({
+            step.component
+            for step in self.assembly.values()
+            if step.component not in self.components
+        })
+
+        if unknown_components:
+            raise ValueError(
+                "Composite model assembly references undefined components: "
+                + ", ".join(repr(name) for name in unknown_components)
+            )
+
+        # Validate assembly-produced outputs
+        produced_outputs = [
+            output_name
+            for step in self.assembly.values()
+            for output_name in step.outputs.values()
+        ]
+
+        undefined_outputs = sorted(
+            set(produced_outputs) - set(self.outputs)
+        )
+
+        if undefined_outputs:
+            raise ValueError(
+                "Composite model assembly produces outputs that are not declared "
+                "under `outputs`: "
+                + ", ".join(repr(name) for name in undefined_outputs)
+            )
+
+        duplicate_outputs = sorted({
+            name
+            for name in produced_outputs
+            if produced_outputs.count(name) > 1
+        })
+
+        if duplicate_outputs:
+            raise ValueError(
+                "Composite model outputs may be produced by only one assembly step: "
+                + ", ".join(repr(name) for name in duplicate_outputs)
+            )
+
+        unproduced_outputs = sorted(
+            set(self.outputs) - set(produced_outputs)
+        )
+
+        if unproduced_outputs:
+            raise ValueError(
+                "Composite model declares outputs that are never produced by assembly: "
+                + ", ".join(repr(name) for name in unproduced_outputs)
+            )
+
+        # Validate assembly input references
+        valid_input_names = set(self.inputs)
+        valid_output_names = set(self.outputs)
+
+        invalid_references: list[str] = []
+
+        for step_name, step in self.assembly.items():
+            for argument_name, source in step.inputs.items():
+                namespace, separator, name = source.partition(".")
+
+                if separator != ".":
+                    invalid_references.append(
+                        f"{step_name}.{argument_name} -> {source!r}"
+                    )
+                    continue
+
+                if namespace == "input":
+                    valid_names = valid_input_names
+                elif namespace == "output":
+                    valid_names = valid_output_names
+                else:
+                    invalid_references.append(
+                        f"{step_name}.{argument_name} -> {source!r}"
+                    )
+                    continue
+
+                if name not in valid_names:
+                    invalid_references.append(
+                        f"{step_name}.{argument_name} -> {source!r}"
+                    )
+
+        if invalid_references:
+            raise ValueError(
+                "Composite model assembly contains invalid input references: "
+                + ", ".join(invalid_references)
+            )
+
+        return self
+
