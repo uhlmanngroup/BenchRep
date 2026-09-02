@@ -145,9 +145,9 @@ class VAE(BenchRepVAEModel):
         encoder_features = self.encode(x)
         latent = self.variational_head(encoder_features)
         if reconstruction_latent_source == "mean":
-            reconstruction = self.decode(latent.z_mu)
+            reconstruction = self.decode(latent["z_mu"])
         elif reconstruction_latent_source == "sample":
-            reconstruction = self.decode(latent.z_sample)
+            reconstruction = self.decode(latent["z_sample"])
         else:
             raise ValueError(
                 "reconstruction_latent_source must be 'mean' or 'sample', "
@@ -155,11 +155,11 @@ class VAE(BenchRepVAEModel):
             )
 
         return {
-            "embedding": latent.z_mu,
+            "embedding": latent["z_mu"],
             "reconstruction": reconstruction,
-            "z_sample": latent.z_sample,
-            "z_mu": latent.z_mu,
-            "z_logvar": latent.z_logvar,
+            "z_sample": latent["z_sample"],
+            "z_mu": latent["z_mu"],
+            "z_logvar": latent["z_logvar"],
         }
 
     def encode(self, x: torch.Tensor) -> torch.Tensor:
