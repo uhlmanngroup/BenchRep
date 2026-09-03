@@ -165,7 +165,7 @@ def build_autoencoder(
     # Resolve configs objs into instantiated components where needed
     if isinstance(encoder, TrainingEncoderConfig):
         encoder_name = encoder.name
-        encoder = _build_encoder(encoder)
+        encoder = build_encoder(encoder)
         run_log.info("Built encoder from config: %s -> %s",
                      encoder_name,
                      type(encoder).__name__)
@@ -175,7 +175,7 @@ def build_autoencoder(
 
     if isinstance(decoder, TrainingDecoderConfig):
         decoder_name = decoder.name
-        decoder = _build_decoder(
+        decoder = build_decoder(
             decoder,
             input_dim=encoder.output_dim,
             encoder=encoder,
@@ -267,7 +267,7 @@ def build_vae(
     # Resolve configs objs into instantiated components where needed
     if isinstance(encoder, TrainingEncoderConfig):
         encoder_name = encoder.name
-        encoder = _build_encoder(encoder)
+        encoder = build_encoder(encoder)
         run_log.info("Built encoder from config: %s -> %s",
                      encoder_name,
                      type(encoder).__name__)
@@ -277,7 +277,7 @@ def build_vae(
 
     if isinstance(decoder, TrainingDecoderConfig):
         decoder_name = decoder.name
-        decoder = _build_decoder(
+        decoder = build_decoder(
             decoder,
             input_dim=latent_dim,
             encoder=encoder,
@@ -393,40 +393,86 @@ def build_vae(
     )
 
 
-def _build_encoder(encoder_config: TrainingEncoderConfig) -> BaseEncoder:
+def build_encoder(encoder_config: TrainingEncoderConfig) -> BaseEncoder:
+    """Build a registered encoder from configuration.
+
+    Parameters
+    ----------
+    encoder_config:
+        Configuration selecting the registered encoder and its constructor
+        parameters.
+
+    Returns
+    -------
+    BaseEncoder
+        Instantiated encoder.
+
+    Raises
+    ------
+    TypeError
+        If the registered encoder does not produce a ``BaseEncoder`` instance.
+    """
     encoder_name = normalize_name(
         encoder_config.name,
         field_name="config.encoder.name",
     )
 
-    return ENCODERS.create(encoder_name, **encoder_config.params)
+    encoder = ENCODERS.create(
+        encoder_name,
+        **encoder_config.params,
+    )
+
+    if not isinstance(encoder, BaseEncoder):
+        raise TypeError(
+            f"Registered encoder {encoder_name!r} produced "
+            f"{type(encoder).__name__}, expected a BaseEncoder instance."
+        )
+
+    return encoder
 
 
-def _build_decoder(
+def build_decoder(
     decoder_config: TrainingDecoderConfig,
-    input_dim: int,
+    input_dim: int | None = None,
     encoder: BaseEncoder | None = None,
 ) -> BaseDecoder:
-    """Build a decoder from config and wire model-dependent dimensions.
+    """Build a registered decoder from configuration.
 
-    The decoder config supplies user-facing decoder parameters, while this helper
-    injects dimensions that are determined by the surrounding model assembly.
+    Decoder constructor parameters are taken from ``decoder_config.params``.
+    Architecture-dependent parameters may additionally be supplied or inferred
+    by the builder.
 
-    ``input_dim`` is always added to the decoder parameters. For ordinary
-    decoders, such as MLP decoders, this is sufficient.
+    If the selected decoder accepts ``input_dim``, an explicitly configured
+    value takes precedence, provided it agrees with ``input_dim`` when both are
+    supplied.
 
-    Spatial decoders also require an ``initial_shape`` constructor argument:
-    the feature-map shape used to reshape the projected latent vector before
-    convolutional decoding. This shape should not be user-configured. If the
-    decoder constructor declares ``initial_shape``, this helper infers it from
-    ``encoder.feature_shape`` and passes it during construction.
+    If the selected decoder accepts ``initial_shape``, an explicitly configured
+    value is used when available. Otherwise, BenchRep attempts to infer it from
+    ``encoder.feature_shape``. If both are available, they must agree.
+
+    Parameters
+    ----------
+    decoder_config:
+        Configuration selecting the registered decoder and its constructor
+        parameters.
+    input_dim:
+        Optional input dimensionality supplied by the surrounding model
+        builder.
+    encoder:
+        Optional encoder instance used to infer ``initial_shape`` when supported
+        by the selected decoder.
+
+    Returns
+    -------
+    BaseDecoder
+        Instantiated decoder.
 
     Raises
     ------
     ValueError
-        If ``initial_shape`` is provided manually in decoder config, or if a
-        decoder requires ``initial_shape`` but it cannot be inferred from the
-        encoder.
+        If configured and supplied ``input_dim`` values disagree, if configured
+        ``initial_shape`` disagrees with ``encoder.feature_shape``, or if a required
+        ``input_dim`` or ``initial_shape`` cannot be resolved.
     """
     decoder_name = normalize_name(
         decoder_config.name,
@@ -435,27 +481,58 @@ def _build_decoder(
     decoder_cls = DECODERS.get(decoder_name)
     decoder_params = dict(decoder_config.params)
 
-    # Wire decoder input dimensionality from the supplied input dimension.
-    decoder_params["input_dim"] = input_dim
-
-    # Infer and pass initial_shape from encoder.feature_shape if needed.
     decoder_signature = inspect.signature(decoder_cls)
-    if "initial_shape" in decoder_signature.parameters:
-        if "initial_shape" in decoder_params:
+
+    # Wire decoder input dimensionality from the supplied input dimension.
+    input_dim_parameter = decoder_signature.parameters.get("input_dim")
+
+    if input_dim_parameter is not None:
+        configured_input_dim = decoder_params.get("input_dim")
+
+        if configured_input_dim is not None and input_dim is not None:
+            if configured_input_dim != input_dim:
+                raise ValueError(
+                    f"Decoder {decoder_name!r} builder received input_dim="
+                    f"{configured_input_dim}, but supplied input_dim={input_dim}."
+                )
+
+        elif configured_input_dim is None and input_dim is not None:
+            decoder_params["input_dim"] = input_dim
+
+        elif (
+                configured_input_dim is None
+                and input_dim_parameter.default is inspect.Parameter.empty
+        ):
             raise ValueError(
-                "'initial_shape' should not be provided in decoder config. "
-                "It is inferred from encoder.feature_shape."
+                f"Decoder {decoder_name!r} requires 'input_dim', but none was "
+                "provided in config or supplied to the builder."
             )
 
-        feature_shape = getattr(encoder, "feature_shape", None)
+    initial_shape_parameter = decoder_signature.parameters.get("initial_shape")
 
-        if feature_shape is None:
+    if initial_shape_parameter is not None:
+        configured_initial_shape = decoder_params.get("initial_shape")
+        inferred_initial_shape = getattr(encoder, "feature_shape", None)
+
+        if configured_initial_shape is not None and inferred_initial_shape is not None:
+            if tuple(configured_initial_shape) != tuple(inferred_initial_shape):
+                raise ValueError(
+                    f"Decoder {decoder_name!r} builder received initial_shape="
+                    f"{configured_initial_shape}, but provided encoder.feature_shape="
+                    f"{inferred_initial_shape}."
+                )
+
+        elif configured_initial_shape is None and inferred_initial_shape is not None:
+            decoder_params["initial_shape"] = inferred_initial_shape
+
+        elif (
+            configured_initial_shape is None
+            and initial_shape_parameter.default is inspect.Parameter.empty
+        ):
             raise ValueError(
-                f"Decoder {decoder_name!r} requires 'initial_shape', but it could "
-                "not be inferred because the encoder has no 'feature_shape' attribute."
+                f"Decoder {decoder_name!r} requires 'initial_shape', but none was "
+                "provided and it could not be inferred from encoder.feature_shape."
             )
-
-        decoder_params["initial_shape"] = feature_shape
 
     return decoder_cls(**decoder_params)
 
