@@ -1762,12 +1762,12 @@ class TrainingConfig(_TrainingConfigBaseModel):
         sample_inputs = [
             name
             for name, config in self.composite_model_declarations.expects.items()
-            if config.role == "sample"
+            if config.role == "sample_image"
         ]
 
         if len(sample_inputs) != 1:
             raise ValueError(
-                "Composite models require exactly one input with `role: sample`; "
+                "Composite models require exactly one input with `role: sample_image`; "
                 f"found {len(sample_inputs)}. Multimodal models with multiple primary "
                 "samples are not supported."
             )

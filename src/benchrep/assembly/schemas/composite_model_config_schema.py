@@ -2,21 +2,24 @@ from __future__ import annotations
 
 from typing import Any, Literal, TypeAlias
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 
 CompositeModelInputRole: TypeAlias = Literal[
-    "sample",
-    "positive",
-    "negative",
-    "prediction_target",
-    "condition",
-]
+    "sample_image",
+    "positive_image",
+    "negative_image",
 
-CompositeModelInputKind: TypeAlias = Literal[
-    "image",
-    "categorical",
-    "continuous",
+    "categorical_prediction_target_scalar",
+    "categorical_prediction_target_vector",
+    "continuous_prediction_target_scalar",
+    "continuous_prediction_target_vector",
+
+    "condition_image",
+    "categorical_condition_scalar",
+    "categorical_condition_vector",
+    "continuous_condition_scalar",
+    "continuous_condition_vector",
 ]
 
 CompositeModelBatchMetadataRole: TypeAlias = Literal[
@@ -25,19 +28,20 @@ CompositeModelBatchMetadataRole: TypeAlias = Literal[
 ]
 
 CompositeModelOutputRole: TypeAlias = Literal[
-    "embedding",
-    "reconstruction",
-    "projection",
-    "prediction",
-    "auxiliary",
-]
+    "embedding_vector",
+    "projection_vector",
+    "reconstruction_image",
 
-CompositeModelOutputKind: TypeAlias = Literal[
-    "image",
-    "vector",
-    "scalar",
-    "categorical",
-    "continuous",
+    "categorical_prediction_scalar",
+    "categorical_prediction_vector",
+    "continuous_prediction_scalar",
+    "continuous_prediction_vector",
+
+    "auxiliary_image",
+    "categorical_auxiliary_scalar",
+    "categorical_auxiliary_vector",
+    "continuous_auxiliary_scalar",
+    "continuous_auxiliary_vector",
 ]
 
 CompositeModelComponentKind: TypeAlias = Literal[
@@ -45,45 +49,6 @@ CompositeModelComponentKind: TypeAlias = Literal[
     "decoder",
     "head",
 ]
-
-_COMPOSITE_INPUT_ROLE_KINDS: dict[
-    CompositeModelInputRole,
-    frozenset[CompositeModelInputKind],
-] = {
-    "sample": frozenset[CompositeModelInputKind]({"image"}),
-    "positive": frozenset[CompositeModelInputKind]({"image"}),
-    "negative": frozenset[CompositeModelInputKind]({"image"}),
-    "prediction_target": frozenset[CompositeModelInputKind]({
-        "categorical",
-        "continuous",
-    }),
-    "condition": frozenset[CompositeModelInputKind]({
-        "image",
-        "categorical",
-        "continuous",
-    }),
-}
-
-
-_COMPOSITE_OUTPUT_ROLE_KINDS: dict[
-    CompositeModelOutputRole,
-    frozenset[CompositeModelOutputKind],
-] = {
-    "embedding": frozenset[CompositeModelOutputKind]({"vector"}),
-    "reconstruction": frozenset[CompositeModelOutputKind]({"image"}),
-    "projection": frozenset[CompositeModelOutputKind]({"vector"}),
-    "prediction": frozenset[CompositeModelOutputKind]({
-        "categorical",
-        "continuous",
-    }),
-    "auxiliary": frozenset[CompositeModelOutputKind]({
-        "image",
-        "vector",
-        "scalar",
-        "categorical",
-        "continuous",
-    }),
-}
 
 
 # -------------------------
@@ -104,19 +69,6 @@ class CompositeModelNamedConfig(_CompositeModelConfigBaseModel):
 # Expected data declarations
 class CompositeModelInputConfig(_CompositeModelConfigBaseModel):
     role: CompositeModelInputRole
-    kind: CompositeModelInputKind
-
-    @model_validator(mode="after")
-    def validate_role_kind(self) -> CompositeModelInputConfig:
-        allowed_kinds = _COMPOSITE_INPUT_ROLE_KINDS[self.role]
-
-        if self.kind not in allowed_kinds:
-            raise ValueError(
-                f"`role: {self.role}` requires `kind` to be one of "
-                f"{sorted(allowed_kinds)}."
-            )
-
-        return self
 
 
 # Batch metadata declarations
@@ -127,22 +79,8 @@ class CompositeModelBatchMetadataConfig(_CompositeModelConfigBaseModel):
 # Produced data declarations
 class CompositeModelOutputConfig(_CompositeModelConfigBaseModel):
     role: CompositeModelOutputRole
-    kind: CompositeModelOutputKind
-
-    @model_validator(mode="after")
-    def validate_role_kind(self) -> CompositeModelOutputConfig:
-        allowed_kinds = _COMPOSITE_OUTPUT_ROLE_KINDS[self.role]
-
-        if self.kind not in allowed_kinds:
-            raise ValueError(
-                f"`role: {self.role}` requires `kind` to be one of "
-                f"{sorted(allowed_kinds)}."
-            )
-
-        return self
 
 
-# Top level of declarations
 class CompositeModelDeclarationsConfig(_CompositeModelConfigBaseModel):
     expects: dict[str, CompositeModelInputConfig] = Field(
         min_length=1,
