@@ -38,11 +38,9 @@ from .composite_model_config_schema import (
     CompositeModelComponentKind,
     CompositeModelDeclarationsConfig,
     CompositeModelInputConfig,
-    CompositeModelInputKind,
     CompositeModelInputRole,
     CompositeModelNamedConfig,
     CompositeModelOutputConfig,
-    CompositeModelOutputKind,
     CompositeModelOutputRole,
 )
 from benchrep.assembly.schemas.prediction_config_schema import (
@@ -143,11 +141,9 @@ __all__ = [
     "CompositeModelComponentKind",
     "CompositeModelDeclarationsConfig",
     "CompositeModelInputConfig",
-    "CompositeModelInputKind",
     "CompositeModelInputRole",
     "CompositeModelNamedConfig",
     "CompositeModelOutputConfig",
-    "CompositeModelOutputKind",
     "CompositeModelOutputRole",
     "PredictionSourceConfig",
     "PredictionDataConfig",
