@@ -73,6 +73,9 @@ def build_model(
     """
     run_log = get_run_logger()
 
+    if config.model is None:
+        raise ValueError("Model config section is required.")
+
     model_name = normalize_name(
         config.model.name,
         field_name="config.model.name",
@@ -83,13 +86,19 @@ def build_model(
     model_cls = MODELS.get(model_name)
 
     if model_cls is Autoencoder:
+        if config.encoder is None:
+            raise ValueError("Autoencoder requires an encoder config section.")
         if config.decoder is None:
             raise ValueError("Autoencoder requires a decoder config section.")
+        if config.optimizer is None:
+            raise ValueError("Autoencoder requires an optimizer config section.")
         if prediction_reconstruction_latent_source is not None:
             raise ValueError(
                 "`prediction_reconstruction_latent_source` is only supported "
                 "when building a VAE."
             )
+        if config.losses is None:
+            raise ValueError("Autoencoder requires a losses config section.")
 
         model = build_autoencoder(
             encoder=config.encoder,
@@ -110,8 +119,28 @@ def build_model(
         return model
 
     elif model_cls is VAE:
+        if config.encoder is None:
+            raise ValueError("VAE requires an encoder config section.")
         if config.decoder is None:
             raise ValueError("VAE requires a decoder config section.")
+        if config.optimizer is None:
+            raise ValueError("VAE requires an optimizer config section.")
+        if config.model.params is None:
+            raise ValueError("VAE requires `model.params`.")
+        if config.losses is None:
+            raise ValueError("VAE requires a losses config section.")
+
+        latent_dim = config.model.params.get("latent_dim")
+        if (
+                not isinstance(latent_dim, int)
+                or isinstance(latent_dim, bool)
+                or latent_dim <= 0
+        ):
+            raise ValueError(
+                "VAE requires `model.params.latent_dim` to be a positive integer."
+            )
+
+
         if prediction_reconstruction_latent_source is None:
             prediction_reconstruction_latent_source: Literal["mean", "sample"] = "mean"
 
@@ -119,7 +148,7 @@ def build_model(
             encoder=config.encoder,
             decoder=config.decoder,
             optimizer=config.optimizer,
-            latent_dim=config.model.params["latent_dim"],
+            latent_dim=latent_dim,
             reconstruction_losses=config.losses.get(
                 "reconstruction",
                 {},
@@ -512,10 +541,21 @@ def build_decoder(
 
     if initial_shape_parameter is not None:
         configured_initial_shape = decoder_params.get("initial_shape")
-        inferred_initial_shape = getattr(encoder, "feature_shape", None)
+        if configured_initial_shape is not None:
+            if not isinstance(configured_initial_shape, (list, tuple)):
+                raise TypeError(
+                    f"Decoder {decoder_name!r} initial_shape must be a list or tuple."
+                )
+            configured_initial_shape = tuple(configured_initial_shape)
+
+        inferred_initial_shape = (
+            encoder.feature_shape
+            if encoder is not None
+            else None
+        )
 
         if configured_initial_shape is not None and inferred_initial_shape is not None:
-            if tuple(configured_initial_shape) != tuple(inferred_initial_shape):
+            if configured_initial_shape != inferred_initial_shape:
                 raise ValueError(
                     f"Decoder {decoder_name!r} builder received initial_shape="
                     f"{configured_initial_shape}, but provided encoder.feature_shape="
