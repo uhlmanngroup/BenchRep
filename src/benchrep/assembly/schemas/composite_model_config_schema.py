@@ -99,8 +99,9 @@ class CompositeModelNamedConfig(_CompositeModelConfigBaseModel):
 
 
 # -------------------------
-# Input configuration
+# Composite model declarations
 # -------------------------
+# Expected data declarations
 class CompositeModelInputConfig(_CompositeModelConfigBaseModel):
     role: CompositeModelInputRole
     kind: CompositeModelInputKind
@@ -118,13 +119,12 @@ class CompositeModelInputConfig(_CompositeModelConfigBaseModel):
         return self
 
 
+# Batch metadata declarations
 class CompositeModelBatchMetadataConfig(_CompositeModelConfigBaseModel):
     role: CompositeModelBatchMetadataRole
 
 
-# -------------------------
-# Output configuration
-# -------------------------
+# Produced data declarations
 class CompositeModelOutputConfig(_CompositeModelConfigBaseModel):
     role: CompositeModelOutputRole
     kind: CompositeModelOutputKind
@@ -141,6 +141,16 @@ class CompositeModelOutputConfig(_CompositeModelConfigBaseModel):
 
         return self
 
+
+# Top level of declarations
+class CompositeModelDeclarationsConfig(_CompositeModelConfigBaseModel):
+    expects: dict[str, CompositeModelInputConfig] = Field(
+        min_length=1,
+    )
+    batch_metadata: dict[str, CompositeModelBatchMetadataConfig] | None = None
+    produces: dict[str, CompositeModelOutputConfig] = Field(
+        min_length=1,
+    )
 
 # -------------------------
 # Component configuration

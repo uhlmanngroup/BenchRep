@@ -27,10 +27,8 @@ from benchrep.assembly.schemas.runtime_override_config_schema import (
 )
 from benchrep.assembly.schemas.composite_model_config_schema import (
     CompositeModelAssemblyStepConfig,
-    CompositeModelBatchMetadataConfig,
     CompositeModelComponentConfig,
-    CompositeModelInputConfig,
-    CompositeModelOutputConfig,
+    CompositeModelDeclarationsConfig,
 )
 
 
@@ -1353,24 +1351,14 @@ class TrainingConfig(_TrainingConfigBaseModel):
         },
     )
 
-    inputs: dict[str, CompositeModelInputConfig] | None = Field(
+    composite_model_declarations: CompositeModelDeclarationsConfig | None = None
+
+    composite_model_components: dict[str, CompositeModelComponentConfig] | None = Field(
         default=None,
         min_length=1,
     )
 
-    batch_metadata: dict[str, CompositeModelBatchMetadataConfig] | None = None
-
-    outputs: dict[str, CompositeModelOutputConfig] | None = Field(
-        default=None,
-        min_length=1,
-    )
-
-    components: dict[str, CompositeModelComponentConfig] | None = Field(
-        default=None,
-        min_length=1,
-    )
-
-    assembly: dict[str, CompositeModelAssemblyStepConfig] | None = Field(
+    composite_model_assembly: dict[str, CompositeModelAssemblyStepConfig] | None = Field(
         default=None,
         min_length=1,
     )
@@ -1733,11 +1721,9 @@ class TrainingConfig(_TrainingConfigBaseModel):
 
         # Reject composite-model sections when using canonical models
         composite_sections = {
-            "inputs": self.inputs,
-            "batch_metadata": self.batch_metadata,
-            "outputs": self.outputs,
-            "components": self.components,
-            "assembly": self.assembly,
+            "composite_model_declarations": self.composite_model_declarations,
+            "composite_model_components": self.composite_model_components,
+            "composite_model_assembly": self.composite_model_assembly,
         }
 
         if model_name != "composite":
@@ -1757,26 +1743,25 @@ class TrainingConfig(_TrainingConfigBaseModel):
             return self
 
         # Require composite-model sections and reject canonical architecture sections when using composite-model
-        _require_present(self.inputs, "inputs")
-        _require_present(self.outputs, "outputs")
-        _require_present(self.components, "components")
-        _require_present(self.assembly, "assembly")
+        _require_present(self.composite_model_declarations, "composite_model_declarations")
+        _require_present(self.composite_model_components, "composite_model_components")
+        _require_present(self.composite_model_assembly, "composite_model_assembly")
 
-        assert self.inputs is not None
-        assert self.outputs is not None
-        assert self.components is not None
-        assert self.assembly is not None
+        assert self.composite_model_declarations is not None
+        assert self.composite_model_components is not None
+        assert self.composite_model_assembly is not None
 
         if self.encoder is not None or self.decoder is not None:
             raise ValueError(
-                "Composite models define architecture through `components` and `assembly`; "
-                "top-level `encoder` and `decoder` sections are not supported."
+                "Composite models define architecture through `composite_model_components` "
+                "and `composite_model_assembly`; top-level `encoder` and `decoder` sections "
+                "are not supported."
             )
 
         # Validate composite-model input declarations
         sample_inputs = [
             name
-            for name, config in self.inputs.items()
+            for name, config in self.composite_model_declarations.expects.items()
             if config.role == "sample"
         ]
 
@@ -1787,10 +1772,10 @@ class TrainingConfig(_TrainingConfigBaseModel):
                 "samples are not supported."
             )
 
-        if self.batch_metadata is not None:
+        if self.composite_model_declarations.batch_metadata is not None:
             index_fields = [
                 name
-                for name, config in self.batch_metadata.items()
+                for name, config in self.composite_model_declarations.batch_metadata.items()
                 if config.role == "index"
             ]
 
@@ -1803,8 +1788,8 @@ class TrainingConfig(_TrainingConfigBaseModel):
         # Validate assembly component references
         unknown_components = sorted({
             step.component
-            for step in self.assembly.values()
-            if step.component not in self.components
+            for step in self.composite_model_assembly.values()
+            if step.component not in self.composite_model_components
         })
 
         if unknown_components:
@@ -1816,18 +1801,18 @@ class TrainingConfig(_TrainingConfigBaseModel):
         # Validate assembly-produced outputs
         produced_outputs = [
             output_name
-            for step in self.assembly.values()
+            for step in self.composite_model_assembly.values()
             for output_name in step.outputs.values()
         ]
 
         undefined_outputs = sorted(
-            set(produced_outputs) - set(self.outputs)
+            set(produced_outputs) - set(self.composite_model_declarations.produces)
         )
 
         if undefined_outputs:
             raise ValueError(
                 "Composite model assembly produces outputs that are not declared "
-                "under `outputs`: "
+                "under `produces`: "
                 + ", ".join(repr(name) for name in undefined_outputs)
             )
 
@@ -1839,27 +1824,27 @@ class TrainingConfig(_TrainingConfigBaseModel):
 
         if duplicate_outputs:
             raise ValueError(
-                "Composite model outputs may be produced by only one assembly step: "
+                "Composite model produced data may originate from only one assembly step: "
                 + ", ".join(repr(name) for name in duplicate_outputs)
             )
 
         unproduced_outputs = sorted(
-            set(self.outputs) - set(produced_outputs)
+            set(self.composite_model_declarations.produces) - set(produced_outputs)
         )
 
         if unproduced_outputs:
             raise ValueError(
-                "Composite model declares outputs that are never produced by assembly: "
+                "Composite model declares produced data that no assembly step generates: "
                 + ", ".join(repr(name) for name in unproduced_outputs)
             )
 
         # Validate assembly input references
-        valid_input_names = set(self.inputs)
-        valid_output_names = set(self.outputs)
+        valid_input_names = set(self.composite_model_declarations.expects)
+        valid_output_names = set(self.composite_model_declarations.produces)
 
         invalid_references: list[str] = []
 
-        for step_name, step in self.assembly.items():
+        for step_name, step in self.composite_model_assembly.items():
             for argument_name, source in step.inputs.items():
                 namespace, separator, name = source.partition(".")
 
@@ -1869,9 +1854,9 @@ class TrainingConfig(_TrainingConfigBaseModel):
                     )
                     continue
 
-                if namespace == "input":
+                if namespace == "expects":
                     valid_names = valid_input_names
-                elif namespace == "output":
+                elif namespace == "produces":
                     valid_names = valid_output_names
                 else:
                     invalid_references.append(
