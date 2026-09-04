@@ -15,6 +15,11 @@ from torch.nn import functional as F
 from benchrep.architecture.decoders import BaseDecoder
 from benchrep.architecture.encoders import BaseEncoder
 from benchrep.architecture.losses import BaseCustomObjectiveLoss
+from benchrep.architecture.contracts import (
+    ArchitectureComponent,
+    ComponentPort,
+    ComponentTensorResult,
+)
 from benchrep.assembly.registries.core import (
     DATASETS,
     TRANSFORMS,
@@ -309,11 +314,33 @@ def register_custom_test_components() -> None:
     )
     ENCODERS.register(
         "custom_test_encoder",
-        CustomRegisteredEncoder,
+        ArchitectureComponent(
+            component=CustomRegisteredEncoder,
+            runtime_inputs=(
+                ComponentPort(
+                    name="x",
+                    supported_structures=("image",),
+                ),
+            ),
+            runtime_result=ComponentTensorResult(
+                supported_structures=("vector",),
+            ),
+        ),
     )
     DECODERS.register(
         "custom_test_decoder",
-        CustomRegisteredDecoder,
+        ArchitectureComponent(
+            component=CustomRegisteredDecoder,
+            runtime_inputs=(
+                ComponentPort(
+                    name="z",
+                    supported_structures=("vector",),
+                ),
+            ),
+            runtime_result=ComponentTensorResult(
+                supported_structures=("image",),
+            ),
+        ),
     )
     RECONSTRUCTION_LOSSES.register(
         "custom_test_reconstruction_loss",

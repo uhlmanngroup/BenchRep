@@ -10,6 +10,7 @@ from benchrep.assembly.registries.core import (
     TRANSFORMS,
     ENCODERS,
     DECODERS,
+    HEADS,
     MODELS,
     RECONSTRUCTION_LOSSES,
     REGULARIZATION_LOSSES,
@@ -25,6 +26,11 @@ from benchrep.assembly.registries.core import (
     EVAL_PREDICTABILITY_PROBES,
     EVAL_RECONSTRUCTION_METRICS,
     Registry,
+)
+from benchrep.architecture.contracts import (
+    ArchitectureComponent,
+    ComponentMappingResult,
+    ComponentTensorResult,
 )
 from benchrep.evaluation.metrics import EvaluationMetric
 
@@ -76,20 +82,41 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
         symbol="ENCODERS",
         registry=ENCODERS,
         runtime_instance_override_supported=False,
-        config_locations=("TrainingConfig.encoder",),
+        config_locations=(
+            "TrainingConfig.encoder",
+            "TrainingConfig.composite_model_components[*] (kind='encoder')",
+        ),
         contract=(
-            "The registered class must satisfy BenchRep's `BaseEncoder` "
-            "interface."
+            "ArchitectureComponent.component must satisfy BenchRep's "
+            "`BaseEncoder` interface. Its runtime contract describes the "
+            "component's supported Composite wiring."
         ),
     ),
     "decoder": ComponentRegistryInfo(
         symbol="DECODERS",
         registry=DECODERS,
         runtime_instance_override_supported=False,
-        config_locations=("TrainingConfig.decoder",),
+        config_locations=(
+            "TrainingConfig.decoder",
+            "TrainingConfig.composite_model_components[*] (kind='decoder')",
+        ),
         contract=(
-            "The registered class must satisfy BenchRep's `BaseDecoder` "
-            "interface."
+            "ArchitectureComponent.component must satisfy BenchRep's "
+            "`BaseDecoder` interface. Its runtime contract describes the "
+            "component's supported Composite wiring."
+        ),
+    ),
+    "head": ComponentRegistryInfo(
+        symbol="HEADS",
+        registry=HEADS,
+        runtime_instance_override_supported=False,
+        config_locations=(
+            "TrainingConfig.composite_model_components[*] (kind='head')",
+        ),
+        contract=(
+            "ArchitectureComponent.component must satisfy BenchRep's "
+            "`BaseHead` interface. Its runtime contract describes the "
+            "component's supported Composite wiring."
         ),
     ),
     "model": ComponentRegistryInfo(
@@ -273,6 +300,8 @@ def inspect_registry(
             print(
                 "  custom registration: "
                 f"{_support_label(registry_info.custom_registration_supported)}; "
+                "registration entry: "
+                f"{_registration_entry_label(registry_info)}; "
                 "runtime instance override: "
                 f"{_support_label(registry_info.runtime_instance_override_supported)}"
             )
@@ -305,6 +334,12 @@ def inspect_registry(
             )
             print(f"    target: {_qualified_name(target)}")
 
+            if isinstance(entry, ArchitectureComponent):
+                _print_architecture_component_contract(
+                    entry,
+                    indentation="    ",
+                )
+
             if isinstance(entry, EvaluationMetric):
                 print(f"    result kind: {entry.result_kind}")
 
@@ -335,6 +370,9 @@ def inspect_registry(
         + (", ".join(aliases) if aliases else "none")
     )
     print(f"Target: {_qualified_name(target)}")
+
+    if isinstance(entry, ArchitectureComponent):
+        _print_architecture_component_contract(entry)
 
     if isinstance(entry, EvaluationMetric):
         print(f"Result kind: {entry.result_kind}")
@@ -390,6 +428,10 @@ def _print_registry_customization(
         f"{_support_label(registry_info.custom_registration_supported)}"
     )
     print(
+        "Registration entry: "
+        f"{_registration_entry_label(registry_info)}"
+    )
+    print(
         "Runtime instance override: "
         f"{_support_label(registry_info.runtime_instance_override_supported)}"
     )
@@ -424,6 +466,17 @@ def _print_registry_customization(
         )
 
 
+def _registration_entry_label(
+    registry_info: ComponentRegistryInfo,
+) -> str:
+    entry_type = registry_info.registry.entry_type
+
+    if entry_type is None:
+        return "callable"
+
+    return entry_type.__name__
+
+
 def _support_label(value: bool | None) -> str:
     if value is True:
         return "supported"
@@ -443,8 +496,66 @@ def _registry_object_path(
     )
 
 
+def _print_architecture_component_contract(
+    entry: ArchitectureComponent,
+    *,
+    indentation: str = "",
+) -> None:
+    """Print one architecture component's Composite runtime contract."""
+
+    print(f"{indentation}Composite runtime contract:")
+    print(f"{indentation}  Inputs:")
+
+    for runtime_input in entry.runtime_inputs:
+        supported_structures = " | ".join(
+            runtime_input.supported_structures
+        )
+
+        print(
+            f"{indentation}    {runtime_input.name}: "
+            f"{supported_structures}"
+        )
+
+    runtime_result = entry.runtime_result
+
+    if isinstance(runtime_result, ComponentTensorResult):
+        supported_structures = " | ".join(
+            runtime_result.supported_structures
+        )
+
+        print(
+            f"{indentation}  Result: tensor "
+            f"({supported_structures})"
+        )
+
+        return
+
+    if isinstance(runtime_result, ComponentMappingResult):
+        print(f"{indentation}  Result: mapping")
+
+        for output in runtime_result.outputs:
+            supported_structures = " | ".join(
+                output.supported_structures
+            )
+
+            print(
+                f"{indentation}    {output.name}: "
+                f"{supported_structures}"
+            )
+
+        return
+
+    raise RuntimeError(
+        "ArchitectureComponent contains an unsupported runtime result "
+        f"type: {type(runtime_result).__name__}."
+    )
+
+
 def _registry_entry_target(entry: Any) -> Any:
     """Return the callable represented by a registry entry."""
+
+    if isinstance(entry, ArchitectureComponent):
+        return entry.component
 
     if isinstance(entry, EvaluationMetric):
         return entry.fn

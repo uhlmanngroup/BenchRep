@@ -92,6 +92,13 @@ def register_builtins() -> None:
             EVAL_RECONSTRUCTION_METRICS,
         )
 
+        from benchrep.architecture.contracts import (
+            ArchitectureComponent,
+            ComponentPort,
+            ComponentTensorResult,
+            ComponentMappingResult,
+        )
+
         from benchrep.architecture.data import (
             MNISTDataset,
             CIFAR10Dataset,
@@ -195,21 +202,54 @@ def register_builtins() -> None:
         # --- Architecture and training ---
         ENCODERS._register_builtin(
             "mlp",
-            MLPEncoder,
+            ArchitectureComponent(
+                component=MLPEncoder,
+                runtime_inputs=(
+                    ComponentPort(
+                        name="x",
+                        supported_structures=("image",),
+                    ),
+                ),
+                runtime_result=ComponentTensorResult(
+                    supported_structures=("vector",),
+                ),
+            ),
             "dense",
             "fully_connected",
             "fc",
         )
         ENCODERS._register_builtin(
             "conv2d",
-            Conv2DEncoder,
+            ArchitectureComponent(
+                component=Conv2DEncoder,
+                runtime_inputs=(
+                    ComponentPort(
+                        name="x",
+                        supported_structures=("image",),
+                    ),
+                ),
+                runtime_result=ComponentTensorResult(
+                    supported_structures=("vector",),
+                ),
+            ),
             "conv",
             "cnn",
             "convolutional",
         )
         ENCODERS._register_builtin(
             "torchvision_resnet",
-            TorchvisionResNet,
+            ArchitectureComponent(
+                component=TorchvisionResNet,
+                runtime_inputs=(
+                    ComponentPort(
+                        name="x",
+                        supported_structures=("image",),
+                    ),
+                ),
+                runtime_result=ComponentTensorResult(
+                    supported_structures=("vector",),
+                ),
+            ),
             "torchvision_resnets",
             "resnet",
             "resnets",
@@ -217,10 +257,38 @@ def register_builtins() -> None:
             "tv_resnets",
         )
 
-        DECODERS._register_builtin("mlp", MLPDecoder, "dense", "fully_connected", "fc")
+        DECODERS._register_builtin(
+            "mlp",
+            ArchitectureComponent(
+                component=MLPDecoder,
+                runtime_inputs=(
+                    ComponentPort(
+                        name="z",
+                        supported_structures=("vector",),
+                    ),
+                ),
+                runtime_result=ComponentTensorResult(
+                    supported_structures=("image",),
+                ),
+            ),
+            "dense",
+            "fully_connected",
+            "fc",
+        )
         DECODERS._register_builtin(
             "upsample_conv2d",
-            UpsampleConv2DDecoder,
+            ArchitectureComponent(
+                component=UpsampleConv2DDecoder,
+                runtime_inputs=(
+                    ComponentPort(
+                        name="z",
+                        supported_structures=("vector",),
+                    ),
+                ),
+                runtime_result=ComponentTensorResult(
+                    supported_structures=("image",),
+                ),
+            ),
             "upsampleconv2d",
             "upsample_conv",
             "upconv",
@@ -229,14 +297,50 @@ def register_builtins() -> None:
 
         HEADS._register_builtin(
             "mlp",
-            MLPHead,
+            ArchitectureComponent(
+                component=MLPHead,
+                runtime_inputs=(
+                    ComponentPort(
+                        name="x",
+                        supported_structures=("vector",),
+                    ),
+                ),
+                runtime_result=ComponentTensorResult(
+                    supported_structures=("scalar", "vector"),
+                ),
+            ),
             "dense",
             "fully_connected",
             "fc",
         )
+
         HEADS._register_builtin(
             "gaussian_variational",
-            GaussianVariationalHead,
+            ArchitectureComponent(
+                component=GaussianVariationalHead,
+                runtime_inputs=(
+                    ComponentPort(
+                        name="x",
+                        supported_structures=("vector",),
+                    ),
+                ),
+                runtime_result=ComponentMappingResult(
+                    outputs=(
+                        ComponentPort(
+                            name="z_sample",
+                            supported_structures=("vector",),
+                        ),
+                        ComponentPort(
+                            name="z_mu",
+                            supported_structures=("vector",),
+                        ),
+                        ComponentPort(
+                            name="z_logvar",
+                            supported_structures=("vector",),
+                        ),
+                    ),
+                ),
+            ),
             "variational",
             "gaussian",
         )

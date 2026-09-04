@@ -1,13 +1,50 @@
 from __future__ import annotations
 
-from typing import Any
+from collections.abc import Callable
+from typing import Any, TypeAlias
+
+from benchrep.architecture.contracts import ArchitectureComponent
+from benchrep.evaluation.metrics import EvaluationMetric
+
+
+RegistryEntry: TypeAlias = (
+    Callable[..., Any]
+    | ArchitectureComponent
+    | EvaluationMetric
+)
+
+RegistryEntryType: TypeAlias = (
+    type[ArchitectureComponent]
+    | type[EvaluationMetric]
+)
 
 
 class Registry:
-    """Name-to-object registry used by builders.
+    """Map configuration names to registered implementations or contract wrappers.
 
-    The registry maps string names from config files to Python classes or
-    callables that can be instantiated by builders.
+    BenchRep registries use three entry systems.
+
+    Registries with ``entry_type=None`` store callables directly. Depending on
+    the registry, an entry may be a class constructor, a factory function, or
+    an execution function. The registry-specific discovery contract describes
+    the callable's required interface and return value. ``get()`` returns the
+    callable unchanged, while ``create()`` invokes it with the supplied
+    arguments when construction is appropriate.
+
+    Architecture registries store ``ArchitectureComponent`` entries. The wrapper
+    carries both the module class and its Composite runtime contract. ``get()``
+    returns the complete wrapper for discovery and graph validation, whereas
+    ``create()`` unwraps ``entry.component`` and instantiates the module class.
+
+    Evaluation-metric registries store ``EvaluationMetric`` entries. Evaluation
+    machinery retrieves and interprets the complete wrapper, including its
+    callable and result contract. These entries are not constructors and
+    therefore cannot be used through ``create()``.
+
+    ``entry_type`` declares and enforces the wrapper required by a particular
+    registry. Users register one appropriately formed entry under a name and
+    then select that name through configuration; component instantiation and
+    metric execution remain BenchRep responsibilities.
     """
 
     def __init__(
@@ -15,13 +52,31 @@ class Registry:
         name: str,
         *,
         custom_registration_supported: bool = True,
+        entry_type: RegistryEntryType | None = None,
     ) -> None:
+
+        if (
+            entry_type is not None
+            and not isinstance(entry_type, type)
+        ):
+            raise TypeError(
+                "entry_type must be a registry-entry class or None, got "
+                f"{type(entry_type).__name__}."
+            )
+
         self.name = name
         self._custom_registration_supported = (
             custom_registration_supported
         )
-        self._items: dict[str, Any] = {}
+        self._entry_type = entry_type
+        self._items: dict[str, RegistryEntry] = {}
         self._canonical_keys: dict[str, str] = {}
+
+    @property
+    def entry_type(self) -> RegistryEntryType | None:
+        """Required wrapper type, or None for directly callable entries."""
+
+        return self._entry_type
 
     @property
     def custom_registration_supported(self) -> bool:
@@ -31,7 +86,7 @@ class Registry:
     def register(
         self,
         key: str,
-        item: Any,
+        item: RegistryEntry,
         *aliases: str,
     ) -> None:
         """Register a user-provided component."""
@@ -50,7 +105,7 @@ class Registry:
     def _register_builtin(
         self,
         key: str,
-        item: Any,
+        item: RegistryEntry,
         *aliases: str,
     ) -> None:
         """Register a BenchRep-owned built-in component."""
@@ -59,10 +114,11 @@ class Registry:
     def _register(
         self,
         key: str,
-        item: Any,
+        item: RegistryEntry,
         *aliases: str,
     ) -> None:
         canonical_key = self._normalize_key(key)
+        self._validate_entry(item)
 
         # Silently collapse duplicate names within one registration call.
         names = tuple(
@@ -85,7 +141,28 @@ class Registry:
             self._items[name] = item
             self._canonical_keys[name] = canonical_key
 
-    def get(self, key: str) -> Any:
+    def _validate_entry(self, item: Any) -> None:
+        """Validate a value against this registry's required entry type."""
+
+        entry_type = self.entry_type
+
+        if entry_type is None:
+            if not callable(item):
+                raise TypeError(
+                    f"{self.name} registry entries must be callable, got "
+                    f"{type(item).__name__}."
+                )
+
+            return
+
+        if not isinstance(item, entry_type):
+            raise TypeError(
+                f"{self.name} registry entries must be "
+                f"{entry_type.__name__} instances, got "
+                f"{type(item).__name__}."
+            )
+
+    def get(self, key: str) -> RegistryEntry:
         _ensure_builtins_registered()
 
         # Retrieve a registered object by name, with a debuggable error for unknown keys.
@@ -116,9 +193,22 @@ class Registry:
         return self._canonical_keys[key]
 
     def create(self, key: str, **kwargs: Any) -> Any:
-        # Retrieve a registered class/callable and instantiate it with keyword arguments.
-        item = self.get(key)
-        return item(**kwargs)
+        """Instantiate the implementation represented by a registry entry."""
+
+        entry = self.get(key)
+
+        if isinstance(entry, ArchitectureComponent):
+            factory = entry.component
+        elif callable(entry):
+            factory = entry
+        else:
+            raise TypeError(
+                f"{self.name} registry entries of type "
+                f"{type(entry).__name__} cannot be instantiated with "
+                "Registry.create()."
+            )
+
+        return factory(**kwargs)
 
     def keys(self) -> tuple[str, ...]:
         _ensure_builtins_registered()
@@ -175,9 +265,18 @@ def _ensure_builtins_registered() -> None:
 DATASETS = Registry("dataset")
 TRANSFORMS = Registry("transform")
 # Architecture and training
-ENCODERS = Registry("encoder")
-DECODERS = Registry("decoder")
-HEADS = Registry("head")
+ENCODERS = Registry(
+    "encoder",
+    entry_type=ArchitectureComponent,
+)
+DECODERS = Registry(
+    "decoder",
+    entry_type=ArchitectureComponent,
+)
+HEADS = Registry(
+    "head",
+    entry_type=ArchitectureComponent,
+)
 MODELS = Registry(
     "model",
     custom_registration_supported=False,
@@ -197,11 +296,23 @@ EVAL_CLUSTERING_METHODS = Registry(
     "clustering method",
     custom_registration_supported=False,
 )
-EVAL_INTERNAL_CLUSTERING_METRICS = Registry("internal clustering metric")
-EVAL_EXTERNAL_CLUSTERING_METRICS = Registry("external clustering metric")
-EVAL_EMBEDDING_METRICS = Registry("embedding metric")
+EVAL_INTERNAL_CLUSTERING_METRICS = Registry(
+    "internal clustering metric",
+    entry_type=EvaluationMetric,
+)
+EVAL_EXTERNAL_CLUSTERING_METRICS = Registry(
+    "external clustering metric",
+    entry_type=EvaluationMetric,
+)
+EVAL_EMBEDDING_METRICS = Registry(
+    "embedding metric",
+    entry_type=EvaluationMetric,
+)
 EVAL_PREDICTABILITY_PROBES = Registry(
     "predictability probe",
     custom_registration_supported=False,
 )
-EVAL_RECONSTRUCTION_METRICS = Registry("reconstruction metric")
+EVAL_RECONSTRUCTION_METRICS = Registry(
+    "reconstruction metric",
+    entry_type=EvaluationMetric,
+)

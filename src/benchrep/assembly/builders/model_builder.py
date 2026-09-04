@@ -17,6 +17,7 @@ from benchrep.architecture.models import (
     VAE,
 )
 from benchrep.architecture.losses.base import LossTerm
+from benchrep.architecture.contracts import ArchitectureComponent
 from benchrep.assembly.builders.optimizer_builder import build_optimizer_factory
 from benchrep.assembly.registries.utils import normalize_name
 from benchrep.assembly.schemas import (
@@ -507,9 +508,11 @@ def build_decoder(
         decoder_config.name,
         field_name="config.decoder.name",
     )
-    decoder_cls = DECODERS.get(decoder_name)
-    decoder_params = dict(decoder_config.params)
+    decoder_entry = DECODERS.get(decoder_name)
+    assert isinstance(decoder_entry, ArchitectureComponent)
 
+    decoder_cls = decoder_entry.component
+    decoder_params = dict(decoder_config.params)
     decoder_signature = inspect.signature(decoder_cls)
 
     # Wire decoder input dimensionality from the supplied input dimension.
@@ -574,7 +577,10 @@ def build_decoder(
                 "provided and it could not be inferred from encoder.feature_shape."
             )
 
-    return decoder_cls(**decoder_params)
+    return DECODERS.create(
+        decoder_name,
+        **decoder_params,
+    )
 
 
 def _build_reconstruction_losses(

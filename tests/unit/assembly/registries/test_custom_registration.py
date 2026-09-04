@@ -11,6 +11,7 @@ EXPECTED_CUSTOM_REGISTRATION_POLICY = {
     "transform": True,
     "encoder": True,
     "decoder": True,
+    "head": True,
     "model": False,
     "reconstruction_loss": True,
     "regularization_loss": True,
