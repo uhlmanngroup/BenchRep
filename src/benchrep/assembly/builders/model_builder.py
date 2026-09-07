@@ -16,6 +16,7 @@ from benchrep.architecture.models import (
     Autoencoder,
     VAE,
 )
+from benchrep.assembly.builders.loss_builder import build_loss_terms
 from benchrep.architecture.losses.base import LossTerm
 from benchrep.architecture.composite_model_component_contracts import ArchitectureComponent
 from benchrep.assembly.builders.optimizer_builder import build_optimizer_factory
@@ -32,9 +33,6 @@ from benchrep.assembly.registries.core import (
     ENCODERS,
     MODELS,
     OPTIMIZERS,
-    RECONSTRUCTION_LOSSES,
-    REGULARIZATION_LOSSES,
-    CUSTOM_OBJECTIVE_LOSSES,
 )
 from benchrep.interfaces.model_families import SupportedModel
 
@@ -229,47 +227,18 @@ def build_autoencoder(
         run_log.info("Using provided optimizer factory: %s",
                      getattr(optimizer, "__name__", type(optimizer).__name__))
 
-    sources_by_role = {
-        "reconstruction": {
-            loss_name: (
-                "provided"
-                if isinstance(loss_spec, LossTerm)
-                else "config"
-            )
-            for loss_name, loss_spec
-            in reconstruction_losses.items()
-        },
-        "custom_objective": {
-            loss_name: (
-                "provided"
-                if isinstance(loss_spec, LossTerm)
-                else "config"
-            )
-            for loss_name, loss_spec
-            in custom_objective_losses.items()
-        },
-    }
-
-    reconstruction_losses = _build_reconstruction_losses(
-        reconstruction_losses
-    )
-    custom_objective_losses = _build_custom_objective_losses(
-        custom_objective_losses
-    )
-
-    _log_resolved_losses(
-        losses_by_role={
+    losses_by_role = build_loss_terms(
+        {
             "reconstruction": reconstruction_losses,
             "custom_objective": custom_objective_losses,
         },
-        sources_by_role=sources_by_role,
     )
 
     return Autoencoder(
         encoder=encoder,
         decoder=decoder,
-        reconstruction_losses=reconstruction_losses,
-        custom_objective_losses=custom_objective_losses,
+        reconstruction_losses=losses_by_role["reconstruction"],
+        custom_objective_losses=losses_by_role["custom_objective"],
         optimizer_factory=optimizer_factory,
     )
 
@@ -360,62 +329,21 @@ def build_vae(
     run_log.info("Built variational head: %s",
                  type(variational_head).__name__)
 
-    sources_by_role = {
-        "reconstruction": {
-            loss_name: (
-                "provided"
-                if isinstance(loss_spec, LossTerm)
-                else "config"
-            )
-            for loss_name, loss_spec
-            in reconstruction_losses.items()
-        },
-        "regularization": {
-            loss_name: (
-                "provided"
-                if isinstance(loss_spec, LossTerm)
-                else "config"
-            )
-            for loss_name, loss_spec
-            in regularization_losses.items()
-        },
-        "custom_objective": {
-            loss_name: (
-                "provided"
-                if isinstance(loss_spec, LossTerm)
-                else "config"
-            )
-            for loss_name, loss_spec
-            in custom_objective_losses.items()
-        },
-    }
-
-    reconstruction_losses = _build_reconstruction_losses(
-        reconstruction_losses
-    )
-    regularization_losses = _build_regularization_losses(
-        regularization_losses
-    )
-    custom_objective_losses = _build_custom_objective_losses(
-        custom_objective_losses
-    )
-
-    _log_resolved_losses(
-        losses_by_role={
+    losses_by_role = build_loss_terms(
+        {
             "reconstruction": reconstruction_losses,
             "regularization": regularization_losses,
             "custom_objective": custom_objective_losses,
         },
-        sources_by_role=sources_by_role,
     )
 
     return VAE(
         encoder=encoder,
         decoder=decoder,
         variational_head=variational_head,
-        reconstruction_losses=reconstruction_losses,
-        regularization_losses=regularization_losses,
-        custom_objective_losses=custom_objective_losses,
+        reconstruction_losses=losses_by_role["reconstruction"],
+        regularization_losses=losses_by_role["regularization"],
+        custom_objective_losses=losses_by_role["custom_objective"],
         optimizer_factory=optimizer_factory,
         prediction_reconstruction_latent_source=(
             prediction_reconstruction_latent_source
@@ -580,96 +508,4 @@ def build_decoder(
     return DECODERS.create(
         decoder_name,
         **decoder_params,
-    )
-
-
-def _build_reconstruction_losses(
-    reconstruction_losses: dict[str, TrainingLossTermConfig | LossTerm],
-) -> dict[str, LossTerm]:
-    loss_terms: dict[str, LossTerm] = {}
-
-    for loss_name, loss_spec in reconstruction_losses.items():
-        if isinstance(loss_spec, LossTerm):
-            loss_terms[loss_name] = loss_spec
-            continue
-
-        loss_terms[loss_name] = LossTerm(
-            loss=RECONSTRUCTION_LOSSES.create(loss_name, **loss_spec.params),
-            weight=loss_spec.weight,
-        )
-
-    return loss_terms
-
-
-def _build_regularization_losses(
-    regularization_losses: dict[str, TrainingLossTermConfig | LossTerm],
-) -> dict[str, LossTerm]:
-    loss_terms: dict[str, LossTerm] = {}
-
-    for loss_name, loss_spec in regularization_losses.items():
-        if isinstance(loss_spec, LossTerm):
-            loss_terms[loss_name] = loss_spec
-            continue
-
-        loss_terms[loss_name] = LossTerm(
-            loss=REGULARIZATION_LOSSES.create(loss_name, **loss_spec.params),
-            weight=loss_spec.weight,
-        )
-
-    return loss_terms
-
-
-def _build_custom_objective_losses(
-    custom_objective_losses: dict[
-        str,
-        TrainingLossTermConfig | LossTerm,
-    ],
-) -> dict[str, LossTerm]:
-    loss_terms: dict[str, LossTerm] = {}
-
-    for loss_name, loss_spec in custom_objective_losses.items():
-        if isinstance(loss_spec, LossTerm):
-            loss_terms[loss_name] = loss_spec
-            continue
-
-        loss_terms[loss_name] = LossTerm(
-            loss=CUSTOM_OBJECTIVE_LOSSES.create(
-                loss_name,
-                **loss_spec.params,
-            ),
-            weight=loss_spec.weight,
-        )
-
-    return loss_terms
-
-
-def _log_resolved_losses(
-    *,
-    losses_by_role: dict[str, dict[str, LossTerm]],
-    sources_by_role: dict[str, dict[str, str]],
-) -> None:
-    run_log = get_run_logger()
-
-    descriptions = []
-
-    for role, loss_terms in losses_by_role.items():
-        if not loss_terms:
-            continue
-
-        sources = sources_by_role[role]
-
-        terms = ", ".join(
-            (
-                f"{loss_name} ({sources[loss_name]})"
-                f" -> {type(loss_term.loss).__name__}"
-                f" (weight={loss_term.weight})"
-            )
-            for loss_name, loss_term in loss_terms.items()
-        )
-
-        descriptions.append(f"{role}=[{terms}]")
-
-    run_log.info(
-        "Resolved losses: %s",
-        "; ".join(descriptions),
     )
