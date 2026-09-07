@@ -195,16 +195,26 @@ class TrainingDecoderConfig(NamedConfig):
 class TrainingLossTermConfig(_TrainingConfigBaseModel):
     """Configuration for one weighted term in a role-specific loss mapping.
 
-    The surrounding mapping key is the registered component name. Its parent role
-    selects the registry and runtime calling convention:
+    The surrounding mapping key is the registered loss name, while its parent role
+    selects the loss registry.
+
+    Canonical models use fixed role-specific calling conventions:
 
     - `reconstruction`: called with `reconstruction` and `target`.
     - `regularization`: called with `z_mu` and `z_logvar`.
     - `custom_objective`: called with `batch` and `model_output` mappings.
 
-    `params` are passed only to the registered component's constructor. Runtime
-    model tensors are supplied separately by the model when the objective is
-    evaluated.
+    Composite models bind ordinary loss inputs through `composite_wiring`, validated
+    against the selected loss's runtime contract. Custom objectives continue to
+    receive `batch` and `model_output` automatically.
+
+    `params` are passed only to the registered component's constructor.
+
+    Canonical models supply runtime loss inputs through their fixed execution paths.
+    Composite loss terms instead use `composite_wiring` to map the loss component's
+    `forward()` argument names to declarations under `expects` or `produces`.
+    Custom objectives remain the exception because BenchRep automatically supplies
+    their complete `batch` and `model_output` mappings.
 
     Every configured term must return a scalar tensor. BenchRep multiplies that
     value by the configured `weight` before adding it to the other configured
@@ -212,8 +222,14 @@ class TrainingLossTermConfig(_TrainingConfigBaseModel):
 
     Use `benchrep.inspect_registry("reconstruction_loss")`,
     `benchrep.inspect_registry("regularization_loss")`, or
-    `benchrep.inspect_registry("custom_objective_loss")` to inspect available names,
-    aliases, constructors, and calling contracts.
+    `benchrep.inspect_registry("custom_objective_loss")` to list available losses.
+
+    Inspect an individual loss, for example
+    `benchrep.inspect_registry("reconstruction_loss", "mse")`, to view its
+    constructor signature and runtime contract. For ordinary losses, the contract
+    identifies the parameter names required under `composite_wiring` and the roles
+    supported by each parameter. For custom objectives, it identifies the context
+    inputs supplied automatically by BenchRep.
 
     User-registered components must satisfy the selected role's calling convention
     and must be registered again when reconstructing an internally assembled model
@@ -250,6 +266,28 @@ class TrainingLossTermConfig(_TrainingConfigBaseModel):
         json_schema_extra={
             "omit_behavior": "Uses an empty parameter mapping.",
             "null_behavior": "Not allowed; use an empty mapping instead.",
+        },
+    )
+
+    composite_wiring: dict[str, str] | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Composite-only mapping from loss forward() parameter names to declared "
+            "runtime sources under `expects` and `produces`."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Omission is required for every loss under canonical models and for custom "
+                "objectives under Composite. All other Composite losses require this field."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Keys must exactly match the runtime inputs declared by the "
+                "registered loss contract.",
+                "Values must reference `expects.<name>` or `produces.<name>`.",
+                "Custom objectives receive `batch` and `model_output` automatically.",
+            ],
         },
     )
 
@@ -1369,7 +1407,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
         json_schema_extra={
             "omit_behavior": (
                 "Uses an empty loss mapping, which does not satisfy the loss "
-                "requirements of config-built autoencoders or VAEs."
+                "requirements of config-built models."
             ),
             "null_behavior": (
                 "Allowed when an external model is supplied; otherwise a loss "
@@ -1700,6 +1738,83 @@ class TrainingConfig(_TrainingConfigBaseModel):
         return self
 
     @model_validator(mode="after")
+    def validate_loss_requirements(
+            self,
+            info: ValidationInfo,
+    ) -> TrainingConfig:
+        ctx = info.context or {}
+
+        model_overridden = (
+                ctx.get("model_is_external", False)
+                or self.overrides.model is not None
+        )
+
+        if (
+                model_overridden
+                or self.model is None
+                or self.losses is None
+        ):
+            return self
+
+        model_name = normalize_name(
+            self.model.name,
+            field_name="model.name",
+        )
+
+        configured_wiring = [
+            f"`losses.{loss_role}.{loss_name}.composite_wiring`"
+            for loss_role, loss_terms in self.losses.items()
+            for loss_name, loss_config in loss_terms.items()
+            if loss_config.composite_wiring is not None
+        ]
+
+        if model_name != "composite":
+            if configured_wiring:
+                raise ValueError(
+                    "`composite_wiring` may only be configured when "
+                    "`model.name` is `composite`: "
+                    + ", ".join(configured_wiring)
+                )
+
+            return self
+
+        if not self.losses:
+            raise ValueError(
+                "Composite models require at least one configured loss."
+            )
+
+        custom_objective_wiring = [
+            f"`losses.custom_objective.{loss_name}.composite_wiring`"
+            for loss_name, loss_config
+            in self.losses.get("custom_objective", {}).items()
+            if loss_config.composite_wiring is not None
+        ]
+
+        if custom_objective_wiring:
+            raise ValueError(
+                "Custom objective losses do not accept `composite_wiring`; "
+                "`batch` and `model_output` are supplied automatically: "
+                + ", ".join(custom_objective_wiring)
+            )
+
+        missing_wiring = [
+            f"`losses.{loss_role}.{loss_name}.composite_wiring`"
+            for loss_role, loss_terms in self.losses.items()
+            if loss_role != "custom_objective"
+            for loss_name, loss_config in loss_terms.items()
+            if loss_config.composite_wiring is None
+        ]
+
+        if missing_wiring:
+            raise ValueError(
+                "Every non-custom-objective loss under Composite requires "
+                "`composite_wiring`: "
+                + ", ".join(missing_wiring)
+            )
+
+        return self
+
+    @model_validator(mode="after")
     def validate_composite_requirements(
             self,
             info: ValidationInfo,
@@ -1838,7 +1953,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
                 + ", ".join(repr(name) for name in unproduced_outputs)
             )
 
-        # Validate assembly input references
+        # Validate assembly and loss input references
         valid_input_names = set(self.composite_model_declarations.expects)
         valid_output_names = set(self.composite_model_declarations.produces)
 
@@ -1869,9 +1984,45 @@ class TrainingConfig(_TrainingConfigBaseModel):
                         f"{step_name}.{argument_name} -> {source!r}"
                     )
 
+            assert self.losses is not None
+
+            for loss_role, loss_terms in self.losses.items():
+                for loss_name, loss_config in loss_terms.items():
+                    if loss_config.composite_wiring is None:
+                        continue
+
+                    for parameter_name, source in loss_config.composite_wiring.items():
+                        namespace, separator, name = source.partition(".")
+
+                        reference = (
+                            f"losses.{loss_role}.{loss_name}."
+                            f"composite_wiring.{parameter_name}"
+                        )
+
+                        if separator != ".":
+                            invalid_references.append(
+                                f"{reference} -> {source!r}"
+                            )
+                            continue
+
+                        if namespace == "expects":
+                            valid_names = valid_input_names
+                        elif namespace == "produces":
+                            valid_names = valid_output_names
+                        else:
+                            invalid_references.append(
+                                f"{reference} -> {source!r}"
+                            )
+                            continue
+
+                        if name not in valid_names:
+                            invalid_references.append(
+                                f"{reference} -> {source!r}"
+                            )
+
         if invalid_references:
             raise ValueError(
-                "Composite model assembly contains invalid input references: "
+                "Composite model configuration contains invalid runtime source references: "
                 + ", ".join(invalid_references)
             )
 
