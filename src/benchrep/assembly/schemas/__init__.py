@@ -33,16 +33,14 @@ from benchrep.assembly.schemas.training_config_schema import (
 from .composite_model_config_schema import (
     CompositeModelAssemblyStepConfig,
     CompositeModelBatchMetadataConfig,
-    CompositeModelBatchMetadataRole,
     CompositeModelComponentConfig,
-    CompositeModelComponentKind,
     CompositeModelDeclarationsConfig,
     CompositeModelInputConfig,
-    CompositeModelInputRole,
     CompositeModelNamedConfig,
     CompositeModelOutputConfig,
-    CompositeModelOutputRole,
 )
+from ...architecture.composite_model_roles import CompositeModelInputRole, CompositeModelBatchMetadataRole, \
+    CompositeModelOutputRole, CompositeModelComponentKind
 from benchrep.assembly.schemas.prediction_config_schema import (
     PredictionSourceConfig,
     PredictionDataConfig,
@@ -136,15 +134,11 @@ __all__ = [
     "TrainingTransformConfig",
     "CompositeModelAssemblyStepConfig",
     "CompositeModelBatchMetadataConfig",
-    "CompositeModelBatchMetadataRole",
     "CompositeModelComponentConfig",
-    "CompositeModelComponentKind",
     "CompositeModelDeclarationsConfig",
     "CompositeModelInputConfig",
-    "CompositeModelInputRole",
     "CompositeModelNamedConfig",
     "CompositeModelOutputConfig",
-    "CompositeModelOutputRole",
     "PredictionSourceConfig",
     "PredictionDataConfig",
     "PredictionInferenceConfig",

@@ -27,10 +27,15 @@ from benchrep.assembly.registries.core import (
     EVAL_RECONSTRUCTION_METRICS,
     Registry,
 )
-from benchrep.architecture.contracts import (
+from benchrep.architecture.composite_model_component_contracts import (
     ArchitectureComponent,
     ComponentMappingResult,
     ComponentTensorResult,
+)
+from benchrep.architecture.losses.composite_model_contracts import (
+    LossComponent,
+    LossContextPort,
+    LossTensorPort,
 )
 from benchrep.evaluation.metrics import EvaluationMetric
 
@@ -135,8 +140,9 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
         runtime_instance_override_supported=False,
         config_locations=("TrainingConfig.losses.reconstruction",),
         contract=(
-            "The registered loss must accept `reconstruction` and `target` "
-            "keyword arguments and return a loss tensor."
+            "LossComponent.component must be an nn.Module loss returning a scalar "
+            "tensor. Its runtime contract declares the roles supported by each "
+            "Composite wiring input. Canonical models use fixed loss wiring."
         ),
     ),
     "regularization_loss": ComponentRegistryInfo(
@@ -145,8 +151,9 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
         runtime_instance_override_supported=False,
         config_locations=("TrainingConfig.losses.regularization",),
         contract=(
-            "The registered loss must accept `z_mu` and `z_logvar` keyword "
-            "arguments and return a loss tensor."
+            "LossComponent.component must be an nn.Module loss returning a scalar "
+            "tensor. Its runtime contract declares the roles supported by each "
+            "Composite wiring input. Canonical models use fixed loss wiring."
         ),
     ),
     "custom_objective_loss": ComponentRegistryInfo(
@@ -157,8 +164,9 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
             "TrainingConfig.losses.custom_objective",
         ),
         contract=(
-            "The registered loss must accept keyword-only `batch` and "
-            "`model_output` mappings and return a scalar loss tensor."
+            "LossComponent.component must accept the complete `batch` and "
+            "`model_output` mappings and return a scalar tensor. These context inputs "
+            "are supplied automatically under canonical and Composite models."
         ),
     ),
     "optimizer": ComponentRegistryInfo(
@@ -340,6 +348,12 @@ def inspect_registry(
                     indentation="    ",
                 )
 
+            elif isinstance(entry, LossComponent):
+                _print_loss_component_contract(
+                    entry,
+                    indentation="    ",
+                )
+
             if isinstance(entry, EvaluationMetric):
                 print(f"    result kind: {entry.result_kind}")
 
@@ -374,7 +388,10 @@ def inspect_registry(
     if isinstance(entry, ArchitectureComponent):
         _print_architecture_component_contract(entry)
 
-    if isinstance(entry, EvaluationMetric):
+    elif isinstance(entry, LossComponent):
+        _print_loss_component_contract(entry)
+
+    elif isinstance(entry, EvaluationMetric):
         print(f"Result kind: {entry.result_kind}")
 
         if entry.vector_axis is not None:
@@ -551,13 +568,48 @@ def _print_architecture_component_contract(
     )
 
 
+def _print_loss_component_contract(
+    entry: LossComponent,
+    *,
+    indentation: str = "",
+) -> None:
+    """Print one loss component's Composite runtime contract."""
+
+    print(f"{indentation}Composite runtime contract:")
+    print(f"{indentation}  Inputs:")
+
+    for runtime_input in entry.runtime_inputs:
+        if isinstance(runtime_input, LossTensorPort):
+            supported_roles = " | ".join(
+                runtime_input.supported_roles
+            )
+
+            print(
+                f"{indentation}    {runtime_input.name}: "
+                f"{supported_roles}"
+            )
+
+        elif isinstance(runtime_input, LossContextPort):
+            source_label = {
+                "batch": "complete batch mapping",
+                "model_output": "complete model_output mapping",
+            }[runtime_input.source]
+
+            print(
+                f"{indentation}    {runtime_input.name}: "
+                f"{source_label} (automatically supplied)"
+            )
+
+    print(f"{indentation}  Result: scalar tensor")
+
+
 def _registry_entry_target(entry: Any) -> Any:
     """Return the callable represented by a registry entry."""
 
-    if isinstance(entry, ArchitectureComponent):
+    if isinstance(entry, (ArchitectureComponent, LossComponent)):
         return entry.component
 
-    if isinstance(entry, EvaluationMetric):
+    elif isinstance(entry, EvaluationMetric):
         return entry.fn
 
     return entry

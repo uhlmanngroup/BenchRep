@@ -17,7 +17,7 @@ from benchrep.architecture.models import (
     VAE,
 )
 from benchrep.architecture.losses.base import LossTerm
-from benchrep.architecture.contracts import ArchitectureComponent
+from benchrep.architecture.composite_model_component_contracts import ArchitectureComponent
 from benchrep.assembly.builders.optimizer_builder import build_optimizer_factory
 from benchrep.assembly.registries.utils import normalize_name
 from benchrep.assembly.schemas import (

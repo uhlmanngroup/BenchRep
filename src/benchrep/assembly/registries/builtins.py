@@ -92,11 +92,16 @@ def register_builtins() -> None:
             EVAL_RECONSTRUCTION_METRICS,
         )
 
-        from benchrep.architecture.contracts import (
+        from benchrep.architecture.composite_model_component_contracts import (
             ArchitectureComponent,
             ComponentPort,
             ComponentTensorResult,
             ComponentMappingResult,
+        )
+
+        from benchrep.architecture.losses.composite_model_contracts import (
+            LossComponent,
+            LossTensorPort,
         )
 
         from benchrep.architecture.data import (
@@ -354,12 +359,67 @@ def register_builtins() -> None:
             "gaussian_vae",
         )
 
-        RECONSTRUCTION_LOSSES._register_builtin("mse", MSEReconstructionLoss, "l2")
-        RECONSTRUCTION_LOSSES._register_builtin("mae", MAEReconstructionLoss, "l1")
+        RECONSTRUCTION_LOSSES._register_builtin(
+            "mse",
+            LossComponent(
+                component=MSEReconstructionLoss,
+                runtime_inputs=(
+                    LossTensorPort(
+                        name="reconstruction",
+                        supported_roles=("reconstruction_image",),
+                    ),
+                    LossTensorPort(
+                        name="target",
+                        supported_roles=(
+                            "sample_image",
+                            "positive_image",
+                            "negative_image",
+                        ),
+                    ),
+                ),
+            ),
+            "l2",
+        )
+        RECONSTRUCTION_LOSSES._register_builtin(
+            "mae",
+            LossComponent(
+                component=MAEReconstructionLoss,
+                runtime_inputs=(
+                    LossTensorPort(
+                        name="reconstruction",
+                        supported_roles=("reconstruction_image",),
+                    ),
+                    LossTensorPort(
+                        name="target",
+                        supported_roles=(
+                            "sample_image",
+                            "positive_image",
+                            "negative_image",
+                        ),
+                    ),
+                ),
+            ),
+            "l1",
+        )
 
         REGULARIZATION_LOSSES._register_builtin(
             "gaussian_kl",
-            GaussianKLDivergenceLoss,
+            LossComponent(
+                component=GaussianKLDivergenceLoss,
+                runtime_inputs=(
+                    LossTensorPort(
+                        name="z_mu",
+                        supported_roles=(
+                            "embedding_vector",
+                            "continuous_auxiliary_vector",
+                        ),
+                    ),
+                    LossTensorPort(
+                        name="z_logvar",
+                        supported_roles=("continuous_auxiliary_vector",),
+                    ),
+                ),
+            ),
             "kl",
             "kld",
             "kldiv",

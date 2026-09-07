@@ -3,18 +3,25 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, TypeAlias
 
-from benchrep.architecture.contracts import ArchitectureComponent
+from benchrep.architecture.composite_model_component_contracts import (
+    ArchitectureComponent,
+)
+from benchrep.architecture.losses.composite_model_contracts import (
+    LossComponent,
+)
 from benchrep.evaluation.metrics import EvaluationMetric
 
 
 RegistryEntry: TypeAlias = (
     Callable[..., Any]
     | ArchitectureComponent
+    | LossComponent
     | EvaluationMetric
 )
 
 RegistryEntryType: TypeAlias = (
     type[ArchitectureComponent]
+    | type[LossComponent]
     | type[EvaluationMetric]
 )
 
@@ -22,7 +29,7 @@ RegistryEntryType: TypeAlias = (
 class Registry:
     """Map configuration names to registered implementations or contract wrappers.
 
-    BenchRep registries use three entry systems.
+    BenchRep registries use four entry systems.
 
     Registries with ``entry_type=None`` store callables directly. Depending on
     the registry, an entry may be a class constructor, a factory function, or
@@ -35,6 +42,11 @@ class Registry:
     carries both the module class and its Composite runtime contract. ``get()``
     returns the complete wrapper for discovery and graph validation, whereas
     ``create()`` unwraps ``entry.component`` and instantiates the module class.
+
+    Loss registries store ``LossComponent`` entries. The wrapper carries the loss
+    module class and its Composite runtime-input contract. ``get()`` returns the
+    complete wrapper, while ``create()`` unwraps ``entry.component`` and
+    instantiates the loss module.
 
     Evaluation-metric registries store ``EvaluationMetric`` entries. Evaluation
     machinery retrieves and interprets the complete wrapper, including its
@@ -197,7 +209,7 @@ class Registry:
 
         entry = self.get(key)
 
-        if isinstance(entry, ArchitectureComponent):
+        if isinstance(entry, (ArchitectureComponent, LossComponent)):
             factory = entry.component
         elif callable(entry):
             factory = entry
@@ -281,9 +293,18 @@ MODELS = Registry(
     "model",
     custom_registration_supported=False,
 )
-RECONSTRUCTION_LOSSES = Registry("reconstruction loss")
-REGULARIZATION_LOSSES = Registry("regularization loss")
-CUSTOM_OBJECTIVE_LOSSES = Registry("custom objective loss")
+RECONSTRUCTION_LOSSES = Registry(
+    "reconstruction loss",
+    entry_type=LossComponent,
+)
+REGULARIZATION_LOSSES = Registry(
+    "regularization loss",
+    entry_type=LossComponent,
+)
+CUSTOM_OBJECTIVE_LOSSES = Registry(
+    "custom objective loss",
+    entry_type=LossComponent,
+)
 OPTIMIZERS = Registry("optimizer")
 LOGGERS = Registry("logger")
 CALLBACKS = Registry("callback")
