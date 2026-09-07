@@ -1749,17 +1749,21 @@ class TrainingConfig(_TrainingConfigBaseModel):
                 or self.overrides.model is not None
         )
 
-        if (
-                model_overridden
-                or self.model is None
-                or self.losses is None
-        ):
+        if model_overridden or self.model is None:
             return self
 
         model_name = normalize_name(
             self.model.name,
             field_name="model.name",
         )
+
+        if model_name == "composite" and not self.losses:
+            raise ValueError(
+                "Composite models require at least one configured loss."
+            )
+
+        if self.losses is None:
+            return self
 
         configured_wiring = [
             f"`losses.{loss_role}.{loss_name}.composite_wiring`"
@@ -1777,11 +1781,6 @@ class TrainingConfig(_TrainingConfigBaseModel):
                 )
 
             return self
-
-        if not self.losses:
-            raise ValueError(
-                "Composite models require at least one configured loss."
-            )
 
         custom_objective_wiring = [
             f"`losses.custom_objective.{loss_name}.composite_wiring`"
@@ -1914,21 +1913,55 @@ class TrainingConfig(_TrainingConfigBaseModel):
             )
 
         # Validate assembly-produced outputs
-        produced_outputs = [
-            output_name
-            for step in self.composite_model_assembly.values()
-            for output_name in step.outputs.values()
-        ]
-
-        undefined_outputs = sorted(
-            set(produced_outputs) - set(self.composite_model_declarations.produces)
+        valid_output_names = set(
+            self.composite_model_declarations.produces
         )
 
-        if undefined_outputs:
+        output_references: list[tuple[str, str]] = []
+
+        for step_name, step in self.composite_model_assembly.items():
+            if isinstance(step.outputs, str):
+                output_references.append(
+                    (
+                        f"composite_model_assembly.{step_name}.outputs",
+                        step.outputs,
+                    )
+                )
+            else:
+                output_references.extend(
+                    (
+                        (
+                            f"composite_model_assembly.{step_name}."
+                            f"outputs.{output_name}"
+                        ),
+                        source,
+                    )
+                    for output_name, source in step.outputs.items()
+                )
+
+        produced_outputs: list[str] = []
+        invalid_output_references: list[str] = []
+
+        for location, source in output_references:
+            namespace, separator, name = source.partition(".")
+
+            if (
+                    separator != "."
+                    or namespace != "produces"
+                    or name not in valid_output_names
+            ):
+                invalid_output_references.append(
+                    f"{location} -> {source!r}"
+                )
+                continue
+
+            produced_outputs.append(name)
+
+        if invalid_output_references:
             raise ValueError(
-                "Composite model assembly produces outputs that are not declared "
-                "under `produces`: "
-                + ", ".join(repr(name) for name in undefined_outputs)
+                "Composite model assembly outputs must reference declared "
+                "`produces` values: "
+                + ", ".join(invalid_output_references)
             )
 
         duplicate_outputs = sorted({
@@ -1939,24 +1972,24 @@ class TrainingConfig(_TrainingConfigBaseModel):
 
         if duplicate_outputs:
             raise ValueError(
-                "Composite model produced data may originate from only one assembly step: "
+                "Composite model produced data may originate from only one "
+                "assembly step: "
                 + ", ".join(repr(name) for name in duplicate_outputs)
             )
 
         unproduced_outputs = sorted(
-            set(self.composite_model_declarations.produces) - set(produced_outputs)
+            valid_output_names - set(produced_outputs)
         )
 
         if unproduced_outputs:
             raise ValueError(
-                "Composite model declares produced data that no assembly step generates: "
+                "Composite model declares produced data that no assembly step "
+                "generates: "
                 + ", ".join(repr(name) for name in unproduced_outputs)
             )
 
         # Validate assembly and loss input references
         valid_input_names = set(self.composite_model_declarations.expects)
-        valid_output_names = set(self.composite_model_declarations.produces)
-
         invalid_references: list[str] = []
 
         for step_name, step in self.composite_model_assembly.items():
@@ -1984,41 +2017,41 @@ class TrainingConfig(_TrainingConfigBaseModel):
                         f"{step_name}.{argument_name} -> {source!r}"
                     )
 
-            assert self.losses is not None
+        assert self.losses is not None
 
-            for loss_role, loss_terms in self.losses.items():
-                for loss_name, loss_config in loss_terms.items():
-                    if loss_config.composite_wiring is None:
+        for loss_role, loss_terms in self.losses.items():
+            for loss_name, loss_config in loss_terms.items():
+                if loss_config.composite_wiring is None:
+                    continue
+
+                for parameter_name, source in loss_config.composite_wiring.items():
+                    namespace, separator, name = source.partition(".")
+
+                    reference = (
+                        f"losses.{loss_role}.{loss_name}."
+                        f"composite_wiring.{parameter_name}"
+                    )
+
+                    if separator != ".":
+                        invalid_references.append(
+                            f"{reference} -> {source!r}"
+                        )
                         continue
 
-                    for parameter_name, source in loss_config.composite_wiring.items():
-                        namespace, separator, name = source.partition(".")
-
-                        reference = (
-                            f"losses.{loss_role}.{loss_name}."
-                            f"composite_wiring.{parameter_name}"
+                    if namespace == "expects":
+                        valid_names = valid_input_names
+                    elif namespace == "produces":
+                        valid_names = valid_output_names
+                    else:
+                        invalid_references.append(
+                            f"{reference} -> {source!r}"
                         )
+                        continue
 
-                        if separator != ".":
-                            invalid_references.append(
-                                f"{reference} -> {source!r}"
-                            )
-                            continue
-
-                        if namespace == "expects":
-                            valid_names = valid_input_names
-                        elif namespace == "produces":
-                            valid_names = valid_output_names
-                        else:
-                            invalid_references.append(
-                                f"{reference} -> {source!r}"
-                            )
-                            continue
-
-                        if name not in valid_names:
-                            invalid_references.append(
-                                f"{reference} -> {source!r}"
-                            )
+                    if name not in valid_names:
+                        invalid_references.append(
+                            f"{reference} -> {source!r}"
+                        )
 
         if invalid_references:
             raise ValueError(

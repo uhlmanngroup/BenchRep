@@ -68,6 +68,11 @@ class CompositeModelAssemblyStepConfig(_CompositeModelConfigBaseModel):
         min_length=1,
     )
 
-    outputs: dict[str, str] = Field(
+    outputs: str | dict[str, str] = Field(
         min_length=1,
+        description=(
+            "Binding for the component's runtime result. A single tensor uses one "
+            "`produces.<name>` reference; a mapping uses runtime result keys mapped "
+            "to `produces.<name>` references."
+        ),
     )
