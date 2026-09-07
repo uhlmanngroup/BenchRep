@@ -43,6 +43,9 @@ def _require_present(value: object, field_name: str) -> None:
 SupportedLossRole: TypeAlias = Literal[
     "reconstruction",
     "regularization",
+    "contrastive",
+    "classification",
+    "regression",
     "custom_objective",
 ]
 
@@ -195,14 +198,19 @@ class TrainingDecoderConfig(NamedConfig):
 class TrainingLossTermConfig(_TrainingConfigBaseModel):
     """Configuration for one weighted term in a role-specific loss mapping.
 
-    The surrounding mapping key is the registered loss name, while its parent role
-    selects the loss registry.
+    The surrounding mapping key selects the registered loss, while its parent key
+    selects the loss registry:
 
-    Canonical models use fixed role-specific calling conventions:
+    - `reconstruction`: compares reconstructed and source images.
+    - `regularization`: regularizes representations or model parameters.
+    - `contrastive`: compares related or unrelated representations.
+    - `classification`: evaluates categorical predictions.
+    - `regression`: evaluates continuous predictions.
+    - `custom_objective`: receives the complete batch and model output mappings.
 
-    - `reconstruction`: called with `reconstruction` and `target`.
-    - `regularization`: called with `z_mu` and `z_logvar`.
-    - `custom_objective`: called with `batch` and `model_output` mappings.
+    Canonical models use their fixed supported loss roles and calling conventions.
+    Composite models use each registered loss's runtime contract together with
+    `composite_wiring`.
 
     Composite models bind ordinary loss inputs through `composite_wiring`, validated
     against the selected loss's runtime contract. Custom objectives continue to
@@ -224,12 +232,12 @@ class TrainingLossTermConfig(_TrainingConfigBaseModel):
     `benchrep.inspect_registry("regularization_loss")`, or
     `benchrep.inspect_registry("custom_objective_loss")` to list available losses.
 
-    Inspect an individual loss, for example
-    `benchrep.inspect_registry("reconstruction_loss", "mse")`, to view its
-    constructor signature and runtime contract. For ordinary losses, the contract
-    identifies the parameter names required under `composite_wiring` and the roles
-    supported by each parameter. For custom objectives, it identifies the context
-    inputs supplied automatically by BenchRep.
+    Use `benchrep.inspect_registry("<loss-role>_loss", "<loss-name>")` to inspect a
+    selected loss's constructor and exact Composite input contract, for example
+    `benchrep.inspect_registry("contrastive_loss", "triplet_margin")`. For ordinary
+    losses, the contract identifies the parameter names required under
+    `composite_wiring` and the roles supported by each parameter. For custom
+    objectives, it identifies the context inputs supplied automatically by BenchRep.
 
     User-registered components must satisfy the selected role's calling convention
     and must be registered again when reconstructing an internally assembled model
@@ -1666,6 +1674,24 @@ class TrainingConfig(_TrainingConfigBaseModel):
 
         if model_name == "composite":
             return self
+
+        composite_only_loss_roles = (
+            "contrastive",
+            "classification",
+            "regression",
+        )
+
+        configured_composite_only_roles = [
+            f"`losses.{role}`"
+            for role in composite_only_loss_roles
+            if self.losses.get(role)
+        ]
+
+        if configured_composite_only_roles:
+            raise ValueError(
+                "The following loss roles are supported only by Composite models: "
+                + ", ".join(configured_composite_only_roles)
+            )
 
         assert self.encoder is not None
         assert self.decoder is not None

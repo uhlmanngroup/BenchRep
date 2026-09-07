@@ -301,6 +301,18 @@ REGULARIZATION_LOSSES = Registry(
     "regularization loss",
     entry_type=LossComponent,
 )
+CONTRASTIVE_LOSSES = Registry(
+    "contrastive loss",
+    entry_type=LossComponent,
+)
+CLASSIFICATION_LOSSES = Registry(
+    "classification loss",
+    entry_type=LossComponent,
+)
+REGRESSION_LOSSES = Registry(
+    "regression loss",
+    entry_type=LossComponent,
+)
 CUSTOM_OBJECTIVE_LOSSES = Registry(
     "custom objective loss",
     entry_type=LossComponent,

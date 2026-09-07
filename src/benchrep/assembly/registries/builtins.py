@@ -80,6 +80,9 @@ def register_builtins() -> None:
             MODELS,
             RECONSTRUCTION_LOSSES,
             REGULARIZATION_LOSSES,
+            CLASSIFICATION_LOSSES,
+            CONTRASTIVE_LOSSES,
+            REGRESSION_LOSSES,
             OPTIMIZERS,
             LOGGERS,
             CALLBACKS,
@@ -126,6 +129,9 @@ def register_builtins() -> None:
             MSEReconstructionLoss,
             MAEReconstructionLoss,
             GaussianKLDivergenceLoss,
+            TripletMarginContrastiveLoss,
+            CrossEntropyClassificationLoss,
+            MSERegressionLoss,
         )
         from benchrep.architecture.models import (
             Autoencoder,
@@ -379,6 +385,7 @@ def register_builtins() -> None:
                 ),
             ),
             "l2",
+            "mean_squared_error",
         )
         RECONSTRUCTION_LOSSES._register_builtin(
             "mae",
@@ -427,6 +434,86 @@ def register_builtins() -> None:
             "gaussian_kld",
             "gaussian_kldiv",
             "gaussian_kl_div",
+        )
+
+        CONTRASTIVE_LOSSES._register_builtin(
+            "triplet_margin",
+            LossComponent(
+                component=TripletMarginContrastiveLoss,
+                runtime_inputs=(
+                    LossTensorPort(
+                        name="anchor",
+                        supported_roles=(
+                            "embedding_vector",
+                            "projection_vector",
+                        ),
+                    ),
+                    LossTensorPort(
+                        name="positive",
+                        supported_roles=(
+                            "embedding_vector",
+                            "projection_vector",
+                        ),
+                    ),
+                    LossTensorPort(
+                        name="negative",
+                        supported_roles=(
+                            "embedding_vector",
+                            "projection_vector",
+                        ),
+                    ),
+                ),
+            ),
+            "triplet",
+            "triplet_margin_loss",
+        )
+
+        CLASSIFICATION_LOSSES._register_builtin(
+            "cross_entropy",
+            LossComponent(
+                component=CrossEntropyClassificationLoss,
+                runtime_inputs=(
+                    LossTensorPort(
+                        name="prediction",
+                        supported_roles=(
+                            "categorical_prediction_vector",
+                        ),
+                    ),
+                    LossTensorPort(
+                        name="target",
+                        supported_roles=(
+                            "categorical_prediction_target_scalar",
+                        ),
+                    ),
+                ),
+            ),
+            "categorical_cross_entropy",
+            "ce",
+        )
+
+        REGRESSION_LOSSES._register_builtin(
+            "mse",
+            LossComponent(
+                component=MSERegressionLoss,
+                runtime_inputs=(
+                    LossTensorPort(
+                        name="prediction",
+                        supported_roles=(
+                            "continuous_prediction_scalar",
+                            "continuous_prediction_vector",
+                        ),
+                    ),
+                    LossTensorPort(
+                        name="target",
+                        supported_roles=(
+                            "continuous_prediction_target_scalar",
+                            "continuous_prediction_target_vector",
+                        ),
+                    ),
+                ),
+            ),
+            "l2",
+            "mean_squared_error",
         )
 
         OPTIMIZERS._register_builtin("adam", torch.optim.Adam)

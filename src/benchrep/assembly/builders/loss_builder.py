@@ -6,9 +6,13 @@ from collections.abc import Mapping
 from typing import TypeAlias
 
 from benchrep.architecture.losses.base import LossTerm
+from benchrep.assembly.registries import REGRESSION_LOSSES
 from benchrep.assembly.registries.core import (
+    CONTRASTIVE_LOSSES,
+    CLASSIFICATION_LOSSES,
     CUSTOM_OBJECTIVE_LOSSES,
     RECONSTRUCTION_LOSSES,
+    REGULARIZATION_LOSSES,
     REGULARIZATION_LOSSES,
     Registry,
 )
@@ -25,6 +29,9 @@ LossTermInput: TypeAlias = TrainingLossTermConfig | LossTerm
 _LOSS_REGISTRIES: dict[SupportedLossRole, Registry] = {
     "reconstruction": RECONSTRUCTION_LOSSES,
     "regularization": REGULARIZATION_LOSSES,
+    "contrastive": CONTRASTIVE_LOSSES,
+    "classification": CLASSIFICATION_LOSSES,
+    "regression": REGRESSION_LOSSES,
     "custom_objective": CUSTOM_OBJECTIVE_LOSSES,
 }
 

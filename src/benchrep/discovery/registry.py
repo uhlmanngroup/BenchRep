@@ -14,6 +14,9 @@ from benchrep.assembly.registries.core import (
     MODELS,
     RECONSTRUCTION_LOSSES,
     REGULARIZATION_LOSSES,
+    CONTRASTIVE_LOSSES,
+    CLASSIFICATION_LOSSES,
+    REGRESSION_LOSSES,
     CUSTOM_OBJECTIVE_LOSSES,
     OPTIMIZERS,
     LOGGERS,
@@ -54,6 +57,21 @@ class ComponentRegistryInfo:
         """Return the registration policy enforced by the registry."""
         return self.registry.custom_registration_supported
 
+
+_LOSS_COMPONENT_CONTRACT: Final[str] = (
+    "LossComponent.component must be an nn.Module loss returning a scalar "
+    "tensor. Its runtime contract declares the roles supported by each "
+    "Composite wiring input."
+)
+
+_CANONICAL_LOSS_COMPONENT_CONTRACT: Final[str] = (
+    f"{_LOSS_COMPONENT_CONTRACT} Canonical models use fixed loss wiring."
+)
+
+_COMPOSITE_ONLY_LOSS_COMPONENT_CONTRACT: Final[str] = (
+    f"{_LOSS_COMPONENT_CONTRACT} This loss role is supported only by "
+    "Composite models."
+)
 
 _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
     "dataset": ComponentRegistryInfo(
@@ -139,22 +157,35 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
         registry=RECONSTRUCTION_LOSSES,
         runtime_instance_override_supported=False,
         config_locations=("TrainingConfig.losses.reconstruction",),
-        contract=(
-            "LossComponent.component must be an nn.Module loss returning a scalar "
-            "tensor. Its runtime contract declares the roles supported by each "
-            "Composite wiring input. Canonical models use fixed loss wiring."
-        ),
+        contract=_CANONICAL_LOSS_COMPONENT_CONTRACT,
     ),
     "regularization_loss": ComponentRegistryInfo(
         symbol="REGULARIZATION_LOSSES",
         registry=REGULARIZATION_LOSSES,
         runtime_instance_override_supported=False,
         config_locations=("TrainingConfig.losses.regularization",),
-        contract=(
-            "LossComponent.component must be an nn.Module loss returning a scalar "
-            "tensor. Its runtime contract declares the roles supported by each "
-            "Composite wiring input. Canonical models use fixed loss wiring."
-        ),
+        contract=_CANONICAL_LOSS_COMPONENT_CONTRACT,
+    ),
+    "contrastive_loss": ComponentRegistryInfo(
+        symbol="CONTRASTIVE_LOSSES",
+        registry=CONTRASTIVE_LOSSES,
+        runtime_instance_override_supported=False,
+        config_locations=("TrainingConfig.losses.contrastive",),
+        contract=_COMPOSITE_ONLY_LOSS_COMPONENT_CONTRACT,
+    ),
+    "classification_loss": ComponentRegistryInfo(
+        symbol="CLASSIFICATION_LOSSES",
+        registry=CLASSIFICATION_LOSSES,
+        runtime_instance_override_supported=False,
+        config_locations=("TrainingConfig.losses.classification",),
+        contract=_COMPOSITE_ONLY_LOSS_COMPONENT_CONTRACT,
+    ),
+    "regression_loss": ComponentRegistryInfo(
+        symbol="REGRESSION_LOSSES",
+        registry=REGRESSION_LOSSES,
+        runtime_instance_override_supported=False,
+        config_locations=("TrainingConfig.losses.regression",),
+        contract=_COMPOSITE_ONLY_LOSS_COMPONENT_CONTRACT,
     ),
     "custom_objective_loss": ComponentRegistryInfo(
         symbol="CUSTOM_OBJECTIVE_LOSSES",
