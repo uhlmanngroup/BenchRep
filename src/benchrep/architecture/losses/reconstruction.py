@@ -1,25 +1,10 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-
 import torch
 from torch import nn
 
 
-class BaseReconstructionLoss(nn.Module, ABC):
-    """Base interface for reconstruction losses.
-
-    Reconstruction losses compare model reconstructions against the original
-    input data.
-    """
-
-    @abstractmethod
-    def forward(self, reconstruction: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        """Compute reconstruction loss."""
-        raise NotImplementedError
-
-
-class MSEReconstructionLoss(BaseReconstructionLoss):
+class MSEReconstructionLoss(nn.Module):
     """Mean squared error reconstruction loss.
 
     This is the standard L2 reconstruction loss used for continuous-valued
@@ -55,7 +40,7 @@ class MSEReconstructionLoss(BaseReconstructionLoss):
         return self.loss(reconstruction, target)
 
 
-class MAEReconstructionLoss(BaseReconstructionLoss):
+class MAEReconstructionLoss(nn.Module):
     """Mean absolute error (L1) reconstruction loss.
 
     Parameters

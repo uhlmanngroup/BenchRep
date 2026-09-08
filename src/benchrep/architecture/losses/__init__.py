@@ -1,6 +1,5 @@
 from benchrep.architecture.losses.base import LossTerm
 from benchrep.architecture.losses.reconstruction import (
-    BaseReconstructionLoss,
     MSEReconstructionLoss,
     MAEReconstructionLoss,
 )
@@ -16,7 +15,6 @@ from benchrep.architecture.losses.composite_model_contracts import (
 
 __all__ = [
     "LossTerm",
-    "BaseReconstructionLoss",
     "MSEReconstructionLoss",
     "MAEReconstructionLoss",
     "GaussianKLDivergenceLoss",

@@ -26,7 +26,6 @@ from benchrep import (
 )
 from benchrep.architecture.losses import (
     BaseCustomObjectiveLoss,
-    BaseReconstructionLoss,
     LossComponent,
 )
 from benchrep.assembly.registries import RECONSTRUCTION_LOSSES, CUSTOM_OBJECTIVE_LOSSES
@@ -52,7 +51,7 @@ CONFIG_DIR = (
 #
 # Custom objectives must subclass BaseCustomObjectiveLoss because they use
 # BenchRep's fixed unrestricted interface.
-class GradientDifferenceLoss(BaseReconstructionLoss):
+class GradientDifferenceLoss(torch.nn.Module):
     """Penalize differences in horizontal and vertical image gradients."""
 
     def forward(
