@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import inspect
 from typing import Final, Literal, TypeAlias, get_args
 
 from torch import nn
+from torch._C._jit_tree_views import Raise
 
 from benchrep.architecture.composite_model_roles import (
     CompositeModelInputRole,
     CompositeModelOutputRole,
     CompositeModelTensorRole,
 )
+from benchrep.architecture.losses.custom_objective import BaseCustomObjectiveLoss
 
 
 _VALID_COMPOSITE_MODEL_TENSOR_ROLES: Final[frozenset[str]] = frozenset(
@@ -105,8 +108,9 @@ class LossTensorPort:
 class LossContextPort:
     """Describe one automatically supplied custom-objective argument.
 
-    Context ports receive either the complete runtime batch or the complete
-    model-output mapping. They are not configured through
+    A LossComponent using context ports must declare exactly ``batch`` sourced
+    from the complete runtime batch and ``model_output`` sourced from the
+    complete model-output mapping. These inputs are not configured through
     ``composite_wiring``.
     """
 
@@ -139,16 +143,20 @@ LossPort: TypeAlias = LossTensorPort | LossContextPort
 
 @dataclass(frozen=True)
 class LossComponent:
-    """Associate a loss module class with its Composite runtime contract.
+    """Associate a loss module class with its runtime contract.
 
-    ``component`` is instantiated from the loss term's constructor ``params``.
-    ``runtime_inputs`` declares the keyword arguments accepted by its
-    ``forward`` method.
+    ``component`` must be an ``nn.Module`` class and is instantiated from the
+    loss term's constructor ``params``. ``runtime_inputs`` declares the keyword
+    arguments through which BenchRep supplies data to its ``forward`` method.
 
     A loss must use either tensor ports, which require explicit Composite
-    wiring, or context ports, which BenchRep supplies automatically for custom
-    objectives. Every loss is required to return a scalar tensor, so that
-    invariant is enforced globally rather than repeated in each contract.
+    wiring, or context ports, which BenchRep supplies automatically. Context
+    ports are reserved for ``BaseCustomObjectiveLoss`` subclasses and must
+    declare exactly ``batch`` and ``model_output``.
+
+    Declared runtime input names must be compatible with the component's
+    ``forward`` signature. Every loss must return a scalar tensor; that
+    invariant is enforced when the loss is executed.
     """
 
     component: type[nn.Module]
@@ -207,3 +215,61 @@ class LossComponent:
                 "LossComponent.runtime_inputs cannot mix tensor and "
                 "context ports."
             )
+
+        if has_context_ports:
+            # Enforce the custom-objective interface.
+            if not issubclass(
+                    self.component,
+                    BaseCustomObjectiveLoss,
+            ):
+                raise TypeError(
+                    "LossComponent components using context ports must "
+                    "subclass `BaseCustomObjectiveLoss`; got "
+                    f"`{self.component.__module__}."
+                    f"{self.component.__qualname__}`."
+                )
+
+            # Enforce the fixed context inputs supplied by BenchRep.
+            context_inputs_by_parameter_name = {
+                runtime_input.name: runtime_input.source
+                for runtime_input in self.runtime_inputs
+                if isinstance(runtime_input, LossContextPort)
+            }
+
+            required_context_inputs_by_parameter_name: dict[
+                str,
+                LossContextSource,
+            ] = {
+                "batch": "batch",
+                "model_output": "model_output",
+            }
+
+            if (
+                    context_inputs_by_parameter_name
+                    != required_context_inputs_by_parameter_name
+            ):
+                raise ValueError(
+                    "LossComponent context ports must declare exactly "
+                    "`batch` sourced from `batch` and `model_output` "
+                    "sourced from `model_output`; got "
+                    f"{context_inputs_by_parameter_name}."
+                )
+
+        runtime_input_placeholders = {
+            runtime_input.name: object()
+            for runtime_input in self.runtime_inputs
+        }
+        forward_signature = inspect.signature(self.component.forward)
+
+        try:
+            forward_signature.bind(
+                None,
+                **runtime_input_placeholders,
+            )
+        except TypeError as error:
+            raise TypeError(
+                f"LossComponent runtime inputs "
+                f"{tuple(runtime_input_placeholders)} are incompatible with "
+                f"`{self.component.__qualname__}.forward"
+                f"{forward_signature}`: {error}"
+            ) from error
