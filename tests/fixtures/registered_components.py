@@ -22,7 +22,6 @@ from benchrep.architecture.composite_model_component_contracts import (
 )
 from benchrep.architecture.losses.composite_model_contracts import (
     LossComponent,
-    LossContextPort,
     LossTensorPort,
 )
 from benchrep.assembly.registries.core import (
@@ -388,19 +387,7 @@ def register_custom_test_components() -> None:
     )
     CUSTOM_OBJECTIVE_LOSSES.register(
         "custom_test_objective_loss",
-        LossComponent(
-            component=CustomCombinedObjectiveLoss,
-            runtime_inputs=(
-                LossContextPort(
-                    name="batch",
-                    source="batch",
-                ),
-                LossContextPort(
-                    name="model_output",
-                    source="model_output",
-                ),
-            ),
-        ),
+        LossComponent(CustomCombinedObjectiveLoss),
     )
     OPTIMIZERS.register(
         "custom_test_optimizer",

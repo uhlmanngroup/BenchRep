@@ -198,54 +198,50 @@ class TrainingDecoderConfig(NamedConfig):
 class TrainingLossTermConfig(_TrainingConfigBaseModel):
     """Configuration for one weighted term in a role-specific loss mapping.
 
-    The surrounding mapping key selects the registered loss, while its parent key
-    selects the loss registry:
+    The surrounding mapping key selects the registered loss, while its parent
+    key selects the loss registry:
 
     - `reconstruction`: compares reconstructed and source images.
     - `regularization`: regularizes representations or model parameters.
     - `contrastive`: compares related or unrelated representations.
     - `classification`: evaluates categorical predictions.
     - `regression`: evaluates continuous predictions.
-    - `custom_objective`: receives the complete batch and model output mappings.
+    - `custom_objective`: receives the complete batch and model-output mappings.
 
-    Canonical models use their fixed supported loss roles and calling conventions.
-    Composite models use each registered loss's runtime contract together with
-    `composite_wiring`.
+    `params` are passed only to the registered loss component's constructor.
 
-    Composite models bind ordinary loss inputs through `composite_wiring`, validated
-    against the selected loss's runtime contract. Custom objectives continue to
-    receive `batch` and `model_output` automatically.
+    Canonical autoencoders and VAEs use fixed loss calling conventions.
+    Reconstruction losses receive `reconstruction` and `target`, regularization
+    losses receive `z_mu` and `z_logvar`, and custom objectives receive `batch`
+    and `model_output`. A canonical-only ordinary loss may therefore be
+    registered as `LossComponent(MyLoss)` without declaring runtime inputs.
 
-    `params` are passed only to the registered component's constructor.
+    Composite models require every ordinary loss to declare its runtime
+    parameter names and supported semantic roles through `LossTensorPort`
+    entries. `composite_wiring` then maps those parameters to declarations under
+    `expects` or `produces`. Contrastive, classification, and regression losses
+    currently require this Composite contract because no canonical model uses
+    those roles.
 
-    Canonical models supply runtime loss inputs through their fixed execution paths.
-    Composite loss terms instead use `composite_wiring` to map the loss component's
-    `forward()` argument names to declarations under `expects` or `produces`.
-    Custom objectives remain the exception because BenchRep automatically supplies
-    their complete `batch` and `model_output` mappings.
+    Custom objectives follow one fixed interface under both model modes. Their
+    component must subclass `BaseCustomObjectiveLoss`, `runtime_inputs` must be
+    omitted, and `composite_wiring` must not be configured. BenchRep supplies
+    the complete `batch` and `model_output` mappings automatically.
 
     Every configured term must return a scalar tensor. BenchRep multiplies that
     value by the configured `weight` before adding it to the other configured
     terms.
 
-    Use `benchrep.inspect_registry("reconstruction_loss")`,
-    `benchrep.inspect_registry("regularization_loss")`, or
-    `benchrep.inspect_registry("custom_objective_loss")` to list available losses.
+    Use `benchrep.inspect_registry("<loss-role>_loss")` to list registered
+    losses. Pass a registered loss name as the second argument to inspect its
+    constructor and Composite compatibility.
 
-    Use `benchrep.inspect_registry("<loss-role>_loss", "<loss-name>")` to inspect a
-    selected loss's constructor and exact Composite input contract, for example
-    `benchrep.inspect_registry("contrastive_loss", "triplet_margin")`. For ordinary
-    losses, the contract identifies the parameter names required under
-    `composite_wiring` and the roles supported by each parameter. For custom
-    objectives, it identifies the context inputs supplied automatically by BenchRep.
+    User registrations must be repeated in each process that reconstructs an
+    internally assembled model.
 
-    User-registered components must satisfy the selected role's calling convention
-    and must be registered again when reconstructing an internally assembled model
-    for linked prediction.
-
-    A custom objective may use any fields available in the batch or model output.
-    If it is used in place of reconstruction or regularization losses, the custom
-    objective is responsible for implementing the omitted behavior.
+    A custom objective may use any fields available in the batch or model
+    output. If it replaces reconstruction or regularization losses, it is
+    responsible for implementing the omitted behavior.
     """
 
     weight: float = Field(
@@ -281,8 +277,9 @@ class TrainingLossTermConfig(_TrainingConfigBaseModel):
         default=None,
         min_length=1,
         description=(
-            "Composite-only mapping from loss forward() parameter names to declared "
-            "runtime sources under `expects` and `produces`."
+            "Composite-only mapping from an ordinary loss component's "
+            "forward() parameter names to declarations under `expects` "
+            "or `produces`."
         ),
         json_schema_extra={
             "omit_behavior": (
@@ -291,10 +288,14 @@ class TrainingLossTermConfig(_TrainingConfigBaseModel):
             ),
             "null_behavior": "Equivalent to omission.",
             "notes": [
-                "Keys must exactly match the runtime inputs declared by the "
-                "registered loss contract.",
-                "Values must reference `expects.<name>` or `produces.<name>`.",
-                "Custom objectives receive `batch` and `model_output` automatically.",
+                "The selected ordinary loss must declare matching "
+                "LossTensorPort entries in its runtime contract.",
+                "Keys must exactly match the loss component's declared "
+                "runtime input names.",
+                "Values must reference `expects.<name>` or "
+                "`produces.<name>`.",
+                "Custom objectives do not accept this field; BenchRep "
+                "supplies `batch` and `model_output` automatically.",
             ],
         },
     )

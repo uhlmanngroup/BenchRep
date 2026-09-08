@@ -11,8 +11,6 @@ from benchrep.architecture.losses.regression import MSERegressionLoss
 from benchrep.architecture.losses.custom_objective import BaseCustomObjectiveLoss
 from benchrep.architecture.losses.composite_model_contracts import (
     LossComponent,
-    LossContextPort,
-    LossPort,
     LossTensorPort,
 )
 
@@ -27,7 +25,5 @@ __all__ = [
     "MSERegressionLoss",
     "BaseCustomObjectiveLoss",
     "LossComponent",
-    "LossContextPort",
-    "LossPort",
     "LossTensorPort",
 ]

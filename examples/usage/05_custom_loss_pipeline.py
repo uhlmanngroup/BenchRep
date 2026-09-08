@@ -1,9 +1,11 @@
-"""Run a YAML-configured pipeline with two kinds of registered custom loss.
+"""Run a canonical VAE pipeline with two registered custom losses.
 
-This example registers a reconstruction loss that follows BenchRep's existing
-reconstruction-role contract and a custom objective that requires inputs from
-both the batch and model output. Both are combined with BenchRep's built-in MSE
-reconstruction loss and Gaussian KL regularization.
+This example registers a reconstruction loss using the canonical
+reconstruction interface and a custom objective using BenchRep's fixed
+full-context interface. Neither registration declares Composite runtime inputs.
+
+Both losses are combined with BenchRep's built-in MSE reconstruction loss and
+Gaussian KL regularization.
 
 Run from the repository root:
 
@@ -22,7 +24,11 @@ from benchrep import (
     predict_vae,
     evaluate,
 )
-from benchrep.architecture.losses import BaseReconstructionLoss, BaseCustomObjectiveLoss
+from benchrep.architecture.losses import (
+    BaseCustomObjectiveLoss,
+    BaseReconstructionLoss,
+    LossComponent,
+)
 from benchrep.assembly.registries import RECONSTRUCTION_LOSSES, CUSTOM_OBJECTIVE_LOSSES
 
 
@@ -35,23 +41,17 @@ CONFIG_DIR = (
 
 # How losses work in BenchRep:
 #
-# Training config groups loss terms by role. Each term maps to a registered loss,
-# provides its constructor `params`, and assigns the scalar `weight` applied to
-# its output. A role can have multiple terms, and terms are weighted globally,
-# not within a given role.
+# Training config groups loss terms by role. Each term selects a registered
+# loss, provides its constructor `params`, and assigns the scalar `weight`
+# applied to its output.
 #
-# BenchRep constructs each loss, wraps it and its weight in a `LossTerm`, then
-# stored in a `nn.ModuleDict` owned by the model ensuring any loss parameters
-# are correctly handled for optimization, device movement, etc.
+# Canonical models supply fixed runtime inputs. Reconstruction losses receive
+# `reconstruction` and `target`, while custom objectives receive the complete
+# `batch` and `model_output` mappings. Because this example uses a canonical
+# VAE, neither registered loss needs a Composite runtime-input contract.
 #
-# Roles have contracts: Reconstruction losses receive `reconstruction` and `target`;
-# regularization losses receive `z_mu` and `z_logvar`; but custom objectives receive
-# the complete `batch` and `model_output`.
-#
-# This example demonstrates both extension paths. `GradientDifferenceLoss`
-# registers under the built-in reconstruction role, while
-# `AuxiliaryLatentClassificationLoss` uses the unrestricted custom-objective
-# role as it needs both batch labels and model embeddings.
+# Custom objectives must subclass BaseCustomObjectiveLoss because they use
+# BenchRep's fixed unrestricted interface.
 class GradientDifferenceLoss(BaseReconstructionLoss):
     """Penalize differences in horizontal and vertical image gradients."""
 
@@ -152,12 +152,12 @@ class AuxiliaryLatentClassificationLoss(BaseCustomObjectiveLoss):
 
 
 def main() -> None:
-    # Connect the `gradient_difference` key used in training.yaml to the reconstruction
-    # loss class. Registration must happen before workflow config resolution and
-    # must be repeated in any future process reconstructing this run.
+    # Register a reconstruction loss for canonical use. LossComponent carries
+    # the loss class, while omitted runtime_inputs means that no Composite
+    # contract is declared.
     RECONSTRUCTION_LOSSES.register(
         "gradient_difference",
-        GradientDifferenceLoss,
+        LossComponent(GradientDifferenceLoss),
         "gdl",
     )
 
@@ -167,12 +167,11 @@ def main() -> None:
         "gradient_difference",
     )
 
-    # Register a custom objective that combines labels from the batch with
-    # embeddings from the model output. Custom objectives use a broader
-    # contract than reconstruction and regularization losses.
+    # Register a custom objective. Its BaseCustomObjectiveLoss interface fixes
+    # the runtime inputs, so no per-loss runtime contract is declared.
     CUSTOM_OBJECTIVE_LOSSES.register(
         "auxiliary_latent_classification",
-        AuxiliaryLatentClassificationLoss,
+        LossComponent(AuxiliaryLatentClassificationLoss),
         "latent_classification",
     )
 

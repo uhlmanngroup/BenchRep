@@ -29,6 +29,7 @@ from benchrep.assembly.registries.core import (
     EVAL_PREDICTABILITY_PROBES,
     EVAL_RECONSTRUCTION_METRICS,
     Registry,
+    LossRegistry,
 )
 from benchrep.architecture.composite_model_component_contracts import (
     ArchitectureComponent,
@@ -37,8 +38,6 @@ from benchrep.architecture.composite_model_component_contracts import (
 )
 from benchrep.architecture.losses.composite_model_contracts import (
     LossComponent,
-    LossContextPort,
-    LossTensorPort,
 )
 from benchrep.evaluation.metrics import EvaluationMetric
 
@@ -58,19 +57,11 @@ class ComponentRegistryInfo:
         return self.registry.custom_registration_supported
 
 
-_LOSS_COMPONENT_CONTRACT: Final[str] = (
-    "LossComponent.component must be an nn.Module loss returning a scalar "
-    "tensor. Its runtime contract declares the roles supported by each "
-    "Composite wiring input."
-)
-
-_CANONICAL_LOSS_COMPONENT_CONTRACT: Final[str] = (
-    f"{_LOSS_COMPONENT_CONTRACT} Canonical models use fixed loss wiring."
-)
-
 _COMPOSITE_ONLY_LOSS_COMPONENT_CONTRACT: Final[str] = (
-    f"{_LOSS_COMPONENT_CONTRACT} This loss role is supported only by "
-    "Composite models."
+    "Entries must be LossComponent instances wrapping an nn.Module loss "
+    "that returns a scalar tensor. This loss role is supported only by "
+    "Composite models, so runtime_inputs must explicitly declare the "
+    "forward parameter names and semantic roles accepted by the component."
 )
 
 _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
@@ -157,14 +148,28 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
         registry=RECONSTRUCTION_LOSSES,
         runtime_instance_override_supported=False,
         config_locations=("TrainingConfig.losses.reconstruction",),
-        contract=_CANONICAL_LOSS_COMPONENT_CONTRACT,
+        contract=(
+            "Entries must be LossComponent instances wrapping an nn.Module "
+            "loss that returns a scalar tensor. Canonical models call "
+            "forward() with `reconstruction` and `target` as keyword "
+            "arguments; use LossComponent(MyLoss) for canonical-only use. "
+            "Composite use additionally requires explicit runtime_inputs "
+            "declaring the accepted parameter names and semantic roles."
+        ),
     ),
     "regularization_loss": ComponentRegistryInfo(
         symbol="REGULARIZATION_LOSSES",
         registry=REGULARIZATION_LOSSES,
         runtime_instance_override_supported=False,
         config_locations=("TrainingConfig.losses.regularization",),
-        contract=_CANONICAL_LOSS_COMPONENT_CONTRACT,
+        contract=(
+            "Entries must be LossComponent instances wrapping an nn.Module "
+            "loss that returns a scalar tensor. Canonical VAEs call forward() "
+            "with `z_mu` and `z_logvar` as keyword arguments; use "
+            "LossComponent(MyLoss) for canonical-only use. Composite use "
+            "additionally requires explicit runtime_inputs declaring the "
+            "accepted parameter names and semantic roles."
+        ),
     ),
     "contrastive_loss": ComponentRegistryInfo(
         symbol="CONTRASTIVE_LOSSES",
@@ -195,9 +200,12 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
             "TrainingConfig.losses.custom_objective",
         ),
         contract=(
-            "LossComponent.component must accept the complete `batch` and "
-            "`model_output` mappings and return a scalar tensor. These context inputs "
-            "are supplied automatically under canonical and Composite models."
+            "Entries must be LossComponent instances wrapping a "
+            "BaseCustomObjectiveLoss subclass. runtime_inputs must be omitted "
+            "because BenchRep always supplies the complete `batch` and "
+            "`model_output` mappings automatically under canonical and "
+            "Composite models. The component's forward() method must accept "
+            "both as keyword arguments and return a scalar tensor."
         ),
     ),
     "optimizer": ComponentRegistryInfo(
@@ -382,6 +390,7 @@ def inspect_registry(
             elif isinstance(entry, LossComponent):
                 _print_loss_component_contract(
                     entry,
+                    registry=selected_registry,
                     indentation="    ",
                 )
 
@@ -420,7 +429,10 @@ def inspect_registry(
         _print_architecture_component_contract(entry)
 
     elif isinstance(entry, LossComponent):
-        _print_loss_component_contract(entry)
+        _print_loss_component_contract(
+            entry,
+            registry=selected_registry,
+        )
 
     elif isinstance(entry, EvaluationMetric):
         print(f"Result kind: {entry.result_kind}")
@@ -602,34 +614,38 @@ def _print_architecture_component_contract(
 def _print_loss_component_contract(
     entry: LossComponent,
     *,
+    registry: Registry,
     indentation: str = "",
 ) -> None:
     """Print one loss component's Composite runtime contract."""
+
+    if entry.runtime_inputs is None:
+        if (
+            isinstance(registry, LossRegistry)
+            and not registry.explicit_composite_runtime_inputs_supported
+        ):
+            contract_status = "fixed by registry"
+        else:
+            contract_status = "not declared"
+
+        print(
+            f"{indentation}Composite runtime contract: "
+            f"{contract_status}"
+        )
+        return
 
     print(f"{indentation}Composite runtime contract:")
     print(f"{indentation}  Inputs:")
 
     for runtime_input in entry.runtime_inputs:
-        if isinstance(runtime_input, LossTensorPort):
-            supported_roles = " | ".join(
-                runtime_input.supported_roles
-            )
+        supported_roles = " | ".join(
+            runtime_input.supported_roles
+        )
 
-            print(
-                f"{indentation}    {runtime_input.name}: "
-                f"{supported_roles}"
-            )
-
-        elif isinstance(runtime_input, LossContextPort):
-            source_label = {
-                "batch": "complete batch mapping",
-                "model_output": "complete model_output mapping",
-            }[runtime_input.source]
-
-            print(
-                f"{indentation}    {runtime_input.name}: "
-                f"{source_label} (automatically supplied)"
-            )
+        print(
+            f"{indentation}    {runtime_input.name}: "
+            f"{supported_roles}"
+        )
 
     print(f"{indentation}  Result: scalar tensor")
 

@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, TypeAlias
+import inspect
+from typing import Any, TypeAlias, Final
+
+from torch import nn
 
 from benchrep.architecture.composite_model_component_contracts import (
     ArchitectureComponent,
 )
 from benchrep.architecture.losses.composite_model_contracts import (
     LossComponent,
+)
+from benchrep.architecture.losses.custom_objective import (
+    BaseCustomObjectiveLoss,
 )
 from benchrep.evaluation.metrics import EvaluationMetric
 
@@ -43,10 +49,13 @@ class Registry:
     returns the complete wrapper for discovery and graph validation, whereas
     ``create()`` unwraps ``entry.component`` and instantiates the module class.
 
-    Loss registries store ``LossComponent`` entries. The wrapper carries the loss
-    module class and its Composite runtime-input contract. ``get()`` returns the
-    complete wrapper, while ``create()`` unwraps ``entry.component`` and
-    instantiates the loss module.
+    Loss registries are ``LossRegistry`` instances and store ``LossComponent``
+    entries. The wrapper always identifies the loss module class and may also
+    carry an explicit Composite runtime-input contract. Ordinary entries without
+    that contract are canonical-only, while custom objectives use their fixed
+    registry-level interface under both canonical and Composite models.
+    ``get()`` returns the wrapper, while ``create()`` unwraps and instantiates
+    its component.
 
     Evaluation-metric registries store ``EvaluationMetric`` entries. Evaluation
     machinery retrieves and interprets the complete wrapper, including its
@@ -265,6 +274,136 @@ class Registry:
         return key
 
 
+class LossRegistry(Registry):
+    """Validate loss components against role-level calling conventions.
+
+    LossComponent validates explicitly declared Composite runtime inputs. This
+    registry handles information the component does not know by itself: whether
+    the loss role has a fixed canonical calling convention and whether its
+    component must inherit from a particular base class. A component without
+    runtime inputs is accepted only when the registry defines such a convention.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        *,
+        canonical_runtime_input_names: tuple[str, ...] | None = None,
+        required_component_base: type[nn.Module] = nn.Module,
+        explicit_composite_runtime_inputs_supported: bool = True,
+    ) -> None:
+        super().__init__(
+            name,
+            entry_type=LossComponent,
+        )
+
+        self._canonical_runtime_input_names = (
+            canonical_runtime_input_names
+        )
+        self._required_component_base = required_component_base
+        self._explicit_composite_runtime_inputs_supported = (
+            explicit_composite_runtime_inputs_supported
+        )
+
+    @property
+    def canonical_runtime_input_names(
+        self,
+    ) -> tuple[str, ...] | None:
+        """Return the fixed runtime inputs used by canonical models."""
+
+        return self._canonical_runtime_input_names
+
+    @property
+    def required_component_base(self) -> type[nn.Module]:
+        """Return the base class required for registered loss components."""
+
+        return self._required_component_base
+
+    @property
+    def explicit_composite_runtime_inputs_supported(self) -> bool:
+        """Whether entries may declare Composite runtime inputs."""
+
+        return self._explicit_composite_runtime_inputs_supported
+
+    def _validate_entry(self, item: Any) -> None:
+        """Validate one loss component against its registry-level contract."""
+
+        super()._validate_entry(item)
+
+        if not issubclass(
+            item.component,
+            self.required_component_base,
+        ):
+            raise TypeError(
+                f"{self.name} registry components must subclass "
+                f"`{self.required_component_base.__name__}`; got "
+                f"`{item.component.__module__}."
+                f"{item.component.__qualname__}`."
+            )
+
+        if (
+            item.runtime_inputs is not None
+            and not self.explicit_composite_runtime_inputs_supported
+        ):
+            raise ValueError(
+                f"{self.name} registry entries must not declare "
+                "`runtime_inputs` because BenchRep supplies this role's "
+                "fixed runtime inputs automatically."
+            )
+
+        if item.runtime_inputs is not None:
+            return
+
+        if self.canonical_runtime_input_names is None:
+            raise ValueError(
+                f"{self.name} registry entries must declare "
+                "`runtime_inputs` because this loss role has no fixed "
+                "canonical calling convention."
+            )
+
+        self.validate_canonical_compatibility(item)
+
+    def validate_canonical_compatibility(
+        self,
+        loss_component: LossComponent,
+    ) -> None:
+        """Validate compatibility with this role's canonical loss call."""
+
+        canonical_runtime_input_names = (
+            self.canonical_runtime_input_names
+        )
+
+        if canonical_runtime_input_names is None:
+            raise ValueError(
+                f"{self.name} registry entries cannot be used by canonical "
+                "models because this loss role has no canonical calling "
+                "convention."
+            )
+
+        runtime_input_placeholders = {
+            runtime_input_name: object()
+            for runtime_input_name in canonical_runtime_input_names
+        }
+        forward_signature = inspect.signature(
+            loss_component.component.forward
+        )
+
+        try:
+            forward_signature.bind(
+                None,
+                **runtime_input_placeholders,
+            )
+        except TypeError as error:
+            raise TypeError(
+                f"{self.name} registry component "
+                f"`{loss_component.component.__module__}."
+                f"{loss_component.component.__qualname__}` must accept "
+                f"the canonical runtime inputs "
+                f"{canonical_runtime_input_names}; "
+                f"`forward{forward_signature}` is incompatible: {error}"
+            ) from error
+
+
 def _ensure_builtins_registered() -> None:
     """Ensure BenchRep built-in registry entries are available."""
 
@@ -276,7 +415,8 @@ def _ensure_builtins_registered() -> None:
 # Data
 DATASETS = Registry("dataset")
 TRANSFORMS = Registry("transform")
-# Architecture and training
+
+# Architecture
 ENCODERS = Registry(
     "encoder",
     entry_type=ArchitectureComponent,
@@ -293,33 +433,61 @@ MODELS = Registry(
     "model",
     custom_registration_supported=False,
 )
-RECONSTRUCTION_LOSSES = Registry(
-    "reconstruction loss",
-    entry_type=LossComponent,
-)
-REGULARIZATION_LOSSES = Registry(
-    "regularization loss",
-    entry_type=LossComponent,
-)
-CONTRASTIVE_LOSSES = Registry(
-    "contrastive loss",
-    entry_type=LossComponent,
-)
-CLASSIFICATION_LOSSES = Registry(
-    "classification loss",
-    entry_type=LossComponent,
-)
-REGRESSION_LOSSES = Registry(
-    "regression loss",
-    entry_type=LossComponent,
-)
-CUSTOM_OBJECTIVE_LOSSES = Registry(
-    "custom objective loss",
-    entry_type=LossComponent,
-)
+
+ARCHITECTURE_REGISTRIES_BY_KIND: Final[dict[str, Registry]] = {
+    "encoder": ENCODERS,
+    "decoder": DECODERS,
+    "head": HEADS,
+}
+
+# Training
 OPTIMIZERS = Registry("optimizer")
 LOGGERS = Registry("logger")
 CALLBACKS = Registry("callback")
+
+# Losses
+RECONSTRUCTION_LOSSES = LossRegistry(
+    "reconstruction loss",
+    canonical_runtime_input_names=(
+        "reconstruction",
+        "target",
+    ),
+)
+REGULARIZATION_LOSSES = LossRegistry(
+    "regularization loss",
+    canonical_runtime_input_names=(
+        "z_mu",
+        "z_logvar",
+    ),
+)
+CONTRASTIVE_LOSSES = LossRegistry(
+    "contrastive loss",
+)
+CLASSIFICATION_LOSSES = LossRegistry(
+    "classification loss",
+)
+REGRESSION_LOSSES = LossRegistry(
+    "regression loss",
+)
+CUSTOM_OBJECTIVE_LOSSES = LossRegistry(
+    "custom objective loss",
+    canonical_runtime_input_names=(
+        "batch",
+        "model_output",
+    ),
+    required_component_base=BaseCustomObjectiveLoss,
+    explicit_composite_runtime_inputs_supported=False,
+)
+
+LOSS_REGISTRIES_BY_ROLE: Final[dict[str, LossRegistry]] = {
+    "reconstruction": RECONSTRUCTION_LOSSES,
+    "regularization": REGULARIZATION_LOSSES,
+    "contrastive": CONTRASTIVE_LOSSES,
+    "classification": CLASSIFICATION_LOSSES,
+    "regression": REGRESSION_LOSSES,
+    "custom_objective": CUSTOM_OBJECTIVE_LOSSES,
+}
+
 # Evaluation
 EVAL_REDUCTIONS = Registry(
     "reduction",

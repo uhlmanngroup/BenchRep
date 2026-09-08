@@ -6,34 +6,19 @@ from collections.abc import Mapping
 from typing import TypeAlias
 
 from benchrep.architecture.losses.base import LossTerm
-from benchrep.assembly.registries import REGRESSION_LOSSES
-from benchrep.assembly.registries.core import (
-    CONTRASTIVE_LOSSES,
-    CLASSIFICATION_LOSSES,
-    CUSTOM_OBJECTIVE_LOSSES,
-    RECONSTRUCTION_LOSSES,
-    REGULARIZATION_LOSSES,
-    REGULARIZATION_LOSSES,
-    Registry,
+from benchrep.architecture.losses.composite_model_contracts import (
+    LossComponent,
 )
 from benchrep.assembly.schemas import TrainingLossTermConfig
 from benchrep.assembly.schemas.training_config_schema import (
     SupportedLossRole,
 )
 from benchrep.records import get_run_logger
-
+from benchrep.assembly.registries.core import (
+    LOSS_REGISTRIES_BY_ROLE,
+)
 
 LossTermInput: TypeAlias = TrainingLossTermConfig | LossTerm
-
-
-_LOSS_REGISTRIES: dict[SupportedLossRole, Registry] = {
-    "reconstruction": RECONSTRUCTION_LOSSES,
-    "regularization": REGULARIZATION_LOSSES,
-    "contrastive": CONTRASTIVE_LOSSES,
-    "classification": CLASSIFICATION_LOSSES,
-    "regression": REGRESSION_LOSSES,
-    "custom_objective": CUSTOM_OBJECTIVE_LOSSES,
-}
 
 
 def build_loss_terms(
@@ -42,7 +27,7 @@ def build_loss_terms(
         Mapping[str, LossTermInput],
     ],
 ) -> dict[SupportedLossRole, dict[str, LossTerm]]:
-    """Build and log loss terms grouped by their configured roles."""
+    """Build and log configured loss terms for a canonical model."""
 
     resolved_losses: dict[
         SupportedLossRole,
@@ -56,7 +41,7 @@ def build_loss_terms(
 
     for role, configured_losses in losses_by_role.items():
         role: SupportedLossRole
-        registry = _LOSS_REGISTRIES.get(role)
+        registry = LOSS_REGISTRIES_BY_ROLE.get(role)
 
         if registry is None:
             raise ValueError(
@@ -71,6 +56,18 @@ def build_loss_terms(
                 loss_term = loss_config
                 source = "provided"
             else:
+                loss_component = registry.get(loss_name)
+
+                if not isinstance(loss_component, LossComponent):
+                    raise TypeError(
+                        f"Loss registry entry {loss_name!r} for role "
+                        f"{role!r} must be a LossComponent."
+                    )
+
+                registry.validate_canonical_compatibility(
+                    loss_component
+                )
+
                 loss_term = LossTerm(
                     loss=registry.create(
                         loss_name,

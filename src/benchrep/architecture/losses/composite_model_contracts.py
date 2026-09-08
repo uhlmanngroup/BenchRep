@@ -2,19 +2,17 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import inspect
-from typing import Final, Literal, TypeAlias, get_args
+from dataclasses import dataclass
+from typing import Final, get_args
 
 from torch import nn
-from torch._C._jit_tree_views import Raise
 
 from benchrep.architecture.composite_model_roles import (
     CompositeModelInputRole,
     CompositeModelOutputRole,
     CompositeModelTensorRole,
 )
-from benchrep.architecture.losses.custom_objective import BaseCustomObjectiveLoss
 
 
 _VALID_COMPOSITE_MODEL_TENSOR_ROLES: Final[frozenset[str]] = frozenset(
@@ -22,15 +20,6 @@ _VALID_COMPOSITE_MODEL_TENSOR_ROLES: Final[frozenset[str]] = frozenset(
         *get_args(CompositeModelInputRole),
         *get_args(CompositeModelOutputRole),
     )
-)
-
-LossContextSource: TypeAlias = Literal[
-    "batch",
-    "model_output",
-]
-
-_VALID_LOSS_CONTEXT_SOURCES: Final[frozenset[str]] = frozenset(
-    get_args(LossContextSource)
 )
 
 
@@ -105,62 +94,24 @@ class LossTensorPort:
 
 
 @dataclass(frozen=True)
-class LossContextPort:
-    """Describe one automatically supplied custom-objective argument.
-
-    A LossComponent using context ports must declare exactly ``batch`` sourced
-    from the complete runtime batch and ``model_output`` sourced from the
-    complete model-output mapping. These inputs are not configured through
-    ``composite_wiring``.
-    """
-
-    name: str
-    source: LossContextSource
-
-    def __post_init__(self) -> None:
-        name = _validate_port_name(
-            self.name,
-            class_name="LossContextPort",
-        )
-        object.__setattr__(self, "name", name)
-
-        if not isinstance(self.source, str):
-            raise TypeError(
-                "LossContextPort.source must be a string, got "
-                f"{type(self.source).__name__}."
-            )
-
-        if self.source not in _VALID_LOSS_CONTEXT_SOURCES:
-            raise ValueError(
-                f"Unsupported loss context source {self.source!r}. "
-                f"Available sources: "
-                f"{tuple(sorted(_VALID_LOSS_CONTEXT_SOURCES))}."
-            )
-
-
-LossPort: TypeAlias = LossTensorPort | LossContextPort
-
-
-@dataclass(frozen=True)
 class LossComponent:
-    """Associate a loss module class with its runtime contract.
+    """Associate a loss module class with its optional Composite contract.
 
     ``component`` must be an ``nn.Module`` class and is instantiated from the
-    loss term's constructor ``params``. ``runtime_inputs`` declares the keyword
-    arguments through which BenchRep supplies data to its ``forward`` method.
+    loss term's constructor ``params``.
 
-    A loss must use either tensor ports, which require explicit Composite
-    wiring, or context ports, which BenchRep supplies automatically. Context
-    ports are reserved for ``BaseCustomObjectiveLoss`` subclasses and must
-    declare exactly ``batch`` and ``model_output``.
+    ``runtime_inputs`` declares the keyword arguments and semantic roles used
+    to wire an ordinary loss under a Composite model. ``None`` means that no
+    Composite runtime contract is declared; it does not generate or imply a
+    default contract.
 
-    Declared runtime input names must be compatible with the component's
-    ``forward`` signature. Every loss must return a scalar tensor; that
-    invariant is enforced when the loss is executed.
+    When runtime inputs are declared, their names must be compatible with the
+    component's ``forward`` signature. Every loss must return a scalar tensor;
+    that invariant is enforced when the loss is executed.
     """
 
     component: type[nn.Module]
-    runtime_inputs: tuple[LossPort, ...]
+    runtime_inputs: tuple[LossTensorPort, ...] | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -171,9 +122,15 @@ class LossComponent:
                 "LossComponent.component must be an nn.Module class."
             )
 
+        # There is no Composite contract to validate here. Whether this loss
+        # can be used without one depends on its registry role and model type,
+        # which LossComponent does not know and is validated later.
+        if self.runtime_inputs is None:
+            return
+
         if not isinstance(self.runtime_inputs, tuple):
             raise TypeError(
-                "LossComponent.runtime_inputs must be a tuple, got "
+                "LossComponent.runtime_inputs must be a tuple or None, got "
                 f"{type(self.runtime_inputs).__name__}."
             )
 
@@ -183,12 +140,12 @@ class LossComponent:
             )
 
         if not all(
-            isinstance(runtime_input, (LossTensorPort, LossContextPort))
+            isinstance(runtime_input, LossTensorPort)
             for runtime_input in self.runtime_inputs
         ):
             raise TypeError(
                 "LossComponent.runtime_inputs must contain only "
-                "LossTensorPort or LossContextPort instances."
+                "LossTensorPort instances."
             )
 
         input_names = [
@@ -200,60 +157,6 @@ class LossComponent:
             raise ValueError(
                 "LossComponent.runtime_inputs must have unique names."
             )
-
-        has_tensor_ports = any(
-            isinstance(runtime_input, LossTensorPort)
-            for runtime_input in self.runtime_inputs
-        )
-        has_context_ports = any(
-            isinstance(runtime_input, LossContextPort)
-            for runtime_input in self.runtime_inputs
-        )
-
-        if has_tensor_ports and has_context_ports:
-            raise ValueError(
-                "LossComponent.runtime_inputs cannot mix tensor and "
-                "context ports."
-            )
-
-        if has_context_ports:
-            # Enforce the custom-objective interface.
-            if not issubclass(
-                    self.component,
-                    BaseCustomObjectiveLoss,
-            ):
-                raise TypeError(
-                    "LossComponent components using context ports must "
-                    "subclass `BaseCustomObjectiveLoss`; got "
-                    f"`{self.component.__module__}."
-                    f"{self.component.__qualname__}`."
-                )
-
-            # Enforce the fixed context inputs supplied by BenchRep.
-            context_inputs_by_parameter_name = {
-                runtime_input.name: runtime_input.source
-                for runtime_input in self.runtime_inputs
-                if isinstance(runtime_input, LossContextPort)
-            }
-
-            required_context_inputs_by_parameter_name: dict[
-                str,
-                LossContextSource,
-            ] = {
-                "batch": "batch",
-                "model_output": "model_output",
-            }
-
-            if (
-                    context_inputs_by_parameter_name
-                    != required_context_inputs_by_parameter_name
-            ):
-                raise ValueError(
-                    "LossComponent context ports must declare exactly "
-                    "`batch` sourced from `batch` and `model_output` "
-                    "sourced from `model_output`; got "
-                    f"{context_inputs_by_parameter_name}."
-                )
 
         runtime_input_placeholders = {
             runtime_input.name: object()
