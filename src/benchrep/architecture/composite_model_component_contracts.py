@@ -3,16 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Final, Literal, TypeAlias, get_args
+from typing import Final, TypeAlias, get_args
 
 from torch import nn
 
+from benchrep.architecture.composite_model_roles import TensorStructure
 
-TensorStructure: TypeAlias = Literal[
-    "scalar",
-    "vector",
-    "image",
-]
 
 _VALID_TENSOR_STRUCTURES: Final[frozenset[str]] = frozenset(
     get_args(TensorStructure)

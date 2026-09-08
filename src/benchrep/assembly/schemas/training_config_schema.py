@@ -1901,13 +1901,14 @@ class TrainingConfig(_TrainingConfigBaseModel):
         # Validate composite-model input declarations
         sample_inputs = [
             name
-            for name, config in self.composite_model_declarations.expects.items()
-            if config.role == "sample_image"
+            for name, role
+            in self.composite_model_declarations.expects.items()
+            if role == "sample_image"
         ]
 
         if len(sample_inputs) != 1:
             raise ValueError(
-                "Composite models require exactly one input with `role: sample_image`; "
+                "Composite models require exactly one input with role `sample_image`; "
                 f"found {len(sample_inputs)}. Multimodal models with multiple primary "
                 "samples are not supported."
             )
@@ -1915,8 +1916,9 @@ class TrainingConfig(_TrainingConfigBaseModel):
         if self.composite_model_declarations.batch_metadata is not None:
             index_fields = [
                 name
-                for name, config in self.composite_model_declarations.batch_metadata.items()
-                if config.role == "index"
+                for name, role
+                in self.composite_model_declarations.batch_metadata.items()
+                if role == "index"
             ]
 
             if len(index_fields) > 1:

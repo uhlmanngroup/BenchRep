@@ -27,27 +27,12 @@ class CompositeModelNamedConfig(_CompositeModelConfigBaseModel):
 # -------------------------
 # Composite model declarations
 # -------------------------
-# Expected data declarations
-class CompositeModelInputConfig(_CompositeModelConfigBaseModel):
-    role: CompositeModelInputRole
-
-
-# Batch metadata declarations
-class CompositeModelBatchMetadataConfig(_CompositeModelConfigBaseModel):
-    role: CompositeModelBatchMetadataRole
-
-
-# Produced data declarations
-class CompositeModelOutputConfig(_CompositeModelConfigBaseModel):
-    role: CompositeModelOutputRole
-
-
 class CompositeModelDeclarationsConfig(_CompositeModelConfigBaseModel):
-    expects: dict[str, CompositeModelInputConfig] = Field(
+    expects: dict[str, CompositeModelInputRole] = Field(
         min_length=1,
     )
-    batch_metadata: dict[str, CompositeModelBatchMetadataConfig] | None = None
-    produces: dict[str, CompositeModelOutputConfig] = Field(
+    batch_metadata: dict[str, CompositeModelBatchMetadataRole] | None = None
+    produces: dict[str, CompositeModelOutputRole] = Field(
         min_length=1,
     )
 
