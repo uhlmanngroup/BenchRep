@@ -12,6 +12,10 @@ from benchrep.assembly.schemas import (
 )
 from benchrep.interfaces.model_families import ModelFamilySpec
 from benchrep.assembly.registries.utils import normalize_name
+from benchrep.assembly.resolvers.composite_model_resolver import (
+    CompositeModelSpec,
+    resolve_composite_model_config,
+)
 from benchrep.assembly.resolvers.utils import (
     ComponentSource,
     RunIdentitySpec,
@@ -28,6 +32,7 @@ class TrainingRunSpec:
     datamodule_source: ComponentSource
     compatibility_policy: Literal["error", "warn"]
     run_identity: RunIdentitySpec
+    composite_model_spec: CompositeModelSpec | None = None
 
 
 def resolve_training_config(
@@ -107,6 +112,36 @@ def resolve_training_config(
         update=resolved_updates,
     )
 
+    # Composite model config resolution.
+    composite_model_spec: CompositeModelSpec | None = None
+
+    if not model_is_external:
+        assert resolved_config.model is not None
+
+        configured_model_name = normalize_name(
+            resolved_config.model.name,
+            field_name="model.name",
+        )
+
+        if configured_model_name == "composite":
+            assert resolved_config.composite_model_declarations is not None
+            assert resolved_config.composite_model_components is not None
+            assert resolved_config.composite_model_assembly is not None
+            assert resolved_config.losses is not None
+
+            composite_model_spec = resolve_composite_model_config(
+                declarations_config=(
+                    resolved_config.composite_model_declarations
+                ),
+                components_config=(
+                    resolved_config.composite_model_components
+                ),
+                assembly_config=(
+                    resolved_config.composite_model_assembly
+                ),
+                losses_config=resolved_config.losses,
+            )
+
     model_name = _resolve_training_model_name(
         training_config=resolved_config,
         model_family=model_family,
@@ -126,6 +161,7 @@ def resolve_training_config(
             project_name=resolved_config.run.project_name,
             model_name=model_name,
         ),
+        composite_model_spec=composite_model_spec,
     )
 
 
@@ -174,11 +210,10 @@ def _resolve_training_model_name(
         return f"{model_family.name}_external_{model_override_name}"
 
     assert training_config.model is not None
-    assert training_config.encoder is not None
 
     configured_model_name = normalize_name(
         training_config.model.name,
-        field_name="config.model.name",
+        field_name="model.name",
     )
 
     if configured_model_name not in model_family.config_model_names:
@@ -189,6 +224,12 @@ def _resolve_training_model_name(
             f"configured_model={configured_model_name!r}, "
             f"expected one of {model_family.config_model_names!r}."
         )
+
+    if configured_model_name == "composite":
+        return configured_model_name
+
+    # Canonical models path
+    assert training_config.encoder is not None
 
     model_name = (
         f"{training_config.model.name}_"
