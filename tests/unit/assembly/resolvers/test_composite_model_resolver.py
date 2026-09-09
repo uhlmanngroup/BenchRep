@@ -265,7 +265,7 @@ def test_resolves_variational_graph_mapping_results_and_loss_aliases() -> None:
 
     loss_specs_by_role = {
         loss_term.loss_role: loss_term
-        for loss_term in model_spec.loss_terms
+        for loss_term in model_spec.loss_specs
     }
     assert loss_specs_by_role["reconstruction"].registry_entry_name == "mse"
     assert loss_specs_by_role["regularization"].registry_entry_name == (
@@ -630,13 +630,13 @@ def test_resolves_custom_objective_with_fixed_context_inputs(
 
     model_spec = resolver_arguments.resolve()
 
-    assert len(model_spec.loss_terms) == 1
-    assert model_spec.loss_terms[0].context_inputs == {
+    assert len(model_spec.loss_specs) == 1
+    assert model_spec.loss_specs[0].context_inputs == {
         "batch": "batch",
         "model_output": "model_output",
     }
-    assert model_spec.loss_terms[0].inputs_from_model_inputs == {}
-    assert model_spec.loss_terms[0].inputs_from_model_outputs == {}
+    assert model_spec.loss_specs[0].inputs_from_model_inputs == {}
+    assert model_spec.loss_specs[0].inputs_from_model_outputs == {}
 
 
 def test_rejects_composite_wiring_for_custom_objective(

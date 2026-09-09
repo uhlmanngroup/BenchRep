@@ -137,7 +137,7 @@ class CompositeModelSpec:
         int,
         tuple[CompositeModelAssemblyStepSpec, ...],
     ]
-    loss_terms: tuple[CompositeModelLossSpec, ...]
+    loss_specs: tuple[CompositeModelLossSpec, ...]
 
 
 def resolve_composite_model_config(
@@ -187,19 +187,19 @@ def resolve_composite_model_config(
         in assembly_config.items()
     }
 
-    loss_term_specs: list[CompositeModelLossSpec] = []
+    loss_specs: list[CompositeModelLossSpec] = []
 
     for loss_role, configured_losses in losses_config.items():
         loss_role: SupportedLossRole
 
         for configured_loss_name, loss_config in configured_losses.items():
-            loss_term_spec = _resolve_loss_term(
+            loss_spec = _resolve_loss_spec(
                 loss_role,
                 configured_loss_name,
                 loss_config,
                 declarations=declarations_spec,
             )
-            loss_term_specs.append(loss_term_spec)
+            loss_specs.append(loss_spec)
 
     assembly_steps_by_dependency_level = (
         _validate_and_order_assembly_steps(
@@ -215,7 +215,7 @@ def resolve_composite_model_config(
         assembly_steps_by_dependency_level=(
             assembly_steps_by_dependency_level
         ),
-        loss_terms=tuple(loss_term_specs),
+        loss_specs=tuple(loss_specs),
     )
 
 
@@ -713,7 +713,7 @@ def _resolve_assembly_step(
     )
 
 
-def _resolve_loss_term(
+def _resolve_loss_spec(
     loss_role: SupportedLossRole,
     configured_loss_name: str,
     config: TrainingLossTermConfig,
