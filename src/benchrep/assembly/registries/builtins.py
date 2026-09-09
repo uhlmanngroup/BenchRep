@@ -136,6 +136,7 @@ def register_builtins() -> None:
         from benchrep.architecture.models import (
             Autoencoder,
             VAE,
+            CompositeModel,
         )
         from benchrep.evaluation.embeddings.clustering import run_kmeans, run_leiden, run_hdbscan
         from benchrep.evaluation.embeddings.reductions import run_pca, run_tsne, run_umap
@@ -363,6 +364,11 @@ def register_builtins() -> None:
             "variational_autoencoder",
             "variational_ae",
             "gaussian_vae",
+        )
+        MODELS._register_builtin(
+            "composite",
+            CompositeModel,
+            "composite_model",
         )
 
         RECONSTRUCTION_LOSSES._register_builtin(

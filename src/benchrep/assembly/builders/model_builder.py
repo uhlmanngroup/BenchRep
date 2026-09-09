@@ -14,6 +14,7 @@ from benchrep.architecture.heads import GaussianVariationalHead
 from benchrep.architecture.models import (
     Autoencoder,
     VAE,
+    CompositeModel,
 )
 from benchrep.assembly.builders.loss_builder import build_loss_terms
 from benchrep.architecture.losses.base import LossTerm
@@ -29,20 +30,24 @@ from benchrep.assembly.schemas import (
 from benchrep.assembly.registries.core import (
     MODELS,
     OPTIMIZERS,
+    ARCHITECTURE_REGISTRIES_BY_KIND,
+    LOSS_REGISTRIES_BY_ROLE,
 )
+from benchrep.assembly.resolvers.composite_model_resolver import CompositeModelSpec
 from benchrep.interfaces.model_families import SupportedModel
 
 
 def build_model(
     config: TrainingConfig,
     *,
+    composite_model_spec: CompositeModelSpec | None = None,
     prediction_reconstruction_latent_source: (
         Literal["mean", "sample"] | None
     ) = None,
 ) -> SupportedModel:
-    """Build a model from config.
+    """Build a config-built BenchRep model.
 
-    This is the public model-builder entry point. It reads ``config.model.name``
+    This public model-builder entry point reads the model name from ``config``
     and dispatches to the matching model-specific builder.
 
     Each model-specific builder is responsible for requiring only the config
@@ -55,28 +60,32 @@ def build_model(
     ----------
     config:
         Validated BenchRep config object.
+    composite_model_spec:
+        Resolved Composite model specification. Required when building a
+        CompositeModel and unused by canonical models.
     prediction_reconstruction_latent_source:
         VAE-only selection of the latent representation decoded during
         prediction. ``"mean"`` uses the posterior mean and ``"sample"`` uses
-        the sampled latent. ``None`` resolves to ``"mean"`` for VAEs and is
-        required for autoencoders.
+        the sampled latent. ``None`` resolves to ``"mean"`` for canonical VAEs
+        and is required for all other model types.
 
     Returns
     -------
     SupportedModel
-        Instantiated BenchRep autoencoder or variational autoencoder.
+        Instantiated BenchRep model.
     """
     run_log = get_run_logger()
 
     if config.model is None:
         raise ValueError("Model config section is required.")
 
+
+    run_log.info("Building model components...")
+
     model_name = normalize_name(
         config.model.name,
         field_name="config.model.name",
     )
-
-    run_log.info("Building model components...")
 
     model_cls = MODELS.get(model_name)
 
@@ -162,6 +171,36 @@ def build_model(
         )
 
         run_log.info("Assembled model: %s", type(model).__name__)
+
+        return model
+
+    elif model_cls is CompositeModel:
+        if composite_model_spec is None:
+            raise ValueError(
+                "CompositeModel requires a resolved "
+                "`composite_model_spec`."
+            )
+
+        if config.optimizer is None:
+            raise ValueError(
+                "CompositeModel requires an optimizer config section."
+            )
+
+        if prediction_reconstruction_latent_source is not None:
+            raise ValueError(
+                "`prediction_reconstruction_latent_source` is only "
+                "supported when building a canonical VAE."
+            )
+
+        model = build_composite(
+            model_spec=composite_model_spec,
+            optimizer=config.optimizer,
+        )
+
+        run_log.info(
+            "Assembled model: %s",
+            type(model).__name__,
+        )
 
         return model
 
@@ -344,4 +383,123 @@ def build_vae(
         prediction_reconstruction_latent_source=(
             prediction_reconstruction_latent_source
         ),
+    )
+
+
+def build_composite(
+    *,
+    model_spec: CompositeModelSpec,
+    optimizer: (
+        TrainingOptimizerConfig
+        | Callable[
+            [Iterable[nn.Parameter]],
+            torch.optim.Optimizer,
+        ]
+    ),
+) -> CompositeModel:
+    """Build a Composite model from its resolved execution specification."""
+
+    run_log = get_run_logger()
+
+    # Instantiate components directly via registry, without builders
+    components_by_id: dict[str, nn.Module] = {}
+
+    for component_id, component_spec in (
+        model_spec.components_by_id.items()
+    ):
+        component_registry = ARCHITECTURE_REGISTRIES_BY_KIND[
+            component_spec.component_kind
+        ]
+
+        component_module = component_registry.create(
+            component_spec.registry_entry_name,
+            **component_spec.constructor_params,
+        )
+
+        components_by_id[component_id] = component_module
+
+        run_log.info(
+            "Built Composite %s from config: %s (%s) -> %s",
+            component_spec.component_kind,
+            component_id,
+            component_spec.registry_entry_name,
+            type(component_module).__name__,
+        )
+
+    # Build losses
+    loss_modules_by_role: dict[
+        str,
+        dict[str, nn.Module],
+    ] = {}
+
+    loss_log_entries_by_role: dict[
+        str,
+        list[str],
+    ] = {}
+
+    for loss_spec in model_spec.loss_specs:
+        loss_role = loss_spec.loss_role
+        loss_name = loss_spec.configured_loss_name
+
+        if loss_role not in loss_modules_by_role:
+            loss_modules_by_role[loss_role] = {}
+            loss_log_entries_by_role[loss_role] = []
+
+        loss_registry = LOSS_REGISTRIES_BY_ROLE[loss_role]
+
+        loss_module = loss_registry.create(
+            loss_spec.registry_entry_name,
+            **loss_spec.constructor_params,
+        )
+
+        loss_modules_by_role[loss_role][loss_name] = loss_module
+
+        loss_log_entries_by_role[loss_role].append(
+            f"{loss_name} (config)"
+            f" -> {type(loss_module).__name__}"
+            f" (weight={loss_spec.weight})"
+        )
+
+    loss_role_descriptions: list[str] = []
+
+    for loss_role, loss_log_entries in (
+        loss_log_entries_by_role.items()
+    ):
+        loss_role_descriptions.append(
+            f"{loss_role}=[{', '.join(loss_log_entries)}]"
+        )
+
+    run_log.info(
+        "Resolved losses: %s",
+        "; ".join(loss_role_descriptions),
+    )
+
+    # Build optimizer factory
+    if isinstance(optimizer, TrainingOptimizerConfig):
+        optimizer_name = optimizer.name
+        optimizer_class = OPTIMIZERS.get(optimizer_name)
+        optimizer_factory = build_optimizer_factory(optimizer)
+
+        run_log.info(
+            "Built optimizer factory from config: %s -> %s",
+            optimizer_name,
+            optimizer_class.__name__,
+        )
+    else:
+        optimizer_factory = optimizer
+
+        run_log.info(
+            "Using provided optimizer factory: %s",
+            getattr(
+                optimizer,
+                "__name__",
+                type(optimizer).__name__,
+            ),
+        )
+
+    return CompositeModel(
+        model_spec=model_spec,
+        components_by_id=components_by_id,
+        loss_modules_by_role=loss_modules_by_role,
+        optimizer_factory=optimizer_factory,
     )
