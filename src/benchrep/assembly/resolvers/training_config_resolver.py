@@ -11,6 +11,7 @@ from benchrep.assembly.schemas import (
     TrainingDataModuleConfig,
 )
 from benchrep.interfaces.model_families import ModelFamilySpec
+from benchrep.assembly.registries.core import MODELS
 from benchrep.assembly.registries.utils import normalize_name
 from benchrep.assembly.resolvers.composite_model_resolver import (
     CompositeModelSpec,
@@ -211,18 +212,20 @@ def _resolve_training_model_name(
 
     assert training_config.model is not None
 
-    configured_model_name = normalize_name(
-        training_config.model.name,
-        field_name="model.name",
+    configured_model_name = MODELS.resolve_key(
+        normalize_name(
+            training_config.model.name,
+            field_name="model.name",
+        )
     )
 
-    if configured_model_name not in model_family.config_model_names:
+    if configured_model_name != model_family.name:
         raise ValueError(
             "Configured model is incompatible with the selected training "
             "model family: "
             f"family={model_family.name!r}, "
             f"configured_model={configured_model_name!r}, "
-            f"expected one of {model_family.config_model_names!r}."
+            f"expected={model_family.name!r}."
         )
 
     if configured_model_name == "composite":

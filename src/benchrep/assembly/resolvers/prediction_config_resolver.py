@@ -17,6 +17,8 @@ from benchrep.assembly.schemas import (
     TrainingTrainerConfig,
 )
 from benchrep.assembly.schemas.training_config_schema import Float32MatmulPrecision
+from benchrep.assembly.registries.core import MODELS
+from benchrep.assembly.registries.utils import normalize_name
 from benchrep.assembly.resolvers.utils import (
     resolve_optional,
     get_required_nested_path,
@@ -25,7 +27,6 @@ from benchrep.assembly.resolvers.utils import (
     RunIdentitySpec,
     resolve_runtime_override_config,
 )
-from benchrep.assembly.registries.utils import normalize_name
 from benchrep.interfaces.model_families import (
     ModelFamilySpec,
     VAE_FAMILY,
@@ -788,7 +789,16 @@ def _resolve_training_manifest_path(
             }
         )
     else:
-        training_manifest_path = prediction_config.source.training_manifest_path.resolve()
+        training_manifest_path = (
+            prediction_config.source.training_manifest_path
+        )
+        if training_manifest_path is None:
+            raise ValueError(
+                "A training manifest path must be provided either through "
+                "`training_manifest_path_override` or `source.training_manifest_path`."
+            )
+
+        training_manifest_path = training_manifest_path.resolve()
 
     if training_manifest_path.suffix.lower() not in {".yaml", ".yml"}:
         raise ValueError(
@@ -867,18 +877,20 @@ def _validate_prediction_model_family(
 
     assert training_config.model is not None
 
-    configured_model_name = normalize_name(
-        training_config.model.name,
-        field_name="config.model.name",
+    configured_model_name = MODELS.resolve_key(
+        normalize_name(
+            training_config.model.name,
+            field_name="config.model.name",
+        )
     )
 
-    if configured_model_name not in model_family.config_model_names:
+    if configured_model_name != model_family.name:
         raise ValueError(
             "Configured model is incompatible with the selected prediction "
             "model family: "
             f"family={model_family.name!r}, "
             f"configured_model={configured_model_name!r}, "
-            f"expected one of {model_family.config_model_names!r}."
+            f"expected={model_family.name!r}."
         )
 
 
