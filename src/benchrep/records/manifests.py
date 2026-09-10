@@ -53,6 +53,7 @@ def write_training_manifest(
     run_context: RunContext,
     checkpoint_callback: ModelCheckpoint,
     early_stopping_record: EarlyStoppingRecord | None,
+    composite_model_spec_graph_path: Path | None = None,
     torchview_graph_path: Path | None = None,
     created_at: str,
     completed_at: str,
@@ -113,6 +114,12 @@ def write_training_manifest(
         run_context,
     )
     records["architecture"] = {
+        "composite_model_spec_graph_applicable": (
+                run_spec.composite_model_spec is not None
+        ),
+        "composite_model_spec_graph_path": paths_to_strings(
+            composite_model_spec_graph_path
+        ),
         "torchview_requested": config.inspection.torchview.enabled,
         "torchview_graph_path": paths_to_strings(torchview_graph_path),
     }

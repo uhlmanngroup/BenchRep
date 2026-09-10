@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Mapping
+from typing import Any
 
 import lightning as L
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
@@ -38,9 +39,12 @@ from benchrep.records import (
     write_training_manifest,
     export_torchview_graph,
     infer_dummy_input_size,
+    prepare_composite_torchview_input_data,
     get_runtime_environment_filename,
     collect_training_environment_context,
     write_runtime_environment,
+    ModelGraphDependencyError,
+    export_composite_model_spec_graph,
 )
 from benchrep.records.utils import now_isoformat
 from benchrep.interfaces.model_families import (
@@ -86,6 +90,7 @@ class TrainingWorkflowResult:
     trainer: L.Trainer
     checkpoint_callback: ModelCheckpoint
     early_stopping_callback: EarlyStopping | None
+    composite_model_spec_graph_path: Path | None
     torchview_graph_path: Path | None
     status_report: TrainingStatusReport
     manifest_path: Path
@@ -491,49 +496,102 @@ def _train(
         *checkpoint_warnings,
     ]
 
+    # Automatically export the resolved Composite model specification graph.
+    composite_model_spec_graph_path = None
+
+    if run_spec.composite_model_spec is not None:
+        try:
+            composite_model_spec_graph_path = (
+                export_composite_model_spec_graph(
+                    run_spec.composite_model_spec,
+                    output_path=(
+                            run_context.training_architecture_dir
+                            / "composite_model_spec_graph.svg"
+                    ),
+                )
+            )
+
+            run_log.info(
+                "Automatically exported Composite model specification "
+                "graph to: '%s'",
+                composite_model_spec_graph_path,
+            )
+
+        except ModelGraphDependencyError as exc:
+            run_log.info(
+                "BenchRep automatically exports a Composite model "
+                "specification graph for Composite training runs. This "
+                "optional export was skipped because a required model-graph "
+                "dependency is unavailable: %s",
+                exc,
+            )
+
+        except Exception as exc:
+            warning = (
+                "BenchRep automatically exports a Composite model "
+                "specification graph for Composite training runs, but the "
+                "export failed and was skipped: "
+                f"{type(exc).__name__}: {exc}"
+            )
+            training_warnings.append(warning)
+            run_log.warning(warning, exc_info=True)
+
     for error in training_errors:
         run_log.error(error)
 
     for warning in checkpoint_warnings:
         run_log.warning(warning)
 
-    # Export torchview graph if possible
+    # Export Torchview graph if requested.
     torchview_graph_path = None
 
     if resolved_training_config.inspection.torchview.enabled:
         try:
-            dummy_input_size = infer_dummy_input_size(datamodule)
+            torchview_export_kwargs: dict[str, Any]
+
+            if run_spec.composite_model_spec is not None:
+                torchview_input_data = prepare_composite_torchview_input_data(
+                    datamodule=datamodule,
+                    model_spec=run_spec.composite_model_spec,
+                )
+                torchview_export_kwargs = {
+                    "input_data": torchview_input_data,
+                }
+            else:
+                dummy_input_size = infer_dummy_input_size(datamodule)
+                torchview_export_kwargs = {
+                    "input_size": dummy_input_size,
+                }
+
             torchview_graph_path = export_torchview_graph(
                 model=model,
-                input_size=dummy_input_size,
-                output_path=run_context.training_architecture_dir / "model_graph.png",
-                expand_nested=resolved_training_config.inspection.torchview.expand_nested,
+                output_path=(
+                        run_context.training_architecture_dir / "torchview_model_graph.svg"
+                ),
+                expand_nested=(
+                    resolved_training_config
+                    .inspection
+                    .torchview
+                    .expand_nested
+                ),
                 depth=resolved_training_config.inspection.torchview.depth,
+                **torchview_export_kwargs,
             )
 
-            if torchview_graph_path is not None:
-                run_log.info("Exported torchview graph to: '%s'", torchview_graph_path)
-            else:
-                warning = (
-                    "Torchview graph export was requested, but no graph "
-                    "was produced."
-                )
-                training_warnings.append(warning)
-                run_log.warning(warning)
+            run_log.info(
+                "Exported Torchview graph to: '%s'",
+                torchview_graph_path,
+            )
 
-        except Exception as exc:
+        except Exception as error:
             torchview_graph_path = None
 
             warning = (
-                "Torchview graph export failed and was skipped: "
-                f"{type(exc).__name__}: {exc}"
+                "Torchview graph export was requested but failed and was "
+                f"skipped: {type(error).__name__}: {error}"
             )
             training_warnings.append(warning)
-
-            run_log.warning(
-                warning,
-                exc_info=True,
-            )
+            run_log.warning(warning, exc_info=True)
 
     # Finalize status
     status_report = build_training_status_report(
@@ -554,6 +612,7 @@ def _train(
         run_context=run_context,
         checkpoint_callback=checkpoint_callback,
         early_stopping_record=early_stopping_record,
+        composite_model_spec_graph_path=composite_model_spec_graph_path,
         torchview_graph_path=torchview_graph_path,
         created_at=created_at,
         completed_at=completed_at,
@@ -589,5 +648,6 @@ def _train(
         early_stopping_callback=early_stopping_callback,
         status_report=status_report,
         manifest_path=manifest_path,
+        composite_model_spec_graph_path=composite_model_spec_graph_path,
         torchview_graph_path=torchview_graph_path,
     )
