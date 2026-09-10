@@ -41,6 +41,11 @@ from benchrep.assembly.schemas.training_config_schema import (
     TrainingAdditionalCallbackConfig,
     TrainingInspectionConfig,
 )
+from benchrep.assembly.schemas.composite_model_config_schema import (
+    CompositeModelAssemblyStepConfig,
+    CompositeModelComponentConfig,
+    CompositeModelDeclarationsConfig,
+)
 from benchrep.assembly.schemas.prediction_config_schema import (
     PredictionConfig,
     PredictionSourceConfig,
@@ -85,6 +90,16 @@ LossesConfig: TypeAlias = dict[
     dict[str, TrainingLossTermConfig],
 ]
 
+CompositeModelComponentsConfig: TypeAlias = dict[
+    str,
+    CompositeModelComponentConfig,
+]
+
+CompositeModelAssemblyConfig: TypeAlias = dict[
+    str,
+    CompositeModelAssemblyStepConfig,
+]
+
 TransformsConfig: TypeAlias = list[TrainingTransformConfig]
 AdditionalCallbacksConfig: TypeAlias = list[TrainingAdditionalCallbackConfig]
 PredictionTransformsConfig: TypeAlias = list[PredictionTransformConfig]
@@ -96,6 +111,9 @@ SupportedTrainingConfigComponent: TypeAlias = (
         | TrainingModelConfig
         | TrainingEncoderConfig
         | TrainingDecoderConfig
+        | CompositeModelDeclarationsConfig
+        | CompositeModelComponentsConfig
+        | CompositeModelAssemblyConfig
         | LossesConfig
         | TrainingOptimizerConfig
         | TransformsConfig
@@ -195,7 +213,7 @@ def compose_effective_config(
     schema: type[ConfigT],
     config_path: Path | str | None = None,
     full_config_object: ConfigT | None = None,
-    config_components: Mapping[str, SupportedConfigComponent] | None = None,
+    config_components: Mapping[str, Any] | None = None,
     external_model: bool = False,
     external_datamodule: bool = False,
     training_manifest_path_overridden: bool = False,
@@ -365,6 +383,8 @@ def compose_effective_config(
     )
 
     if yaml_supplied and component_raw:
+        assert original_config_raw is not None
+
         config_source = "yaml_with_components"
         yaml_used_as_base = True
         raw_config = dict(original_config_raw)
@@ -376,6 +396,8 @@ def compose_effective_config(
         )
 
     elif yaml_supplied:
+        assert original_config_raw is not None
+
         config_source = "yaml"
         yaml_used_as_base = True
         raw_config = original_config_raw
@@ -598,6 +620,41 @@ def _normalize_config_components(
                 )
 
             normalized[key] = _config_component_to_raw(component)
+            continue
+
+        if (
+            schema is TrainingConfig
+            and key in {
+                "composite_model_components",
+                "composite_model_assembly",
+            }
+        ):
+            entry_type = (
+                CompositeModelComponentConfig
+                if key == "composite_model_components"
+                else CompositeModelAssemblyStepConfig
+            )
+
+            if not isinstance(component, dict):
+                raise TypeError(
+                    f"Training config component {key!r} must be a dictionary "
+                    f"mapping names to {entry_type.__name__} objects, got "
+                    f"{type(component).__name__}."
+                )
+
+            if not all(
+                    isinstance(name, str) and isinstance(value, entry_type)
+                    for name, value in component.items()
+            ):
+                raise TypeError(
+                    f"Every entry in TrainingConfig component {key!r} must "
+                    f"map a string name to a {entry_type.__name__} object."
+                )
+
+            normalized[key] = {
+                name: value.model_dump(mode="python")
+                for name, value in component.items()
+            }
             continue
 
         expected_type = expected_component_types[key]
