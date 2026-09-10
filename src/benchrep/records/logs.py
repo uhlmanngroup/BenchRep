@@ -13,6 +13,13 @@ RUN_LOG_FILENAME = "benchrep.run.log"
 STDOUT_LOG_FILENAME = "stdout.log"
 STDERR_LOG_FILENAME = "stderr.log"
 
+
+# Prevent Lightning from logging seed as BenchRep does this already.
+logging.getLogger(
+    "lightning.fabric.utilities.seed"
+).setLevel(logging.WARNING)
+
+
 class TeeStream:
     """Write stream output to multiple streams."""
 
