@@ -47,8 +47,10 @@ from benchrep.interfaces.model_families import (
     SupportedModel,
     SupportedModelBaseClass,
     ModelFamilySpec,
+    CanonicalModelFamilySpec,
     AUTOENCODER_FAMILY,
     VAE_FAMILY,
+    COMPOSITE_FAMILY,
 )
 from benchrep.interfaces.models import (
     BenchRepAutoencoderModel,
@@ -144,6 +146,27 @@ def train_vae(
     )
 
 
+def train_composite(
+    config_path: Path | str | None = None,
+    full_config_object: TrainingConfig | None = None,
+    config_components: (
+        Mapping[str, SupportedTrainingConfigComponent] | None
+    ) = None,
+    datamodule: (
+        L.LightningDataModule
+        | type[L.LightningDataModule]
+        | None
+    ) = None,
+) -> TrainingWorkflowResult:
+    return _train(
+        model_family=COMPOSITE_FAMILY,
+        config_path=config_path,
+        full_config_object=full_config_object,
+        config_components=config_components,
+        datamodule=datamodule,
+    )
+
+
 def _train(
         model_family: ModelFamilySpec,
         config_path: Path | str | None = None,
@@ -163,11 +186,21 @@ def _train(
 ) -> TrainingWorkflowResult:
     register_builtins()
 
-    model_source = resolve_component_source(
-        model,
-        expected_base_class=model_family.model_base_class,
-        component_name="model",
-    )
+    if isinstance(model_family, CanonicalModelFamilySpec):
+        model_source = resolve_component_source(
+            model,
+            expected_base_class=model_family.model_base_class,
+            component_name="model",
+        )
+    else:
+        if model is not None:
+            raise TypeError(
+                "Whole-model overrides are supported only for the canonical "
+                "`autoencoder` and `vae` model families; they are not supported "
+                "for `composite`."
+            )
+
+        model_source = "config"
     datamodule_source = resolve_component_source(
         datamodule,
         expected_base_class=L.LightningDataModule,

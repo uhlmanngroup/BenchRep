@@ -10,7 +10,10 @@ from benchrep.assembly.schemas import (
     TrainingConfig,
     TrainingDataModuleConfig,
 )
-from benchrep.interfaces.model_families import ModelFamilySpec
+from benchrep.interfaces.model_families import (
+    CanonicalModelFamilySpec,
+    ModelFamilySpec,
+)
 from benchrep.assembly.registries.core import MODELS
 from benchrep.assembly.registries.utils import normalize_name
 from benchrep.assembly.resolvers.composite_model_resolver import (
@@ -54,6 +57,16 @@ def resolve_training_config(
 
     model_is_external = model_source != "config"
     datamodule_is_external = datamodule_source != "config"
+
+    if (
+        model_is_external
+        and not isinstance(model_family, CanonicalModelFamilySpec)
+    ):
+        raise ValueError(
+            "Whole-model overrides are supported only for the canonical "
+            "`autoencoder` and `vae` model families; they are not supported "
+            "for `composite`."
+        )
 
     resolved_datamodule = _resolve_datamodule_config(
         training_config.datamodule,
@@ -119,9 +132,8 @@ def resolve_training_config(
     if not model_is_external:
         assert resolved_config.model is not None
 
-        configured_model_name = normalize_name(
-            resolved_config.model.name,
-            field_name="model.name",
+        configured_model_name = MODELS.resolve_key(
+            resolved_config.model.name
         )
 
         if configured_model_name == "composite":

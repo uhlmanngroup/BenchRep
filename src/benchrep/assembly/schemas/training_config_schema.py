@@ -1632,10 +1632,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
 
             assert self.model is not None
 
-            model_name = normalize_name(
-                self.model.name,
-                field_name="model.name",
-            )
+            model_name = MODELS.resolve_key(self.model.name)
 
             if model_name != "composite":
                 _require_present(self.encoder, "encoder")
@@ -1668,10 +1665,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
         assert self.losses is not None
         assert self.optimizer is not None
 
-        model_name = normalize_name(
-            self.model.name,
-            field_name="model.name",
-        )
+        model_name = MODELS.resolve_key(self.model.name)
 
         if model_name == "composite":
             return self
@@ -1779,10 +1773,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
         if model_overridden or self.model is None:
             return self
 
-        model_name = normalize_name(
-            self.model.name,
-            field_name="model.name",
-        )
+        model_name = MODELS.resolve_key(self.model.name)
 
         if model_name == "composite" and not self.losses:
             raise ValueError(
@@ -1855,10 +1846,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
         if model_overridden or self.model is None:
             return self
 
-        model_name = normalize_name(
-            self.model.name,
-            field_name="model.name",
-        )
+        model_name = MODELS.resolve_key(self.model.name)
 
         # Reject composite-model sections when using canonical models
         composite_sections = {

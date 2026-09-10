@@ -19,6 +19,9 @@ from benchrep.interfaces.compatibility import (
     sanity_check_predict_step_batch_annotation,
     sanity_check_predict_step_return_annotation,
 )
+from benchrep.interfaces.model_families import (
+    CanonicalModelFamilySpec,
+)
 
 if TYPE_CHECKING:
     from benchrep.assembly.resolvers.training_config_resolver import (
@@ -42,7 +45,9 @@ def validate_train_contract_compatibility(
     compatibility_warnings: list[str] = []
     default_result = PreconditionResult()
 
-    if fully_internal_run:
+    # Composite contracts are declaration-driven and so validated during graph
+    # resolution and model execution, not here.
+    if fully_internal_run or not isinstance(model_family, CanonicalModelFamilySpec):
         return default_result
 
     if model_is_external:
