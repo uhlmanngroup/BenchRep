@@ -80,7 +80,7 @@ def test_resolved_configs_reproduce_end_to_end_metrics(
     assert training_resolved["checkpointing"]["save_top_k"] == 0
 
     assert prediction_resolved["dataset"] is not None
-    assert prediction_resolved["transforms"] is not None
+    assert prediction_resolved["transform_pipelines"] is not None
     assert prediction_resolved["data"]["batch_size"] == 8
     assert prediction_resolved["data"]["num_workers"] == 0
     assert prediction_resolved["inference"]["seed"] == 137
@@ -162,7 +162,7 @@ def _write_inheritance_heavy_prediction_config(tmp_path: Path) -> Path:
     # metric-ranked checkpoints by resolving save_top_k -> 0.
     raw["source"]["checkpoint"] = "last"
     raw["dataset"] = None
-    raw["transforms"] = None
+    raw["transform_pipelines"] = None
     raw["data"]["batch_size"] = None
     raw["data"]["num_workers"] = None
     raw["inference"]["seed"] = None

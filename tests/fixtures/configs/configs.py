@@ -18,12 +18,14 @@ from benchrep.assembly.schemas.training_config_schema import (
     TrainingTorchviewConfig,
     TrainingTrainerConfig,
     TrainingConfig,
-    TrainingTransformConfig,
+    TrainingTransformPipelineConfig,
+    TrainingTransformStepConfig,
 )
 from benchrep.assembly.schemas.prediction_config_schema import (
     PredictionConfig,
     PredictionDataConfig,
-    PredictionTransformConfig,
+    PredictionTransformPipelineConfig,
+    PredictionTransformStepConfig,
     PredictionEmbeddingsExportConfig,
     PredictionExportConfig,
     PredictionInferenceConfig,
@@ -174,22 +176,27 @@ def make_training_mnist_dataset_config() -> MNISTDatasetConfig:
     )
 
 
-def make_training_transforms_config() -> list[TrainingTransformConfig]:
+def make_training_transform_pipelines_config(
+) -> list[TrainingTransformPipelineConfig]:
     return [
-        TrainingTransformConfig(
-            name="to_dtype",
-            apply_to=["validation"],
-            params={
-                "dtype": "float32",
-                "scale": True,
-            },
-        ),
-        TrainingTransformConfig(
-            name="random_horizontal_flip",
-            apply_to=["training"],
-            params={
-                "p": 0.25,
-            },
+        TrainingTransformPipelineConfig(
+            steps=[
+                TrainingTransformStepConfig(
+                    name="to_dtype",
+                    apply_to=["validation"],
+                    params={
+                        "dtype": "float32",
+                        "scale": True,
+                    },
+                ),
+                TrainingTransformStepConfig(
+                    name="random_horizontal_flip",
+                    apply_to=["training"],
+                    params={
+                        "p": 0.25,
+                    },
+                ),
+            ],
         ),
     ]
 
@@ -312,14 +319,19 @@ def make_prediction_inference_config() -> PredictionInferenceConfig:
     )
 
 
-def make_prediction_transforms_config() -> list[PredictionTransformConfig]:
+def make_prediction_transform_pipelines_config(
+) -> list[PredictionTransformPipelineConfig]:
     return [
-        PredictionTransformConfig(
-            name="normalize",
-            params={
-                "mean": [0.5],
-                "std": [0.5],
-            },
+        PredictionTransformPipelineConfig(
+            steps=[
+                PredictionTransformStepConfig(
+                    name="normalize",
+                    params={
+                        "mean": [0.5],
+                        "std": [0.5],
+                    },
+                ),
+            ],
         ),
     ]
 
@@ -353,7 +365,7 @@ def make_prediction_config() -> PredictionConfig:
         dataset=make_prediction_dataset_config(),
         data=make_prediction_data_config(),
         inference=make_prediction_inference_config(),
-        transforms=make_prediction_transforms_config(),
+        transform_pipelines=make_prediction_transform_pipelines_config(),
         exports=make_prediction_exports_config(),
     )
 

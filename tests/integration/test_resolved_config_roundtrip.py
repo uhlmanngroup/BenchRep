@@ -81,7 +81,7 @@ def test_prediction_resolved_config_roundtrip_materializes_inheritance(
         training_manifest_path
     )
     raw_config["dataset"] = None
-    raw_config["transforms"] = None
+    raw_config["transform_pipelines"] = None
     raw_config["data"]["batch_size"] = None
     raw_config["data"]["num_workers"] = None
     raw_config["inference"]["seed"] = None
@@ -101,7 +101,7 @@ def test_prediction_resolved_config_roundtrip_materializes_inheritance(
     assert first.inherited_config_fields == frozenset(
         {
             "dataset",
-            "transforms",
+            "transform_pipelines",
             "data.batch_size",
             "data.num_workers",
             "inference.seed",
@@ -134,7 +134,9 @@ def test_prediction_resolved_config_roundtrip_materializes_inheritance(
     assert second.run_identity == first.run_identity
     assert second.checkpoint_path == first.checkpoint_path
     assert second.dataset_config == first.dataset_config
-    assert second.transform_configs == first.transform_configs
+    assert second.transform_pipeline_configs == first.transform_pipeline_configs
+    assert first.transform_pipeline_source == "training_config"
+    assert second.transform_pipeline_source == "prediction_config"
     assert second.datamodule_config == first.datamodule_config
     assert second.batch_size == first.batch_size
     assert second.num_workers == first.num_workers
@@ -228,6 +230,20 @@ def _resolved_vae_training_config():
     raw_config["datamodule"]["pin_memory"] = "auto"
     raw_config["checkpointing"]["monitor"] = None
     raw_config["checkpointing"]["save_top_k"] = 3
+    raw_config["transform_pipelines"] = [
+        {
+            "steps": [
+                {
+                    "name": "to_dtype",
+                    "apply_to": ["validation"],
+                    "params": {
+                        "dtype": "float32",
+                        "scale": False,
+                    },
+                },
+            ],
+        },
+    ]
 
     config = parse_training_config(raw_config)
     run_spec = resolve_training_config(

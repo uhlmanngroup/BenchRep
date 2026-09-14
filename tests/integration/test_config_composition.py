@@ -26,7 +26,7 @@ from tests.fixtures.configs.configs import (
     make_prediction_dataset_config,
     make_prediction_exports_config,
     make_prediction_inference_config,
-    make_prediction_transforms_config,
+    make_prediction_transform_pipelines_config,
     make_prediction_source_config,
     make_training_checkpoint_config,
     make_training_config,
@@ -43,7 +43,7 @@ from tests.fixtures.configs.configs import (
     make_training_reproducibility_config,
     make_training_run_config,
     make_training_trainer_config,
-    make_training_transforms_config,
+    make_training_transform_pipelines_config,
 )
 
 
@@ -175,8 +175,8 @@ CONFIG_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "configs"
         pytest.param(
             TrainingConfig,
             "training_tiny_synthetic_ae.yaml",
-            "transforms",
-            make_training_transforms_config,
+            "transform_pipelines",
+            make_training_transform_pipelines_config,
             {},
             id="training-transforms",
         ),
@@ -209,8 +209,8 @@ CONFIG_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "configs"
         pytest.param(
             PredictionConfig,
             "prediction_tiny_synthetic.yaml",
-            "transforms",
-            make_prediction_transforms_config,
+            "transform_pipelines",
+            make_prediction_transform_pipelines_config,
             {"training_manifest_path_overridden": True},
             id="prediction-transforms",
         ),

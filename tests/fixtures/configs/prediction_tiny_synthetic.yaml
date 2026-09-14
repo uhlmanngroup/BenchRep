@@ -15,7 +15,7 @@ dataset:
     noise_std: 0.05
     seed: 137
 
-transforms: null
+transform_pipelines: null
 
 data:
   batch_size: 8
