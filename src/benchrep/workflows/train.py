@@ -112,6 +112,7 @@ def train_ae(
                 | None
         ) = None,
         compatibility_policy: CompatibilityPolicy = "error",
+        capture_stdout: bool = False,
 ) -> TrainingWorkflowResult:
     return _train(
         model_family=AUTOENCODER_FAMILY,
@@ -121,6 +122,7 @@ def train_ae(
         model=model,
         datamodule=datamodule,
         compatibility_policy=compatibility_policy,
+        capture_stdout=capture_stdout,
     )
 
 
@@ -139,6 +141,7 @@ def train_vae(
                 | None
         ) = None,
         compatibility_policy: CompatibilityPolicy = "error",
+        capture_stdout: bool = False,
 ) -> TrainingWorkflowResult:
     return _train(
         model_family=VAE_FAMILY,
@@ -148,6 +151,7 @@ def train_vae(
         model=model,
         datamodule=datamodule,
         compatibility_policy=compatibility_policy,
+        capture_stdout=capture_stdout,
     )
 
 
@@ -162,6 +166,7 @@ def train_composite(
         | type[L.LightningDataModule]
         | None
     ) = None,
+    capture_stdout: bool = False,
 ) -> TrainingWorkflowResult:
     return _train(
         model_family=COMPOSITE_FAMILY,
@@ -169,6 +174,7 @@ def train_composite(
         full_config_object=full_config_object,
         config_components=config_components,
         datamodule=datamodule,
+        capture_stdout=capture_stdout,
     )
 
 
@@ -187,7 +193,8 @@ def _train(
                 | type[L.LightningDataModule]
                 | None
         ) = None,
-        compatibility_policy: CompatibilityPolicy = "error"
+        compatibility_policy: CompatibilityPolicy = "error",
+        capture_stdout: bool = False,
 ) -> TrainingWorkflowResult:
     register_builtins()
 
@@ -410,7 +417,7 @@ def _train(
     try:
         with capture_console_streams(
             log_out_dir=run_context.log_dir,
-            capture_stdout=False,
+            capture_stdout=capture_stdout,
         ):
             trainer.fit(model, datamodule=datamodule)
 
@@ -620,6 +627,7 @@ def _train(
         status_report=status_report,
         model_class_name=type(model).__name__,
         datamodule_class_name=type(datamodule).__name__,
+        capture_stdout=capture_stdout,
     )
 
     run_log.info("Exported training manifest to: '%s'", manifest_path)

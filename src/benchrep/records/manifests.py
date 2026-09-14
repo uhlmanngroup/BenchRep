@@ -65,6 +65,7 @@ def write_training_manifest(
     status_report: TrainingStatusReport,
     model_class_name: str,
     datamodule_class_name: str,
+    capture_stdout: bool,
 ) -> dict[str, Any]:
     # Source flags
     model_is_external = run_spec.model_source != "config"
@@ -99,6 +100,7 @@ def write_training_manifest(
     records = _build_common_records(
         config_composition_result,
         run_context,
+        capture_stdout=capture_stdout,
     )
     records["architecture"] = {
         "composite_model_spec_graph_applicable": (
@@ -1131,6 +1133,8 @@ def _anndata_location(attribute: str, *keys: str) -> str:
 def _build_common_records(
     config_composition_result: ConfigCompositionResult[Any],
     run_context: RunContext,
+    *,
+    capture_stdout: bool = False,
 ) -> dict[str, Any]:
     has_original_config = (
         config_composition_result.original_config_path is not None
@@ -1159,8 +1163,9 @@ def _build_common_records(
             run_context.log_dir / STDERR_LOG_FILENAME
         ),
         "console_stdout_path": (
-            f"{run_context.log_dir / STDOUT_LOG_FILENAME} "
-            "[optional; only written when stdout capture is enabled]"
+            str(run_context.log_dir / STDOUT_LOG_FILENAME)
+            if capture_stdout
+            else None
         ),
     }
 
