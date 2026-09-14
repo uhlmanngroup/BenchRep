@@ -327,13 +327,15 @@ def write_prediction_manifest(
         else None
     )
 
-    configured_transforms = (
+    configured_transform_pipelines = (
         [
-            transform.model_dump(mode="json")
-            for transform in run_spec.transform_configs
+            pipeline.model_dump(mode="json")
+            for pipeline in run_spec.transform_pipeline_configs
         ]
-        if not datamodule_is_external
-        and run_spec.transform_configs is not None
+        if (
+                not datamodule_is_external
+                and run_spec.transform_pipeline_configs is not None
+        )
         else None
     )
 
@@ -368,14 +370,24 @@ def write_prediction_manifest(
         "dataset": (
             configured_dataset["name"] if configured_dataset is not None else None
         ),
-        "transforms": (
+        "transform_pipelines": (
             {
                 "prediction": [
-                    transform["name"]
-                    for transform in configured_transforms
+                    {
+                        "input": pipeline["input"],
+                        "output": pipeline["output"],
+                        "same_key_replacement": (
+                                pipeline["input"] == pipeline["output"]
+                        ),
+                        "steps": [
+                            step["name"]
+                            for step in pipeline["steps"]
+                        ],
+                    }
+                    for pipeline in configured_transform_pipelines
                 ],
             }
-            if configured_transforms is not None
+            if configured_transform_pipelines is not None
             else None
         ),
         "datamodule": datamodule_class_name if datamodule_is_external else None,
@@ -492,7 +504,10 @@ def write_prediction_manifest(
                     )
                 ),
                 "dataset": configured_dataset,
-                "transforms": configured_transforms,
+                "transform_pipeline_source": (
+                    run_spec.transform_pipeline_source
+                ),
+                "transform_pipelines": configured_transform_pipelines,
                 "datamodule": {
                     "source": datamodule_source,
                     "class_name": datamodule_class_name,

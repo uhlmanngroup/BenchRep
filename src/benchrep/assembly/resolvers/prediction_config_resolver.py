@@ -6,7 +6,8 @@ from typing import Any, Literal
 
 from benchrep.assembly.config import load_yaml
 from benchrep.assembly.schemas import (
-    PredictionTransformConfig,
+    PredictionTransformPipelineConfig,
+    PredictionTransformStepConfig,
     PredictionConfig,
     TrainingConfig,
     PredictionReconstructionsExportConfig,
@@ -15,6 +16,7 @@ from benchrep.assembly.schemas import (
     SupportedDatasetConfig,
     TrainingDataModuleConfig,
     TrainingTrainerConfig,
+    CompositeModelDeclarationsConfig,
 )
 from benchrep.assembly.schemas.training_config_schema import Float32MatmulPrecision
 from benchrep.assembly.registries.core import MODELS
@@ -27,13 +29,16 @@ from benchrep.assembly.resolvers.utils import (
     RunIdentitySpec,
     resolve_runtime_override_config,
 )
+from benchrep.architecture.composite_model_roles import (
+    TENSOR_STRUCTURE_BY_ROLE,
+)
 from benchrep.interfaces.model_families import (
+    CanonicalModelFamilySpec,
     ModelFamilySpec,
     VAE_FAMILY,
     model_family_supports_reconstruction,
 )
 from benchrep.runtime.status.training import ACCEPTABLE_TRAINING_STATUSES
-
 
 # -------------------------
 # Resolved specs
@@ -45,7 +50,7 @@ PredictionCheckpointSource = Literal[
     "explicit_path",
 ]
 
-PredictionTransformSource = Literal[
+PredictionTransformPipelineSource = Literal[
     "training_config",
     "prediction_config",
     "default_identity",
@@ -56,7 +61,7 @@ ReconstructionLatentSource = Literal["mean", "sample"]
 
 PredictionInheritableField = Literal[
     "dataset",
-    "transforms",
+    "transform_pipelines",
     "data.batch_size",
     "data.num_workers",
     "inference.seed",
@@ -116,8 +121,8 @@ class PredictionRunSpec:
     training_output_dir: Path
 
     dataset_config: SupportedDatasetConfig | None
-    transform_configs: tuple[PredictionTransformConfig, ...] | None
-    transform_source: PredictionTransformSource
+    transform_pipeline_configs: tuple[PredictionTransformPipelineConfig, ...] | None
+    transform_pipeline_source: PredictionTransformPipelineSource
     datamodule_config: TrainingDataModuleConfig | None
     batch_size: int | None
     num_workers: int | None
@@ -234,8 +239,10 @@ def resolve_prediction_config(
 
     if datamodule_is_external:
         dataset_config = None
-        transform_configs = None
-        transform_source: PredictionTransformSource = "external_datamodule"
+        transform_pipeline_configs = None
+        transform_pipeline_source: PredictionTransformPipelineSource = (
+            "external_datamodule"
+        )
         datamodule_config = None
         batch_size = None
         num_workers = None
@@ -257,13 +264,18 @@ def resolve_prediction_config(
                 "provide a datamodule override to the prediction entrypoint."
             )
 
-        transform_configs, transform_source = _resolve_prediction_transforms(
+        (
+            transform_pipeline_configs,
+            transform_pipeline_source,
+        ) = _resolve_prediction_transform_pipelines(
             prediction_config=prediction_config,
             training_config=training_config,
             training_datamodule_external=training_datamodule_external,
+            model_family=model_family,
         )
-        if transform_source == "training_config":
-            inherited_config_fields.add("transforms")
+
+        if transform_pipeline_source == "training_config":
+            inherited_config_fields.add("transform_pipelines")
 
         if (
             not training_datamodule_external
@@ -401,15 +413,13 @@ def resolve_prediction_config(
 
     if not datamodule_is_external:
         assert dataset_config is not None
-        assert transform_configs is not None
+        assert transform_pipeline_configs is not None
 
-        # An omitted dataset inherits the training dataset.
+        # Materialize the effective dataset and transform pipelines.
         resolved_config_updates["dataset"] = dataset_config
-
-        if transform_source == "training_config":
-            resolved_config_updates["transforms"] = list(
-                transform_configs,
-            )
+        resolved_config_updates["transform_pipelines"] = list(
+            transform_pipeline_configs
+        )
 
         if not training_datamodule_external:
             resolved_config_updates["data"] = (
@@ -473,7 +483,7 @@ def resolve_prediction_config(
         prediction_config = prediction_config.model_copy(
             update={
                 "dataset": None,
-                "transforms": None,
+                "transform_pipelines": None,
                 "data": resolved_data_config,
             },
         )
@@ -519,8 +529,8 @@ def resolve_prediction_config(
         training_run_name=training_run_name,
         training_output_dir=training_output_dir,
         dataset_config=dataset_config,
-        transform_configs=transform_configs,
-        transform_source=transform_source,
+        transform_pipeline_configs=transform_pipeline_configs,
+        transform_pipeline_source=transform_pipeline_source,
         datamodule_config=datamodule_config,
         batch_size=batch_size,
         num_workers=num_workers,
@@ -737,36 +747,6 @@ def _resolve_checkpoint_path(
     return checkpoint_path, checkpoint_source
 
 
-def _resolve_prediction_transforms(
-    *,
-    prediction_config: PredictionConfig,
-    training_config: TrainingConfig,
-    training_datamodule_external: bool,
-) -> tuple[
-    tuple[PredictionTransformConfig, ...],
-    PredictionTransformSource,
-]:
-    """Resolve the ordered transforms applied during prediction."""
-    if prediction_config.transforms is not None:
-        return tuple(prediction_config.transforms), "prediction_config"
-
-    if training_datamodule_external:
-        return (), "default_identity"
-
-    inherited_transforms = tuple(
-        PredictionTransformConfig.model_validate(
-            transform.model_dump(
-                mode="python",
-                exclude={"apply_to"},
-            )
-        )
-        for transform in training_config.transforms
-        if "validation" in transform.apply_to
-    )
-
-    return inherited_transforms, "training_config"
-
-
 def _resolve_training_manifest_path(
     *,
     prediction_config: PredictionConfig,
@@ -925,3 +905,143 @@ def _resolve_reconstruction_latent_source(
         )
 
     return configured_source
+
+
+def _resolve_prediction_transform_pipelines(
+    *,
+    prediction_config: PredictionConfig,
+    training_config: TrainingConfig,
+    training_datamodule_external: bool,
+    model_family: ModelFamilySpec,
+) -> tuple[
+    tuple[PredictionTransformPipelineConfig, ...],
+    PredictionTransformPipelineSource,
+]:
+    """Resolve the effective prediction transform pipelines."""
+
+    if prediction_config.transform_pipelines is not None:
+        resolved_pipelines = _resolve_explicit_prediction_transform_routes(
+            prediction_config.transform_pipelines,
+            model_family=model_family,
+            declarations_config=(
+                training_config.composite_model_declarations
+            ),
+        )
+
+        return resolved_pipelines, "prediction_config"
+
+    if training_datamodule_external:
+        return (), "default_identity"
+
+    inherited_pipelines: list[PredictionTransformPipelineConfig] = []
+
+    for training_pipeline in training_config.transform_pipelines:
+        inherited_steps = [
+            PredictionTransformStepConfig.model_validate(
+                step.model_dump(
+                    mode="python",
+                    exclude={"apply_to"},
+                )
+            )
+            for step in training_pipeline.steps
+            if "validation" in step.apply_to
+        ]
+
+        if not inherited_steps:
+            continue
+
+        assert training_pipeline.input is not None
+        assert training_pipeline.output is not None
+
+        inherited_pipelines.append(
+            PredictionTransformPipelineConfig(
+                input=training_pipeline.input,
+                output=training_pipeline.output,
+                steps=inherited_steps,
+            )
+        )
+
+    if not inherited_pipelines:
+        return (), "default_identity"
+
+    return tuple(inherited_pipelines), "training_config"
+
+
+def _resolve_explicit_prediction_transform_routes(
+    configs: list[PredictionTransformPipelineConfig],
+    *,
+    model_family: ModelFamilySpec,
+    declarations_config: CompositeModelDeclarationsConfig | None,
+) -> tuple[PredictionTransformPipelineConfig, ...]:
+    """Validate and materialize explicitly configured prediction routes."""
+
+    if isinstance(model_family, CanonicalModelFamilySpec):
+        for index, pipeline in enumerate(configs):
+            route = (pipeline.input, pipeline.output)
+
+            if route not in {
+                (None, None),
+                ("x", "x"),
+            }:
+                raise ValueError(
+                    "Canonical model prediction transform pipelines use the "
+                    "fixed route `x` to `x`; omit both fields or provide that "
+                    f"resolved route: transform_pipelines[{index}]."
+                )
+
+        return tuple(
+            pipeline.model_copy(
+                update={
+                    "input": "x",
+                    "output": "x",
+                }
+            )
+            for pipeline in configs
+        )
+
+    assert declarations_config is not None
+
+    input_roles = declarations_config.expects
+    sample_image_name = next(
+        name
+        for name, role in input_roles.items()
+        if role == "sample_image"
+    )
+
+    resolved: list[PredictionTransformPipelineConfig] = []
+
+    for index, pipeline in enumerate(configs):
+        input_name = pipeline.input or sample_image_name
+        output_name = pipeline.output or input_name
+
+        for field_name, declared_name in (
+            ("input", input_name),
+            ("output", output_name),
+        ):
+            if declared_name not in input_roles:
+                raise ValueError(
+                    f"`transform_pipelines[{index}].{field_name}` references "
+                    f"{declared_name!r}, which is not declared under the "
+                    "training configuration's "
+                    "`composite_model_declarations.expects`."
+                )
+
+            role = input_roles[declared_name]
+
+            if TENSOR_STRUCTURE_BY_ROLE[role] != "image":
+                raise ValueError(
+                    f"`transform_pipelines[{index}].{field_name}` references "
+                    f"{declared_name!r}, whose declared role {role!r} is not "
+                    "an image."
+                )
+
+        resolved.append(
+            pipeline.model_copy(
+                update={
+                    "input": input_name,
+                    "output": output_name,
+                }
+            )
+        )
+
+    return tuple(resolved)

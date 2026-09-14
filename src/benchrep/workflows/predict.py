@@ -15,7 +15,7 @@ from benchrep.assembly.config import (
 from benchrep.assembly.builders import (
     build_dataset,
     build_datamodule,
-    build_transform_pipeline,
+    build_transform_pipeline_sequence,
     build_model,
     build_trainer,
     build_runtime_component,
@@ -289,22 +289,28 @@ def _predict(
                 "VAE reconstructions will be decoded from the sampled latent "
                 "(`z_sample`)."
             )
-    if run_spec.transform_source == "default_identity":
-        warning = (
-            "Training used an external datamodule, so validation-targeted "
-            "transforms could not be inherited. No prediction transforms were "
-            "configured; using an identity transform pipeline."
+    if run_spec.transform_pipeline_source == "default_identity":
+        run_log.info(
+            "No prediction transform pipelines were configured or inherited; "
+            "samples will pass through unchanged."
         )
-        inference_warnings.append(warning)
-        run_log.warning(warning)
 
-    elif run_spec.transform_source != "external_datamodule":
-        assert run_spec.transform_configs is not None
+    elif run_spec.transform_pipeline_source != "external_datamodule":
+        assert run_spec.transform_pipeline_configs is not None
+
+        pipeline_summary = [
+            {
+                "input": pipeline.input,
+                "output": pipeline.output,
+                "steps": [step.name for step in pipeline.steps],
+            }
+            for pipeline in run_spec.transform_pipeline_configs
+        ]
 
         run_log.info(
-            "Resolved prediction transforms: source=%s, transforms=%s",
-            run_spec.transform_source,
-            [transform.name for transform in run_spec.transform_configs],
+            "Resolved prediction transform pipelines: source=%s, pipelines=%s",
+            run_spec.transform_pipeline_source,
+            pipeline_summary,
         )
 
     # Bookkeeping --- config
@@ -344,10 +350,10 @@ def _predict(
 
         assert dataset_config is not None
         assert datamodule_config is not None
-        assert run_spec.transform_configs is not None
+        assert run_spec.transform_pipeline_configs is not None
 
-        prediction_pipeline = build_transform_pipeline(
-            run_spec.transform_configs,
+        prediction_pipelines = build_transform_pipeline_sequence(
+            run_spec.transform_pipeline_configs,
         )
 
         dataset = build_dataset(
@@ -359,7 +365,7 @@ def _predict(
             datamodule_config=datamodule_config,
             seed=run_spec.seed,
             stage=run_spec.stage,
-            prediction_pipeline=prediction_pipeline,
+            prediction_pipelines=prediction_pipelines,
         )
     else:
         run_log.info(
