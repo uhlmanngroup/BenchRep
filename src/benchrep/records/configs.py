@@ -101,7 +101,7 @@ def save_resolved_config(
     """Save the resolved config object into the run config directory."""
 
     output_path = out_dir / filename
-    config_dict = _as_serializable_dict(resolved_config)
+    config_dict = config_to_serializable_dict(resolved_config)
 
     with output_path.open("w", encoding="utf-8") as file:
         yaml.safe_dump(config_dict, file, sort_keys=False)
@@ -109,7 +109,7 @@ def save_resolved_config(
     return output_path
 
 
-def _as_serializable_dict(config: BaseModel | dict[str, Any]) -> dict[str, Any]:
+def config_to_serializable_dict(config: BaseModel | dict[str, Any]) -> dict[str, Any]:
     """Convert a Pydantic config object or plain dictionary into a YAML-safe dict."""
 
     if isinstance(config, BaseModel):

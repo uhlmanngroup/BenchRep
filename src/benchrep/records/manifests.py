@@ -23,6 +23,7 @@ from benchrep.records.logs import (
     STDERR_LOG_FILENAME,
     STDOUT_LOG_FILENAME,
 )
+from benchrep.records.configs import config_to_serializable_dict
 from benchrep.records.utils import (
     paths_to_strings,
     count_paths,
@@ -38,6 +39,10 @@ from benchrep.runtime.status import (
     build_outcome_summary,
     EvaluationSectionStatus,
     EvaluationStatusReport,
+)
+from benchrep.interfaces.model_families import (
+    CanonicalModelFamilySpec,
+    VAE_FAMILY,
 )
 
 
@@ -68,8 +73,10 @@ def write_training_manifest(
     config = run_spec.training_config
 
     configured_model = config.model.name if config.model is not None else None
-    configured_encoder = config.encoder.name if config.encoder is not None else None
-    configured_decoder = config.decoder.name if config.decoder is not None else None
+
+    model_architecture_summary = (
+        _build_training_model_architecture_summary(run_spec=run_spec)
+    )
 
     configured_dataset = (
         config.dataset.model_dump(mode="json")
@@ -77,17 +84,8 @@ def write_training_manifest(
         else None
     )
 
-    configured_transform_pipelines = (
-        [
-            pipeline.model_dump(mode="json")
-            for pipeline in config.transform_pipelines
-        ]
-        if not datamodule_is_external
-        else None
-    )
-
     transform_pipelines_by_split = (
-        _summarize_training_transform_pipelines(config)
+        _summarize_transform_pipelines(config)
         if not datamodule_is_external
         else None
     )
@@ -128,18 +126,17 @@ def write_training_manifest(
 
     summary = {
         "model_source": run_spec.model_source,
+        "model_name": None if model_is_external else configured_model,
+        "model_class": model_class_name,
+        "model_architecture": model_architecture_summary,
         "datamodule_source": run_spec.datamodule_source,
-        "model": model_class_name if model_is_external else configured_model,
-        "model_family": run_spec.model_family.name,
-        "encoder": None if model_is_external else configured_encoder,
-        "decoder": None if model_is_external else configured_decoder,
+        "datamodule_class": datamodule_class_name,
         "dataset": (
             configured_dataset["name"]
             if configured_dataset is not None
             else None
         ),
         "transform_pipelines": transform_pipelines_by_split,
-        "datamodule": datamodule_class_name if datamodule_is_external else None,
         "batch_size": (
             configured_datamodule.get("batch_size")
             if configured_datamodule is not None
@@ -216,31 +213,21 @@ def write_training_manifest(
             "run_name": run_context.run_name,
             "output_dir": str(run_context.output_dir),
         },
-        "provenance": {
+        "construction": {
             "config": {
                 "run_reconstructable_from_resolved_config": (
-                    not model_is_external and not datamodule_is_external
+                        not model_is_external and not datamodule_is_external
                 ),
                 "effective_source": config_composition_result.effective_source,
                 "yaml_supplied": config_composition_result.yaml_supplied,
                 "yaml_used_as_base": config_composition_result.yaml_used_as_base,
-                "original_config_path": (
-                    str(config_composition_result.original_config_path)
-                    if config_composition_result.original_config_path is not None
-                    else None
-                ),
             },
             "model": {
                 "source": run_spec.model_source,
                 "family": run_spec.model_family.name,
                 "class_name": model_class_name,
                 "config_reconstructable": not model_is_external,
-                "configured_model": None if model_is_external else configured_model,
-                "configured_encoder": None if model_is_external else configured_encoder,
-                "configured_decoder": None if model_is_external else configured_decoder,
             },
-            "dataset": configured_dataset,
-            "transform_pipelines": configured_transform_pipelines,
             "datamodule": {
                 "source": run_spec.datamodule_source,
                 "class_name": datamodule_class_name,
@@ -249,13 +236,15 @@ def write_training_manifest(
                         and configured_dataset is not None
                         and configured_datamodule is not None
                 ),
-                "configured_datamodule": configured_datamodule,
             },
         },
         "records": records,
         "early_stopping": early_stopping,
         "checkpoints": checkpoints,
         "summary": summary,
+        "appendix": {
+            "resolved_config": config_to_serializable_dict(config),
+        },
     }
 
     write_yaml_record(manifest, output_path)
@@ -1241,39 +1230,103 @@ def _collect_paths(value: Any) -> list[Path]:
     return []
 
 
-def _summarize_training_transform_pipelines(
-    config: TrainingConfig,
-) -> dict[str, list[dict[str, Any]]]:
-    """Summarize effective transform routing for each training split."""
+def _build_training_model_architecture_summary(
+    *,
+    run_spec: TrainingRunSpec,
+) -> dict[str, Any] | None:
+    config = run_spec.training_config
 
-    pipelines_by_split: dict[str, list[dict[str, Any]]] = {
-        "training": [],
-        "validation": [],
-    }
+    if run_spec.model_source != "config":
+        return None
 
-    for split in pipelines_by_split:
-        for pipeline in config.transform_pipelines:
-            step_names = [
-                step.name
-                for step in pipeline.steps
-                if split in step.apply_to
+    if isinstance(run_spec.model_family, CanonicalModelFamilySpec):
+        assert config.model is not None
+        assert config.encoder is not None
+        assert config.decoder is not None
+
+        architecture_summary: dict[str, Any] = {
+            "encoder": config.encoder.name,
+            "decoder": config.decoder.name,
+        }
+
+        if run_spec.model_family == VAE_FAMILY:
+            architecture_summary["latent_dim"] = config.model.params[
+                "latent_dim"
             ]
 
-            if not step_names:
+        return architecture_summary
+
+    if run_spec.model_family.name == "composite":
+        assert config.composite_model_declarations is not None
+        assert config.composite_model_components is not None
+        assert config.composite_model_assembly is not None
+
+        return {
+            "declarations": (
+                config.composite_model_declarations.model_dump(
+                    mode="json"
+                )
+            ),
+            "components": {
+                component_id: {
+                    "kind": component.kind,
+                    "name": component.name,
+                }
+                for component_id, component
+                in config.composite_model_components.items()
+            },
+            "assembly": {
+                step_id: {
+                    "component": step.component,
+                }
+                for step_id, step
+                in config.composite_model_assembly.items()
+            },
+        }
+
+    raise TypeError(
+        "Unsupported model family specification type: "
+        f"{type(run_spec.model_family).__name__}."
+    )
+
+
+def _summarize_transform_pipelines(
+    config: TrainingConfig | PredictionConfig,
+) -> dict[str, list[str]]:
+    """Summarize ordered transform pipelines by effective workflow split."""
+
+    if isinstance(config, TrainingConfig):
+        splits = ("training", "validation")
+        transform_pipelines = config.transform_pipelines
+    else:
+        splits = ("prediction",)
+        transform_pipelines = config.transform_pipelines or []
+
+    pipelines_by_split: dict[str, list[str]] = {
+        split: []
+        for split in splits
+    }
+
+    for split in splits:
+        for pipeline in transform_pipelines:
+            if isinstance(config, TrainingConfig):
+                n_steps = sum(
+                    1
+                    for step in pipeline.steps
+                    if split in step.apply_to
+                )
+            else:
+                n_steps = len(pipeline.steps)
+
+            if n_steps == 0:
                 continue
 
             assert pipeline.input is not None
             assert pipeline.output is not None
 
             pipelines_by_split[split].append(
-                {
-                    "input": pipeline.input,
-                    "output": pipeline.output,
-                    "same_key_replacement": (
-                        pipeline.input == pipeline.output
-                    ),
-                    "steps": step_names,
-                }
+                f"{pipeline.input} -> {pipeline.output} "
+                f"[n_steps={n_steps}]"
             )
 
     return pipelines_by_split
