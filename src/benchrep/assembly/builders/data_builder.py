@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Any, Literal, TypeAlias
 
 from pydantic import BaseModel
 
@@ -16,8 +16,11 @@ from benchrep.architecture.data import (
     TransformStep,
 )
 from benchrep.assembly.schemas import (
+    PredictionTransformPipelineConfig,
+    PredictionTransformStepConfig,
     TrainingDataModuleConfig,
-    TrainingTransformConfig,
+    TrainingTransformPipelineConfig,
+    TrainingTransformStepConfig,
     SupportedDatasetConfig,
 )
 from benchrep.assembly.schemas.training_config_schema import NamedConfig
@@ -25,12 +28,21 @@ from benchrep.assembly.registries.utils import normalize_name
 from benchrep.assembly.registries.core import DATASETS, TRANSFORMS
 
 
+SupportedTransformStepConfig: TypeAlias = (
+    TrainingTransformStepConfig | PredictionTransformStepConfig
+)
+
+SupportedTransformPipelineConfig: TypeAlias = (
+    TrainingTransformPipelineConfig | PredictionTransformPipelineConfig
+)
+
+
 @dataclass(frozen=True)
 class TransformPipelineBundle:
-    """Split-specific pipelines derived from one ordered training config."""
+    """Split-specific ordered transform pipelines."""
 
-    training: TransformPipeline
-    validation: TransformPipeline
+    training: tuple[TransformPipeline, ...]
+    validation: tuple[TransformPipeline, ...]
 
 
 def build_datamodule(
@@ -39,20 +51,20 @@ def build_datamodule(
     datamodule_config: TrainingDataModuleConfig,
     seed: int | None = None,
     stage: Literal["training", "prediction"],
-    training_pipeline: TransformPipeline | None = None,
-    validation_pipeline: TransformPipeline | None = None,
-    prediction_pipeline: TransformPipeline | None = None,
+    training_pipelines: Sequence[TransformPipeline] | None = None,
+    validation_pipelines: Sequence[TransformPipeline] | None = None,
+    prediction_pipelines: Sequence[TransformPipeline] | None = None,
 ) -> BenchRepDataModule:
     """Build a BenchRep datamodule around an instantiated dataset.
 
     During training, ``dataset`` becomes the training dataset and may be
     divided into training and validation subsets according to
     ``datamodule_config.val_fraction``. The resulting subsets receive
-    ``training_pipeline`` and ``validation_pipeline`` respectively.
+    ``training_pipelines`` and ``validation_pipelines`` respectively.
 
     During prediction, ``dataset`` becomes the prediction dataset and receives
-    ``prediction_pipeline``. If no explicit prediction pipeline is supplied,
-    ``BenchRepDataModule`` falls back to ``validation_pipeline``.
+    ``prediction_pipelines``. If no explicit prediction pipeline is supplied,
+    ``BenchRepDataModule`` falls back to ``validation_pipelines``.
 
     Parameters
     ----------
@@ -64,13 +76,13 @@ def build_datamodule(
         Optional seed used for reproducible train-validation splitting.
     stage:
         Whether the dataset is assigned for training or prediction.
-    training_pipeline:
+    training_pipelines:
         Ordered transforms applied to training samples.
-    validation_pipeline:
+    validation_pipelines:
         Ordered transforms applied to validation samples. Also used for test
         samples and as the prediction fallback when no explicit prediction
         pipeline is supplied.
-    prediction_pipeline:
+    prediction_pipelines:
         Optional explicit transforms applied to prediction samples.
 
     Returns
@@ -95,9 +107,9 @@ def build_datamodule(
         datamodule_config=datamodule_config,
         train_dataset=dataset if stage == "training" else None,
         predict_dataset=dataset if stage == "prediction" else None,
-        training_pipeline=training_pipeline,
-        validation_pipeline=validation_pipeline,
-        prediction_pipeline=prediction_pipeline,
+        training_pipelines=training_pipelines,
+        validation_pipelines=validation_pipelines,
+        prediction_pipelines=prediction_pipelines,
         seed=seed,
     )
 
@@ -173,75 +185,113 @@ def build_dataset(
     return dataset
 
 
-def build_transform_pipelines(
-    transform_configs: Sequence[TrainingTransformConfig],
+def build_transform_pipelines_bundle(
+    transform_pipeline_configs: Sequence[TrainingTransformPipelineConfig],
 ) -> TransformPipelineBundle:
-    """Build ordered training and validation transform pipelines.
-
-    Each configuration is included in every pipeline named by its ``apply_to``
-    field. The configurations retain their original relative order within each
-    resulting pipeline. A split with no targeted transforms receives an empty
-    pipeline.
-    """
-    indexed_configs = tuple(enumerate(transform_configs))
-
-    training_steps = [
-        _build_transform_step(
-            transform_config,
-            index=index,
-        )
-        for index, transform_config in indexed_configs
-        if "training" in transform_config.apply_to
-    ]
-
-    validation_steps = [
-        _build_transform_step(
-            transform_config,
-            index=index,
-        )
-        for index, transform_config in indexed_configs
-        if "validation" in transform_config.apply_to
-    ]
+    """Build training and validation transform-pipeline sequences."""
 
     return TransformPipelineBundle(
-        training=TransformPipeline(training_steps),
-        validation=TransformPipeline(validation_steps),
+        training=build_transform_pipeline_sequence(
+            transform_pipeline_configs,
+            apply_to="training",
+        ),
+        validation=build_transform_pipeline_sequence(
+            transform_pipeline_configs,
+            apply_to="validation",
+        ),
     )
+
+
+def build_transform_pipeline_sequence(
+    transform_pipeline_configs: Sequence[
+        SupportedTransformPipelineConfig
+    ],
+    *,
+    apply_to: Literal["training", "validation"] | None = None,
+) -> tuple[TransformPipeline, ...]:
+    """Build one ordered sequence of routed transform pipelines."""
+
+    pipelines: list[TransformPipeline] = []
+
+    for pipeline_index, pipeline_config in enumerate(
+        transform_pipeline_configs
+    ):
+        assert pipeline_config.input is not None
+        assert pipeline_config.output is not None
+
+        pipeline = build_transform_pipeline(
+            pipeline_config.steps,
+            input_key=pipeline_config.input,
+            output_key=pipeline_config.output,
+            config_path=(
+                f"config.transform_pipelines[{pipeline_index}].steps"
+            ),
+            apply_to=apply_to,
+        )
+
+        if len(pipeline) > 0:
+            pipelines.append(pipeline)
+
+    return tuple(pipelines)
 
 
 def build_transform_pipeline(
-    transform_configs: Sequence[NamedConfig],
+    transform_step_configs: Sequence[SupportedTransformStepConfig],
+    *,
+    input_key: str,
+    output_key: str,
+    config_path: str,
+    apply_to: Literal["training", "validation"] | None = None,
 ) -> TransformPipeline:
-    """Build one ordered pipeline containing every supplied transform.
+    """Build one routed, ordered transform pipeline."""
 
-    This is used for contexts such as explicit prediction configuration, where
-    every transform in the sequence applies and split-routing metadata is
-    unnecessary.
-    """
-    steps = [
-        _build_transform_step(
-            transform_config,
-            index=index,
+    steps: list[TransformStep] = []
+
+    for index, transform_step_config in enumerate(
+        transform_step_configs
+    ):
+        if apply_to is not None:
+            if not isinstance(
+                transform_step_config,
+                TrainingTransformStepConfig,
+            ):
+                raise TypeError(
+                    "`apply_to` filtering requires training transform steps."
+                )
+
+            if apply_to not in transform_step_config.apply_to:
+                continue
+
+        steps.append(
+            _build_transform_step(
+                transform_step_config,
+                config_path=f"{config_path}[{index}]",
+            )
         )
-        for index, transform_config in enumerate(transform_configs)
-    ]
 
-    return TransformPipeline(steps)
+    return TransformPipeline(
+        input_key=input_key,
+        output_key=output_key,
+        steps=steps,
+    )
 
 
 def _build_transform_step(
-    transform_config: NamedConfig,
+    transform_step_config: NamedConfig,
     *,
-    index: int,
+    config_path: str,
 ) -> TransformStep:
-    """Resolve and instantiate one registered transform configuration."""
+    """Resolve and instantiate one registered transform step."""
+
     transform_name = normalize_name(
-        transform_config.name,
-        field_name=f"config.transforms[{index}].name",
+        transform_step_config.name,
+        field_name=f"{config_path}.name",
     )
 
-    transform_factory = TRANSFORMS.get(transform_name)
-    transform = transform_factory(**dict(transform_config.params))
+    transform = TRANSFORMS.create(
+        transform_name,
+        **transform_step_config.params,
+    )
 
     return TransformStep(
         name=transform_name,
@@ -257,9 +307,9 @@ def _instantiate_datamodule(
     val_dataset: Any | None = None,
     test_dataset: Any | None = None,
     predict_dataset: Any | None = None,
-    training_pipeline: TransformPipeline | None = None,
-    validation_pipeline: TransformPipeline | None = None,
-    prediction_pipeline: TransformPipeline | None = None,
+    training_pipelines: Sequence[TransformPipeline] | None = None,
+    validation_pipelines: Sequence[TransformPipeline] | None = None,
+    prediction_pipelines: Sequence[TransformPipeline] | None = None,
 ) -> BenchRepDataModule:
     datamodule_params = datamodule_config.model_dump()
 
@@ -272,9 +322,9 @@ def _instantiate_datamodule(
         val_dataset=val_dataset,
         test_dataset=test_dataset,
         predict_dataset=predict_dataset,
-        training_pipeline=training_pipeline,
-        validation_pipeline=validation_pipeline,
-        prediction_pipeline=prediction_pipeline,
+        training_pipelines=training_pipelines,
+        validation_pipelines=validation_pipelines,
+        prediction_pipelines=prediction_pipelines,
         seed=seed,
         **datamodule_params,
     )

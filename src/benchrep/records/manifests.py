@@ -77,28 +77,17 @@ def write_training_manifest(
         else None
     )
 
-    configured_transforms = (
+    configured_transform_pipelines = (
         [
-            transform.model_dump(mode="json")
-            for transform in config.transforms
+            pipeline.model_dump(mode="json")
+            for pipeline in config.transform_pipelines
         ]
         if not datamodule_is_external
         else None
     )
 
-    transform_names_by_split = (
-        {
-            "training": [
-                transform.name
-                for transform in config.transforms
-                if "training" in transform.apply_to
-            ],
-            "validation": [
-                transform.name
-                for transform in config.transforms
-                if "validation" in transform.apply_to
-            ],
-        }
+    transform_pipelines_by_split = (
+        _summarize_training_transform_pipelines(config)
         if not datamodule_is_external
         else None
     )
@@ -149,7 +138,7 @@ def write_training_manifest(
             if configured_dataset is not None
             else None
         ),
-        "transforms": transform_names_by_split,
+        "transform_pipelines": transform_pipelines_by_split,
         "datamodule": datamodule_class_name if datamodule_is_external else None,
         "batch_size": (
             configured_datamodule.get("batch_size")
@@ -251,7 +240,7 @@ def write_training_manifest(
                 "configured_decoder": None if model_is_external else configured_decoder,
             },
             "dataset": configured_dataset,
-            "transforms": configured_transforms,
+            "transform_pipelines": configured_transform_pipelines,
             "datamodule": {
                 "source": run_spec.datamodule_source,
                 "class_name": datamodule_class_name,
@@ -1235,3 +1224,41 @@ def _collect_paths(value: Any) -> list[Path]:
         return paths
 
     return []
+
+
+def _summarize_training_transform_pipelines(
+    config: TrainingConfig,
+) -> dict[str, list[dict[str, Any]]]:
+    """Summarize effective transform routing for each training split."""
+
+    pipelines_by_split: dict[str, list[dict[str, Any]]] = {
+        "training": [],
+        "validation": [],
+    }
+
+    for split in pipelines_by_split:
+        for pipeline in config.transform_pipelines:
+            step_names = [
+                step.name
+                for step in pipeline.steps
+                if split in step.apply_to
+            ]
+
+            if not step_names:
+                continue
+
+            assert pipeline.input is not None
+            assert pipeline.output is not None
+
+            pipelines_by_split[split].append(
+                {
+                    "input": pipeline.input,
+                    "output": pipeline.output,
+                    "same_key_replacement": (
+                        pipeline.input == pipeline.output
+                    ),
+                    "steps": step_names,
+                }
+            )
+
+    return pipelines_by_split

@@ -68,7 +68,7 @@ from benchrep.assembly.schemas import TrainingConfig
 from benchrep.assembly.builders import (
     build_datamodule,
     build_dataset,
-    build_transform_pipelines,
+    build_transform_pipelines_bundle,
     build_model,
     build_trainer,
     build_runtime_component,
@@ -301,9 +301,10 @@ def _train(
         assert datamodule_config is not None
 
         validation_transform_names = tuple(
-            transform.name
-            for transform in resolved_training_config.transforms
-            if "validation" in transform.apply_to
+            step.name
+            for pipeline in resolved_training_config.transform_pipelines
+            for step in pipeline.steps
+            if "validation" in step.apply_to
         )
 
         if (
@@ -318,8 +319,8 @@ def _train(
                 validation_transform_names,
             )
 
-        transform_pipelines = build_transform_pipelines(
-            resolved_training_config.transforms,
+        transform_pipelines = build_transform_pipelines_bundle(
+            resolved_training_config.transform_pipelines,
         )
 
         dataset = build_dataset(
@@ -331,14 +332,14 @@ def _train(
             datamodule_config=datamodule_config,
             seed=resolved_training_config.reproducibility.seed,
             stage=run_spec.stage,
-            training_pipeline=transform_pipelines.training,
-            validation_pipeline=transform_pipelines.validation,
+            training_pipelines=transform_pipelines.training,
+            validation_pipelines=transform_pipelines.validation,
         )
     else:
         run_log.info(
-            "External datamodule was provided; dataset, datamodule, and transforms "
-            "config sections will be ignored regardless of whether they came from "
-            "YAML, a full config object, or config_components."
+            "External datamodule was provided; dataset, datamodule, and transform "
+            "pipelines config sections will be ignored regardless of whether they "
+            "came from YAML, a full config object, or config_components."
         )
 
     model = build_runtime_component(

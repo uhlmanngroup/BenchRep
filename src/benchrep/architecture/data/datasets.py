@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Sized
+from collections.abc import Sequence, Sized
 from typing import Any, Literal
 
 import torch
@@ -61,28 +61,22 @@ class BaseDataset(Dataset[dict[str, Any]], ABC):
 
 
 class TransformedDataset(BaseDataset):
-    """Wrap a dataset and transform each sample's ``"x"`` tensor.
+    """Apply ordered, field-routed transform pipelines to dataset samples.
 
-    The wrapped dataset must return samples following the BenchRep sample
-    contract. Only ``sample["x"]`` is transformed; all other sample fields are
-    preserved unchanged.
-
-    Notes
-    -----
-    The sample dictionary is shallow-copied, but ``sample["x"]`` is not cloned.
-    An in-place transform may therefore modify tensor storage owned by the
-    wrapped dataset.
+    Each pipeline reads its input from the sample state produced by preceding
+    pipelines and assigns its result to its configured output key. Existing
+    output fields are overwritten.
     """
 
     def __init__(
         self,
         dataset: Dataset[dict[str, Any]],
-        pipeline: TransformPipeline,
+        pipelines: Sequence[TransformPipeline],
     ) -> None:
         super().__init__()
 
         self.dataset = dataset
-        self.pipeline = pipeline
+        self.pipelines = tuple(pipelines)
 
     def __len__(self) -> int:
         assert isinstance(self.dataset, Sized)
@@ -91,11 +85,41 @@ class TransformedDataset(BaseDataset):
 
     def __getitem__(self, index: int) -> dict[str, Any]:
         sample = self.validate_sample(self.dataset[index])
+        transformed_sample = dict(sample)
 
-        transformed_sample = {
-            **sample,
-            "x": self.pipeline(sample["x"]),
-        }
+        for pipeline_index, pipeline in enumerate(self.pipelines):
+            input_key = pipeline.input_key
+            output_key = pipeline.output_key
+
+            if input_key not in transformed_sample:
+                raise KeyError(
+                    f"Transform pipeline {pipeline_index} requires input key "
+                    f"{input_key!r}, but the current sample does not contain it. "
+                    f"Available keys: {tuple(transformed_sample)}."
+                )
+
+            input_tensor = transformed_sample[input_key]
+
+            if not isinstance(input_tensor, torch.Tensor):
+                raise TypeError(
+                    f"Transform pipeline {pipeline_index} input "
+                    f"{input_key!r} must be a torch.Tensor, got "
+                    f"{type(input_tensor).__name__}."
+                )
+
+            if input_key != output_key:
+                input_tensor = input_tensor.clone()
+
+            output_tensor = pipeline(input_tensor)
+
+            if not isinstance(output_tensor, torch.Tensor):
+                raise TypeError(
+                    f"Transform pipeline {pipeline_index} output "
+                    f"{output_key!r} must be a torch.Tensor, got "
+                    f"{type(output_tensor).__name__}."
+                )
+
+            transformed_sample[output_key] = output_tensor
 
         return self.validate_sample(transformed_sample)
 

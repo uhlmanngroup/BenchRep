@@ -902,48 +902,6 @@ class TrainingInspectionConfig(_TrainingConfigBaseModel):
 ParamsT = TypeVar("ParamsT")
 
 
-class TrainingTransformConfig(NamedConfig):
-    """Configuration for one transform in an ordered transform sequence.
-
-    Use `benchrep.inspect_registry("transform")` to inspect available names and
-    aliases, and `benchrep.inspect_registry("transform", "<name>")` for the
-    registered constructor signature and documentation.
-    """
-
-    apply_to: list[Literal["training", "validation"]] = Field(
-        min_length=1,
-        description=(
-            "Split pipelines that include this transform. The transform's "
-            "position in the surrounding sequence determines its order within "
-            "each targeted pipeline. Validation-targeted transforms are also "
-            "inherited by linked prediction runs when prediction transforms "
-            "are omitted or null."
-        ),
-        json_schema_extra={
-            "omit_behavior": "Required; omission raises a validation error.",
-            "null_behavior": "Not allowed.",
-            "notes": [
-                "If `datamodule.val_fraction` is 0, validation-targeted "
-                "transforms do not run during training but remain available "
-                "for inheritance by linked prediction."
-            ],
-        },
-    )
-
-    @field_validator("apply_to")
-    @classmethod
-    def validate_unique_transform_targets(
-        cls,
-        value: list[Literal["training", "validation"]],
-    ) -> list[Literal["training", "validation"]]:
-        if len(value) != len(set(value)):
-            raise ValueError(
-                "apply_to must not contain duplicate split targets."
-            )
-
-        return value
-
-
 class DatasetConfig(_TrainingConfigBaseModel, Generic[ParamsT]):
     """Selects a registered dataset and configures its construction.
 
@@ -1291,6 +1249,66 @@ class TrainingDataModuleConfig(_TrainingConfigBaseModel):
 
 
 # -------------------------
+# Transform config
+# -------------------------
+class TrainingTransformStepConfig(NamedConfig):
+    """Configuration for one transform in an ordered transform sequence.
+
+    Use `benchrep.inspect_registry("transform")` to inspect available names and
+    aliases, and `benchrep.inspect_registry("transform", "<name>")` for the
+    registered constructor signature and documentation.
+    """
+
+    apply_to: list[Literal["training", "validation"]] = Field(
+        min_length=1,
+        description=(
+            "Split pipelines that include this transform. The transform's "
+            "position in the surrounding sequence determines its order within "
+            "each targeted pipeline. Validation-targeted transforms are also "
+            "inherited by linked prediction runs when prediction transforms "
+            "are omitted or null."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+            "notes": [
+                "If `datamodule.val_fraction` is 0, validation-targeted "
+                "transforms do not run during training but remain available "
+                "for inheritance by linked prediction."
+            ],
+        },
+    )
+
+    @field_validator("apply_to")
+    @classmethod
+    def validate_unique_transform_targets(
+        cls,
+        value: list[Literal["training", "validation"]],
+    ) -> list[Literal["training", "validation"]]:
+        if len(value) != len(set(value)):
+            raise ValueError(
+                "apply_to must not contain duplicate split targets."
+            )
+
+        return value
+
+
+class TrainingTransformPipelineConfig(_TrainingConfigBaseModel):
+    input: str | None = None
+    output: str | None = None
+    steps: list[TrainingTransformStepConfig] = Field(min_length=1)
+
+    @field_validator("input", "output")
+    @classmethod
+    def validate_field_name(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError(
+                "Transform pipeline input and output names must be nonempty."
+            )
+        return value
+
+
+# -------------------------
 # Full experiment configuration
 # -------------------------
 class TrainingConfig(_TrainingConfigBaseModel):
@@ -1473,10 +1491,10 @@ class TrainingConfig(_TrainingConfigBaseModel):
         },
     )
 
-    transforms: list[TrainingTransformConfig] = Field(
+    transform_pipelines: list[TrainingTransformPipelineConfig] = Field(
         default_factory=list,
         description=(
-            "Ordered transform definitions applied to each dataset sample's `x` tensor "
+            "Ordered transform pipelines applied to each dataset sample's `input` tensor "
             "before batching."
         ),
         json_schema_extra={

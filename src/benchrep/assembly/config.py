@@ -31,7 +31,7 @@ from benchrep.assembly.schemas.training_config_schema import (
     SupportedLossRole,
     TrainingLossTermConfig,
     TrainingOptimizerConfig,
-    TrainingTransformConfig,
+    TrainingTransformPipelineConfig,
     SupportedDatasetConfig,
     TrainingDataModuleConfig,
     TrainingTrainerConfig,
@@ -51,7 +51,7 @@ from benchrep.assembly.schemas.prediction_config_schema import (
     PredictionSourceConfig,
     PredictionDataConfig,
     PredictionInferenceConfig,
-    PredictionTransformConfig,
+    PredictionTransformPipelineConfig,
     PredictionExportConfig,
 )
 from benchrep.assembly.schemas.evaluation_config_schema import (
@@ -100,9 +100,13 @@ CompositeModelAssemblyConfig: TypeAlias = dict[
     CompositeModelAssemblyStepConfig,
 ]
 
-TransformsConfig: TypeAlias = list[TrainingTransformConfig]
+TrainingTransformPipelinesConfig: TypeAlias = list[
+    TrainingTransformPipelineConfig
+]
 AdditionalCallbacksConfig: TypeAlias = list[TrainingAdditionalCallbackConfig]
-PredictionTransformsConfig: TypeAlias = list[PredictionTransformConfig]
+PredictionTransformPipelinesConfig: TypeAlias = list[
+    PredictionTransformPipelineConfig
+]
 
 SupportedTrainingConfigComponent: TypeAlias = (
         RuntimeOverridesConfig
@@ -116,7 +120,7 @@ SupportedTrainingConfigComponent: TypeAlias = (
         | CompositeModelAssemblyConfig
         | LossesConfig
         | TrainingOptimizerConfig
-        | TransformsConfig
+        | TrainingTransformPipelinesConfig
         | SupportedDatasetConfig
         | TrainingDataModuleConfig
         | TrainingTrainerConfig
@@ -133,7 +137,7 @@ SupportedPredictionConfigComponent: TypeAlias = (
         | SupportedDatasetConfig
         | PredictionDataConfig
         | PredictionInferenceConfig
-        | PredictionTransformsConfig
+        | PredictionTransformPipelinesConfig
         | PredictionExportConfig
 )
 
@@ -553,32 +557,51 @@ def _normalize_config_components(
             normalized[key] = component
             continue
 
-        if key == "transforms" and schema in {TrainingConfig, PredictionConfig}:
-            transform_config_type = (
-                TrainingTransformConfig
-                if schema is TrainingConfig
-                else PredictionTransformConfig
-            )
-
+        if schema is TrainingConfig and key == "transform_pipelines":
             if not isinstance(component, list):
                 raise TypeError(
-                    f"{schema.__name__} component 'transforms' must be a list of "
-                    f"{transform_config_type.__name__} objects, got "
+                    "TrainingConfig component 'transform_pipelines' must be a list "
+                    "of TrainingTransformPipelineConfig objects, got "
                     f"{type(component).__name__}."
                 )
 
             if not all(
-                    isinstance(transform, transform_config_type)
-                    for transform in component
+                    isinstance(pipeline, TrainingTransformPipelineConfig)
+                    for pipeline in component
             ):
                 raise TypeError(
-                    f"Every item in {schema.__name__} component 'transforms' "
-                    f"must be a {transform_config_type.__name__} object."
+                    "Every item in TrainingConfig component "
+                    "'transform_pipelines' must be a "
+                    "TrainingTransformPipelineConfig object."
                 )
 
             normalized[key] = [
-                transform.model_dump(mode="python")
-                for transform in component
+                pipeline.model_dump(mode="python")
+                for pipeline in component
+            ]
+            continue
+
+        if schema is PredictionConfig and key == "transform_pipelines":
+            if not isinstance(component, list):
+                raise TypeError(
+                    "PredictionConfig component 'transform_pipelines' must be a list "
+                    "of PredictionTransformPipelineConfig objects, got "
+                    f"{type(component).__name__}."
+                )
+
+            if not all(
+                    isinstance(pipeline, PredictionTransformPipelineConfig)
+                    for pipeline in component
+            ):
+                raise TypeError(
+                    "Every item in PredictionConfig component "
+                    "'transform_pipelines' must be a "
+                    "PredictionTransformPipelineConfig object."
+                )
+
+            normalized[key] = [
+                pipeline.model_dump(mode="python")
+                for pipeline in component
             ]
             continue
 

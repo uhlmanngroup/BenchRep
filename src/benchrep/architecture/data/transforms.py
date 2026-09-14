@@ -34,44 +34,28 @@ class TransformStep:
 
 
 class TransformPipeline:
-    """Apply an ordered sequence of transforms to an arbitrary value.
+    """An ordered transform sequence routed between two sample fields.
 
-    Each step receives the preceding step's output, and the pipeline returns
-    only the final result. The pipeline does not interpret, validate, or copy
-    its input; callers determine what is transformed and whether cloning is
-    required.
-
-    Examples
-    --------
-    Transform one tensor::
-
-        transformed_x = pipeline(x)
-
-    Replace ``"x"`` while preserving the other sample fields::
-
-        transformed_sample = {
-            **sample,
-            "x": pipeline(sample["x"]),
-        }
-
-    Add one augmented positive while retaining the existing ``"x"``::
-
-        contrastive_sample = {
-            **sample,
-            "positive": pipeline(sample["x"].clone()),
-        }
-
-    Produce two independently augmented views::
-
-        source = sample["x"]
-        contrastive_sample = {
-            **sample,
-            "x": pipeline(source.clone()),
-            "positive": pipeline(source.clone()),
-        }
+    ``input_key`` and ``output_key`` describe sample-dictionary routing.
+    The pipeline itself only applies its steps; ``TransformedDataset`` handles
+    input lookup, cloning, validation, and output assignment.
     """
 
-    def __init__(self, steps: Sequence[TransformStep] = ()) -> None:
+    def __init__(
+        self,
+        *,
+        input_key: str,
+        output_key: str,
+        steps: Sequence[TransformStep] = (),
+    ) -> None:
+        if not input_key.strip():
+            raise ValueError("Transform pipeline input key must be nonempty.")
+
+        if not output_key.strip():
+            raise ValueError("Transform pipeline output key must be nonempty.")
+
+        self.input_key = input_key
+        self.output_key = output_key
         self.steps = tuple(steps)
 
     def __call__(self, value: Any) -> Any:

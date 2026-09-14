@@ -341,25 +341,28 @@ class PredictionInferenceConfig(_PredictionConfigBaseModel):
 
 
 # -------------------------
-# Transforms config
+# Transform config
 # -------------------------
-class PredictionTransformConfig(NamedConfig):
-    """Selects one transform in an ordered prediction transform sequence.
+class PredictionTransformStepConfig(NamedConfig):
+    """Select one transform step within a prediction pipeline."""
 
-    Every transform declared for prediction is applied, so prediction transforms
-    do not use the split-targeting `apply_to` field required by training
-    transforms. The position of this configuration in the surrounding list
-    determines its execution order.
 
-    Use `benchrep.inspect_registry("transform")` to inspect available names and
-    aliases, and `benchrep.inspect_registry("transform", "<name>")` for the
-    registered constructor signature and documentation.
+class PredictionTransformPipelineConfig(_PredictionConfigBaseModel):
+    """Configure one routed prediction transform pipeline."""
 
-    `params` are passed as keyword arguments to the selected transform factory.
-    The resulting callable receives one sample's `x` value and must return a
-    `torch.Tensor`. User-registered transforms must satisfy this contract and
-    must be registered before the prediction workflow resolves its configuration.
-    """
+    input: str | None = None
+    output: str | None = None
+    steps: list[PredictionTransformStepConfig] = Field(min_length=1)
+
+    @field_validator("input", "output")
+    @classmethod
+    def validate_field_name(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError(
+                "Transform pipeline input and output names must be nonempty."
+            )
+
+        return value
 
 
 # -------------------------
@@ -829,20 +832,19 @@ class PredictionConfig(_PredictionConfigBaseModel):
         },
     )
 
-    transforms: list[PredictionTransformConfig] | None = Field(
+    transform_pipelines: list[PredictionTransformPipelineConfig] | None = Field(
         default=None,
-        description="Ordered transforms applied during prediction.",
+        description="Ordered transform pipelines applied during prediction.",
         json_schema_extra={
             "omit_behavior": (
-                "Inherits available validation-targeted training transforms; "
-                "otherwise uses no configured transforms."
+                "Inherits validation-targeted transform pipelines from training; "
+                "otherwise uses no configured transform pipelines."
             ),
             "null_behavior": "Equivalent to omission.",
             "notes": [
-                "An explicit list replaces inherited transforms.",
+                "An explicit list replaces inherited transform pipelines.",
                 "An empty list applies no configured transforms.",
-                "No configured transforms are inherited when training used an external "
-                "datamodule.",
+                "Nothing is inherited when training used an external datamodule.",
             ],
         },
     )

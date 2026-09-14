@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sized
+from collections.abc import Sequence, Sized
 from typing import Any
 
 import lightning as L
@@ -33,13 +33,13 @@ class BenchRepDataModule(L.LightningDataModule):
         Optional test dataset.
     predict_dataset:
         Optional dataset used for prediction/inference with ``Trainer.predict()``.
-    training_pipeline:
+    training_pipelines:
         Ordered transform pipeline applied to training samples.
-    validation_pipeline:
+    validation_pipelines:
         Ordered transform pipeline applied to validation and test samples. It
         also acts as the prediction fallback when no explicit prediction
         pipeline is supplied.
-    prediction_pipeline:
+    prediction_pipelines:
         Optional explicit transform pipeline applied to prediction samples.
         When omitted, ``validation_pipeline`` is used.
     batch_size:
@@ -66,9 +66,9 @@ class BenchRepDataModule(L.LightningDataModule):
         val_dataset: Dataset[dict[str, Any]] | None = None,
         test_dataset: Dataset[dict[str, Any]] | None = None,
         predict_dataset: Dataset[dict[str, Any]] | None = None,
-        training_pipeline: TransformPipeline | None = None,
-        validation_pipeline: TransformPipeline | None = None,
-        prediction_pipeline: TransformPipeline | None = None,
+        training_pipelines: Sequence[TransformPipeline] | None = None,
+        validation_pipelines: Sequence[TransformPipeline] | None = None,
+        prediction_pipelines: Sequence[TransformPipeline] | None = None,
         batch_size: int = 64,
         val_fraction: float = 0.1,
         num_workers: int = 0,
@@ -109,22 +109,22 @@ class BenchRepDataModule(L.LightningDataModule):
         self._original_train_dataset = train_dataset
         self._provided_val_dataset = val_dataset
 
-        self.training_pipeline = training_pipeline
-        self.validation_pipeline = validation_pipeline
-        self.prediction_pipeline = (
-            prediction_pipeline
-            if prediction_pipeline is not None
-            else validation_pipeline
+        self.training_pipelines = tuple(training_pipelines or ())
+        self.validation_pipelines = tuple(validation_pipelines or ())
+        self.prediction_pipelines = (
+            tuple(prediction_pipelines)
+            if prediction_pipelines is not None
+            else self.validation_pipelines
         )
 
         # Test inputs follow validation-time processing by default.
-        self.test_dataset = _wrap_with_pipeline(
+        self.test_dataset = _wrap_with_pipelines(
             test_dataset,
-            validation_pipeline,
+            self.validation_pipelines,
         )
-        self.predict_dataset = _wrap_with_pipeline(
+        self.predict_dataset = _wrap_with_pipelines(
             predict_dataset,
-            self.prediction_pipeline,
+            self.prediction_pipelines,
         )
 
         self.batch_size = batch_size
@@ -184,13 +184,13 @@ class BenchRepDataModule(L.LightningDataModule):
                 generator=generator,
             )
 
-        self.train_dataset = _wrap_with_pipeline(
+        self.train_dataset = _wrap_with_pipelines(
             self.train_dataset,
-            self.training_pipeline,
+            self.training_pipelines,
         )
-        self.val_dataset = _wrap_with_pipeline(
+        self.val_dataset = _wrap_with_pipelines(
             self.val_dataset,
-            self.validation_pipeline,
+            self.validation_pipelines,
         )
 
     def train_dataloader(self) -> DataLoader:
@@ -253,14 +253,23 @@ class BenchRepDataModule(L.LightningDataModule):
         )
 
 
-def _wrap_with_pipeline(
+def _wrap_with_pipelines(
     dataset: Dataset[dict[str, Any]] | None,
-    pipeline: TransformPipeline | None,
+    pipelines: Sequence[TransformPipeline] | None,
 ) -> Dataset[dict[str, Any]] | None:
-    if dataset is None or pipeline is None or len(pipeline) == 0:
+    if dataset is None or not pipelines:
+        return dataset
+
+    effective_pipelines = tuple(
+        pipeline
+        for pipeline in pipelines
+        if len(pipeline) > 0
+    )
+
+    if not effective_pipelines:
         return dataset
 
     return TransformedDataset(
         dataset=dataset,
-        pipeline=pipeline,
+        pipelines=effective_pipelines,
     )

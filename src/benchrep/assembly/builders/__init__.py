@@ -3,7 +3,8 @@ from benchrep.assembly.builders.data_builder import (
     build_datamodule,
     build_dataset,
     build_transform_pipeline,
-    build_transform_pipelines,
+    build_transform_pipeline_sequence,
+    build_transform_pipelines_bundle,
 )
 from benchrep.assembly.builders.architecture_builder import (
     build_decoder,
@@ -22,7 +23,8 @@ __all__ = [
     "build_datamodule",
     "build_dataset",
     "build_transform_pipeline",
-    "build_transform_pipelines",
+    "build_transform_pipeline_sequence",
+    "build_transform_pipelines_bundle",
     "build_decoder",
     "build_encoder",
     "build_head",

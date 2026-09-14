@@ -9,6 +9,8 @@ from benchrep.assembly.schemas import (
     TrainingCheckpointConfig,
     TrainingConfig,
     TrainingDataModuleConfig,
+    CompositeModelDeclarationsConfig,
+    TrainingTransformPipelineConfig,
 )
 from benchrep.interfaces.model_families import (
     CanonicalModelFamilySpec,
@@ -24,6 +26,9 @@ from benchrep.assembly.resolvers.utils import (
     ComponentSource,
     RunIdentitySpec,
     resolve_runtime_override_config,
+)
+from benchrep.architecture.composite_model_roles import (
+    TENSOR_STRUCTURE_BY_ROLE,
 )
 
 
@@ -57,6 +62,13 @@ def resolve_training_config(
 
     model_is_external = model_source != "config"
     datamodule_is_external = datamodule_source != "config"
+
+    resolved_transform_pipelines = _resolve_transform_pipelines(
+        training_config.transform_pipelines,
+        model_family=model_family,
+        declarations_config=training_config.composite_model_declarations,
+        datamodule_overridden=datamodule_is_external,
+    )
 
     if (
         model_is_external
@@ -100,6 +112,7 @@ def resolve_training_config(
         "overrides": resolved_overrides,
         "datamodule": resolved_datamodule,
         "checkpointing": resolved_checkpointing,
+        "transform_pipelines": resolved_transform_pipelines,
     }
 
     if model_is_external:
@@ -117,7 +130,7 @@ def resolve_training_config(
         resolved_updates.update(
             {
                 "dataset": None,
-                "transforms": [],
+                "transform_pipelines": [],
                 "datamodule": None,
             }
         )
@@ -255,3 +268,89 @@ def _resolve_training_model_name(
         model_name = f"{model_name}_{training_config.decoder.name}"
 
     return model_name
+
+
+def _resolve_transform_pipelines(
+    config: list[TrainingTransformPipelineConfig],
+    *,
+    model_family: ModelFamilySpec,
+    declarations_config: CompositeModelDeclarationsConfig | None,
+    datamodule_overridden: bool,
+) -> list[TrainingTransformPipelineConfig]:
+    if datamodule_overridden or not config:
+        return []
+
+    # For canonical models, only in-place augmentations are supported.
+    if isinstance(model_family, CanonicalModelFamilySpec):
+        for index, pipeline in enumerate(config):
+            route = (pipeline.input, pipeline.output)
+
+            if route not in {
+                (None, None),
+                ("x", "x"),
+            }:
+                raise ValueError(
+                    "Canonical model transform pipelines use the fixed route "
+                    "`x` to `x`; omit both fields or provide that resolved "
+                    f"route: transform_pipelines[{index}]."
+                )
+
+        return [
+            pipeline.model_copy(
+                update={
+                    "input": "x",
+                    "output": "x",
+                }
+            )
+            for pipeline in config
+        ]
+
+    # Composite models require declarations.
+    assert declarations_config is not None
+
+    input_roles = declarations_config.expects
+    sample_image_name = next(
+        name
+        for name, role in input_roles.items()
+        if role == "sample_image"
+    )
+
+    resolved: list[TrainingTransformPipelineConfig] = []
+
+    for index, pipeline in enumerate(config):
+        # Default fallback is in-place augmentation of whatever is declared
+        # under the "sample_image" role, which can only have one assignment,
+        # or whatever is under the input field.
+        input_name = pipeline.input or sample_image_name
+        output_name = pipeline.output or input_name
+
+        for field_name, declared_name in (
+            ("input", input_name),
+            ("output", output_name),
+        ):
+            if declared_name not in input_roles:
+                raise ValueError(
+                    f"`transform_pipelines[{index}].{field_name}` references "
+                    f"{declared_name!r}, which is not declared under "
+                    "`composite_model_declarations.expects`."
+                )
+
+            role = input_roles[declared_name]
+
+            if TENSOR_STRUCTURE_BY_ROLE[role] != "image":
+                raise ValueError(
+                    f"`transform_pipelines[{index}].{field_name}` references "
+                    f"{declared_name!r} with role {role!r}; transform pipeline "
+                    "routing supports only image-valued declarations."
+                )
+
+        resolved.append(
+            pipeline.model_copy(
+                update={
+                    "input": input_name,
+                    "output": output_name,
+                }
+            )
+        )
+
+    return resolved
