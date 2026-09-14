@@ -14,7 +14,7 @@ dataset:
 # null/omitted = inherit training preprocessing
 # explicit list = replace inherited transforms
 # [] = apply no configured transforms
-transforms: null
+transform_pipelines: null
 
 data:
   batch_size: null              # null = reuse training setting

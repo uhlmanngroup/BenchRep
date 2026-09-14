@@ -64,12 +64,13 @@ dataset:
     split: train
     download: true
 
-transforms:
-  - name: to_dtype
-    apply_to: [ training, validation ]
-    params:
-      dtype: float32
-      scale: true
+transform_pipelines:
+  - steps:
+      - name: to_dtype
+        apply_to: [training, validation]
+        params:
+          dtype: float32
+          scale: true
 
 datamodule:
   batch_size: 128

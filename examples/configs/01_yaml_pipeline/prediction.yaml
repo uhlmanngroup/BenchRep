@@ -12,7 +12,7 @@ dataset:
     download: true
 
 # Inherit the validation transforms recorded during training.
-transforms: null
+transform_pipelines: null
 
 data:
   batch_size: null
