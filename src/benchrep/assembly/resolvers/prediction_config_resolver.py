@@ -148,11 +148,11 @@ def resolve_prediction_config(
 ) -> PredictionRunSpec:
     """Resolve prediction configuration against its linked training run.
 
-      Loads and validates the training manifest and resolved training config,
-      verifies model provenance and family compatibility, resolves the checkpoint
-      and prediction data settings, inherits applicable runtime settings, and
-      returns the complete runtime specification used by the prediction workflow.
-      """
+    Loads and validates the training manifest and its embedded resolved training
+    config, verifies model construction and family compatibility, resolves the
+    checkpoint and prediction data settings, inherits applicable runtime settings,
+    and returns the complete runtime specification used by the prediction workflow.
+    """
 
     if compatibility_policy not in {"error", "warn"}:
         raise ValueError(
@@ -172,13 +172,34 @@ def resolve_prediction_config(
 
     training_manifest = _load_training_manifest(training_manifest_path)
 
-    training_provenance = training_manifest.get("provenance", {})
-    training_model_provenance = training_provenance.get("model", {})
-    training_datamodule_provenance = training_provenance.get("datamodule", {})
+    training_construction = training_manifest.get("construction")
 
-    training_model_external = training_model_provenance.get("source") != "config"
+    if not isinstance(training_construction, dict):
+        raise TypeError(
+            "Training manifest field `construction` must be a mapping."
+        )
+
+    training_model_construction = training_construction.get("model")
+    training_datamodule_construction = training_construction.get(
+        "datamodule"
+    )
+
+    if not isinstance(training_model_construction, dict):
+        raise TypeError(
+            "Training manifest field `construction.model` must be a mapping."
+        )
+
+    if not isinstance(training_datamodule_construction, dict):
+        raise TypeError(
+            "Training manifest field `construction.datamodule` must be a "
+            "mapping."
+        )
+
+    training_model_external = (
+        training_model_construction.get("source") != "config"
+    )
     training_datamodule_external = (
-        training_datamodule_provenance.get("source") != "config"
+        training_datamodule_construction.get("source") != "config"
     )
 
     _validate_prediction_model_source(
@@ -186,6 +207,8 @@ def resolve_prediction_config(
         model_is_external=model_is_external,
     )
 
+    # Retained only as an informational record path. The embedded configuration
+    # below is the source consumed by prediction.
     resolved_training_config_path = get_required_nested_path(
         training_manifest,
         "records",
@@ -193,7 +216,21 @@ def resolve_prediction_config(
         base_dir=training_manifest_path.parent,
     )
 
-    raw_training_config = load_yaml(resolved_training_config_path)
+    training_appendix = training_manifest.get("appendix")
+
+    if not isinstance(training_appendix, dict):
+        raise TypeError(
+            "Training manifest field `appendix` must be a mapping."
+        )
+
+    raw_training_config = training_appendix.get("resolved_config")
+
+    if not isinstance(raw_training_config, dict):
+        raise TypeError(
+            "Training manifest field `appendix.resolved_config` must be a "
+            "mapping."
+        )
+
     training_config = parse_training_config(
         raw_training_config,
         model_overridden=training_model_external,
@@ -201,7 +238,7 @@ def resolve_prediction_config(
     )
 
     _validate_prediction_model_family(
-        training_model_provenance=training_model_provenance,
+        training_model_construction=training_model_construction,
         training_config=training_config,
         model_family=model_family,
         model_is_external=model_is_external,
@@ -838,12 +875,12 @@ def _validate_prediction_model_source(
 
 def _validate_prediction_model_family(
     *,
-    training_model_provenance: dict[str, Any],
+    training_model_construction: dict[str, Any],
     training_config: TrainingConfig,
     model_family: ModelFamilySpec,
     model_is_external: bool,
 ) -> None:
-    recorded_family = training_model_provenance.get("family")
+    recorded_family = training_model_construction.get("family")
 
     if recorded_family is not None and recorded_family != model_family.name:
         raise ValueError(
