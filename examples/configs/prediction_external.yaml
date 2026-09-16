@@ -10,18 +10,19 @@ inference:
   float32_matmul_precision: null # null = reuse training setting
 
 exports:
-  mode: all                # standard | all | custom
-
-  embeddings:
+  anndata:
     enabled: true
-    keys: auto                  # auto or list of output fields
-    primary_key: auto           # auto or one output field
+    mode: all
+    keys: null
+    primary_key: null
 
   reconstructions:
     enabled: true
-    n_examples: 32              # int | all
-    selection: random            # first | random
-    stratify_by: label          # null | prediction observation/metadata key; requires selection: random
-    seed: null                  # null = reuse inference seed
+    mode: all
+    pairs: null
+    n_examples: 32
+    selection: random
+    stratify_by: label
+    seed: null
     include_input: true
-    include_prediction: true
+    include_reconstruction: true

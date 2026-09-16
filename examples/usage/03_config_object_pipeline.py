@@ -32,11 +32,12 @@ from benchrep.assembly.schemas import (
     TrainingTorchviewConfig,
     TrainingTrainerConfig,
     TrainingConfig,
-    TrainingTransformConfig,
+    TrainingTransformPipelineConfig,
+    TrainingTransformStepConfig,
 # Prediction schema
     PredictionConfig,
     PredictionDataConfig,
-    PredictionEmbeddingsExportConfig,
+    PredictionAnnDataExportConfig,
     PredictionExportConfig,
     PredictionInferenceConfig,
     PredictionReconstructionsExportConfig,
@@ -79,7 +80,7 @@ def build_training_config() -> TrainingConfig:
     return TrainingConfig(
         run=TrainingRunConfig(
             output_root=Path("outputs"),
-            project_name="02_config_object_pipeline",
+            project_name="03_config_object_pipeline",
         ),
         reproducibility=TrainingReproducibilityConfig(
             seed=137,
@@ -93,14 +94,18 @@ def build_training_config() -> TrainingConfig:
                 download=True,
             ),
         ),
-        transforms=[
-            TrainingTransformConfig(
-                name="to_dtype",
-                apply_to=["training", "validation"],
-                params={
-                    "dtype": "float32",
-                    "scale": True,
-                },
+        transform_pipelines=[
+            TrainingTransformPipelineConfig(
+                steps=[
+                    TrainingTransformStepConfig(
+                        name="to_dtype",
+                        apply_to=["training", "validation"],
+                        params={
+                            "dtype": "float32",
+                            "scale": True,
+                        },
+                    ),
+                ],
             ),
         ],
         datamodule=TrainingDataModuleConfig(
@@ -196,23 +201,27 @@ def build_prediction_config(
                 download=True,
             ),
         ),
-        transforms=None,
+        transform_pipelines=None,
         data=PredictionDataConfig(),
         inference=PredictionInferenceConfig(
             reconstruction_latent_source="mean",
         ),
         exports=PredictionExportConfig(
-            mode="standard",
-            embeddings=PredictionEmbeddingsExportConfig(
+            anndata=PredictionAnnDataExportConfig(
                 enabled=True,
+                mode="custom",
+                keys=["embedding"],
+                primary_key="embedding",
             ),
             reconstructions=PredictionReconstructionsExportConfig(
                 enabled=True,
+                mode="all",
+                pairs=None,
                 n_examples=32,
                 selection="random",
                 stratify_by="label",
                 include_input=True,
-                include_prediction=True,
+                include_reconstruction=True,
             ),
         ),
     )

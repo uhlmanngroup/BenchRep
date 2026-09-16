@@ -27,16 +27,20 @@ inference:
   reconstruction_latent_source: mean
 
 exports:
-  mode: standard
-
-  embeddings:
+  anndata:
     enabled: true
+    mode: custom
+    keys:
+      - embedding
+    primary_key: embedding
 
   reconstructions:
     enabled: true
+    mode: all
+    pairs: null
     n_examples: 32
     selection: random
     stratify_by: label
     seed: null
     include_input: true
-    include_prediction: true
+    include_reconstruction: true

@@ -5,13 +5,15 @@ source:
   checkpoint: best
 
 dataset:
-  name: fashion_mnist
+  name: mnist
   params:
-    root: examples/data/fashion_mnist
+    root: examples/data/mnist
     split: test
     download: true
 
-# Inherit the validation transforms recorded during training.
+# null/omitted = inherit validation-applicable training preprocessing
+# explicit list = replace inherited transforms
+# [] = apply no configured transforms
 transform_pipelines: null
 
 data:
@@ -24,14 +26,12 @@ inference:
   seed_workers: null
   deterministic: null
   float32_matmul_precision: null
-  reconstruction_latent_source: mean
 
 exports:
   anndata:
     enabled: true
-    mode: custom
-    keys:
-      - embedding
+    mode: all
+    keys: null
     primary_key: embedding
 
   reconstructions:

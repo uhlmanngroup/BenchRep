@@ -124,7 +124,7 @@ def main() -> None:
     )
     # BenchRep writes the harmonized effective configuration as resolved_config.yaml.
     # It can be supplied directly as config_path in a future run when the manifest
-    # records `provenance.config.run_reconstructable_from_resolved_config: true`.
+    # records `construction.config.run_reconstructable_from_resolved_config: true`.
     resolved_training_config_path = (
         training_result.run_context.config_dir
         / "resolved_config.yaml"

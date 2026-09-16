@@ -24,28 +24,36 @@ RECONSTRUCTION_BUNDLE_DIR: Final = ASSET_DIR / "reconstruction_bundle"
 def publish_artifacts(
     prediction_result: PredictionWorkflowResult,
 ) -> None:
-    embedding_export = prediction_result.export_paths.embedding_export
-    reconstruction_export = prediction_result.export_paths.reconstruction_paths
+    anndata_export = prediction_result.export_result.anndata
+    reconstruction_export = (
+        prediction_result.export_result.reconstructions
+    )
 
-    if (
-        embedding_export is None
-        or embedding_export.embeddings_h5ad_path is None
-        or reconstruction_export is None
-    ):
-        raise RuntimeError("Prediction did not produce the required artifacts.")
+    if anndata_export.path is None:
+        raise RuntimeError(
+            "Prediction did not produce the required AnnData artifact."
+        )
+
+    if len(reconstruction_export.pairs) != 1:
+        raise RuntimeError(
+            "Prediction must produce exactly one reconstruction bundle "
+            "for this artifact-generation workflow."
+        )
+
+    reconstruction_paths = reconstruction_export.pairs[0].paths
 
     ASSET_DIR.mkdir(parents=True, exist_ok=True)
     RECONSTRUCTION_BUNDLE_DIR.mkdir(parents=True, exist_ok=True)
 
     shutil.copy2(
-        embedding_export.embeddings_h5ad_path,
+        anndata_export.path,
         ASSET_DIR / "embeddings.h5ad",
     )
 
     reconstruction_sources = {
-        "input.pt": reconstruction_export.input_path,
-        "reconstruction.pt": reconstruction_export.reconstruction_path,
-        "obs.pt": reconstruction_export.obs_path,
+        "input.pt": reconstruction_paths.input_path,
+        "reconstruction.pt": reconstruction_paths.reconstruction_path,
+        "obs.pt": reconstruction_paths.obs_path,
     }
 
     for filename, source_path in reconstruction_sources.items():
@@ -57,13 +65,13 @@ def publish_artifacts(
             RECONSTRUCTION_BUNDLE_DIR / filename,
         )
 
-    if reconstruction_export.metadata_path is None:
+    if reconstruction_paths.metadata_path is None:
         raise RuntimeError(
             "Prediction did not produce reconstruction export metadata."
         )
 
     reconstruction_metadata = torch.load(
-        reconstruction_export.metadata_path,
+        reconstruction_paths.metadata_path,
         map_location="cpu",
         weights_only=False,
     )

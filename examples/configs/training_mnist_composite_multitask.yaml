@@ -1,0 +1,159 @@
+stage: training
+
+run:
+  output_root: outputs
+  project_name: mnist_composite_multitask
+
+reproducibility:
+  seed: 137
+  seed_workers: true
+  float32_matmul_precision: highest
+
+dataset:
+  name: mnist
+  params:
+    root: examples/data/mnist
+    split: train
+    download: true
+
+transform_pipelines:
+  - steps:
+      - name: to_dtype
+        apply_to: [training, validation]
+        params:
+          dtype: float32
+          scale: true
+
+datamodule:
+  batch_size: 128
+  val_fraction: 0.1
+  num_workers: 4
+  pin_memory: auto
+  persistent_workers: true
+  drop_last: false
+
+model:
+  name: composite
+
+composite_model_declarations:
+  expects:
+    x: sample_image
+    label: categorical_prediction_target_scalar
+
+  batch_metadata:
+    sample_id: index
+
+  produces:
+    embedding: embedding_vector
+    reconstruction: reconstruction_image
+    digit_logits: categorical_prediction_vector
+
+composite_model_components:
+  image_encoder:
+    kind: encoder
+    name: mlp
+    params:
+      input_shape: [1, 28, 28]
+      output_dim: 64
+      hidden_dims: [512, 256]
+      activation: null
+      normalization: null
+      dropout: 0.0
+
+  image_decoder:
+    kind: decoder
+    name: mlp
+    params:
+      input_dim: 64
+      output_shape: [1, 28, 28]
+      hidden_dims: [256, 512]
+      activation: null
+      normalization: null
+      dropout: 0.0
+      output_activation: sigmoid
+
+  digit_classifier:
+    kind: head
+    name: mlp
+    params:
+      input_dim: 64
+      output_dim: 10
+      hidden_dims: []
+      activation: null
+      normalization: null
+      dropout: 0.0
+
+composite_model_assembly:
+  encode:
+    component: image_encoder
+    inputs:
+      x: expects.x
+    outputs: produces.embedding
+
+  reconstruct:
+    component: image_decoder
+    inputs:
+      z: produces.embedding
+    outputs: produces.reconstruction
+
+  classify:
+    component: digit_classifier
+    inputs:
+      x: produces.embedding
+    outputs: produces.digit_logits
+
+losses:
+  reconstruction:
+    mse:
+      weight: 1.0
+      params:
+        reduction: mean
+      composite_wiring:
+        reconstruction: produces.reconstruction
+        target: expects.x
+
+  classification:
+    cross_entropy:
+      weight: 0.25
+      params:
+        reduction: mean
+        label_smoothing: 0.0
+      composite_wiring:
+        prediction: produces.digit_logits
+        target: expects.label
+
+optimizer:
+  name: adam
+  params:
+    lr: 0.001
+
+trainer:
+  max_epochs: 2
+  accelerator: auto
+  devices: auto
+  log_every_n_steps: 20
+  deterministic: false
+  benchmark: false
+  precision: 32-true
+
+logger:
+  name: wandb
+  wandb_api_key_path:
+  params:
+    project: benchrep
+    name: test
+    id: null
+    resume: never
+    log_model: False
+
+checkpointing:
+  monitor: val/loss
+  mode: min
+  save_top_k: 1
+  save_last: true
+
+inspection:
+  torchview:
+    enabled: true
+    expand_nested: true
+    depth: 10
