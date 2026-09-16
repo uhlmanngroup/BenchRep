@@ -10,6 +10,8 @@ from lightning.pytorch.callbacks import (
     Callback,
     EarlyStopping,
     ModelCheckpoint,
+    ModelSummary,
+    RichModelSummary,
 )
 from lightning.pytorch.loggers import Logger, WandbLogger
 from lightning.pytorch.utilities.exceptions import SIGTERMException
@@ -170,19 +172,33 @@ def build_trainer(
             checkpoint_dir=run_context.training_checkpoint_dir,
         )
 
+        additional_callbacks = _build_additional_callbacks(
+            additional_callback_configs or [],
+        )
+
+        # Extend depth of Lightning's model summary to expand
+        # the ModuleDicts used for losses and composite components
+        # unless user already configured this callback.
+        has_configured_model_summary = any(
+            isinstance(callback, ModelSummary)
+            for callback in additional_callbacks
+        )
+
         callbacks: list[Callback] = [checkpoint_callback]
 
+        if (
+            trainer_params.get("enable_model_summary", True)
+            and not has_configured_model_summary
+        ):
+            callbacks.append(RichModelSummary(max_depth=3))
+
         if early_stopping_config is not None:
-            early_stopping_callback = _build_early_stopping_callback(
+            early_stopping_callback: EarlyStopping = _build_early_stopping_callback(
                 early_stopping_config
             )
             callbacks.append(early_stopping_callback)
 
-        callbacks.extend(
-            _build_additional_callbacks(
-                additional_callback_configs or [],
-            )
-        )
+        callbacks.extend(additional_callbacks)
 
         configured_callback_classes = tuple(
             f"{type(callback).__module__}."
