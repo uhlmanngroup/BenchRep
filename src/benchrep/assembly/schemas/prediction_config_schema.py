@@ -368,126 +368,146 @@ class PredictionTransformPipelineConfig(_PredictionConfigBaseModel):
 # -------------------------
 # Exports config
 # -------------------------
-class PredictionEmbeddingsExportConfig(_PredictionConfigBaseModel):
-    """Configures export of embedding-like prediction outputs.
+PredictionOutputKey = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1),
+]
 
-    When enabled, selected two-dimensional prediction outputs are concatenated
-    across batches and written to a single AnnData artifact. The selectable keys
-    are names of tensor fields in the batch-level output returned by the model's
-    `predict_step()`.The primary embedding is stored in `adata.X`, while additional
-    selected embeddings are stored in `adata.obsm` under their prediction-output keys.
 
-    The parent `exports.mode` controls how keys are selected. `standard` exports
-    the conventional `embedding` output, `all` exports all recognized BenchRep
-    representation outputs, and `custom` uses the `keys` and `primary_key`
-    configured here.
+class PredictionAnnDataExportConfig(_PredictionConfigBaseModel):
+    """Configures export of non-image prediction outputs to AnnData.
 
-    Output-dependent validation occurs after prediction, when BenchRep can
-    verify that requested keys exist and contain compatible two-dimensional
-    tensors.
+    `all` selects every supported non-image output. `custom` selects the
+    explicitly configured output keys. Model-dependent key and primary-key
+    resolution occurs later, when the linked training model is known.
     """
 
     enabled: bool = Field(
         default=True,
         description=(
-            "Whether prediction embeddings are exported as an AnnData artifact."
+            "Whether supported prediction outputs are exported as an AnnData "
+            "artifact."
         ),
         json_schema_extra={
-            "omit_behavior": "Enables embedding export.",
+            "omit_behavior": "Enables AnnData export.",
             "null_behavior": "Not allowed.",
         },
     )
 
-    keys: list[
-        Annotated[
-            str,
-            StringConstraints(strip_whitespace=True, min_length=1),
-        ]
-    ] | Literal["auto"] = Field(
-        default="auto",
+    mode: Literal["all", "custom"] | None = Field(
+        default=None,
         description=(
-            "Names of prediction-output tensor fields exported when "
-            "`exports.mode='custom'`. `auto` selects the conventional `embedding` "
-            "field. An explicit list selects those fields in the configured order."
+            "Output selection mode. `all` exports every supported non-image "
+            "output, while `custom` exports only `keys`."
         ),
         json_schema_extra={
-            "omit_behavior": "Uses `auto`, selecting `embedding`.",
-            "null_behavior": "Not allowed.",
+            "omit_behavior": "Equivalent to `all`.",
+            "null_behavior": "Equivalent to omission.",
             "notes": [
-                "Set `exports.mode='custom'` to use this field; `standard` and "
-                "`all` select embedding keys automatically.",
-                "Explicit lists must be non-empty and contain no duplicate keys.",
-                "Every resolved output must be a two-dimensional tensor with the "
-                "same number of samples.",
+                "When AnnData export is disabled, this field has no effect.",
             ],
         },
     )
 
-    primary_key: Annotated[
-        str,
-        StringConstraints(strip_whitespace=True, min_length=1),
-    ] = Field(
-        default="auto",
+    keys: list[PredictionOutputKey] | None = Field(
+        default=None,
         description=(
-            "Selected embedding stored in `adata.X` when "
-            "`exports.mode='custom'`. `auto` prefers `embedding` when it is "
-            "selected and otherwise uses the first resolved key. Other selected "
-            "embeddings are stored in `adata.obsm`."
+            "Ordered prediction-output keys selected when `mode='custom'`."
         ),
         json_schema_extra={
-            "omit_behavior": "Automatically selects the primary embedding.",
-            "null_behavior": "Not allowed.",
+            "omit_behavior": (
+                "Required when AnnData export is enabled with `mode='custom'`; "
+                "otherwise no explicit keys are selected."
+            ),
+            "null_behavior": "Equivalent to omission.",
             "notes": [
-                "Set `exports.mode='custom'` to use this field; `standard` and "
-                "`all` select the primary embedding automatically.",
-                "An explicit primary key must also be selected by `keys`.",
+                "Custom key lists must be non-empty and contain no duplicates.",
+                "Keys are validated against the linked model during prediction "
+                "configuration resolution.",
             ],
         },
     )
 
-    @field_validator("keys")
-    @classmethod
-    def validate_keys(
-        cls,
-        value: list[str] | Literal["auto"],
-    ) -> list[str] | Literal["auto"]:
-        if value == "auto":
-            return value
-
-        if not value:
-            raise ValueError(
-                "`embeddings.keys` cannot be empty; disable embedding export "
-                "with `embeddings.enabled=False` instead."
-            )
-
-        if len(value) != len(set(value)):
-            raise ValueError(
-                "`embeddings.keys` must not contain duplicate output keys."
-            )
-
-        return value
+    primary_key: PredictionOutputKey | None = Field(
+        default=None,
+        description=(
+            "Selected vector-valued output stored in `adata.X`. For canonical "
+            "models, omission selects `embedding`. Composite models require an "
+            "explicit primary key."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Selects `embedding` for canonical models; rejected for "
+                "composite models."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "The primary key must resolve to a selected vector-valued output.",
+                "With `mode='custom'`, an explicit primary key must be included "
+                "in `keys`.",
+            ],
+        },
+    )
 
     @model_validator(mode="after")
-    def validate_primary_key(
-        self,
-    ) -> PredictionEmbeddingsExportConfig:
-        if self.primary_key == "auto":
+    def validate_selection(self) -> PredictionAnnDataExportConfig:
+        if not self.enabled:
             return self
 
-        if self.keys == "auto":
-            if self.primary_key != "embedding":
+        resolved_mode = self.mode or "all"
+
+        if resolved_mode == "all":
+            if self.keys is not None:
                 raise ValueError(
-                    "When `embeddings.keys='auto'`, `embeddings.primary_key` "
-                    "must be 'auto' or 'embedding'."
+                    "`exports.anndata.keys` must be null or omitted when "
+                    "`exports.anndata.mode='all'`."
                 )
 
-        elif self.primary_key not in self.keys:
+            return self
+
+        if not self.keys:
             raise ValueError(
-                "`embeddings.primary_key` must be included in "
-                "`embeddings.keys`."
+                "`exports.anndata.keys` must be a non-empty list when "
+                "`exports.anndata.mode='custom'`."
+            )
+
+        if len(self.keys) != len(set(self.keys)):
+            raise ValueError(
+                "`exports.anndata.keys` must not contain duplicate output keys."
+            )
+
+        if (
+            self.primary_key is not None
+            and self.primary_key not in self.keys
+        ):
+            raise ValueError(
+                "`exports.anndata.primary_key` must be included in "
+                "`exports.anndata.keys` when mode is 'custom'."
             )
 
         return self
+
+
+PredictionReconstructionPairId = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True,
+        min_length=1,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]*$",
+    ),
+]
+
+PredictionReconstructionFieldName = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1),
+]
+
+
+class PredictionReconstructionPairConfig(_PredictionConfigBaseModel):
+    """Declares one input/reconstruction artifact pair."""
+
+    input: PredictionReconstructionFieldName
+    reconstruction: PredictionReconstructionFieldName
 
 
 class PredictionReconstructionsExportConfig(_PredictionConfigBaseModel):
@@ -514,27 +534,51 @@ class PredictionReconstructionsExportConfig(_PredictionConfigBaseModel):
     in this section have no effect.
     """
 
-    enabled: bool | None = Field(
+    enabled: bool = Field(
+        default=False,
+        description="Whether reconstruction bundles are exported.",
+        json_schema_extra={
+            "omit_behavior": "Disables reconstruction export.",
+            "null_behavior": "Not allowed.",
+            "notes": [
+                "When disabled, the remaining reconstruction settings have no effect.",
+            ],
+        },
+    )
+
+    mode: Literal["all", "custom"] | None = Field(
         default=None,
         description=(
-            "Whether reconstruction artifacts are exported. True explicitly "
-            "enables export, false disables it, and null resolves automatically "
-            "based on whether the model family's expected prediction output "
-            "contains a `reconstruction` field."
+            "Pair selection mode. `all` derives every supported reconstruction "
+            "pair, while `custom` uses the explicitly configured `pairs`."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Equivalent to `all`.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "When reconstruction export is disabled, this field has no effect.",
+            ],
+        },
+    )
+
+    pairs: (
+            dict[
+                PredictionReconstructionPairId,
+                PredictionReconstructionPairConfig,
+            ]
+            | None
+    ) = Field(
+        default=None,
+        description=(
+            "Ordered reconstruction pairs exported when `mode='custom'`. Mapping "
+            "keys are stable pair IDs used in manifests and artifact-directory names."
         ),
         json_schema_extra={
             "omit_behavior": (
-                "Automatically enables reconstruction export for model families "
-                "that declare reconstruction output and disables it otherwise."
+                "Required when reconstruction export is enabled with "
+                "`mode='custom'`; otherwise pairs are inferred."
             ),
             "null_behavior": "Equivalent to omission.",
-            "notes": [
-                "Setting this field to true for a model family without "
-                "reconstruction output raises during prediction configuration "
-                "resolution.",
-                "When reconstruction export resolves disabled, the remaining "
-                "settings in this section are ignored.",
-            ],
         },
     )
 
@@ -633,11 +677,11 @@ class PredictionReconstructionsExportConfig(_PredictionConfigBaseModel):
         },
     )
 
-    include_prediction: bool = Field(
+    include_reconstruction: bool = Field(
         default=True,
         description=(
-            "Whether selected values from the `reconstruction` field returned "
-            "by `predict_step()` are written to `reconstruction.pt`."
+            "Whether selected reconstruction tensors are written to each "
+            "reconstruction bundle."
         ),
         json_schema_extra={
             "omit_behavior": "Exports selected model reconstructions.",
@@ -645,72 +689,94 @@ class PredictionReconstructionsExportConfig(_PredictionConfigBaseModel):
         },
     )
 
+    @model_validator(mode="after")
+    def validate_export_settings(
+            self,
+    ) -> PredictionReconstructionsExportConfig:
+        if not self.enabled:
+            return self
+
+        resolved_mode = self.mode or "all"
+
+        if resolved_mode == "all":
+            if self.pairs is not None:
+                raise ValueError(
+                    "`exports.reconstructions.pairs` must be null or omitted when "
+                    "`exports.reconstructions.mode='all'`."
+                )
+
+        elif not self.pairs:
+            raise ValueError(
+                "`exports.reconstructions.pairs` must be a non-empty mapping when "
+                "`exports.reconstructions.mode='custom'`."
+            )
+
+        if self.pairs is not None:
+            resolved_pairs = [
+                (pair.input, pair.reconstruction)
+                for pair in self.pairs.values()
+            ]
+
+            if len(resolved_pairs) != len(set(resolved_pairs)):
+                raise ValueError(
+                    "`exports.reconstructions.pairs` must not contain duplicate "
+                    "input/reconstruction pairs."
+                )
+
+        if not self.include_input and not self.include_reconstruction:
+            raise ValueError(
+                "Enabled reconstruction export requires at least one of "
+                "`include_input` or `include_reconstruction` to be true."
+            )
+
+        if (
+                self.n_examples != "all"
+                and self.stratify_by is not None
+                and self.selection != "random"
+        ):
+            raise ValueError(
+                "`exports.reconstructions.selection` must be 'random' when "
+                "stratifying a reconstruction subset."
+            )
+
+        return self
+
 
 class PredictionExportConfig(_PredictionConfigBaseModel):
-    """Configures prediction artifact export.
+    """Configures prediction artifact exports.
 
-    `mode` controls which model representation outputs are included when
-    embedding export is enabled. `standard` exports only the canonical
-    `embedding` output, `all` exports all recognized BenchRep representation
-    outputs returned by the model, and `custom` uses the keys configured under
-    `embeddings`.
-
-    Embedding and reconstruction export are enabled independently through their
-    respective nested sections. Reconstruction settings are not altered by
-    `mode`.
+    AnnData and reconstruction exports are independent. Each branch controls
+    whether it is enabled and whether its contents are selected automatically
+    or explicitly.
     """
 
-    mode: Literal["standard", "all", "custom"] = Field(
-        default="standard",
+    anndata: PredictionAnnDataExportConfig = Field(
+        default_factory=PredictionAnnDataExportConfig,
         description=(
-            "Embedding-output selection mode. `standard` exports the canonical "
-            "`embedding` output, `all` exports every recognized BenchRep "
-            "representation output available from the model, and `custom` uses "
-            "the configured `embeddings.keys` and `embeddings.primary_key`."
+            "Configures export of supported non-image prediction outputs to "
+            "AnnData."
         ),
-        json_schema_extra={
-            "omit_behavior": "Uses `standard` embedding export.",
-            "null_behavior": "Not allowed.",
-            "notes": [
-                "`all` applies only to recognized representation outputs, not "
-                "every tensor returned by `predict_step()`.",
-                "This field does not enable or disable embedding export.",
-                "This field does not affect reconstruction export.",
-            ],
-        },
-    )
-
-    embeddings: PredictionEmbeddingsExportConfig = Field(
-        default_factory=PredictionEmbeddingsExportConfig,
-        description="Configures embedding artifact export.",
         json_schema_extra={
             "omit_behavior": (
                 "Uses the defaults defined by "
-                "`PredictionEmbeddingsExportConfig`."
+                "`PredictionAnnDataExportConfig`, enabling export in `all` mode."
             ),
             "null_behavior": "Not allowed.",
-            "notes": [
-                "`enabled` applies in every export mode.",
-                "`keys` and `primary_key` are used only when `mode='custom'`.",
-            ],
         },
     )
 
     reconstructions: PredictionReconstructionsExportConfig = Field(
         default_factory=PredictionReconstructionsExportConfig,
         description=(
-            "Configures export of selected model inputs and reconstructions."
+            "Configures export of input/reconstruction tensor bundles."
         ),
         json_schema_extra={
             "omit_behavior": (
                 "Uses the defaults defined by "
-                "`PredictionReconstructionsExportConfig`, including automatic "
-                "resolution based on model-family reconstruction support."
+                "`PredictionReconstructionsExportConfig`, disabling "
+                "reconstruction export."
             ),
             "null_behavior": "Not allowed.",
-            "notes": [
-                "Reconstruction export is independent of `mode`.",
-            ],
         },
     )
 
