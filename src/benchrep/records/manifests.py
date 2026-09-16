@@ -16,7 +16,7 @@ from benchrep.assembly.resolvers import (
     PredictionRunSpec,
     EvaluationRunSpec,
 )
-from benchrep.records.prediction_exports import PredictionExportPaths
+from benchrep.records.prediction_exports import PredictionExportResult
 from benchrep.records.evaluation_exports import EvaluationExportPaths
 from benchrep.records.logs import (
     RUN_LOG_FILENAME,
@@ -75,8 +75,10 @@ def write_training_manifest(
 
     configured_model = config.model.name if config.model is not None else None
 
-    model_architecture_summary = (
-        _build_training_model_architecture_summary(run_spec=run_spec)
+    model_architecture_summary = _build_model_architecture_summary(
+        config=config,
+        model_family=run_spec.model_family,
+        model_is_external=model_is_external,
     )
 
     configured_dataset = (
@@ -260,7 +262,7 @@ def write_prediction_manifest(
     output_path: Path,
     run_spec: PredictionRunSpec,
     run_context: RunContext,
-    export_paths: PredictionExportPaths,
+    export_result: PredictionExportResult,
     created_at: str,
     completed_at: str,
     status_report: PredictionStatusReport,
@@ -268,13 +270,16 @@ def write_prediction_manifest(
     datamodule_class_name: str,
     n_batches: int,
     n_observations: int | None,
+    capture_stdout: bool,
 ) -> dict[str, Any]:
-    model_family = run_spec.model_family
-    model_source = run_spec.model_source
-    datamodule_source = run_spec.datamodule_source
-    training_provenance = run_spec.training_manifest.get("provenance", {})
-    training_status = run_spec.training_manifest.get("status")
-    training_status_report = run_spec.training_manifest.get("status_report")
+    config = run_spec.prediction_config
+    training_manifest = run_spec.training_manifest
+
+    model_is_external = run_spec.model_source != "config"
+    datamodule_is_external = run_spec.datamodule_source != "config"
+
+    training_status = training_manifest.get("status")
+    training_status_report = training_manifest.get("status_report")
     training_status_record = (
         training_status_report.get("training")
         if isinstance(training_status_report, Mapping)
@@ -285,114 +290,182 @@ def write_prediction_manifest(
         if isinstance(training_status_record, Mapping)
         else None
     )
-    training_config_provenance = training_provenance.get("config", {})
-    training_run_reconstructable = bool(
-        training_config_provenance.get(
-            "run_reconstructable_from_resolved_config",
-            False,
-        )
-    )
-
-    model_is_external = model_source != "config"
-    datamodule_is_external = datamodule_source != "config"
 
     configured_model = (
         run_spec.training_config.model.name
         if run_spec.training_config.model is not None
         else None
     )
-    configured_encoder = (
-        run_spec.training_config.encoder.name
-        if run_spec.training_config.encoder is not None
-        else None
-    )
-    configured_decoder = (
-        run_spec.training_config.decoder.name
-        if run_spec.training_config.decoder is not None
-        else None
+
+    model_architecture_summary = _build_model_architecture_summary(
+        config=run_spec.training_config,
+        model_family=run_spec.model_family,
+        model_is_external=model_is_external,
     )
 
-    configured_dataset = (
-        run_spec.dataset_config.model_dump(mode="json")
-        if not datamodule_is_external and run_spec.dataset_config is not None
-        else None
-    )
-
-    configured_transform_pipelines = (
-        [
-            pipeline.model_dump(mode="json")
-            for pipeline in run_spec.transform_pipeline_configs
-        ]
+    dataset_name = (
+        run_spec.dataset_config.name
         if (
-                not datamodule_is_external
-                and run_spec.transform_pipeline_configs is not None
+            not datamodule_is_external
+            and run_spec.dataset_config is not None
         )
         else None
     )
 
-    configured_datamodule = (
-        run_spec.datamodule_config.model_dump(mode="json")
-        if not datamodule_is_external and run_spec.datamodule_config is not None
+    transform_pipelines_by_split = (
+        _summarize_transform_pipelines(config)
+        if not datamodule_is_external
         else None
     )
-
-    if configured_datamodule is not None:
-        configured_datamodule["batch_size"] = run_spec.batch_size
-
-
-    embedding_spec = run_spec.export_spec.embeddings
-    reconstruction_spec = run_spec.export_spec.reconstructions
-    embedding_export = export_paths.embedding_export
-    reconstruction_paths = export_paths.reconstruction_paths
 
     records = _build_common_records(
         config_composition_result,
         run_context,
+        capture_stdout=capture_stdout,
     )
 
+    anndata_spec = run_spec.export_spec.anndata
+    reconstruction_spec = run_spec.export_spec.reconstructions
+
+    pair_results_by_id = {
+        result.pair.id: result
+        for result in export_result.reconstructions.pairs
+    }
+
+    reconstruction_pair_status_records: dict[
+        str,
+        dict[str, Any],
+    ] = {}
+
+    reconstruction_pair_export_records: dict[
+        str,
+        dict[str, Any],
+    ] = {}
+
+    for pair in reconstruction_spec.pairs:
+        pair_result = pair_results_by_id.get(pair.id)
+
+        if pair_result is None:
+            pair_status = status_report.reconstructions_export.status
+            pair_issues = list(
+                status_report.reconstructions_export.issues
+            )
+            paths = None
+        else:
+            pair_status = pair_result.outcome.status
+            pair_issues = list(pair_result.outcome.issues)
+            paths = pair_result.paths
+
+        reconstruction_pair_status_records[pair.id] = {
+            "status": pair_status,
+            "issues": pair_issues,
+        }
+
+        reconstruction_pair_export_records[pair.id] = {
+            "input": pair.input,
+            "reconstruction": pair.reconstruction,
+            "n_examples_exported": (
+                paths.n_examples_exported
+                if paths is not None
+                else None
+            ),
+            "n_strata": (
+                paths.n_strata
+                if paths is not None
+                else None
+            ),
+            "n_represented_strata": (
+                paths.n_represented_strata
+                if paths is not None
+                else None
+            ),
+            "n_omitted_strata": (
+                paths.n_omitted_strata
+                if paths is not None
+                else None
+            ),
+            "paths": {
+                "bundle_dir": (
+                    paths_to_strings(paths.bundle_dir)
+                    if paths is not None
+                    else None
+                ),
+                "input": (
+                    paths_to_strings(paths.input_path)
+                    if paths is not None
+                    else None
+                ),
+                "reconstruction": (
+                    paths_to_strings(paths.reconstruction_path)
+                    if paths is not None
+                    else None
+                ),
+                "observations": (
+                    paths_to_strings(paths.obs_path)
+                    if paths is not None
+                    else None
+                ),
+                "metadata": (
+                    paths_to_strings(paths.metadata_path)
+                    if paths is not None
+                    else None
+                ),
+            },
+        }
+
     summary = {
-        "project_name": run_spec.run_identity.project_name,
-        "model_source": model_source,
-        "datamodule_source": datamodule_source,
-        "model": model_class_name if model_is_external else configured_model,
-        "model_family": model_family.name,
-        "encoder": None if model_is_external else configured_encoder,
-        "decoder": None if model_is_external else configured_decoder,
-        "dataset": (
-            configured_dataset["name"] if configured_dataset is not None else None
+        "model_source": run_spec.model_source,
+        "model_name": (
+            None
+            if model_is_external
+            else configured_model
         ),
-        "transform_pipelines": (
-            {
-                "prediction": [
-                    {
-                        "input": pipeline["input"],
-                        "output": pipeline["output"],
-                        "same_key_replacement": (
-                                pipeline["input"] == pipeline["output"]
-                        ),
-                        "steps": [
-                            step["name"]
-                            for step in pipeline["steps"]
-                        ],
-                    }
-                    for pipeline in configured_transform_pipelines
-                ],
-            }
-            if configured_transform_pipelines is not None
-            else None
-        ),
-        "datamodule": datamodule_class_name if datamodule_is_external else None,
+        "model_class": model_class_name,
+        "model_architecture": model_architecture_summary,
+        "datamodule_source": run_spec.datamodule_source,
+        "datamodule_class": datamodule_class_name,
+        "dataset": dataset_name,
+        "transform_pipelines": transform_pipelines_by_split,
         "batch_size": (
-            configured_datamodule.get("batch_size") if configured_datamodule is not None else None
+            None
+            if datamodule_is_external
+            else run_spec.batch_size
         ),
         "max_batches": run_spec.max_batches,
+        "checkpoint": {
+            "selection": str(run_spec.checkpoint_selection),
+            "source": run_spec.checkpoint_source,
+        },
+        "seed": run_spec.seed,
+        "float32_matmul_precision": (
+            run_spec.float32_matmul_precision
+        ),
+        "trainer": {
+            "deterministic": (
+                run_spec.trainer_config.deterministic
+            ),
+        },
+        "exports": {
+            "anndata": {
+                "enabled": anndata_spec.enabled,
+                "keys": list(anndata_spec.keys),
+                "primary_key": anndata_spec.primary_key,
+            },
+            "reconstructions": {
+                "enabled": reconstruction_spec.enabled,
+                "pairs": [
+                    pair.id
+                    for pair in reconstruction_spec.pairs
+                ],
+            },
+        },
     }
 
     outcome_summary = build_outcome_summary(
         outcome.status
         for outcome in (
             status_report.inference,
-            status_report.embeddings_export,
+            status_report.anndata_export,
             status_report.reconstructions_export,
         )
     )
@@ -408,32 +481,20 @@ def write_prediction_manifest(
                 "n_observations": n_observations,
             },
             "exports": {
-                "embeddings": {
-                    "status": status_report.embeddings_export.status,
+                "anndata": {
+                    "status": status_report.anndata_export.status,
                     "issues": list(
-                        status_report.embeddings_export.issues
+                        status_report.anndata_export.issues
                     ),
                 },
                 "reconstructions": {
-                    "status": status_report.reconstructions_export.status,
+                    "status": (
+                        status_report.reconstructions_export.status
+                    ),
                     "issues": list(
                         status_report.reconstructions_export.issues
                     ),
-                    "n_strata": (
-                        reconstruction_paths.n_strata
-                        if reconstruction_paths is not None
-                        else None
-                    ),
-                    "n_represented_strata": (
-                        reconstruction_paths.n_represented_strata
-                        if reconstruction_paths is not None
-                        else None
-                    ),
-                    "n_omitted_strata": (
-                        reconstruction_paths.n_omitted_strata
-                        if reconstruction_paths is not None
-                        else None
-                    ),
+                    "pairs": reconstruction_pair_status_records,
                 },
             },
         },
@@ -445,13 +506,20 @@ def write_prediction_manifest(
             "output_dir": str(run_context.output_dir),
         },
         "source": {
-            "training_manifest_path": str(run_spec.training_manifest_path),
+            "training_manifest_path": str(
+                run_spec.training_manifest_path
+            ),
             "training_run_name": run_spec.training_run_name,
-            "training_output_dir": str(run_spec.training_output_dir),
+            "training_output_dir": str(
+                run_spec.training_output_dir
+            ),
             "training_status": training_status,
-            "training_interruption_signal": training_interruption_signal,
-            "resolved_training_config_path": str(run_spec.resolved_training_config_path),
-            "checkpoint_selection": str(run_spec.checkpoint_selection),
+            "training_interruption_signal": (
+                training_interruption_signal
+            ),
+            "checkpoint_selection": str(
+                run_spec.checkpoint_selection
+            ),
             "checkpoint_source": run_spec.checkpoint_source,
             "checkpoint_path": str(run_spec.checkpoint_path),
         },
@@ -460,121 +528,86 @@ def write_prediction_manifest(
                 run_spec.inherited_config_fields,
             ),
         },
-        "provenance": {
-            "training": training_provenance,
-            "prediction": {
-                "config": {
-                    "run_reconstructable_from_resolved_config": (
-                        training_run_reconstructable
-                        and not model_is_external
-                        and not datamodule_is_external
-                    ),
-                    "effective_source": config_composition_result.effective_source,
-                    "yaml_supplied": config_composition_result.yaml_supplied,
-                    "yaml_used_as_base": config_composition_result.yaml_used_as_base,
-                    "original_config_path": (
-                        str(config_composition_result.original_config_path)
-                        if config_composition_result.original_config_path is not None
-                        else None
-                    ),
-                },
-                "model": {
-                    "source": model_source,
-                    "family": model_family.name,
-                    "class_name": model_class_name,
-                    "config_reconstructable": (
-                            not model_is_external and configured_model is not None
-                    ),
-                    "configured_model": None if model_is_external else configured_model,
-                    "configured_encoder": None if model_is_external else configured_encoder,
-                    "configured_decoder": None if model_is_external else configured_decoder,
-                },
-                "inference": (
-                    run_spec.prediction_config.inference.model_dump(
-                        mode="json",
-                    )
+        "construction": {
+            "config": {
+                "run_reconstructable_from_resolved_config": (
+                    not model_is_external
+                    and not datamodule_is_external
                 ),
-                "dataset": configured_dataset,
-                "transform_pipeline_source": (
-                    run_spec.transform_pipeline_source
+                "effective_source": (
+                    config_composition_result.effective_source
                 ),
-                "transform_pipelines": configured_transform_pipelines,
-                "datamodule": {
-                    "source": datamodule_source,
-                    "class_name": datamodule_class_name,
-                    "config_reconstructable": (
-                            not datamodule_is_external
-                            and configured_dataset is not None
-                            and configured_datamodule is not None
-                    ),
-                    "configured_datamodule": configured_datamodule,
-                },
+                "yaml_supplied": (
+                    config_composition_result.yaml_supplied
+                ),
+                "yaml_used_as_base": (
+                    config_composition_result.yaml_used_as_base
+                ),
+            },
+            "model": {
+                "source": run_spec.model_source,
+                "family": run_spec.model_family.name,
+                "class_name": model_class_name,
+                "config_reconstructable": not model_is_external,
+            },
+            "datamodule": {
+                "source": run_spec.datamodule_source,
+                "class_name": datamodule_class_name,
+                "config_reconstructable": (
+                    not datamodule_is_external
+                    and run_spec.dataset_config is not None
+                    and run_spec.datamodule_config is not None
+                ),
             },
         },
         "records": records,
         "exports": {
-            "mode": run_spec.export_spec.mode,
-            "embeddings": {
-                "enabled": embedding_spec.enabled,
-                "requested_keys": embedding_spec.keys,
-                "requested_primary_key": embedding_spec.primary_key,
-                "path": (
-                    paths_to_strings(embedding_export.embeddings_h5ad_path)
-                    if embedding_export is not None
-                    else None
-                ),
-                "resolved_keys": (
-                    embedding_export.resolved_keys
-                    if embedding_export is not None
-                    else None
-                ),
-                "resolved_primary_key": (
-                    embedding_export.resolved_primary_key
-                    if embedding_export is not None
-                    else None
+            "anndata": {
+                "enabled": anndata_spec.enabled,
+                "mode": anndata_spec.mode,
+                "keys": list(anndata_spec.keys),
+                "primary_key": anndata_spec.primary_key,
+                "observations": [
+                    {
+                        "name": observation.name,
+                        "source": observation.source,
+                        "use_as_index": observation.use_as_index,
+                    }
+                    for observation in anndata_spec.observations
+                ],
+                "path": paths_to_strings(
+                    export_result.anndata.path
                 ),
             },
             "reconstructions": {
-                "configured_enabled": (
-                    run_spec.prediction_config.exports.reconstructions.enabled
-                ),
                 "enabled": reconstruction_spec.enabled,
-                "n_examples_requested": reconstruction_spec.n_examples,
-                "n_examples_exported": (
-                    reconstruction_paths.n_examples_exported
-                    if reconstruction_paths is not None
-                    else None
+                "mode": reconstruction_spec.mode,
+                "n_examples_requested": (
+                    reconstruction_spec.n_examples
                 ),
                 "selection": reconstruction_spec.selection,
                 "stratify_by": reconstruction_spec.stratify_by,
                 "seed": reconstruction_spec.seed,
                 "include_input": reconstruction_spec.include_input,
-                "include_prediction": reconstruction_spec.include_prediction,
-                "paths": {
-                    "input": (
-                        paths_to_strings(reconstruction_paths.input_path)
-                        if reconstruction_paths is not None
-                        else None
-                    ),
-                    "reconstruction": (
-                        paths_to_strings(reconstruction_paths.reconstruction_path)
-                        if reconstruction_paths is not None
-                        else None
-                    ),
-                    "obs": (
-                        paths_to_strings(reconstruction_paths.obs_path)
-                        if reconstruction_paths is not None
-                        else None
-                    ),
-                    "metadata": (
-                        paths_to_strings(reconstruction_paths.metadata_path)
-                        if reconstruction_paths is not None
-                        else None
-                    ),
-                },
+                "include_reconstruction": (
+                    reconstruction_spec.include_reconstruction
+                ),
+                "observations": [
+                    {
+                        "name": observation.name,
+                        "source": observation.source,
+                    }
+                    for observation
+                    in reconstruction_spec.observations
+                ],
+                "pairs": reconstruction_pair_export_records,
             },
         },
         "summary": summary,
+        "appendix": {
+            "resolved_config": config_to_serializable_dict(config),
+            "training_manifest": training_manifest,
+        },
     }
 
     write_yaml_record(manifest, output_path)
@@ -1235,16 +1268,17 @@ def _collect_paths(value: Any) -> list[Path]:
     return []
 
 
-def _build_training_model_architecture_summary(
+def _build_model_architecture_summary(
     *,
-    run_spec: TrainingRunSpec,
+    config: TrainingConfig,
+    model_family: Any,
+    model_is_external: bool,
 ) -> dict[str, Any] | None:
-    config = run_spec.training_config
-
-    if run_spec.model_source != "config":
+    """Build a concise architecture summary for a trained model."""
+    if model_is_external:
         return None
 
-    if isinstance(run_spec.model_family, CanonicalModelFamilySpec):
+    if isinstance(model_family, CanonicalModelFamilySpec):
         assert config.model is not None
         assert config.encoder is not None
         assert config.decoder is not None
@@ -1254,45 +1288,39 @@ def _build_training_model_architecture_summary(
             "decoder": config.decoder.name,
         }
 
-        if run_spec.model_family == VAE_FAMILY:
+        if model_family == VAE_FAMILY:
             architecture_summary["latent_dim"] = config.model.params[
                 "latent_dim"
             ]
 
         return architecture_summary
 
-    if run_spec.model_family.name == "composite":
-        assert config.composite_model_declarations is not None
-        assert config.composite_model_components is not None
-        assert config.composite_model_assembly is not None
+    assert config.composite_model_declarations is not None
+    assert config.composite_model_components is not None
+    assert config.composite_model_assembly is not None
 
-        return {
-            "declarations": (
-                config.composite_model_declarations.model_dump(
-                    mode="json"
-                )
-            ),
-            "components": {
-                component_id: {
-                    "kind": component.kind,
-                    "name": component.name,
-                }
-                for component_id, component
-                in config.composite_model_components.items()
-            },
-            "assembly": {
-                step_id: {
-                    "component": step.component,
-                }
-                for step_id, step
-                in config.composite_model_assembly.items()
-            },
-        }
-
-    raise TypeError(
-        "Unsupported model family specification type: "
-        f"{type(run_spec.model_family).__name__}."
-    )
+    return {
+        "declarations": (
+            config.composite_model_declarations.model_dump(
+                mode="json"
+            )
+        ),
+        "components": {
+            component_id: {
+                "kind": component.kind,
+                "name": component.name,
+            }
+            for component_id, component
+            in config.composite_model_components.items()
+        },
+        "assembly": {
+            step_id: {
+                "component": step.component,
+            }
+            for step_id, step
+            in config.composite_model_assembly.items()
+        },
+    }
 
 
 def _summarize_transform_pipelines(
