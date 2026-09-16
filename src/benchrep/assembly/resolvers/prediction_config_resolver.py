@@ -10,6 +10,7 @@ from benchrep.assembly.schemas import (
     PredictionTransformStepConfig,
     PredictionConfig,
     TrainingConfig,
+    PredictionAnnDataExportConfig,
     PredictionReconstructionsExportConfig,
     PredictionExportConfig,
     parse_training_config,
@@ -20,7 +21,10 @@ from benchrep.assembly.schemas import (
 )
 from benchrep.assembly.schemas.training_config_schema import Float32MatmulPrecision
 from benchrep.assembly.registries.core import MODELS
-from benchrep.assembly.registries.utils import normalize_name
+from benchrep.assembly.resolvers.composite_model_resolver import (
+    CompositeModelSpec,
+    resolve_composite_model_config,
+)
 from benchrep.assembly.resolvers.utils import (
     resolve_optional,
     get_required_nested_path,
@@ -36,7 +40,7 @@ from benchrep.interfaces.model_families import (
     CanonicalModelFamilySpec,
     ModelFamilySpec,
     VAE_FAMILY,
-    model_family_supports_reconstruction,
+    COMPOSITE_FAMILY,
 )
 from benchrep.runtime.status.training import ACCEPTABLE_TRAINING_STATUSES
 
@@ -73,28 +77,68 @@ PredictionInheritableField = Literal[
 ]
 
 
+PredictionAnnDataObservationSource = Literal[
+    "model_input",
+    "model_output",
+    "batch_metadata",
+]
+
+PredictionReconstructionObservationSource = Literal[
+    "model_input",
+    "batch_metadata",
+]
+
+
 @dataclass(frozen=True)
-class PredictionEmbeddingsExportSpec:
+class PredictionAnnDataObservationSpec:
+    name: str
+    source: PredictionAnnDataObservationSource
+    use_as_index: bool = False
+
+
+@dataclass(frozen=True)
+class PredictionReconstructionObservationSpec:
+    name: str
+    source: PredictionReconstructionObservationSource
+
+
+@dataclass(frozen=True)
+class PredictionAnnDataExportSpec:
     enabled: bool
-    keys: list[str] | Literal["auto", "all"]
-    primary_key: str
+    mode: Literal["all", "custom"]
+    keys: tuple[str, ...]
+    output_structures_by_key: dict[
+        str,
+        Literal["scalar", "vector"],
+    ]
+    primary_key: str | None
+    observations: tuple[PredictionAnnDataObservationSpec, ...]
+
+
+@dataclass(frozen=True)
+class PredictionReconstructionPairSpec:
+    id: str
+    input: str
+    reconstruction: str
 
 
 @dataclass(frozen=True)
 class PredictionReconstructionsExportSpec:
     enabled: bool
+    mode: Literal["all", "custom"]
+    pairs: tuple[PredictionReconstructionPairSpec, ...]
+    observations: tuple[PredictionReconstructionObservationSpec, ...]
     n_examples: int | Literal["all"]
     selection: Literal["first", "random"]
     stratify_by: str | None
     seed: int | None
     include_input: bool
-    include_prediction: bool
+    include_reconstruction: bool
 
 
 @dataclass(frozen=True)
 class PredictionExportSpec:
-    mode: Literal["standard", "all", "custom"]
-    embeddings: PredictionEmbeddingsExportSpec
+    anndata: PredictionAnnDataExportSpec
     reconstructions: PredictionReconstructionsExportSpec
 
 
@@ -109,6 +153,7 @@ class PredictionRunSpec:
     inherited_config_fields: frozenset[PredictionInheritableField]
     prediction_config: PredictionConfig
     training_config: TrainingConfig
+    composite_model_spec: CompositeModelSpec | None
     training_manifest: dict[str, Any]
 
     training_manifest_path: Path
@@ -243,6 +288,27 @@ def resolve_prediction_config(
         model_family=model_family,
         model_is_external=model_is_external,
     )
+
+    composite_model_spec: CompositeModelSpec | None = None
+
+    if model_family == COMPOSITE_FAMILY:
+        assert training_config.composite_model_declarations is not None
+        assert training_config.composite_model_components is not None
+        assert training_config.composite_model_assembly is not None
+        assert training_config.losses is not None
+
+        composite_model_spec = resolve_composite_model_config(
+            declarations_config=(
+                training_config.composite_model_declarations
+            ),
+            components_config=(
+                training_config.composite_model_components
+            ),
+            assembly_config=(
+                training_config.composite_model_assembly
+            ),
+            losses_config=training_config.losses,
+        )
 
     checkpoint_selection = prediction_config.source.checkpoint
 
@@ -396,10 +462,7 @@ def resolve_prediction_config(
     if prediction_config.inference.float32_matmul_precision is None:
         inherited_config_fields.add("inference.float32_matmul_precision")
 
-    if (
-            prediction_config.inference.deterministic is None
-            and training_config.trainer.deterministic is not None
-    ):
+    if prediction_config.inference.deterministic is None:
         inherited_config_fields.add("inference.deterministic")
 
     reconstruction_latent_source = _resolve_reconstruction_latent_source(
@@ -414,13 +477,17 @@ def resolve_prediction_config(
         export_config=prediction_config.exports,
         seed=seed,
         model_family=model_family,
+        training_config=training_config,
     )
 
-    # The export seed inherits from training only through an inherited
-    # inference seed, not through an explicitly configured prediction seed.
+    # The reconstruction seed inherits from training only when random subset
+    # selection actually consumes the resolved inference seed.
     if (
-        prediction_config.exports.reconstructions.seed is None
-        and seed_inherited_from_training
+            export_spec.reconstructions.enabled
+            and export_spec.reconstructions.n_examples != "all"
+            and export_spec.reconstructions.selection == "random"
+            and prediction_config.exports.reconstructions.seed is None
+            and seed_inherited_from_training
     ):
         inherited_config_fields.add("exports.reconstructions.seed")
 
@@ -526,11 +593,7 @@ def resolve_prediction_config(
         )
 
     if model_is_external:
-        if model_override_name is None:
-            raise ValueError(
-                "`model_override_name` is required when the prediction "
-                "model is overridden."
-            )
+        assert model_override_name is not None
 
         model_name = (
             f"{model_family.name}_external_{model_override_name}"
@@ -557,6 +620,7 @@ def resolve_prediction_config(
         datamodule_source=datamodule_source,
         prediction_config=prediction_config,
         training_config=training_config,
+        composite_model_spec=composite_model_spec,
         training_manifest=training_manifest,
         training_manifest_path=training_manifest_path,
         resolved_training_config_path=resolved_training_config_path,
@@ -581,96 +645,56 @@ def resolve_prediction_config(
     )
 
 
-def _resolve_reconstruction_export_enabled(
+def _resolve_prediction_reconstruction_export(
     *,
     reconstruction_config: PredictionReconstructionsExportConfig,
-    model_family: ModelFamilySpec,
-) -> bool:
-    """Resolve tri-state reconstruction export against model-family support.
-
-    An explicit true value enables export and errors if the model family does
-    not declare returned reconstructions. An explicit false value disables export.
-    A null value enables export automatically only for model families whose
-    expected prediction output contains a reconstruction field.
-    """
-    supports_reconstruction = model_family_supports_reconstruction(
-        model_family
-    )
-
-    if reconstruction_config.enabled is True and not supports_reconstruction:
-        raise ValueError(
-            f"Model family {model_family.name!r} does not support "
-            "reconstruction export. Set "
-            "`exports.reconstructions.enabled=False` or null."
-        )
-
-    if reconstruction_config.enabled is None:
-        return supports_reconstruction
-
-    return reconstruction_config.enabled
-
-
-def resolve_prediction_exports(
-    *,
-    export_config: PredictionExportConfig,
     seed: int | None,
     model_family: ModelFamilySpec,
-) -> PredictionExportSpec:
-    """Resolve prediction export settings into a runtime export spec.
+    training_config: TrainingConfig,
+) -> PredictionReconstructionsExportSpec:
+    mode = reconstruction_config.mode or "all"
 
-    This resolves config-level export intent only. Actual output-key validation
-    is done later by the exporter after ``trainer.predict()`` has produced model
-    outputs.
-
-    ``seed`` is the already-resolved prediction/inference seed. It should already
-    reflect the prediction config seed if provided, otherwise the training run seed.
-    """
-
-    reconstruction_config = export_config.reconstructions
-    reconstruction_enabled = _resolve_reconstruction_export_enabled(
+    pairs = _resolve_prediction_reconstruction_pairs(
         reconstruction_config=reconstruction_config,
         model_family=model_family,
+        training_config=training_config,
     )
 
-    if reconstruction_enabled:
-        if (
-            not reconstruction_config.include_input
-            and not reconstruction_config.include_prediction
-        ):
+    observation_specs: tuple[
+        PredictionReconstructionObservationSpec,
+        ...
+    ] = ()
+
+    if reconstruction_config.enabled and model_family == COMPOSITE_FAMILY:
+        declarations = training_config.composite_model_declarations
+
+        if declarations is None:
             raise ValueError(
-                "Enabled reconstruction export requires at least one of "
-                "`include_input` or `include_prediction` to be true."
+                "Composite prediction requires "
+                "`composite_model_declarations` in the resolved training "
+                "configuration."
             )
 
-        if (
-            reconstruction_config.n_examples != "all"
-            and reconstruction_config.stratify_by is not None
-            and reconstruction_config.selection != "random"
-        ):
-            raise ValueError(
-                "`exports.reconstructions.selection` must be 'random' when "
-                "stratifying a reconstruction subset."
+        observation_specs = (
+            _resolve_composite_reconstruction_observations(
+                declarations=declarations,
             )
-
-    mode = export_config.mode
-
-    if mode == "standard":
-        embedding_keys: list[str] | Literal["auto", "all"] = "auto"
-        primary_key = "auto"
-
-    elif mode == "all":
-        embedding_keys = "all"
-        primary_key = "auto"
-
-    elif mode == "custom":
-        embedding_keys = export_config.embeddings.keys
-        primary_key = export_config.embeddings.primary_key
-
-    else:
-        raise ValueError(
-            f"Unsupported prediction export mode {mode!r}. "
-            "Available options: 'standard', 'all', 'custom'."
         )
+
+        if (
+                reconstruction_config.stratify_by is not None
+                and reconstruction_config.stratify_by
+                not in {
+            observation.name
+            for observation in observation_specs
+        }
+        ):
+            raise ValueError(
+                "`exports.reconstructions.stratify_by` references "
+                f"{reconstruction_config.stratify_by!r}, which is not available "
+                "among the Composite reconstruction observations: "
+                f"{[observation.name for observation in observation_specs]}."
+            )
 
     reconstruction_seed = (
         reconstruction_config.seed
@@ -679,33 +703,58 @@ def resolve_prediction_exports(
     )
 
     if (
-            reconstruction_enabled
-            and reconstruction_config.n_examples != "all"
-            and reconstruction_config.selection == "random"
-            and reconstruction_seed is None
+        reconstruction_config.enabled
+        and reconstruction_config.n_examples != "all"
+        and reconstruction_config.selection == "random"
+        and reconstruction_seed is None
     ):
         raise ValueError(
             "Random reconstruction export requires a seed. Set "
-            "`exports.reconstructions.seed`, `inference.seed`, or use a training "
-            "run with a reproducibility seed."
+            "`exports.reconstructions.seed`, `inference.seed`, or use a "
+            "training run with a reproducibility seed."
         )
 
-    return PredictionExportSpec(
+    return PredictionReconstructionsExportSpec(
+        enabled=reconstruction_config.enabled,
         mode=mode,
-        embeddings=PredictionEmbeddingsExportSpec(
-            enabled=export_config.embeddings.enabled,
-            keys=embedding_keys,
-            primary_key=primary_key,
+        pairs=pairs,
+        observations=observation_specs,
+        n_examples=reconstruction_config.n_examples,
+        selection=reconstruction_config.selection,
+        stratify_by=reconstruction_config.stratify_by,
+        seed=reconstruction_seed,
+        include_input=reconstruction_config.include_input,
+        include_reconstruction=(
+            reconstruction_config.include_reconstruction
         ),
-        reconstructions=PredictionReconstructionsExportSpec(
-            enabled=reconstruction_enabled,
-            n_examples=reconstruction_config.n_examples,
-            selection=reconstruction_config.selection,
-            stratify_by=reconstruction_config.stratify_by,
-            seed=reconstruction_seed,
-            include_input=reconstruction_config.include_input,
-            include_prediction=reconstruction_config.include_prediction,
-        ),
+    )
+
+
+def resolve_prediction_exports(
+    *,
+    export_config: PredictionExportConfig,
+    seed: int | None,
+    model_family: ModelFamilySpec,
+    training_config: TrainingConfig,
+) -> PredictionExportSpec:
+    """Resolve prediction export configuration against the trained model."""
+
+    anndata_spec = _resolve_prediction_anndata_export(
+        anndata_config=export_config.anndata,
+        model_family=model_family,
+        training_config=training_config,
+    )
+
+    reconstruction_spec = _resolve_prediction_reconstruction_export(
+        reconstruction_config=export_config.reconstructions,
+        seed=seed,
+        model_family=model_family,
+        training_config=training_config,
+    )
+
+    return PredictionExportSpec(
+        anndata=anndata_spec,
+        reconstructions=reconstruction_spec,
     )
 
 
@@ -895,10 +944,7 @@ def _validate_prediction_model_family(
     assert training_config.model is not None
 
     configured_model_name = MODELS.resolve_key(
-        normalize_name(
-            training_config.model.name,
-            field_name="config.model.name",
-        )
+        training_config.model.name
     )
 
     if configured_model_name != model_family.name:
@@ -1082,3 +1128,532 @@ def _resolve_explicit_prediction_transform_routes(
         )
 
     return tuple(resolved)
+
+
+def _find_duplicate_names(names: list[str]) -> list[str]:
+    seen: set[str] = set()
+    duplicates: set[str] = set()
+
+    for name in names:
+        if name in seen:
+            duplicates.add(name)
+        else:
+            seen.add(name)
+
+    return sorted(duplicates)
+
+
+def _resolve_composite_anndata_observations(
+    *,
+    declarations: CompositeModelDeclarationsConfig,
+    selected_keys: tuple[str, ...],
+    output_structures_by_key: dict[
+        str,
+        Literal["scalar", "vector"],
+    ],
+) -> tuple[PredictionAnnDataObservationSpec, ...]:
+    """Resolve the columns written to ``adata.obs`` for a Composite model.
+
+    AnnData observations include selected scalar model outputs, declared scalar
+    model inputs, and declared batch metadata. At most one metadata field may
+    provide the AnnData observation index.
+    """
+    index_names = [
+        name
+        for name, role in declarations.batch_metadata.items()
+        if role == "index"
+    ]
+
+    if len(index_names) > 1:
+        raise ValueError(
+            "Composite AnnData export supports at most one batch-metadata "
+            "declaration with role `index`; found "
+            f"{index_names}."
+        )
+
+    observations = tuple(
+        [
+            PredictionAnnDataObservationSpec(
+                name=key,
+                source="model_output",
+            )
+            for key in selected_keys
+            if output_structures_by_key[key] == "scalar"
+        ]
+        + [
+            PredictionAnnDataObservationSpec(
+                name=name,
+                source="model_input",
+            )
+            for name, role in declarations.expects.items()
+            if TENSOR_STRUCTURE_BY_ROLE[role] == "scalar"
+        ]
+        + [
+            PredictionAnnDataObservationSpec(
+                name=name,
+                source="batch_metadata",
+                use_as_index=role == "index",
+            )
+            for name, role in declarations.batch_metadata.items()
+        ]
+    )
+
+    duplicate_names = _find_duplicate_names(
+        [observation.name for observation in observations]
+    )
+
+    if duplicate_names:
+        raise ValueError(
+            "Composite AnnData export resolves conflicting observation names "
+            "across selected scalar outputs, scalar model inputs, and batch "
+            f"metadata: {duplicate_names}."
+        )
+
+    return observations
+
+
+def _resolve_composite_reconstruction_observations(
+    *,
+    declarations: CompositeModelDeclarationsConfig,
+) -> tuple[PredictionReconstructionObservationSpec, ...]:
+    """Resolve contextual observations written into reconstruction bundles.
+
+    Reconstruction observations include declared scalar model inputs and batch
+    metadata. Model outputs are excluded because reconstruction observations
+    describe the selected source examples rather than the model's exported
+    predictions.
+    """
+    observations = tuple(
+        [
+            PredictionReconstructionObservationSpec(
+                name=name,
+                source="model_input",
+            )
+            for name, role in declarations.expects.items()
+            if TENSOR_STRUCTURE_BY_ROLE[role] == "scalar"
+        ]
+        + [
+            PredictionReconstructionObservationSpec(
+                name=name,
+                source="batch_metadata",
+            )
+            for name in declarations.batch_metadata
+        ]
+    )
+
+    observation_names = [
+        observation.name
+        for observation in observations
+    ]
+
+    duplicate_names = _find_duplicate_names(observation_names)
+
+    if duplicate_names:
+        raise ValueError(
+            "Composite reconstruction export resolves conflicting observation "
+            "names across scalar model inputs and batch metadata: "
+            f"{duplicate_names}."
+        )
+
+    if "source_index" in observation_names:
+        raise ValueError(
+            "Composite reconstruction observation name `source_index` is "
+            "reserved for BenchRep's reconstruction selection index."
+        )
+
+    return observations
+
+
+def _resolve_prediction_anndata_export(
+    *,
+    anndata_config: PredictionAnnDataExportConfig,
+    model_family: ModelFamilySpec,
+    training_config: TrainingConfig,
+) -> PredictionAnnDataExportSpec:
+    mode = anndata_config.mode or "all"
+
+    if not anndata_config.enabled:
+        return PredictionAnnDataExportSpec(
+            enabled=False,
+            mode=mode,
+            keys=(),
+            output_structures_by_key={},
+            primary_key=None,
+            observations=(),
+        )
+
+    if isinstance(model_family, CanonicalModelFamilySpec):
+        # Canonical models have fixed keys.
+        available_keys = (
+            ("embedding", "z_mu", "z_logvar", "z_sample")
+            if model_family == VAE_FAMILY
+            else ("embedding",)
+        )
+
+        if mode == "all":
+            # "embedding" and "z_mu" are equivalent.
+            selected_keys = (
+                ("embedding", "z_logvar", "z_sample")
+                if model_family == VAE_FAMILY
+                else ("embedding",)
+            )
+        else:
+            assert anndata_config.keys is not None
+            selected_keys = tuple(anndata_config.keys)
+
+            unknown_keys = [
+                key
+                for key in selected_keys
+                if key not in available_keys
+            ]
+
+            if unknown_keys:
+                raise ValueError(
+                    "`exports.anndata.keys` contains outputs unsupported by "
+                    f"the {model_family.name!r} model family: {unknown_keys}. "
+                    f"Available keys: {list(available_keys)}."
+                )
+
+        output_structures_by_key: dict[
+            str,
+            Literal["scalar", "vector"],
+        ] = {
+            key: "vector"
+            for key in selected_keys
+        }
+        observation_specs: tuple[
+            PredictionAnnDataObservationSpec,
+            ...
+        ] = ()
+
+        primary_key = anndata_config.primary_key or "embedding"
+
+    elif model_family == COMPOSITE_FAMILY:
+        declarations = training_config.composite_model_declarations
+
+        if declarations is None:
+            raise ValueError(
+                "Composite prediction requires "
+                "`composite_model_declarations` in the resolved training "
+                "configuration."
+            )
+
+        # All declared non-image outputs are exportable in AnnData.
+        output_roles = declarations.produces
+        exportable_keys = tuple(
+            key
+            for key, role in output_roles.items()
+            if TENSOR_STRUCTURE_BY_ROLE[role] != "image"
+        )
+
+        if mode == "all":
+            selected_keys = exportable_keys
+        else:
+            assert anndata_config.keys is not None
+            selected_keys = tuple(anndata_config.keys)
+
+            unknown_keys = [
+                key
+                for key in selected_keys
+                if key not in output_roles
+            ]
+            if unknown_keys:
+                raise ValueError(
+                    "`exports.anndata.keys` contains outputs not declared under "
+                    "`composite_model_declarations.produces`: "
+                    f"{unknown_keys}."
+                )
+
+            image_keys = [
+                key
+                for key in selected_keys
+                if TENSOR_STRUCTURE_BY_ROLE[output_roles[key]] == "image"
+            ]
+            if image_keys:
+                raise ValueError(
+                    "`exports.anndata.keys` contains image-valued outputs, "
+                    "which cannot be exported to AnnData: "
+                    f"{image_keys}."
+                )
+
+        output_structures_by_key: dict[
+            str,
+            Literal["scalar", "vector"],
+        ] = {}
+
+        for key in selected_keys:
+            structure = TENSOR_STRUCTURE_BY_ROLE[output_roles[key]]
+
+            if structure == "image":
+                raise RuntimeError(
+                    f"Internal error: image-valued output {key!r} reached "
+                    "Composite AnnData export resolution."
+                )
+
+            output_structures_by_key[key] = structure
+
+        observation_specs = _resolve_composite_anndata_observations(
+            declarations=declarations,
+            selected_keys=selected_keys,
+            output_structures_by_key=output_structures_by_key,
+        )
+
+        primary_key = anndata_config.primary_key
+
+        if primary_key is None:
+            raise ValueError(
+                "Composite AnnData export requires an explicit "
+                "`exports.anndata.primary_key`."
+            )
+
+        if primary_key not in output_roles:
+            raise ValueError(
+                "`exports.anndata.primary_key` references an output not "
+                "declared under `composite_model_declarations.produces`: "
+                f"{primary_key!r}."
+            )
+
+        primary_role = output_roles[primary_key]
+
+        if TENSOR_STRUCTURE_BY_ROLE[primary_role] != "vector":
+            raise ValueError(
+                "`exports.anndata.primary_key` must reference a vector-valued "
+                f"output, but {primary_key!r} has role {primary_role!r}."
+            )
+
+    else:
+        raise TypeError(
+            f"Unsupported model family: {model_family.name!r}."
+        )
+
+    if not selected_keys:
+        raise ValueError(
+            "Enabled AnnData export did not resolve any exportable outputs."
+        )
+
+    if primary_key not in selected_keys:
+        raise ValueError(
+            f"AnnData primary key {primary_key!r} is not included in the "
+            f"resolved export keys: {list(selected_keys)}."
+        )
+
+    return PredictionAnnDataExportSpec(
+        enabled=True,
+        mode=mode,
+        keys=selected_keys,
+        output_structures_by_key=output_structures_by_key,
+        primary_key=primary_key,
+        observations=observation_specs,
+    )
+
+
+def _resolve_prediction_reconstruction_pairs(
+    *,
+    reconstruction_config: PredictionReconstructionsExportConfig,
+    model_family: ModelFamilySpec,
+    training_config: TrainingConfig,
+) -> tuple[PredictionReconstructionPairSpec, ...]:
+    if not reconstruction_config.enabled:
+        return ()
+
+    mode = reconstruction_config.mode or "all"
+
+    if mode == "custom":
+        assert reconstruction_config.pairs is not None
+
+        if isinstance(model_family, CanonicalModelFamilySpec):
+            resolved_pairs = tuple(
+                PredictionReconstructionPairSpec(
+                    id=pair_id,
+                    input=pair.input,
+                    reconstruction=pair.reconstruction,
+                )
+                for pair_id, pair in reconstruction_config.pairs.items()
+            )
+
+            # Given the structural contracts, even external models submitted under
+            # the canonical model families must output these keys.
+            invalid_pairs = [
+                pair.id
+                for pair in resolved_pairs
+                if (
+                    pair.input != "input"
+                    or pair.reconstruction != "reconstruction"
+                )
+            ]
+            if invalid_pairs:
+                raise ValueError(
+                    "Canonical reconstruction export supports only the pair "
+                    "`input` -> `reconstruction`. Invalid pair IDs: "
+                    f"{invalid_pairs}."
+                )
+
+            return resolved_pairs
+
+        if model_family != COMPOSITE_FAMILY:
+            raise TypeError(
+                f"Unsupported model family: {model_family.name!r}."
+            )
+
+        declarations = training_config.composite_model_declarations
+
+        if declarations is None:
+            raise ValueError(
+                "Composite prediction requires "
+                "`composite_model_declarations` in the resolved training "
+                "configuration."
+            )
+
+        resolved_pairs: list[PredictionReconstructionPairSpec] = []
+
+        for pair_id, pair in reconstruction_config.pairs.items():
+            input_role = declarations.expects.get(pair.input)
+
+            if input_role is None:
+                raise ValueError(
+                    f"`exports.reconstructions.pairs.{pair_id}.input` "
+                    f"references {pair.input!r}, which is not declared under "
+                    "`composite_model_declarations.expects`."
+                )
+
+            if TENSOR_STRUCTURE_BY_ROLE[input_role] != "image":
+                raise ValueError(
+                    f"`exports.reconstructions.pairs.{pair_id}.input` must "
+                    "reference an image-valued model input, but "
+                    f"{pair.input!r} has role {input_role!r}."
+                )
+
+            reconstruction_role = declarations.produces.get(
+                pair.reconstruction
+            )
+
+            if reconstruction_role is None:
+                raise ValueError(
+                    f"`exports.reconstructions.pairs.{pair_id}."
+                    f"reconstruction` references {pair.reconstruction!r}, "
+                    "which is not declared under "
+                    "`composite_model_declarations.produces`."
+                )
+
+            if reconstruction_role != "reconstruction_image":
+                raise ValueError(
+                    f"`exports.reconstructions.pairs.{pair_id}."
+                    "reconstruction` must reference an output with role "
+                    "`reconstruction_image`, but "
+                    f"{pair.reconstruction!r} has role "
+                    f"{reconstruction_role!r}."
+                )
+
+            resolved_pairs.append(
+                PredictionReconstructionPairSpec(
+                    id=pair_id,
+                    input=pair.input,
+                    reconstruction=pair.reconstruction,
+                )
+            )
+
+        return tuple(resolved_pairs)
+
+    # If mode = "all"
+    if isinstance(model_family, CanonicalModelFamilySpec):
+        return (
+            PredictionReconstructionPairSpec(
+                id="reconstruction",
+                input="input",
+                reconstruction="reconstruction",
+            ),
+        )
+
+    if model_family != COMPOSITE_FAMILY:
+        raise TypeError(
+            f"Unsupported model family: {model_family.name!r}."
+        )
+
+    declarations = training_config.composite_model_declarations
+
+    if declarations is None:
+        raise ValueError(
+            "Composite prediction requires "
+            "`composite_model_declarations` in the resolved training "
+            "configuration."
+        )
+
+    reconstruction_losses = (
+        (training_config.losses or {}).get("reconstruction")
+    )
+
+    if not reconstruction_losses:
+        raise ValueError(
+            "Composite reconstruction export with `mode='all'` requires at "
+            "least one configured loss under `losses.reconstruction`. Use "
+            "`mode='custom'` to configure reconstruction pairs explicitly."
+        )
+
+    inferred_pairs: list[tuple[str, str]] = []
+
+    # Infer input/reconstruction pairs from reconstruction losses.
+    for loss_name, loss_config in reconstruction_losses.items():
+        wiring = loss_config.composite_wiring
+
+        # Loss wiring is mandatory with composite models.
+        if wiring is None:
+            raise ValueError(
+                "Cannot infer a reconstruction pair because "
+                f"`losses.reconstruction.{loss_name}.composite_wiring` is "
+                "missing."
+            )
+
+        input_names: list[str] = []
+        reconstruction_names: list[str] = []
+
+        for reference in wiring.values():
+            source, separator, declaration_name = reference.partition(".")
+
+            if separator != ".":
+                continue
+
+            if source == "expects":
+                role = declarations.expects.get(declaration_name)
+
+                if (
+                    role is not None
+                    and TENSOR_STRUCTURE_BY_ROLE[role] == "image"
+                ):
+                    input_names.append(declaration_name)
+
+            elif source == "produces":
+                role = declarations.produces.get(declaration_name)
+
+                if role == "reconstruction_image":
+                    reconstruction_names.append(declaration_name)
+
+        input_names = list(dict.fromkeys(input_names))
+        reconstruction_names = list(dict.fromkeys(reconstruction_names))
+
+        if not (len(input_names) == len(reconstruction_names) == 1):
+            raise ValueError(
+                "Could not infer exactly one image input and one "
+                "reconstruction-image output from "
+                f"`losses.reconstruction.{loss_name}.composite_wiring`; "
+                f"found inputs={input_names} and "
+                f"reconstructions={reconstruction_names}. Use "
+                "`exports.reconstructions.mode='custom'` to configure the "
+                "pair explicitly."
+            )
+
+        pair = (input_names[0], reconstruction_names[0])
+
+        if pair not in inferred_pairs:
+            inferred_pairs.append(pair)
+
+    return tuple(
+        PredictionReconstructionPairSpec(
+            id=f"reconstruction_{index:02d}",
+            input=input_name,
+            reconstruction=reconstruction_name,
+        )
+        for index, (input_name, reconstruction_name) in enumerate(
+            inferred_pairs,
+            start=1,
+        )
+    )

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, fields, is_dataclass
-from typing import TypeAlias, Any, cast
+from dataclasses import dataclass
+from typing import TypeAlias, Any
 
 from benchrep.interfaces.contracts import (
     ContractKind,
@@ -64,28 +64,3 @@ VAE_FAMILY = CanonicalModelFamilySpec(
 COMPOSITE_FAMILY = ModelFamilySpec(
     name="composite",
 )
-
-
-def model_family_supports_reconstruction(
-    model_family: ModelFamilySpec,
-) -> bool:
-    if not isinstance(model_family, CanonicalModelFamilySpec):
-        raise TypeError(
-            "Static reconstruction support is defined only for canonical "
-            "model families."
-        )
-
-    prediction_output_type = (
-        model_family.expected_prediction_output_type
-    )
-
-    if not is_dataclass(prediction_output_type):
-        raise TypeError(
-            "Reconstruction support detection requires a dataclass "
-            "prediction-output contract."
-        )
-
-    return any(
-        field.name == "reconstruction"
-        for field in fields(cast(Any, prediction_output_type))
-    )
