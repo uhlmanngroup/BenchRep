@@ -54,7 +54,7 @@ CONFIG_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "configs"
             "training_tiny_synthetic_vae.yaml",
             train_vae,
             predict_vae,
-            {"embedding", "z_mu", "z_logvar"},
+            {"embedding", "z_logvar", "z_sample"},
             id="vae",
         ),
     ],
@@ -134,17 +134,30 @@ def test_internal_end_to_end(
         prediction_manifest["source"]["checkpoint_path"]
     ) == prediction_result.run_spec.checkpoint_path
 
-    embedding_export = prediction_result.export_paths.embedding_export
-    reconstruction_paths = prediction_result.export_paths.reconstruction_paths
+    anndata_export = prediction_result.export_result.anndata
+    reconstruction_export = (
+        prediction_result.export_result.reconstructions
+    )
 
-    assert embedding_export is not None
-    assert embedding_export.embeddings_h5ad_path is not None
-    assert embedding_export.embeddings_h5ad_path.is_file()
-    assert embedding_export.resolved_primary_key == "embedding"
-    assert embedding_export.resolved_keys is not None
-    assert expected_embedding_keys <= set(embedding_export.resolved_keys)
+    assert anndata_export.path is not None
+    assert anndata_export.path.is_file()
+    assert (
+            prediction_result.run_spec.export_spec.anndata.primary_key
+            == "embedding"
+    )
+    assert expected_embedding_keys <= set(
+        prediction_result.run_spec.export_spec.anndata.keys
+    )
 
-    assert reconstruction_paths is not None
+    assert reconstruction_export.outcome.status == "completed"
+    assert len(reconstruction_export.pairs) == 1
+
+    reconstruction_pair_export = reconstruction_export.pairs[0]
+    assert reconstruction_pair_export.pair.id == "reconstruction"
+    assert reconstruction_pair_export.outcome.status == "completed"
+
+    reconstruction_paths = reconstruction_pair_export.paths
+
     assert reconstruction_paths.n_examples_exported == 8
     assert reconstruction_paths.input_path is not None
     assert reconstruction_paths.reconstruction_path is not None
@@ -281,7 +294,7 @@ def _assert_vae_reconstruction_provenance(
         manifest = yaml.safe_load(handle)
 
     recorded_source = (
-        manifest["provenance"]["prediction"]["inference"]
+        manifest["appendix"]["resolved_config"]["inference"]
         ["reconstruction_latent_source"]
     )
 

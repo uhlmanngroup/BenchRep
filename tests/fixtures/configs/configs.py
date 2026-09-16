@@ -26,7 +26,7 @@ from benchrep.assembly.schemas.prediction_config_schema import (
     PredictionDataConfig,
     PredictionTransformPipelineConfig,
     PredictionTransformStepConfig,
-    PredictionEmbeddingsExportConfig,
+    PredictionAnnDataExportConfig,
     PredictionExportConfig,
     PredictionInferenceConfig,
     PredictionReconstructionsExportConfig,
@@ -338,20 +338,22 @@ def make_prediction_transform_pipelines_config(
 
 def make_prediction_exports_config() -> PredictionExportConfig:
     return PredictionExportConfig(
-        mode="custom",
-        embeddings=PredictionEmbeddingsExportConfig(
+        anndata=PredictionAnnDataExportConfig(
             enabled=True,
+            mode="custom",
             keys=["embedding"],
             primary_key="embedding",
         ),
         reconstructions=PredictionReconstructionsExportConfig(
             enabled=True,
+            mode="all",
+            pairs=None,
             n_examples=6,
             selection="first",
             stratify_by=None,
             seed=999,
             include_input=False,
-            include_prediction=True,
+            include_reconstruction=True,
         ),
     )
 

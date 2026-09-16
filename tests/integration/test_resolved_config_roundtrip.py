@@ -273,6 +273,7 @@ def _write_training_manifest(
 
     output_dir = tmp_path / "outputs" / "training" / "source_run"
     manifest_path = training_dir / "training_manifest.yaml"
+
     _write_yaml(
         manifest_path,
         {
@@ -282,25 +283,36 @@ def _write_training_manifest(
                 "run_name": "source_run",
                 "output_dir": str(output_dir),
             },
-            "records": {
-                "resolved_config_path": str(resolved_config_path),
-            },
-            "provenance": {
+            "construction": {
+                "config": {
+                    "run_reconstructable_from_resolved_config": True,
+                },
                 "model": {
                     "source": "config",
                     "family": "vae",
+                    "class_name": "VAE",
+                    "config_reconstructable": True,
                 },
                 "datamodule": {
                     "source": "config",
+                    "class_name": "BenchRepDataModule",
+                    "config_reconstructable": True,
                 },
+            },
+            "records": {
+                "resolved_config_path": str(resolved_config_path),
             },
             "checkpoints": {
                 "checkpoint_dir": str(checkpoint_dir),
                 "best_checkpoint_path": str(checkpoint_path),
                 "last_checkpoint_path": str(checkpoint_path),
             },
+            "appendix": {
+                "resolved_config": load_yaml(resolved_config_path),
+            },
         },
     )
+
     return manifest_path
 
 
