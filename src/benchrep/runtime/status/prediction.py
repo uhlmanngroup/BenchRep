@@ -8,6 +8,7 @@ PredictionOutcomeStatus = Literal[
     "disabled",
     "completed",
     "completed_with_warnings",
+    "partially_completed",
     "skipped",
     "failed",
 ]
@@ -38,7 +39,7 @@ class PredictionOutcome:
 @dataclass(frozen=True)
 class PredictionStatusReport:
     inference: PredictionOutcome
-    embeddings_export: PredictionOutcome
+    anndata_export: PredictionOutcome
     reconstructions_export: PredictionOutcome
     status: PredictionStatus
 
@@ -46,19 +47,13 @@ class PredictionStatusReport:
 def build_prediction_status_report(
     *,
     inference: PredictionOutcome,
-    embeddings_export: PredictionOutcome,
+    anndata_export: PredictionOutcome,
     reconstructions_export: PredictionOutcome,
 ) -> PredictionStatusReport:
     exports = (
-        embeddings_export,
+        anndata_export,
         reconstructions_export,
     )
-
-    if inference.status in {"disabled", "skipped"}:
-        raise ValueError(
-            "Prediction inference cannot be disabled or skipped in a "
-            "final status report."
-        )
 
     if inference.status == "failed":
         status: PredictionStatus = "failed"
@@ -73,13 +68,20 @@ def build_prediction_status_report(
             outcome.status in {
                 "completed",
                 "completed_with_warnings",
+                "partially_completed",
             }
             for outcome in active_exports
         )
+
         has_incomplete_export = any(
-            outcome.status in {"failed", "skipped"}
+            outcome.status in {
+                "failed",
+                "skipped",
+                "partially_completed",
+            }
             for outcome in active_exports
         )
+
         has_warnings = (
             inference.status == "completed_with_warnings"
             or any(
@@ -101,7 +103,7 @@ def build_prediction_status_report(
 
     return PredictionStatusReport(
         inference=inference,
-        embeddings_export=embeddings_export,
+        anndata_export=anndata_export,
         reconstructions_export=reconstructions_export,
         status=status,
     )

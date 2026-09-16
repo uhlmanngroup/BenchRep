@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, fields, is_dataclass
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Sequence, cast
+from typing import Any, Literal, Sequence, TypeAlias, cast
 import warnings
 
 import torch
@@ -10,8 +10,15 @@ import torch
 from benchrep.interfaces.contracts import (
     AutoencoderPredictionOutput,
     VAEPredictionOutput,
+    CompositePredictionOutput,
 )
-from benchrep.assembly.resolvers.prediction_config_resolver import PredictionExportSpec
+from benchrep.assembly.resolvers.prediction_config_resolver import (
+    PredictionAnnDataExportSpec,
+    PredictionExportSpec,
+    PredictionReconstructionObservationSpec,
+    PredictionReconstructionPairSpec,
+    PredictionReconstructionsExportSpec,
+)
 from benchrep.records.logs import get_run_logger
 from benchrep.records.anndata_io import (
     package_matrix_as_anndata,
@@ -20,31 +27,22 @@ from benchrep.records.anndata_io import (
 from benchrep.runtime.status import PredictionOutcome, PredictionOutcomeStatus
 
 
-PredictionOutput = AutoencoderPredictionOutput | VAEPredictionOutput
-PredictionOutputLike = object
+PredictionOutputLike: TypeAlias = (
+    AutoencoderPredictionOutput
+    | VAEPredictionOutput
+    | CompositePredictionOutput
+)
 
 
 @dataclass(frozen=True)
-class PredictionExportResult:
-    paths: PredictionExportPaths
-    outcomes: tuple[PredictionOutcome, ...]
+class PredictionAnnDataExportResult:
+    path: Path | None
+    outcome: PredictionOutcome
 
 
 @dataclass(frozen=True)
-class PredictionExportPaths:
-    embedding_export: EmbeddingExportPathAndKeys | None = None
-    reconstruction_paths: ReconstructionExportPaths | None = None
-
-
-@dataclass(frozen=True)
-class EmbeddingExportPathAndKeys:
-    embeddings_h5ad_path: Path | None = None
-    resolved_keys: list[str] | None = None
-    resolved_primary_key: str | None = None
-
-
-@dataclass(frozen=True)
-class ReconstructionExportPaths:
+class PredictionReconstructionBundlePaths:
+    bundle_dir: Path
     input_path: Path | None = None
     reconstruction_path: Path | None = None
     obs_path: Path | None = None
@@ -53,6 +51,32 @@ class ReconstructionExportPaths:
     n_strata: int | None = None
     n_represented_strata: int | None = None
     n_omitted_strata: int | None = None
+
+
+@dataclass(frozen=True)
+class PredictionReconstructionPairExportResult:
+    pair: PredictionReconstructionPairSpec
+    paths: PredictionReconstructionBundlePaths
+    outcome: PredictionOutcome
+
+
+@dataclass(frozen=True)
+class PredictionReconstructionsExportResult:
+    pairs: tuple[PredictionReconstructionPairExportResult, ...]
+    outcome: PredictionOutcome
+
+
+@dataclass(frozen=True)
+class PredictionExportResult:
+    anndata: PredictionAnnDataExportResult
+    reconstructions: PredictionReconstructionsExportResult
+
+    @property
+    def outcomes(self) -> tuple[PredictionOutcome, PredictionOutcome]:
+        return (
+            self.anndata.outcome,
+            self.reconstructions.outcome,
+        )
 
 
 @dataclass(frozen=True)
@@ -68,381 +92,532 @@ def export_prediction_outputs(
     *,
     predictions: Sequence[PredictionOutputLike],
     export_spec: PredictionExportSpec,
-    embedding_dir: Path,
+    anndata_dir: Path,
     reconstruction_dir: Path,
 ) -> PredictionExportResult:
-    """Export prediction outputs returned by ``Trainer.predict``.
+    """Export all prediction artifacts requested by a resolved export spec.
 
-    This function consumes the batch-level data objects returned by model
-    ``predict_step`` methods and writes the requested prediction artifacts to the
-    export directories provided by the caller.
+    AnnData export and reconstruction export are isolated branches: failure in
+    one branch does not prevent the other from running. Reconstruction pairs
+    are isolated from one another as well, so one failed pair does not prevent
+    the remaining pairs from being exported.
 
-    Embedding outputs are packaged as a BenchRep AnnData artifact. The primary
-    embedding is stored in ``adata.X`` and additional exported embeddings are stored
-    in ``adata.obsm``. Reconstruction outputs are exported separately as tensors,
-    together with selected sample annotations and reconstruction export metadata.
+    Warnings and exceptions raised by an export branch are converted into
+    ``PredictionOutcome`` records rather than propagated. Structural problems
+    with the resolved export plan itself, such as enabled reconstruction export
+    containing no pairs, are treated as internal errors and may still raise.
 
-    The exporter does not own the run directory layout. In BenchRep workflows, the
-    provided directories should normally come from ``RunContext`` (for example,
-    ``run_context.embedding_dir`` and ``run_context.reconstruction_dir``). The
-    function returns the successfully produced artifact paths together with
-    the outcome of each export branch.
-    """
-
-    exported_embeddings_path_and_keys = None
-    exported_reconstruction_paths = None
-
-    embedding_outcome = PredictionOutcome(
-        name="embeddings",
-        status="disabled",
-    )
-    reconstruction_outcome = PredictionOutcome(
-        name="reconstructions",
-        status="disabled",
-    )
-
-    if export_spec.embeddings.enabled:
-        captured_warnings: list[warnings.WarningMessage] = []
-
-        try:
-            with warnings.catch_warnings(record=True) as captured_warnings:
-                warnings.simplefilter("always")
-
-                embedding_dir.mkdir(parents=True, exist_ok=True)
-
-                exported_embeddings_path_and_keys = _export_embeddings(
-                    predictions=predictions,
-                    export_spec=export_spec,
-                    output_dir=embedding_dir,
-                )
-
-        except Exception as exc:
-            warning_issues = tuple(
-                f"Warning ({type(warning.message).__name__}): "
-                f"{warning.message}"
-                for warning in captured_warnings
-            )
-            error_issue = f"Error ({type(exc).__name__}): {exc}"
-            issues = (*warning_issues, error_issue)
-
-            run_log = get_run_logger()
-
-            for issue in warning_issues:
-                run_log.warning("Embedding export: %s", issue)
-
-            run_log.error(
-                "Embedding export failed: %s",
-                error_issue,
-                exc_info=True,
-            )
-
-            embedding_outcome = PredictionOutcome(
-                name="embeddings",
-                status="failed",
-                issues=issues,
-            )
-
-        else:
-            issues = tuple(
-                f"Warning ({type(warning.message).__name__}): "
-                f"{warning.message}"
-                for warning in captured_warnings
-            )
-
-            for issue in issues:
-                get_run_logger().warning(
-                    "Embedding export: %s",
-                    issue,
-                )
-
-            embedding_status: PredictionOutcomeStatus =  (
-                "completed_with_warnings"
-                if issues
-                else "completed"
-            )
-            embedding_outcome = PredictionOutcome(
-                name="embeddings",
-                status=embedding_status,
-                issues=issues,
-            )
-
-    if export_spec.reconstructions.enabled:
-        captured_warnings: list[warnings.WarningMessage] = []
-
-        try:
-            with warnings.catch_warnings(record=True) as captured_warnings:
-                warnings.simplefilter("always")
-
-                reconstruction_dir.mkdir(parents=True, exist_ok=True)
-
-                exported_reconstruction_paths = _export_reconstructions(
-                    predictions=predictions,
-                    export_spec=export_spec,
-                    output_dir=reconstruction_dir,
-                )
-
-        except Exception as exc:
-            warning_issues = tuple(
-                f"Warning ({type(warning.message).__name__}): "
-                f"{warning.message}"
-                for warning in captured_warnings
-            )
-            error_issue = f"Error ({type(exc).__name__}): {exc}"
-            issues = (*warning_issues, error_issue)
-
-            run_log = get_run_logger()
-
-            for issue in warning_issues:
-                run_log.warning("Reconstruction export: %s", issue)
-
-            run_log.error(
-                "Reconstruction export failed: %s",
-                error_issue,
-                exc_info=True,
-            )
-
-            reconstruction_outcome = PredictionOutcome(
-                name="reconstructions",
-                status="failed",
-                issues=issues,
-            )
-
-        else:
-            issues = tuple(
-                f"Warning ({type(warning.message).__name__}): "
-                f"{warning.message}"
-                for warning in captured_warnings
-            )
-
-            for issue in issues:
-                get_run_logger().warning(
-                    "Reconstruction export: %s",
-                    issue,
-                )
-
-            reconstruction_status: PredictionOutcomeStatus = (
-                "completed_with_warnings"
-                if issues
-                else "completed"
-            )
-            reconstruction_outcome = PredictionOutcome(
-                name="reconstructions",
-                status=reconstruction_status,
-                issues=issues,
-            )
-
-    return PredictionExportResult(
-        paths=PredictionExportPaths(
-            embedding_export=exported_embeddings_path_and_keys,
-            reconstruction_paths=exported_reconstruction_paths,
-        ),
-        outcomes=(
-            embedding_outcome,
-            reconstruction_outcome,
-        ),
-    )
-
-
-def _export_embeddings(
-    *,
-    predictions: Sequence[PredictionOutputLike],
-    export_spec: PredictionExportSpec,
-    output_dir: Path,
-) -> EmbeddingExportPathAndKeys:
-    """Export embedding-like prediction outputs as a single AnnData artifact.
-
-    The resolved primary embedding is stored in ``adata.X``. Any additional
-    resolved embedding keys are stored in ``adata.obsm`` under their output key
-    names. Optional ``sample_id``, ``label``, and ``metadata`` fields from
-    prediction batches are preserved in ``adata.obs`` when present.
-
-    The export spec controls which embedding keys are exported:
-    ``"auto"`` resolves to ``["embedding"]``, ``"all"`` resolves to the currently
-    recognized BenchRep representation keys, and explicit key lists are exported
-    as requested.
+    Parameters
+    ----------
+    predictions:
+        Validated batch-level outputs returned by ``Trainer.predict()``.
+    export_spec:
+        Fully resolved export specification, including concrete AnnData keys,
+        primary key, and reconstruction pairs.
+    anndata_dir:
+        Directory in which the AnnData artifact is written.
+    reconstruction_dir:
+        Parent directory containing one ordered subdirectory per reconstruction
+        pair.
 
     Returns
     -------
-    EmbeddingExportPathAndKeys
-        Paths and resolved embedding-key metadata for the written embedding export.
+    PredictionExportResult
+        Nested AnnData and reconstruction results containing artifact paths,
+        branch outcomes, and per-pair reconstruction outcomes.
     """
-    embedding_keys = _resolve_embedding_keys(
-        predictions=predictions,
-        export_spec=export_spec,
+
+    anndata_result = PredictionAnnDataExportResult(
+        path=None,
+        outcome=PredictionOutcome(
+            name="anndata",
+            status="disabled",
+        ),
     )
 
-    primary_key = _resolve_primary_embedding_key(
-        embedding_keys=embedding_keys,
-        primary_key=export_spec.embeddings.primary_key,
+    if export_spec.anndata.enabled:
+        captured_warnings: list[warnings.WarningMessage] = []
+
+        try:
+            with warnings.catch_warnings(record=True) as captured_warnings:
+                warnings.simplefilter("always")
+
+                anndata_dir.mkdir(parents=True, exist_ok=True)
+
+                anndata_path = _export_anndata(
+                    predictions=predictions,
+                    anndata_spec=export_spec.anndata,
+                    output_dir=anndata_dir,
+                )
+
+        except Exception as exc:
+            warning_issues = _format_captured_warnings(
+                captured_warnings
+            )
+            error_issue = f"Error ({type(exc).__name__}): {exc}"
+            issues = (*warning_issues, error_issue)
+
+            run_log = get_run_logger()
+
+            for issue in warning_issues:
+                run_log.warning("AnnData export: %s", issue)
+
+            run_log.error(
+                "AnnData export failed: %s",
+                error_issue,
+                exc_info=True,
+            )
+
+            anndata_result = PredictionAnnDataExportResult(
+                path=None,
+                outcome=PredictionOutcome(
+                    name="anndata",
+                    status="failed",
+                    issues=issues,
+                ),
+            )
+
+        else:
+            issues = _format_captured_warnings(captured_warnings)
+
+            for issue in issues:
+                get_run_logger().warning(
+                    "AnnData export: %s",
+                    issue,
+                )
+
+            status: PredictionOutcomeStatus = (
+                "completed_with_warnings"
+                if issues
+                else "completed"
+            )
+
+            anndata_result = PredictionAnnDataExportResult(
+                path=anndata_path,
+                outcome=PredictionOutcome(
+                    name="anndata",
+                    status=status,
+                    issues=issues,
+                ),
+            )
+
+    pair_results: list[
+        PredictionReconstructionPairExportResult
+    ] = []
+
+    if export_spec.reconstructions.enabled:
+        for pair_index, pair in enumerate(
+            export_spec.reconstructions.pairs,
+            start=1,
+        ):
+            bundle_dir = (
+                reconstruction_dir
+                / f"{pair_index:02d}_{pair.id}"
+            )
+            bundle_paths = PredictionReconstructionBundlePaths(
+                bundle_dir=bundle_dir,
+            )
+            captured_warnings = []
+
+            try:
+                with warnings.catch_warnings(
+                    record=True
+                ) as captured_warnings:
+                    warnings.simplefilter("always")
+
+                    bundle_dir.mkdir(parents=True, exist_ok=True)
+
+                    bundle_paths = _export_reconstruction_pair(
+                        predictions=predictions,
+                        reconstruction_spec=(
+                            export_spec.reconstructions
+                        ),
+                        pair=pair,
+                        output_dir=bundle_dir,
+                    )
+
+            except Exception as exc:
+                warning_issues = _format_captured_warnings(
+                    captured_warnings
+                )
+                error_issue = f"Error ({type(exc).__name__}): {exc}"
+                issues = (*warning_issues, error_issue)
+
+                run_log = get_run_logger()
+
+                for issue in warning_issues:
+                    run_log.warning(
+                        "Reconstruction pair %r: %s",
+                        pair.id,
+                        issue,
+                    )
+
+                run_log.error(
+                    "Reconstruction pair %r export failed: %s",
+                    pair.id,
+                    error_issue,
+                    exc_info=True,
+                )
+
+                pair_outcome = PredictionOutcome(
+                    name=f"reconstructions.{pair.id}",
+                    status="failed",
+                    issues=issues,
+                )
+
+            else:
+                issues = _format_captured_warnings(
+                    captured_warnings
+                )
+
+                for issue in issues:
+                    get_run_logger().warning(
+                        "Reconstruction pair %r: %s",
+                        pair.id,
+                        issue,
+                    )
+
+                pair_status: PredictionOutcomeStatus = (
+                    "completed_with_warnings"
+                    if issues
+                    else "completed"
+                )
+
+                pair_outcome = PredictionOutcome(
+                    name=f"reconstructions.{pair.id}",
+                    status=pair_status,
+                    issues=issues,
+                )
+
+            pair_results.append(
+                PredictionReconstructionPairExportResult(
+                    pair=pair,
+                    paths=bundle_paths,
+                    outcome=pair_outcome,
+                )
+            )
+
+        reconstruction_outcome = (
+            _aggregate_reconstruction_pair_outcomes(pair_results)
+        )
+
+    else:
+        reconstruction_outcome = PredictionOutcome(
+            name="reconstructions",
+            status="disabled",
+        )
+
+    return PredictionExportResult(
+        anndata=anndata_result,
+        reconstructions=PredictionReconstructionsExportResult(
+            pairs=tuple(pair_results),
+            outcome=reconstruction_outcome,
+        ),
     )
 
-    primary_embedding = _concat_tensor_batches(
+
+def _format_captured_warnings(
+    captured_warnings: Sequence[warnings.WarningMessage],
+) -> tuple[str, ...]:
+    return tuple(
+        f"Warning ({type(warning.message).__name__}): "
+        f"{warning.message}"
+        for warning in captured_warnings
+    )
+
+
+def _aggregate_reconstruction_pair_outcomes(
+    pair_results: Sequence[
+        PredictionReconstructionPairExportResult
+    ],
+) -> PredictionOutcome:
+    """Summarize all reconstruction-pair outcomes as one branch outcome.
+
+    Complete success produces ``completed`` or ``completed_with_warnings``.
+    Mixed successful and failed pairs produce ``partially_completed``. If every
+    pair fails, the complete reconstruction branch is marked ``failed``. Issues
+    from individual pairs are retained with their pair IDs for attribution.
+    """
+
+    if not pair_results:
+        raise RuntimeError(
+            "Enabled reconstruction export resolved no reconstruction pairs."
+        )
+
+    pair_outcomes = tuple(
+        result.outcome
+        for result in pair_results
+    )
+    n_failed = sum(
+        outcome.status == "failed"
+        for outcome in pair_outcomes
+    )
+
+    issues = tuple(
+        f"Pair {result.pair.id!r}: {issue}"
+        for result in pair_results
+        for issue in result.outcome.issues
+    )
+
+    if n_failed == len(pair_outcomes):
+        status: PredictionOutcomeStatus = "failed"
+    elif n_failed:
+        status = "partially_completed"
+    elif any(
+        outcome.status == "completed_with_warnings"
+        for outcome in pair_outcomes
+    ):
+        status = "completed_with_warnings"
+    else:
+        status = "completed"
+
+    status: PredictionOutcomeStatus
+
+    return PredictionOutcome(
+        name="reconstructions",
+        status=status,
+        issues=issues,
+    )
+
+
+def _export_anndata(
+    *,
+    predictions: Sequence[PredictionOutputLike],
+    anndata_spec: PredictionAnnDataExportSpec,
+    output_dir: Path,
+) -> Path:
+    """Package resolved non-image prediction outputs as one AnnData artifact.
+
+    The resolved primary vector is stored in ``adata.X``. Additional selected
+    vector outputs are stored in ``adata.obsm`` under their declared names,
+    while selected scalar outputs are stored in ``adata.obs``.
+
+    Canonical prediction annotations are collected from ``sample_id``, ``label``,
+    and ``metadata``. Composite annotations follow the resolved observation
+    specifications: declared scalar model inputs and group metadata become
+    ``adata.obs`` columns, while an optional metadata declaration with role
+    ``index`` supplies ``adata.obs_names``.
+
+    Parameters
+    ----------
+    predictions:
+        Validated prediction batches from one canonical or Composite model.
+    anndata_spec:
+        Resolved AnnData export plan containing selected output keys, their
+        scalar/vector structures, the primary key, and observation sources.
+    output_dir:
+        Directory in which ``predictions.h5ad`` is written.
+
+    Returns
+    -------
+    Path
+        Path to the successfully written AnnData artifact.
+    """
+
+    if not predictions:
+        raise ValueError(
+            "AnnData export requires at least one prediction batch."
+        )
+
+    primary_key = anndata_spec.primary_key
+    assert primary_key is not None
+
+    primary_matrix = _concat_prediction_model_output_batches(
         predictions=predictions,
         key=primary_key,
     )
 
-    if primary_embedding.ndim != 2:
-        raise ValueError(
-            f"Primary embedding key {primary_key!r} must be a 2D tensor with shape "
-            f"(n_samples, n_features), got shape {tuple(primary_embedding.shape)}."
-        )
-
-    sample_ids = _concat_optional_batch_values(
+    (
+        sample_ids,
+        labels,
+        metadata,
+        index_name,
+    ) = _collect_anndata_annotations(
         predictions=predictions,
-        key="sample_id",
-    )
-
-    labels = _concat_optional_batch_values(
-        predictions=predictions,
-        key="label",
-    )
-
-    metadata = _concat_optional_metadata(
-        predictions=predictions,
+        anndata_spec=anndata_spec,
     )
 
     adata = package_matrix_as_anndata(
-        primary_embedding,
+        primary_matrix,
         sample_ids=sample_ids,
         labels=labels,
         metadata=metadata,
     )
 
-    for key in embedding_keys:
-        if key == primary_key:
+    if index_name is not None:
+        adata.obs.index.name = index_name
+
+    for key in anndata_spec.keys:
+        if (
+                key == primary_key
+                or anndata_spec.output_structures_by_key[key] == "scalar"
+        ):
             continue
 
-        embedding = _concat_tensor_batches(
+        matrix = _concat_prediction_model_output_batches(
             predictions=predictions,
             key=key,
         )
 
-        if embedding.ndim != 2:
-            raise ValueError(
-                f"Additional embedding key {key!r} must be a 2D tensor with shape "
-                f"(n_samples, n_features), got shape {tuple(embedding.shape)}."
-            )
-
-        if embedding.shape[0] != adata.n_obs:
-            raise ValueError(
-                f"Additional embedding key {key!r} has {embedding.shape[0]} rows, "
-                f"but primary embedding has {adata.n_obs} rows."
-            )
-
-        adata.obsm[key] = embedding.numpy()
+        adata.obsm[key] = matrix.numpy()
 
     benchrep_uns = adata.uns.setdefault("benchrep", {})
     benchrep_uns["prediction_export"] = {
-        "mode": export_spec.mode,
-        "embedding_keys": embedding_keys,
+        "mode": anndata_spec.mode,
+        "keys": list(anndata_spec.keys),
         "primary_key": primary_key,
+        "output_structures_by_key": dict(
+            anndata_spec.output_structures_by_key
+        ),
+        "observations": {
+            observation.name: {
+                "source": observation.source,
+                "use_as_index": observation.use_as_index,
+            }
+            for observation in anndata_spec.observations
+        },
     }
 
-    embeddings_h5ad_path = output_dir / "embeddings.h5ad"
+    output_path = output_dir / "predictions.h5ad"
 
     write_h5ad(
         adata,
-        embeddings_h5ad_path,
+        output_path,
         overwrite=True,
     )
 
-    return EmbeddingExportPathAndKeys(
-        embeddings_h5ad_path=embeddings_h5ad_path,
-        resolved_keys=embedding_keys,
-        resolved_primary_key=primary_key,
-    )
+    return output_path
 
 
-def _resolve_embedding_keys(
+def _collect_anndata_annotations(
     *,
     predictions: Sequence[PredictionOutputLike],
-    export_spec: PredictionExportSpec,
-) -> list[str]:
-    requested_keys = export_spec.embeddings.keys
-    first_batch = predictions[0]
+    anndata_spec: PredictionAnnDataExportSpec,
+) -> tuple[
+    list[Any] | None,
+    list[Any] | None,
+    dict[str, list[Any]] | None,
+    str | None,
+]:
+    """Collect canonical or Composite annotations for AnnData observations.
 
-    if requested_keys == "auto":
-        requested_keys = ["embedding"]
-
-    elif requested_keys == "all":
-        requested_keys = _find_embedding_like_keys(first_batch)
-
-    missing_keys = [
-        key for key in requested_keys
-        if not _has_prediction_value(first_batch, key)
-    ]
-
-    if missing_keys:
-        raise KeyError(
-            "Embedding export requested keys that are not present in prediction "
-            f"outputs: {missing_keys}. Available keys: {_available_prediction_keys(first_batch)}."
-        )
-
-    return list(requested_keys)
-
-
-def _resolve_primary_embedding_key(
-    *,
-    embedding_keys: list[str],
-    primary_key: str,
-) -> str:
-    if not embedding_keys:
-        raise ValueError("No embedding keys were resolved for export.")
-
-    if primary_key == "auto":
-        if "embedding" in embedding_keys:
-            return "embedding"
-        return embedding_keys[0]
-
-    if primary_key not in embedding_keys:
-        raise ValueError(
-            f"Primary embedding key {primary_key!r} is not among the exported "
-            f"embedding keys: {embedding_keys}."
-        )
-
-    return primary_key
-
-
-def _find_embedding_like_keys(first_batch: PredictionOutputLike) -> list[str]:
-    """Find recognized embedding-like outputs in one prediction batch.
-
-    This helper is used for ``exports.mode='all'`` / ``embeddings.keys='all'``.
-    In this context, "all" means all currently recognized BenchRep representation
-    outputs, not every 2D tensor returned by ``predict_step``.
-
-    This intentionally uses a small whitelist rather than exporting all 2D
-    tensors. Future model families may return other 2D outputs such as
-    projections, logits, anchors, positives, or task-specific heads. Those should
-    only become part of automatic embedding export once BenchRep gives them an
-    explicit export contract.
+    Canonical outputs retain their established ``sample_id``, ``label``, and
+    free-form ``metadata`` behavior. Composite outputs use only observation
+    sources explicitly resolved from their declarations.
     """
-    recognized_embedding_keys = (
-        "embedding",
-        "z_mu",
-        "z_logvar",
-        "z_sample",
+
+    first_prediction = predictions[0]
+
+    if not isinstance(first_prediction, CompositePredictionOutput):
+        return (
+            _concat_optional_batch_values(
+                predictions=predictions,
+                key="sample_id",
+            ),
+            _concat_optional_batch_values(
+                predictions=predictions,
+                key="label",
+            ),
+            _concat_optional_metadata(
+                predictions=predictions,
+            ),
+            None,
+        )
+
+    sample_ids: list[Any] | None = None
+    index_name: str | None = None
+    metadata: dict[str, list[Any]] = {}
+
+    for observation in anndata_spec.observations:
+        values = _concat_prediction_observation_values(
+            predictions=predictions,
+            source=observation.source,
+            key=observation.name,
+        )
+
+        if observation.use_as_index:
+            sample_ids = values
+            index_name = observation.name
+        else:
+            metadata[observation.name] = values
+
+    return (
+        sample_ids,
+        None,
+        metadata or None,
+        index_name,
     )
 
-    embedding_keys = []
 
-    for key in recognized_embedding_keys:
-        if not _has_prediction_value(first_batch, key):
-            continue
+def _concat_prediction_model_input_batches(
+    *,
+    predictions: Sequence[PredictionOutputLike],
+    key: str,
+) -> torch.Tensor:
+    """Concatenate one resolved model input across prediction batches."""
+    tensors = [
+        (
+            prediction.model_inputs[key]
+            if isinstance(prediction, CompositePredictionOutput)
+            else getattr(prediction, key)
+        ).detach().cpu()
+        for prediction in predictions
+    ]
 
-        value = getattr(first_batch, key)
+    return torch.cat(tensors, dim=0)
 
-        if isinstance(value, torch.Tensor) and value.ndim == 2:
-            embedding_keys.append(key)
 
-    if not embedding_keys:
-        raise ValueError(
-            "Could not find any recognized embedding outputs for export. Expected "
-            "at least one 2D tensor under one of the recognized keys "
-            f"{recognized_embedding_keys}. Available keys: "
-            f"{_available_prediction_keys(first_batch)}."
+def _concat_prediction_model_output_batches(
+    *,
+    predictions: Sequence[PredictionOutputLike],
+    key: str,
+) -> torch.Tensor:
+    """Concatenate one resolved model output across prediction batches."""
+    tensors = [
+        (
+            prediction.model_outputs[key]
+            if isinstance(prediction, CompositePredictionOutput)
+            else getattr(prediction, key)
+        ).detach().cpu()
+        for prediction in predictions
+    ]
+
+    return torch.cat(tensors, dim=0)
+
+
+def _concat_prediction_observation_values(
+    *,
+    predictions: Sequence[PredictionOutputLike],
+    source: str,
+    key: str,
+) -> list[Any]:
+    """Concatenate one resolved Composite observation source."""
+    values: list[Any] = []
+
+    for prediction in predictions:
+        composite_prediction = cast(
+            CompositePredictionOutput,
+            prediction,
         )
 
-    return embedding_keys
+        if source == "model_output":
+            value = composite_prediction.model_outputs[key]
+        elif source == "model_input":
+            value = composite_prediction.model_inputs[key]
+        else:
+            value = composite_prediction.batch_metadata[key]
+
+        if isinstance(value, torch.Tensor):
+            tensor = value.detach().cpu()
+
+            if tensor.ndim == 2:
+                tensor = tensor[:, 0]
+
+            values.extend(tensor.tolist())
+        else:
+            values.extend(value)
+
+    return values
 
 
 def _concat_optional_batch_values(
@@ -450,29 +625,18 @@ def _concat_optional_batch_values(
     predictions: Sequence[PredictionOutputLike],
     key: str,
 ) -> list[Any] | None:
-    if not _has_prediction_value(predictions[0], key):
+    if getattr(predictions[0], key) is None:
         return None
 
     values: list[Any] = []
 
-    for batch_idx, batch in enumerate(predictions):
-        if not _has_prediction_value(batch, key):
-            raise KeyError(
-                f"Prediction key {key!r} is present in the first batch but missing "
-                f"from batch {batch_idx}."
-            )
-
-        value = getattr(batch, key)
+    for prediction in predictions:
+        value = getattr(prediction, key)
 
         if isinstance(value, torch.Tensor):
             values.extend(value.detach().cpu().tolist())
-        elif isinstance(value, list):
-            values.extend(value)
         else:
-            raise TypeError(
-                f"Prediction key {key!r} must contain torch.Tensor or list values. "
-                f"Batch {batch_idx} has value type {type(value).__name__}."
-            )
+            values.extend(value)
 
     return values
 
@@ -481,40 +645,21 @@ def _concat_optional_metadata(
     *,
     predictions: Sequence[PredictionOutputLike],
 ) -> dict[str, list[Any]] | None:
-    if not _has_prediction_value(predictions[0], "metadata"):
+    if getattr(predictions[0], "metadata") is None:
         return None
 
     merged_metadata: dict[str, list[Any]] = {}
 
-    for batch_idx, batch in enumerate(predictions):
-        if not _has_prediction_value(batch, "metadata"):
-            raise KeyError(
-                "'metadata' is present in the first prediction batch but missing "
-                f"from batch {batch_idx}."
+    for prediction in predictions:
+        metadata = getattr(prediction, "metadata")
+
+        for key, value in metadata.items():
+            values = (
+                value.detach().cpu().tolist()
+                if isinstance(value, torch.Tensor)
+                else value
             )
-
-        metadata = getattr(batch, "metadata")
-
-        if not isinstance(metadata, dict):
-            raise TypeError(
-                "Prediction metadata must be a dictionary mapping metadata keys "
-                f"to per-sample values. Batch {batch_idx} has metadata type "
-                f"{type(metadata).__name__}."
-            )
-
-        for metadata_key, value in metadata.items():
-            if isinstance(value, torch.Tensor):
-                value_list = value.detach().cpu().tolist()
-            elif isinstance(value, list):
-                value_list = value
-            else:
-                raise TypeError(
-                    f"Metadata field {metadata_key!r} must contain torch.Tensor "
-                    f"or list values. Batch {batch_idx} has value type "
-                    f"{type(value).__name__}."
-                )
-
-            merged_metadata.setdefault(metadata_key, []).extend(value_list)
+            merged_metadata.setdefault(key, []).extend(values)
 
     return merged_metadata
 
@@ -522,8 +667,8 @@ def _concat_optional_metadata(
 def _select_reconstruction_indices(
     *,
     n_samples: int,
-    n_examples: int | str,
-    selection: str,
+    n_examples: int | Literal["all"],
+    selection: Literal["first", "random"],
     seed: int | None,
     stratify_by: str | None = None,
     stratify_values: Sequence[Any] | None = None,
@@ -597,98 +742,95 @@ def _select_reconstruction_indices(
     )
 
 
-def _export_reconstructions(
+def _export_reconstruction_pair(
     *,
     predictions: Sequence[PredictionOutputLike],
-    export_spec: PredictionExportSpec,
+    reconstruction_spec: PredictionReconstructionsExportSpec,
+    pair: PredictionReconstructionPairSpec,
     output_dir: Path,
-) -> ReconstructionExportPaths:
-    """Export selected reconstruction examples as tensor artifacts.
+) -> PredictionReconstructionBundlePaths:
+    """Export one resolved input/reconstruction pair as an artifact bundle.
 
-    Depending on the reconstruction export spec, this function exports selected
-    rows from ``input`` and/or ``reconstruction`` prediction outputs. Selection is
-    controlled by ``n_examples`` and ``selection``; random selection uses the
-    already-resolved reconstruction seed from the export spec.
+    Input and reconstruction tensors are collected from the pair's resolved
+    prediction namespaces, after which one shared selection is applied to every
+    exported tensor and observation. The bundle contains optional input and
+    reconstruction tensors, selected observations, and metadata describing the
+    pair and selection result.
 
-    The function also writes an ``obs.pt`` file containing the selected source
-    indices and any available sample-level annotations, plus a metadata file
-    describing the reconstruction export settings and exported tensor keys.
+    Parameters
+    ----------
+    predictions:
+        Validated batch-level prediction outputs.
+    reconstruction_spec:
+        Resolved settings shared by every reconstruction pair.
+    pair:
+        Resolved pair identifying the model input and reconstruction output.
+    output_dir:
+        Dedicated output directory for this pair.
 
     Returns
     -------
-    ReconstructionExportPaths
-        Paths to the written reconstruction tensor, annotation, and metadata
-        artifacts. Paths for disabled tensor outputs are ``None``.
+    PredictionReconstructionBundlePaths
+        Paths and selection statistics for the written bundle.
     """
-    recon_spec = export_spec.reconstructions
-
-    if not recon_spec.include_input and not recon_spec.include_prediction:
+    if not predictions:
         raise ValueError(
-            "Reconstruction export was enabled, but both include_input and "
-            "include_prediction are False. Nothing would be exported."
+            "Reconstruction export requires at least one prediction batch."
         )
 
-    tensors_to_export: dict[str, torch.Tensor] = {}
-
-    if recon_spec.include_input:
-        if not _has_prediction_value(predictions[0], "input"):
-            raise KeyError(
-                "Reconstruction export requested include_input=True, but prediction "
-                f"outputs do not contain key 'input'. Available keys: "
-                f"{_available_prediction_keys(predictions[0])}."
-            )
-
-        tensors_to_export["input"] = _concat_tensor_batches(
+    input_tensor = (
+        _concat_prediction_model_input_batches(
             predictions=predictions,
-            key="input",
+            key=pair.input,
         )
+        if reconstruction_spec.include_input
+        else None
+    )
 
-    if recon_spec.include_prediction:
-        if not _has_prediction_value(predictions[0], "reconstruction"):
-            raise KeyError(
-                "Reconstruction export requested include_prediction=True, but prediction "
-                "outputs do not contain key 'reconstruction'. Available keys: "
-                f"{_available_prediction_keys(predictions[0])}."
-            )
-
-        tensors_to_export["reconstruction"] = _concat_tensor_batches(
+    reconstruction_tensor = (
+        _concat_prediction_model_output_batches(
             predictions=predictions,
-            key="reconstruction",
+            key=pair.reconstruction,
         )
+        if reconstruction_spec.include_reconstruction
+        else None
+    )
 
-    n_samples = next(iter(tensors_to_export.values())).shape[0]
+    reference_tensor = (
+        input_tensor
+        if input_tensor is not None
+        else reconstruction_tensor
+    )
+    assert reference_tensor is not None
 
-    for key, tensor in tensors_to_export.items():
-        if tensor.shape[0] != n_samples:
-            raise ValueError(
-                f"Reconstruction tensor {key!r} has {tensor.shape[0]} samples, "
-                f"expected {n_samples}."
-            )
+    n_samples = reference_tensor.shape[0]
 
     observations = _collect_reconstruction_observations(
         predictions=predictions,
-        n_samples=n_samples,
+        observation_specs=reconstruction_spec.observations,
     )
 
     stratify_values = None
 
-    if recon_spec.stratify_by is not None:
-        if recon_spec.stratify_by not in observations:
+    if reconstruction_spec.stratify_by is not None:
+        if reconstruction_spec.stratify_by not in observations:
             raise KeyError(
                 "Reconstruction export requested stratification by "
-                f"{recon_spec.stratify_by!r}, but that observation field is "
-                "not present in the prediction outputs. Available fields: "
+                f"{reconstruction_spec.stratify_by!r}, but that observation "
+                "is unavailable. Available observations: "
                 f"{sorted(observations)}."
             )
 
-        stratify_values = observations[recon_spec.stratify_by]
+        stratify_values = observations[
+            reconstruction_spec.stratify_by
+        ]
 
     selection_result = _select_reconstruction_indices(
         n_samples=n_samples,
-        n_examples=recon_spec.n_examples,
-        selection=recon_spec.selection,
-        seed=recon_spec.seed,
-        stratify_by=recon_spec.stratify_by,
+        n_examples=reconstruction_spec.n_examples,
+        selection=reconstruction_spec.selection,
+        seed=reconstruction_spec.seed,
+        stratify_by=reconstruction_spec.stratify_by,
         stratify_values=stratify_values,
     )
 
@@ -698,7 +840,7 @@ def _export_reconstructions(
     if selection_result.n_omitted_strata > 0:
         warnings.warn(
             "Reconstruction export was stratified by "
-            f"{recon_spec.stratify_by!r}, but only "
+            f"{reconstruction_spec.stratify_by!r}, but only "
             f"{selection_result.n_represented_strata} of "
             f"{selection_result.n_strata} strata could be represented "
             f"within the requested {len(selected_indices)} examples. "
@@ -708,49 +850,78 @@ def _export_reconstructions(
         )
 
     input_path = None
+
+    if input_tensor is not None:
+        input_path = output_dir / "input.pt"
+        torch.save(
+            input_tensor[selected_indices],
+            input_path,
+        )
+
     reconstruction_path = None
 
-    for key, tensor in tensors_to_export.items():
-        export_path = output_dir / f"{key}.pt"
-        torch.save(tensor[selected_indices], export_path)
+    if reconstruction_tensor is not None:
+        reconstruction_path = output_dir / "reconstruction.pt"
+        torch.save(
+            reconstruction_tensor[selected_indices],
+            reconstruction_path,
+        )
 
-        if key == "input":
-            input_path = export_path
-        elif key == "reconstruction":
-            reconstruction_path = export_path
-
-    reconstruction_obs: dict[str, list[Any]] = {
+    selected_observations: dict[str, list[Any]] = {
         "source_index": selected_indices_list,
     }
 
-    for key, values in observations.items():
-        reconstruction_obs[key] = [
-            values[index]
-            for index in selected_indices_list
-        ]
+    selected_observations.update(
+        {
+            key: [
+                values[index]
+                for index in selected_indices_list
+            ]
+            for key, values in observations.items()
+        }
+    )
 
     obs_path = output_dir / "obs.pt"
-    torch.save(reconstruction_obs, obs_path)
+    torch.save(selected_observations, obs_path)
 
     metadata_path = output_dir / "reconstruction_export_metadata.pt"
     torch.save(
         {
+            "pair": {
+                "id": pair.id,
+                "input": pair.input,
+                "reconstruction": pair.reconstruction,
+            },
             "n_samples_total": n_samples,
             "n_examples_exported": len(selected_indices),
-            "selection": recon_spec.selection,
-            "stratify_by": recon_spec.stratify_by,
-            "seed": recon_spec.seed,
+            "selection": reconstruction_spec.selection,
+            "stratify_by": reconstruction_spec.stratify_by,
+            "seed": reconstruction_spec.seed,
             "n_strata": selection_result.n_strata,
-            "n_represented_strata": selection_result.n_represented_strata,
-            "n_omitted_strata": selection_result.n_omitted_strata,
-            "include_input": recon_spec.include_input,
-            "include_prediction": recon_spec.include_prediction,
-            "exported_keys": list(tensors_to_export.keys()),
+            "n_represented_strata": (
+                selection_result.n_represented_strata
+            ),
+            "n_omitted_strata": (
+                selection_result.n_omitted_strata
+            ),
+            "include_input": reconstruction_spec.include_input,
+            "include_reconstruction": (
+                reconstruction_spec.include_reconstruction
+            ),
+            "exported_keys": [
+                key
+                for key, tensor in (
+                    ("input", input_tensor),
+                    ("reconstruction", reconstruction_tensor),
+                )
+                if tensor is not None
+            ],
         },
         metadata_path,
     )
 
-    return ReconstructionExportPaths(
+    return PredictionReconstructionBundlePaths(
+        bundle_dir=output_dir,
         input_path=input_path,
         reconstruction_path=reconstruction_path,
         obs_path=obs_path,
@@ -768,67 +939,31 @@ def _export_reconstructions(
     )
 
 
-def _concat_tensor_batches(
-    *,
-    predictions: Sequence[PredictionOutputLike],
-    key: str,
-) -> torch.Tensor:
-    tensors = []
-
-    for batch_idx, batch in enumerate(predictions):
-        if not _has_prediction_value(batch, key):
-            raise KeyError(
-                f"Prediction batch {batch_idx} does not contain key {key!r}. "
-                f"Available keys: {_available_prediction_keys(batch)}."
-            )
-
-        value = getattr(batch, key)
-
-        if not isinstance(value, torch.Tensor):
-            raise TypeError(
-                f"Prediction key {key!r} must contain torch.Tensor values for tensor export. "
-                f"Batch {batch_idx} has value type {type(value).__name__}."
-            )
-
-        tensors.append(value.detach().cpu())
-
-    return torch.cat(tensors, dim=0)
-
-
-def _prediction_field_names(prediction: PredictionOutputLike) -> tuple[str, ...]:
-    if not is_dataclass(prediction) or isinstance(prediction, type):
-        raise TypeError(
-            "Prediction output must be a dataclass instance, "
-            f"got `{type(prediction).__name__}`."
-        )
-
-    return tuple(
-        field.name
-        for field in fields(cast(Any, prediction))
-    )
-
-
-def _has_prediction_value(prediction: PredictionOutputLike, key: str) -> bool:
-    if key not in _prediction_field_names(prediction):
-        return False
-
-    return getattr(prediction, key) is not None
-
-
-def _available_prediction_keys(prediction: PredictionOutputLike) -> tuple[str, ...]:
-    return tuple(
-        key
-        for key in _prediction_field_names(prediction)
-        if _has_prediction_value(prediction, key)
-    )
-
-
 def _collect_reconstruction_observations(
     *,
     predictions: Sequence[PredictionOutputLike],
-    n_samples: int,
+    observation_specs: Sequence[
+        PredictionReconstructionObservationSpec
+    ],
 ) -> dict[str, list[Any]]:
-    """Collect and validate sample-level fields available for reconstruction export."""
+    """Collect observations attached to reconstruction examples.
+
+    Canonical outputs retain their optional ``sample_id``, ``label``, and
+    free-form metadata fields. Composite outputs use the scalar model-input and
+    batch-metadata sources resolved specifically for reconstruction export.
+    """
+    first_prediction = predictions[0]
+
+    if isinstance(first_prediction, CompositePredictionOutput):
+        return {
+            observation.name: _concat_prediction_observation_values(
+                predictions=predictions,
+                source=observation.source,
+                key=observation.name,
+            )
+            for observation in observation_specs
+        }
+
     observations: dict[str, list[Any]] = {}
 
     sample_ids = _concat_optional_batch_values(
@@ -862,14 +997,6 @@ def _collect_reconstruction_observations(
             )
 
         observations.update(metadata)
-
-    for key, values in observations.items():
-        if len(values) != n_samples:
-            raise ValueError(
-                f"Prediction observation field {key!r} contains "
-                f"{len(values)} values, but exactly {n_samples} are "
-                "required—one per reconstruction sample."
-            )
 
     return observations
 

@@ -43,7 +43,7 @@ class RunContext:
 
     Stage-specific directories are created only for the stages that currently
     use them. Training creates `checkpoints/` and `architecture/`. Prediction
-    creates top-level `embeddings/` and `reconstructions/` directories for
+    creates top-level `anndata/` and `reconstructions/` directories for
     prediction exports. Evaluation creates a centralized `records/metrics/`
     directory for machine-readable metric records, an `artifacts/` tree for
     exported evaluation data products, and a `figures/` tree for generated
@@ -83,8 +83,8 @@ class RunContext:
     training_architecture_dir:
         Conventional directory for architecture inspection artifacts, such as
         torchview graphs or model summaries.
-    prediction_embeddings_dir:
-        Conventional directory for prediction embedding exports.
+    prediction_anndata_dir:
+        Conventional directory for prediction AnnData exports.
     prediction_reconstructions_dir:
         Conventional directory for selected prediction reconstruction exports.
     evaluation_artifacts_dir:
@@ -122,7 +122,7 @@ class RunContext:
     # Stage-specific conventional directories
     training_checkpoint_dir: Path
     training_architecture_dir: Path
-    prediction_embeddings_dir: Path
+    prediction_anndata_dir: Path
     prediction_reconstructions_dir: Path
     evaluation_artifacts_dir: Path
     evaluation_figures_dir: Path
@@ -195,7 +195,7 @@ class RunContext:
         # Stage-specific dirs
         training_checkpoint_dir = output_dir / "checkpoints"
         training_architecture_dir = output_dir / "architecture"
-        prediction_embeddings_dir = output_dir / "embeddings"
+        prediction_anndata_dir = output_dir / "anndata"
         prediction_reconstructions_dir = output_dir / "reconstructions"
         evaluation_artifacts_dir = output_dir / "artifacts"
         evaluation_figures_dir = output_dir / "figures"
@@ -220,7 +220,7 @@ class RunContext:
         if stage == "training":
             dirs_to_create.extend([training_checkpoint_dir, training_architecture_dir])
         elif stage == "prediction":
-            dirs_to_create.extend([prediction_embeddings_dir, prediction_reconstructions_dir])
+            dirs_to_create.extend([prediction_anndata_dir, prediction_reconstructions_dir])
         elif stage == "evaluation":
             dirs_to_create.extend([
                 evaluation_artifacts_dir,
@@ -253,7 +253,7 @@ class RunContext:
             metadata_dir=metadata_dir,
             training_checkpoint_dir=training_checkpoint_dir,
             training_architecture_dir=training_architecture_dir,
-            prediction_embeddings_dir=prediction_embeddings_dir,
+            prediction_anndata_dir=prediction_anndata_dir,
             prediction_reconstructions_dir=prediction_reconstructions_dir,
             evaluation_artifacts_dir=evaluation_artifacts_dir,
             evaluation_figures_dir=evaluation_figures_dir,
