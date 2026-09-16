@@ -13,6 +13,7 @@ from benchrep.architecture.composite_model_roles import (
     TENSOR_STRUCTURE_BY_ROLE,
     TensorStructure,
 )
+from benchrep.interfaces.contracts import CompositePredictionOutput
 
 if TYPE_CHECKING:
     from benchrep.assembly.resolvers.composite_model_resolver import (
@@ -187,12 +188,32 @@ class CompositeModel(L.LightningModule):
         )
 
     def predict_step(
-        self,
-        batch: Mapping[str, Any],
-        batch_idx: int,
-    ) -> dict[str, torch.Tensor]:
-        raise NotImplementedError(
-            "Prediction is not yet implemented for CompositeModel."
+            self,
+            batch: Mapping[str, Any],
+            batch_idx: int,
+    ) -> CompositePredictionOutput:
+        """Return every declared input, output, and batch-metadata field."""
+
+        model_inputs = _extract_model_inputs_from_batch(
+            batch=batch,
+            model_spec=self.model_spec,
+        )
+
+        model_outputs = self(model_inputs)
+
+        batch_metadata = {
+            metadata_name: batch[metadata_name]
+            for metadata_name in (
+                self.model_spec
+                .declarations
+                .batch_metadata_roles_by_name
+            )
+        }
+
+        return CompositePredictionOutput(
+            model_inputs=model_inputs,
+            model_outputs=model_outputs,
+            batch_metadata=batch_metadata,
         )
 
     def configure_optimizers(self) -> torch.optim.Optimizer:
