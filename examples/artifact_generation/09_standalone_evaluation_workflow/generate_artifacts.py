@@ -47,7 +47,7 @@ def publish_artifacts(
 
     shutil.copy2(
         anndata_export.path,
-        ASSET_DIR / "embeddings.h5ad",
+        ASSET_DIR / "anndata.h5ad",
     )
 
     reconstruction_sources = {

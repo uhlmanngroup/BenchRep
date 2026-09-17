@@ -2,7 +2,7 @@ stage: evaluation
 
 source:
   prediction_manifest_path: null
-  embeddings_path: null
+  anndata_path: null
   reconstructions_path: null
 
 run:

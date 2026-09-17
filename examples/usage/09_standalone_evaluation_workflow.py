@@ -23,7 +23,7 @@ supported configuration fields even where omission defaults would suffice.
 It also demonstrates configuration fields that accept additional keyword
 arguments passed through to the underlying backends.
 
-The complete embeddings are retained for reduction, clustering, embedding
+The complete AnnData are retained for reduction, clustering, embedding
 metrics, and predictability analysis. Only a selected set of inputs and
 reconstructions is retained for reconstruction metrics and visualizations,
 keeping the committed artifacts reasonably small.
@@ -54,14 +54,14 @@ ASSET_DIR = (
 )
 
 CONFIG_PATH = CONFIG_DIR / "evaluation.yaml"
-EMBEDDINGS_PATH = ASSET_DIR / "embeddings.h5ad"
+ANNDATA_PATH = ASSET_DIR / "anndata.h5ad"
 RECONSTRUCTION_BUNDLE_DIR = ASSET_DIR / "reconstruction_bundle"
 
 
 def describe_evaluation_inputs() -> None:
     """Print the standalone evaluation artifact contracts."""
 
-    embeddings = ad.read_h5ad(EMBEDDINGS_PATH)
+    embeddings = ad.read_h5ad(ANNDATA_PATH)
     inputs = torch.load(
         RECONSTRUCTION_BUNDLE_DIR / "input.pt",
         map_location="cpu",
@@ -110,7 +110,7 @@ def main() -> None:
         config_path=CONFIG_PATH,
         config_components={
             "source": EvaluationSourceConfig(
-                embeddings_path=EMBEDDINGS_PATH,
+                anndata_path=ANNDATA_PATH,
                 reconstructions_path=RECONSTRUCTION_BUNDLE_DIR,
             ),
         },
