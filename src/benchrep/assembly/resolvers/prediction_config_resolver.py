@@ -10,6 +10,7 @@ from benchrep.assembly.schemas import (
     PredictionTransformStepConfig,
     PredictionConfig,
     TrainingConfig,
+    CompositeModelAssemblyInputOverrideConfig,
     PredictionAnnDataExportConfig,
     PredictionReconstructionsExportConfig,
     PredictionExportConfig,
@@ -20,6 +21,9 @@ from benchrep.assembly.schemas import (
     CompositeModelDeclarationsConfig,
 )
 from benchrep.assembly.schemas.training_config_schema import Float32MatmulPrecision
+from benchrep.assembly.schemas.composite_model_config_schema import (
+    CompositeModelAssemblyStepConfig,
+)
 from benchrep.assembly.registries.core import MODELS
 from benchrep.assembly.resolvers.composite_model_resolver import (
     CompositeModelSpec,
@@ -289,26 +293,12 @@ def resolve_prediction_config(
         model_is_external=model_is_external,
     )
 
-    composite_model_spec: CompositeModelSpec | None = None
-
-    if model_family == COMPOSITE_FAMILY:
-        assert training_config.composite_model_declarations is not None
-        assert training_config.composite_model_components is not None
-        assert training_config.composite_model_assembly is not None
-        assert training_config.losses is not None
-
-        composite_model_spec = resolve_composite_model_config(
-            declarations_config=(
-                training_config.composite_model_declarations
-            ),
-            components_config=(
-                training_config.composite_model_components
-            ),
-            assembly_config=(
-                training_config.composite_model_assembly
-            ),
-            losses_config=training_config.losses,
-        )
+    composite_model_spec = _resolve_prediction_composite_model_spec(
+        prediction_config=prediction_config,
+        training_config=training_config,
+        model_family=model_family,
+        model_is_external=model_is_external,
+    )
 
     checkpoint_selection = prediction_config.source.checkpoint
 
@@ -955,6 +945,171 @@ def _validate_prediction_model_family(
             f"configured_model={configured_model_name!r}, "
             f"expected={model_family.name!r}."
         )
+
+
+def _resolve_prediction_composite_model_spec(
+    *,
+    prediction_config: PredictionConfig,
+    training_config: TrainingConfig,
+    model_family: ModelFamilySpec,
+    model_is_external: bool,
+) -> CompositeModelSpec | None:
+    """Resolve the effective Composite model graph used for prediction.
+
+    Prediction-only assembly overrides may reroute an existing assembly-step
+    input to another output produced by the same upstream component invocation.
+    The complete Composite model is then resolved again so its contracts and
+    data-flow graph are validated before construction.
+    """
+    input_overrides = (
+        prediction_config.inference
+        .composite_model_assembly_input_overrides
+    )
+
+    if model_family != COMPOSITE_FAMILY:
+        if input_overrides is not None:
+            raise ValueError(
+                "`inference.composite_model_assembly_input_overrides` is "
+                "supported only for composite models."
+            )
+
+        return None
+
+    if model_is_external:
+        raise ValueError(
+            "Whole-model overrides are not supported for Composite "
+            "prediction. BenchRep reconstructs the Composite model from "
+            "the linked training configuration."
+        )
+
+    assert training_config.composite_model_declarations is not None
+    assert training_config.composite_model_components is not None
+    assert training_config.composite_model_assembly is not None
+    assert training_config.losses is not None
+
+    effective_assembly_config = training_config.composite_model_assembly
+
+    if input_overrides is not None:
+        effective_assembly_config = (
+            _apply_composite_model_assembly_input_overrides(
+                assembly_config=effective_assembly_config,
+                input_overrides=input_overrides,
+            )
+        )
+
+    return resolve_composite_model_config(
+        declarations_config=training_config.composite_model_declarations,
+        components_config=training_config.composite_model_components,
+        assembly_config=effective_assembly_config,
+        losses_config=training_config.losses,
+    )
+
+
+def _apply_composite_model_assembly_input_overrides(
+    *,
+    assembly_config: dict[
+        str,
+        CompositeModelAssemblyStepConfig,
+    ],
+    input_overrides: dict[
+        str,
+        CompositeModelAssemblyInputOverrideConfig,
+    ],
+) -> dict[str, CompositeModelAssemblyStepConfig]:
+    """Apply constrained prediction-time input rerouting.
+
+    An overridden input must already exist on the selected consumer step.
+    Its original and replacement references must both be outputs of the same
+    producer step. This permits selecting another result from a variational or
+    other mapping-producing component without changing the model's components
+    or output bindings.
+    """
+    producer_step_by_output_reference: dict[str, str] = {}
+
+    for producer_step_id, producer_step in assembly_config.items():
+        output_references = (
+            (producer_step.outputs,)
+            if isinstance(producer_step.outputs, str)
+            else tuple(producer_step.outputs.values())
+        )
+
+        for output_reference in output_references:
+            producer_step_by_output_reference[output_reference] = (
+                producer_step_id
+            )
+
+    effective_assembly_config = dict(assembly_config)
+
+    for consumer_step_id, step_override in input_overrides.items():
+        if consumer_step_id not in assembly_config:
+            raise ValueError(
+                "`inference.composite_model_assembly_input_overrides` "
+                f"references unknown assembly step {consumer_step_id!r}. "
+                f"Available steps: {list(assembly_config)}."
+            )
+
+        consumer_step = assembly_config[consumer_step_id]
+        effective_inputs = dict(consumer_step.inputs)
+
+        for input_name, replacement_reference in (
+            step_override.inputs.items()
+        ):
+            if input_name not in consumer_step.inputs:
+                raise ValueError(
+                    "Composite assembly input override for step "
+                    f"{consumer_step_id!r} references unknown component "
+                    f"input {input_name!r}. Available inputs: "
+                    f"{list(consumer_step.inputs)}."
+                )
+
+            original_reference = consumer_step.inputs[input_name]
+
+            original_producer_step_id = (
+                producer_step_by_output_reference.get(original_reference)
+            )
+            replacement_producer_step_id = (
+                producer_step_by_output_reference.get(
+                    replacement_reference
+                )
+            )
+
+            if original_producer_step_id is None:
+                raise ValueError(
+                    "Composite assembly input override for step "
+                    f"{consumer_step_id!r}, input {input_name!r}, cannot "
+                    f"replace {original_reference!r}. Only inputs currently "
+                    "routed from a `produces.*` output can be overridden."
+                )
+
+            if replacement_producer_step_id is None:
+                raise ValueError(
+                    "Composite assembly input override for step "
+                    f"{consumer_step_id!r}, input {input_name!r}, references "
+                    f"unknown model output {replacement_reference!r}."
+                )
+
+            if (
+                replacement_producer_step_id
+                != original_producer_step_id
+            ):
+                raise ValueError(
+                    "Composite assembly input override for step "
+                    f"{consumer_step_id!r}, input {input_name!r}, must select "
+                    "another output from the same producer step "
+                    f"{original_producer_step_id!r}; "
+                    f"{replacement_reference!r} is produced by "
+                    f"{replacement_producer_step_id!r}."
+                )
+
+            effective_inputs[input_name] = replacement_reference
+
+        effective_assembly_config[consumer_step_id] = (
+            consumer_step.model_copy(
+                update={"inputs": effective_inputs},
+            )
+        )
+
+    return effective_assembly_config
 
 
 def _resolve_canonical_vae_reconstruction_latent_source(

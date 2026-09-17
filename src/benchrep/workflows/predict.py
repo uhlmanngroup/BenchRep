@@ -313,6 +313,21 @@ def _predict(
         run_spec.export_spec.reconstructions.seed,
     )
 
+    composite_assembly_input_overrides = (
+        resolved_prediction_config.inference
+        .composite_model_assembly_input_overrides
+    )
+
+    if composite_assembly_input_overrides is not None:
+        run_log.info(
+            "Applied prediction-time Composite assembly input overrides: %s",
+            {
+                step_id: dict(step_override.inputs)
+                for step_id, step_override
+                in composite_assembly_input_overrides.items()
+            },
+        )
+
     if model_is_external and run_spec.model_family == VAE_FAMILY:
         warning = (
             "External VAE controls its own prediction logic. BenchRep cannot "

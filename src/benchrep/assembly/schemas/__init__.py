@@ -40,6 +40,7 @@ from .composite_model_config_schema import (
 from benchrep.assembly.schemas.prediction_config_schema import (
     PredictionSourceConfig,
     PredictionDataConfig,
+    CompositeModelAssemblyInputOverrideConfig,
     PredictionInferenceConfig,
     PredictionTransformPipelineConfig,
     PredictionTransformStepConfig,
@@ -137,6 +138,7 @@ __all__ = [
     "CompositeModelNamedConfig",
     "PredictionSourceConfig",
     "PredictionDataConfig",
+    "CompositeModelAssemblyInputOverrideConfig",
     "PredictionInferenceConfig",
     "PredictionTransformPipelineConfig",
     "PredictionTransformStepConfig",

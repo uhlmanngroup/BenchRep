@@ -237,8 +237,22 @@ class PredictionDataConfig(_PredictionConfigBaseModel):
     )
 
 
+class CompositeModelAssemblyInputOverrideConfig(
+    _PredictionConfigBaseModel
+):
+    """Overrides selected input routes for one composite assembly step."""
+
+    inputs: dict[str, str] = Field(
+        min_length=1,
+        description=(
+            "Mapping from component forward-parameter names to replacement "
+            "composite graph references such as `produces.z_mu`."
+        ),
+    )
+
+
 class PredictionInferenceConfig(_PredictionConfigBaseModel):
-    """Controls prediction reproducibility and VAE reconstruction behavior.
+    """Controls prediction reproducibility and model-specific inference behavior.
 
     Randomness and matrix-multiplication settings inherit their corresponding
     training values unless explicitly overridden. The resolved seed and worker
@@ -340,6 +354,55 @@ class PredictionInferenceConfig(_PredictionConfigBaseModel):
             ],
         },
     )
+
+    composite_model_assembly_input_overrides: dict[
+        str,
+        CompositeModelAssemblyInputOverrideConfig,
+    ] | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Prediction-only input-route overrides keyed by composite "
+            "assembly-step identifier."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Uses the composite assembly recorded by the training run "
+                "without modification."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Supported only for composite models.",
+                "Each key identifies an existing assembly step.",
+                "Each nested input key identifies an existing component "
+                "forward parameter on that step.",
+                "Only inputs currently routed from a `produces.*` output "
+                "can be overridden.",
+                "Replacement values must be complete composite graph "
+                "references such as `produces.z_mu`.",
+                "The original and replacement outputs must come from the "
+                "same producer assembly step.",
+                "Components and output bindings cannot be changed.",
+            ],
+        },
+    )
+
+    @model_validator(mode="after")
+    def validate_model_specific_inference_options(
+        self,
+    ) -> PredictionInferenceConfig:
+        if (
+            self.canonical_vae_reconstruction_latent_source is not None
+            and self.composite_model_assembly_input_overrides is not None
+        ):
+            raise ValueError(
+                "`canonical_vae_reconstruction_latent_source` and "
+                "`composite_model_assembly_input_overrides` cannot be configured "
+                "together because the former applies to canonical VAEs and the "
+                "latter to composite models."
+            )
+
+        return self
 
 
 # -------------------------

@@ -297,6 +297,20 @@ def write_prediction_manifest(
         else None
     )
 
+    composite_assembly_input_overrides = (
+        config.inference.composite_model_assembly_input_overrides
+    )
+
+    composite_assembly_input_override_summary = (
+        {
+            step_id: dict(step_override.inputs)
+            for step_id, step_override
+            in composite_assembly_input_overrides.items()
+        }
+        if composite_assembly_input_overrides is not None
+        else None
+    )
+
     model_architecture_summary = _build_model_architecture_summary(
         config=run_spec.training_config,
         model_family=run_spec.model_family,
@@ -422,6 +436,9 @@ def write_prediction_manifest(
         ),
         "model_class": model_class_name,
         "model_architecture": model_architecture_summary,
+        "composite_model_assembly_input_overrides": (
+            composite_assembly_input_override_summary
+        ),
         "datamodule_source": run_spec.datamodule_source,
         "datamodule_class": datamodule_class_name,
         "dataset": dataset_name,
@@ -549,6 +566,9 @@ def write_prediction_manifest(
                 "family": run_spec.model_family.name,
                 "class_name": model_class_name,
                 "config_reconstructable": not model_is_external,
+                "assembly_input_overrides_applied": (
+                    composite_assembly_input_overrides is not None
+                ),
             },
             "datamodule": {
                 "source": run_spec.datamodule_source,
