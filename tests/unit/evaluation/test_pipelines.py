@@ -132,7 +132,7 @@ def test_pipeline_creates_one_predictability_step_per_target() -> None:
     config = EvaluationConfig.model_validate(
         {
             "source": {
-                "embeddings_path": "embeddings.h5ad",
+                "anndata_path": "anndata.h5ad",
             },
             "metrics": {
                 "predictability": {

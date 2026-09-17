@@ -92,7 +92,7 @@ def test_resolved_configs_reproduce_end_to_end_metrics(
     )
     assert prediction_resolved["exports"]["reconstructions"]["seed"] == 137
 
-    assert evaluation_resolved["source"]["embeddings_path"] is not None
+    assert evaluation_resolved["source"]["anndata_path"] is not None
     assert evaluation_resolved["source"]["reconstructions_path"] is not None
     assert evaluation_resolved["run"]["output_root"] is not None
     assert evaluation_resolved["reconstruction"]["n_examples"] == 8
@@ -183,7 +183,7 @@ def _write_inheritance_heavy_evaluation_config(tmp_path: Path) -> Path:
     # Prediction manifest discovery supplies both artifact paths. Evaluation also
     # inherits output_root and reconstruction.n_examples from that prediction.
     raw["source"]["prediction_manifest_path"] = None
-    raw["source"]["embeddings_path"] = None
+    raw["source"]["anndata_path"] = None
     raw["source"]["reconstructions_path"] = None
     raw["reconstruction"]["n_examples"] = None
 

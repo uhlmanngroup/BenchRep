@@ -165,7 +165,7 @@ def test_evaluation_resolved_config_roundtrip_materializes_inputs_and_inheritanc
     raw_config["source"]["prediction_manifest_path"] = str(
         prediction_manifest_path
     )
-    raw_config["source"]["embeddings_path"] = None
+    raw_config["source"]["anndata_path"] = None
     raw_config["source"]["reconstructions_path"] = None
     raw_config["reconstruction"]["n_examples"] = None
 
@@ -188,10 +188,12 @@ def test_evaluation_resolved_config_roundtrip_materializes_inputs_and_inheritanc
     assert first.inherited_config_fields == frozenset(
         {
             "run.output_root",
+            "source.anndata_path",
+            "source.reconstructions_path",
             "reconstruction.n_examples",
         }
     )
-    assert first.evaluation_config.source.embeddings_path is not None
+    assert first.evaluation_config.source.anndata_path is not None
     assert first.evaluation_config.source.reconstructions_path is not None
     assert first.evaluation_config.run.output_root == (
         tmp_path / "outputs"
@@ -206,23 +208,54 @@ def test_evaluation_resolved_config_roundtrip_materializes_inputs_and_inheritanc
 
     second = resolve_evaluation_config(replay_config)
 
-    # The replay consumes explicit paths/values from the resolved config, so
-    # provenance-of-resolution differs while the effective plan stays equal.
     assert second.inherited_config_fields == frozenset()
     assert _config_dump(second.evaluation_config) == _config_dump(
         first.evaluation_config
     )
     assert second.run_identity == first.run_identity
     assert second.step_spec == first.step_spec
+
     assert (
-        second.input_spec.prediction_manifest_path
-        == first.input_spec.prediction_manifest_path
+            second.input_spec.prediction_manifest_path
+            == first.input_spec.prediction_manifest_path
+    )
+
+    first_anndata = first.input_spec.anndata
+    second_anndata = second.input_spec.anndata
+
+    assert first_anndata is not None
+    assert second_anndata is not None
+    assert second_anndata.path == first_anndata.path
+
+    first_reconstructions = first.input_spec.reconstructions
+    second_reconstructions = second.input_spec.reconstructions
+
+    assert first_reconstructions is not None
+    assert second_reconstructions is not None
+    assert (
+            second_reconstructions.bundle_dir
+            == first_reconstructions.bundle_dir
     )
     assert (
-        second.input_spec.embeddings_path
-        == first.input_spec.embeddings_path
+            second_reconstructions.input_path
+            == first_reconstructions.input_path
     )
-    assert second.input_spec.reconstructions == first.input_spec.reconstructions
+    assert (
+            second_reconstructions.reconstruction_path
+            == first_reconstructions.reconstruction_path
+    )
+    assert (
+            second_reconstructions.observations_path
+            == first_reconstructions.observations_path
+    )
+    assert (
+            second_reconstructions.metadata_path
+            == first_reconstructions.metadata_path
+    )
+    assert (
+            second_reconstructions.n_examples
+            == first_reconstructions.n_examples
+    )
 
 
 def _resolved_vae_training_config():
@@ -322,26 +355,38 @@ def _write_prediction_manifest(tmp_path: Path) -> Path:
     )
     prediction_output_dir.mkdir(parents=True)
 
-    embeddings_path = prediction_output_dir / "embeddings" / "embeddings.h5ad"
-    embeddings_path.parent.mkdir(parents=True)
-    embeddings_path.touch()
+    anndata_path = (
+        prediction_output_dir / "anndata" / "anndata.h5ad"
+    )
+    anndata_path.parent.mkdir(parents=True)
+    anndata_path.touch()
 
-    reconstruction_dir = prediction_output_dir / "reconstructions"
-    reconstruction_dir.mkdir()
-    input_path = reconstruction_dir / "input.pt"
-    reconstruction_path = reconstruction_dir / "reconstruction.pt"
-    obs_path = reconstruction_dir / "obs.pt"
-    metadata_path = reconstruction_dir / "reconstruction_export_metadata.pt"
+    pair_id = "x_reconstruction"
+    bundle_dir = (
+        prediction_output_dir
+        / "reconstructions"
+        / pair_id
+    )
+    bundle_dir.mkdir(parents=True)
+
+    input_path = bundle_dir / "input.pt"
+    reconstruction_path = bundle_dir / "reconstruction.pt"
+    observations_path = bundle_dir / "obs.pt"
+    metadata_path = (
+        bundle_dir / "reconstruction_export_metadata.pt"
+    )
 
     for path in (
         input_path,
         reconstruction_path,
-        obs_path,
+        observations_path,
         metadata_path,
     ):
         path.touch()
 
-    manifest_path = prediction_output_dir / "prediction_manifest.yaml"
+    manifest_path = (
+        prediction_output_dir / "prediction_manifest.yaml"
+    )
     _write_yaml(
         manifest_path,
         {
@@ -352,27 +397,52 @@ def _write_prediction_manifest(tmp_path: Path) -> Path:
                 "output_dir": str(prediction_output_dir),
             },
             "exports": {
-                "embeddings": {
-                    "path": str(embeddings_path),
+                "anndata": {
+                    "path": str(anndata_path),
                 },
                 "reconstructions": {
-                    "n_examples_exported": 8,
-                    "paths": {
-                        "input": str(input_path),
-                        "reconstruction": str(reconstruction_path),
-                        "obs": str(obs_path),
-                        "metadata": str(metadata_path),
+                    "pairs": {
+                        pair_id: {
+                            "input": "x",
+                            "reconstruction": "reconstruction",
+                            "n_examples_exported": 8,
+                            "paths": {
+                                "bundle_dir": str(bundle_dir),
+                                "input": str(input_path),
+                                "reconstruction": str(
+                                    reconstruction_path
+                                ),
+                                "observations": str(
+                                    observations_path
+                                ),
+                                "metadata": str(metadata_path),
+                            },
+                        },
                     },
                 },
             },
             "summary": {
-                "project_name": "integration_test",
-                "model": "vae",
-                "encoder": "mlp",
-                "decoder": "mlp",
+                "model_name": "vae",
+                "model_class": "VAE",
+                "model_architecture": {
+                    "encoder": "mlp",
+                    "decoder": "mlp",
+                },
+            },
+            "appendix": {
+                "training_manifest": {
+                    "appendix": {
+                        "resolved_config": {
+                            "run": {
+                                "project_name": "integration_test",
+                            },
+                        },
+                    },
+                },
             },
         },
     )
+
     return manifest_path
 
 

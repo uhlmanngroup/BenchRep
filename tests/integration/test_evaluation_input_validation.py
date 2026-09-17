@@ -31,7 +31,7 @@ def test_evaluate_rejects_nonfinite_embeddings(
 
     config = EvaluationConfig(
         source=EvaluationSourceConfig(
-            embeddings_path=embeddings_path,
+            anndata_path=embeddings_path,
         ),
         run=EvaluationRunConfig(
             output_root=tmp_path / "outputs",
@@ -90,11 +90,11 @@ def test_evaluate_supports_reconstruction_only_input(
     result = evaluate(full_config_object=config)
 
     assert result.status_report.status == "completed"
-    assert result.status_report.embeddings.status == "disabled"
+    assert result.status_report.anndata.status == "disabled"
     assert result.status_report.reconstructions.status == "completed"
 
     assert result.adata is None
-    assert result.export_paths.evaluated_embeddings_path is None
+    assert result.export_paths.evaluated_anndata_path is None
     assert result.export_paths.metrics_json_path is not None
     assert result.export_paths.metrics_json_path.is_file()
 
@@ -109,14 +109,15 @@ def test_evaluate_supports_reconstruction_only_input(
         manifest = yaml.safe_load(handle)
 
     assert manifest["source"]["mode"] == "direct"
-    assert manifest["source"]["embeddings"] == {
+    assert manifest["source"]["anndata"] == {
         "source": None,
+        "available": False,
         "path": None,
     }
-    assert manifest["exports"]["embeddings"] == {
+    assert manifest["exports"]["anndata"] == {
         "path": None,
         "n_obs": None,
         "n_vars": None,
     }
-    assert manifest["summary"]["has_embeddings"] is False
+    assert manifest["summary"]["has_anndata"] is False
     assert manifest["summary"]["has_reconstructions"] is True

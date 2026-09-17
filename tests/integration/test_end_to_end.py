@@ -184,7 +184,7 @@ def test_internal_end_to_end(
     _assert_completed_manifest(evaluation_result.manifest_path, "evaluation")
 
     assert evaluation_result.status_report.status == "completed"
-    assert evaluation_result.status_report.embeddings.status == "completed"
+    assert evaluation_result.status_report.anndata.status == "completed"
     assert (
         evaluation_result.status_report.reconstructions.status
         == "completed"
@@ -202,7 +202,7 @@ def test_internal_end_to_end(
     } <= set(evaluation_result.adata.obs.columns)
 
     export_paths = evaluation_result.export_paths
-    assert export_paths.evaluated_embeddings_path.is_file()
+    assert export_paths.evaluated_anndata_path.is_file()
     assert export_paths.metrics_json_path.is_file()
     assert _count_paths(export_paths.reduction_plot_paths) > 0
     assert _count_paths(export_paths.cluster_size_plot_paths) > 0

@@ -62,7 +62,7 @@ def test_summarize_evaluation_outcomes_rejects_unfinished() -> None:
 
 def test_build_evaluation_status_report_aggregates_sections() -> None:
     report = build_evaluation_status_report(
-        embedding_outcomes=(
+        anndata_outcomes=(
             EvaluationOutcome(
                 name="pca",
                 category="reductions",
@@ -77,14 +77,14 @@ def test_build_evaluation_status_report_aggregates_sections() -> None:
         reconstruction_outcomes=(),
         export_outcomes=(
             EvaluationOutcome(
-                name="evaluated_embeddings",
+                name="evaluated_anndata",
                 category="exports",
                 status="completed",
             ),
         ),
     )
 
-    assert report.embeddings.status == "partially_completed"
+    assert report.anndata.status == "partially_completed"
     assert report.reconstructions.status == "disabled"
     assert report.exports.status == "completed"
     assert report.status == "partially_completed"

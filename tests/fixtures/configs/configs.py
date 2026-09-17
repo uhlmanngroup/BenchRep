@@ -380,7 +380,7 @@ def make_evaluation_source_config() -> EvaluationSourceConfig:
         prediction_manifest_path=Path(
             "overridden_prediction_manifest.yaml"
         ),
-        embeddings_path=None,
+        anndata_path=None,
         reconstructions_path=None,
     )
 
