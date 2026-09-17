@@ -83,6 +83,8 @@ class RunContext:
     training_architecture_dir:
         Conventional directory for architecture inspection artifacts, such as
         torchview graphs or model summaries.
+    prediction_architecture_dir:
+        Directory containing prediction-time architecture records.
     prediction_anndata_dir:
         Conventional directory for prediction AnnData exports.
     prediction_reconstructions_dir:
@@ -122,6 +124,7 @@ class RunContext:
     # Stage-specific conventional directories
     training_checkpoint_dir: Path
     training_architecture_dir: Path
+    prediction_architecture_dir: Path
     prediction_anndata_dir: Path
     prediction_reconstructions_dir: Path
     evaluation_artifacts_dir: Path
@@ -195,6 +198,7 @@ class RunContext:
         # Stage-specific dirs
         training_checkpoint_dir = output_dir / "checkpoints"
         training_architecture_dir = output_dir / "architecture"
+        prediction_architecture_dir = output_dir / "architecture"
         prediction_anndata_dir = output_dir / "anndata"
         prediction_reconstructions_dir = output_dir / "reconstructions"
         evaluation_artifacts_dir = output_dir / "artifacts"
@@ -220,7 +224,11 @@ class RunContext:
         if stage == "training":
             dirs_to_create.extend([training_checkpoint_dir, training_architecture_dir])
         elif stage == "prediction":
-            dirs_to_create.extend([prediction_anndata_dir, prediction_reconstructions_dir])
+            dirs_to_create.extend([
+                prediction_anndata_dir,
+                prediction_reconstructions_dir,
+                prediction_architecture_dir,
+            ])
         elif stage == "evaluation":
             dirs_to_create.extend([
                 evaluation_artifacts_dir,
@@ -253,6 +261,7 @@ class RunContext:
             metadata_dir=metadata_dir,
             training_checkpoint_dir=training_checkpoint_dir,
             training_architecture_dir=training_architecture_dir,
+            prediction_architecture_dir=prediction_architecture_dir,
             prediction_anndata_dir=prediction_anndata_dir,
             prediction_reconstructions_dir=prediction_reconstructions_dir,
             evaluation_artifacts_dir=evaluation_artifacts_dir,

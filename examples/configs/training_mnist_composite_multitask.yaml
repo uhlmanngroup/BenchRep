@@ -2,7 +2,7 @@ stage: training
 
 run:
   output_root: outputs
-  project_name: mnist_composite_multitask
+  project_name: mnist_composite_vae_multitask
 
 reproducibility:
   seed: 137
@@ -44,7 +44,10 @@ composite_model_declarations:
     sample_id: index
 
   produces:
-    embedding: embedding_vector
+    encoder_features: projection_vector
+    z_sample: embedding_vector
+    z_mu: embedding_vector
+    z_logvar: continuous_auxiliary_vector
     reconstruction: reconstruction_image
     digit_logits: categorical_prediction_vector
 
@@ -60,11 +63,18 @@ composite_model_components:
       normalization: null
       dropout: 0.0
 
+  variational_head:
+    kind: head
+    name: gaussian_variational
+    params:
+      in_features: 64
+      latent_dim: 32
+
   image_decoder:
     kind: decoder
     name: mlp
     params:
-      input_dim: 64
+      input_dim: 32
       output_shape: [1, 28, 28]
       hidden_dims: [256, 512]
       activation: null
@@ -76,7 +86,7 @@ composite_model_components:
     kind: head
     name: mlp
     params:
-      input_dim: 64
+      input_dim: 32
       output_dim: 10
       hidden_dims: []
       activation: null
@@ -88,18 +98,27 @@ composite_model_assembly:
     component: image_encoder
     inputs:
       x: expects.x
-    outputs: produces.embedding
+    outputs: produces.encoder_features
+
+  parameterize:
+    component: variational_head
+    inputs:
+      x: produces.encoder_features
+    outputs:
+      z_sample: produces.z_sample
+      z_mu: produces.z_mu
+      z_logvar: produces.z_logvar
 
   reconstruct:
     component: image_decoder
     inputs:
-      z: produces.embedding
+      z: produces.z_sample
     outputs: produces.reconstruction
 
   classify:
     component: digit_classifier
     inputs:
-      x: produces.embedding
+      x: produces.z_sample
     outputs: produces.digit_logits
 
 losses:
@@ -111,6 +130,15 @@ losses:
       composite_wiring:
         reconstruction: produces.reconstruction
         target: expects.x
+
+  regularization:
+    gaussian_kld:
+      weight: 0.0001
+      params:
+        reduction: mean
+      composite_wiring:
+        z_mu: produces.z_mu
+        z_logvar: produces.z_logvar
 
   classification:
     cross_entropy:

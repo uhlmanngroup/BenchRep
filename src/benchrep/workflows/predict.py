@@ -45,6 +45,8 @@ from benchrep.records import (
     get_runtime_environment_filename,
     collect_prediction_environment_context,
     write_runtime_environment,
+    export_composite_model_spec_graph,
+    ModelGraphDependencyError,
 )
 from benchrep.records.utils import now_isoformat
 from benchrep.records.prediction_exports import (
@@ -83,6 +85,7 @@ class PredictionWorkflowResult:
     trainer: L.Trainer
     predictions: list[Any]
     export_result: PredictionExportResult
+    composite_model_spec_graph_path: Path | None
     status_report: PredictionStatusReport
     manifest_path: Path
 
@@ -470,6 +473,49 @@ def _predict(
             "and optimizer configuration will be ignored."
         )
 
+    # Automatically export the resolved and potentially edited Composite model specification graph.
+    composite_model_spec_graph_path = None
+
+    if run_spec.composite_model_spec is not None:
+        try:
+            composite_model_spec_graph_path = (
+                export_composite_model_spec_graph(
+                    run_spec.composite_model_spec,
+                    output_path=(
+                        run_context.prediction_architecture_dir
+                        / "composite_model_spec_graph.svg"
+                    ),
+                    graph_name=(
+                        "Prediction-time Composite model specification"
+                    ),
+                )
+            )
+
+            run_log.info(
+                "Automatically exported prediction-time Composite model "
+                "specification graph to: '%s'",
+                composite_model_spec_graph_path,
+            )
+
+        except ModelGraphDependencyError as exc:
+            run_log.info(
+                "BenchRep automatically exports a Composite model "
+                "specification graph for Composite prediction runs. This "
+                "optional export was skipped because a required model-graph "
+                "dependency is unavailable: %s",
+                exc,
+            )
+
+        except Exception as exc:
+            warning = (
+                "BenchRep automatically exports a Composite model "
+                "specification graph for Composite prediction runs, but the "
+                "export failed and was skipped: "
+                f"{type(exc).__name__}: {exc}"
+            )
+            inference_warnings.append(warning)
+            run_log.warning(warning, exc_info=True)
+
     # Preflight check and source input validation
     assert model is not None
     assert datamodule is not None
@@ -707,6 +753,9 @@ def _predict(
         output_path=manifest_path,
         run_spec=run_spec,
         run_context=run_context,
+        composite_model_spec_graph_path=(
+            composite_model_spec_graph_path
+        ),
         export_result=export_result,
         created_at=created_at,
         completed_at=completed_at,
@@ -759,6 +808,9 @@ def _predict(
         datamodule=datamodule,
         model=model,
         trainer=trainer,
+        composite_model_spec_graph_path=(
+            composite_model_spec_graph_path
+        ),
         predictions=predictions,
         export_result=export_result,
         status_report=status_report,

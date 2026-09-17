@@ -262,6 +262,7 @@ def write_prediction_manifest(
     output_path: Path,
     run_spec: PredictionRunSpec,
     run_context: RunContext,
+    composite_model_spec_graph_path: Path | None = None,
     export_result: PredictionExportResult,
     created_at: str,
     completed_at: str,
@@ -337,6 +338,14 @@ def write_prediction_manifest(
         run_context,
         capture_stdout=capture_stdout,
     )
+    records["architecture"] = {
+        "composite_model_spec_graph_applicable": (
+            run_spec.composite_model_spec is not None
+        ),
+        "composite_model_spec_graph_path": paths_to_strings(
+            composite_model_spec_graph_path
+        ),
+    }
 
     anndata_spec = run_spec.export_spec.anndata
     reconstruction_spec = run_spec.export_spec.reconstructions

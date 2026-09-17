@@ -27,12 +27,20 @@ inference:
   deterministic: null
   float32_matmul_precision: null
 
+  composite_model_assembly_input_overrides:
+    reconstruct:
+      inputs:
+        z: produces.z_mu
+    classify:
+      inputs:
+        x: produces.z_mu
+
 exports:
   anndata:
     enabled: true
     mode: all
     keys: null
-    primary_key: embedding
+    primary_key: z_mu
 
   reconstructions:
     enabled: true
