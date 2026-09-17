@@ -24,7 +24,7 @@ inference:
   seed_workers: null
   deterministic: null
   float32_matmul_precision: null
-  reconstruction_latent_source: mean
+  canonical_vae_reconstruction_latent_source: mean
 
 exports:
   anndata:

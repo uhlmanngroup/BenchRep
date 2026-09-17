@@ -88,7 +88,7 @@ def test_prediction_resolved_config_roundtrip_materializes_inheritance(
     raw_config["inference"]["seed_workers"] = None
     raw_config["inference"]["deterministic"] = None
     raw_config["inference"]["float32_matmul_precision"] = None
-    raw_config["inference"]["reconstruction_latent_source"] = None
+    raw_config["inference"]["canonical_vae_reconstruction_latent_source"] = None
     raw_config["exports"]["reconstructions"]["seed"] = None
 
     config = parse_prediction_config(raw_config)
@@ -111,7 +111,7 @@ def test_prediction_resolved_config_roundtrip_materializes_inheritance(
             "exports.reconstructions.seed",
         }
     )
-    assert first.reconstruction_latent_source == "mean"
+    assert first.canonical_vae_reconstruction_latent_source == "mean"
 
     resolved_path = _save_resolved_config(
         tmp_path / "prediction",
@@ -149,8 +149,8 @@ def test_prediction_resolved_config_roundtrip_materializes_inheritance(
         == first.float32_matmul_precision
     )
     assert (
-        second.reconstruction_latent_source
-        == first.reconstruction_latent_source
+        second.canonical_vae_reconstruction_latent_source
+        == first.canonical_vae_reconstruction_latent_source
     )
     assert second.export_spec == first.export_spec
 

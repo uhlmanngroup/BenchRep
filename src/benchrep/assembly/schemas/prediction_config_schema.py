@@ -246,9 +246,11 @@ class PredictionInferenceConfig(_PredictionConfigBaseModel):
     prediction, while deterministic execution is configured through the
     prediction Lightning Trainer.
 
-    `reconstruction_latent_source` applies only to internally assembled VAE
-    models. External models control their own `predict_step()` implementation,
-    so BenchRep cannot select their reconstruction latent source.
+    `canonical_vae_reconstruction_latent_source` applies only to internally assembled
+    canonical VAE models. Composite models instead support prediction-only
+    rerouting through `composite_model_assembly_input_overrides`, which modifies
+    the assembly input wiring before the prediction-time model specification is
+    resolved and built.
     """
 
     seed: int | None = Field(
@@ -313,7 +315,7 @@ class PredictionInferenceConfig(_PredictionConfigBaseModel):
         },
     )
 
-    reconstruction_latent_source: Literal["mean", "sample"] | None = Field(
+    canonical_vae_reconstruction_latent_source: Literal["mean", "sample"] | None = Field(
         default=None,
         description=(
             "Latent representation decoded for prediction-time reconstruction "

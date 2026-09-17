@@ -169,7 +169,7 @@ def _write_inheritance_heavy_prediction_config(tmp_path: Path) -> Path:
     raw["inference"]["seed_workers"] = None
     raw["inference"]["deterministic"] = None
     raw["inference"]["float32_matmul_precision"] = None
-    raw["inference"]["reconstruction_latent_source"] = None
+    raw["inference"]["canonical_vae_reconstruction_latent_source"] = None
     raw["exports"]["reconstructions"]["seed"] = None
 
     path = tmp_path / "roundtrip_prediction.yaml"

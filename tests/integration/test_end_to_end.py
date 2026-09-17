@@ -94,7 +94,7 @@ def test_internal_end_to_end(
     if training_config_name == "training_tiny_synthetic_vae.yaml":
         model = prediction_result.model
         assert isinstance(model, VAE)
-        assert prediction_result.run_spec.reconstruction_latent_source == "mean"
+        assert prediction_result.run_spec.canonical_vae_reconstruction_latent_source == "mean"
         assert model.prediction_reconstruction_latent_source == "mean"
 
         with torch.no_grad():
@@ -234,7 +234,7 @@ def test_internal_vae_prediction_can_reconstruct_from_sample(
         config_path=CONFIG_DIR / "prediction_tiny_synthetic.yaml",
         config_components={
             "inference": PredictionInferenceConfig(
-                reconstruction_latent_source="sample",
+                canonical_vae_reconstruction_latent_source="sample",
             ),
         },
         training_manifest_path=training_result.manifest_path,
@@ -242,7 +242,7 @@ def test_internal_vae_prediction_can_reconstruct_from_sample(
 
     model = prediction_result.model
     assert isinstance(model, VAE)
-    assert prediction_result.run_spec.reconstruction_latent_source == "sample"
+    assert prediction_result.run_spec.canonical_vae_reconstruction_latent_source == "sample"
     assert model.prediction_reconstruction_latent_source == "sample"
 
     with torch.no_grad():
@@ -295,7 +295,7 @@ def _assert_vae_reconstruction_provenance(
 
     recorded_source = (
         manifest["appendix"]["resolved_config"]["inference"]
-        ["reconstruction_latent_source"]
+        ["canonical_vae_reconstruction_latent_source"]
     )
 
     assert recorded_source == configured_source
@@ -312,11 +312,11 @@ def _assert_vae_reconstruction_provenance(
 
     assert (
         reproducibility["resolved_config"]
-        ["reconstruction_latent_source"]
+        ["canonical_vae_reconstruction_latent_source"]
         == configured_source
     )
     assert (
-        reproducibility["resolved"]["reconstruction_latent_source"]
+        reproducibility["resolved"]["canonical_vae_reconstruction_latent_source"]
         == effective_source
     )
 

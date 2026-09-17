@@ -204,7 +204,7 @@ def build_prediction_config(
         transform_pipelines=None,
         data=PredictionDataConfig(),
         inference=PredictionInferenceConfig(
-            reconstruction_latent_source="mean",
+            canonical_vae_reconstruction_latent_source="mean",
         ),
         exports=PredictionExportConfig(
             anndata=PredictionAnnDataExportConfig(

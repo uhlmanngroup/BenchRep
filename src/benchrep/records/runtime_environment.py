@@ -200,7 +200,7 @@ def collect_prediction_environment_context(
     vae_reconstruction_applicable = model_family == VAE_FAMILY
 
     vae_reconstruction_uses_randomness = (
-        run_spec.reconstruction_latent_source == "sample"
+        run_spec.canonical_vae_reconstruction_latent_source == "sample"
         if vae_reconstruction_applicable and model_source == "config"
         else None
     )
@@ -243,8 +243,8 @@ def collect_prediction_environment_context(
                     prediction_config.inference
                     .float32_matmul_precision
                 ),
-                "reconstruction_latent_source": (
-                    prediction_config.inference.reconstruction_latent_source
+                "canonical_vae_reconstruction_latent_source": (
+                    prediction_config.inference.canonical_vae_reconstruction_latent_source
                 ),
             },
             "resolved": {
@@ -257,8 +257,8 @@ def collect_prediction_environment_context(
                 "float32_matmul_precision": (
                     run_spec.float32_matmul_precision
                 ),
-                "reconstruction_latent_source": (
-                    run_spec.reconstruction_latent_source
+                "canonical_vae_reconstruction_latent_source": (
+                    run_spec.canonical_vae_reconstruction_latent_source
                 ),
             },
             "components": {
@@ -282,7 +282,7 @@ def collect_prediction_environment_context(
                         else None
                     ),
                     "latent_source": (
-                        run_spec.reconstruction_latent_source
+                        run_spec.canonical_vae_reconstruction_latent_source
                         if vae_reconstruction_applicable
                         else None
                     ),

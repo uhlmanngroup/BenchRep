@@ -61,7 +61,7 @@ PredictionTransformPipelineSource = Literal[
     "external_datamodule",
 ]
 
-ReconstructionLatentSource = Literal["mean", "sample"]
+CanonicalVAEReconstructionLatentSource = Literal["mean", "sample"]
 
 PredictionInheritableField = Literal[
     "dataset",
@@ -177,7 +177,7 @@ class PredictionRunSpec:
     seed: int | None
     seed_workers: bool
     float32_matmul_precision: Float32MatmulPrecision
-    reconstruction_latent_source: ReconstructionLatentSource | None
+    canonical_vae_reconstruction_latent_source: CanonicalVAEReconstructionLatentSource | None
 
     export_spec: PredictionExportSpec
 
@@ -465,9 +465,9 @@ def resolve_prediction_config(
     if prediction_config.inference.deterministic is None:
         inherited_config_fields.add("inference.deterministic")
 
-    reconstruction_latent_source = _resolve_reconstruction_latent_source(
+    canonical_vae_reconstruction_latent_source = _resolve_canonical_vae_reconstruction_latent_source(
         configured_source=(
-            prediction_config.inference.reconstruction_latent_source
+            prediction_config.inference.canonical_vae_reconstruction_latent_source
         ),
         model_family=model_family,
         model_is_external=model_is_external,
@@ -640,7 +640,7 @@ def resolve_prediction_config(
         seed=seed,
         seed_workers=seed_workers,
         float32_matmul_precision=float32_matmul_precision,
-        reconstruction_latent_source=reconstruction_latent_source,
+        canonical_vae_reconstruction_latent_source=canonical_vae_reconstruction_latent_source,
         export_spec=export_spec,
     )
 
@@ -957,12 +957,12 @@ def _validate_prediction_model_family(
         )
 
 
-def _resolve_reconstruction_latent_source(
+def _resolve_canonical_vae_reconstruction_latent_source(
     *,
-    configured_source: ReconstructionLatentSource | None,
+    configured_source: CanonicalVAEReconstructionLatentSource | None,
     model_family: ModelFamilySpec,
     model_is_external: bool,
-) -> ReconstructionLatentSource | None:
+) -> CanonicalVAEReconstructionLatentSource | None:
     """Resolve the latent source used for prediction-time VAE reconstruction."""
     if configured_source is None:
         if model_is_external:
@@ -976,14 +976,14 @@ def _resolve_reconstruction_latent_source(
     if model_is_external:
         if model_family == VAE_FAMILY:
             raise ValueError(
-                "`inference.reconstruction_latent_source` cannot be set when "
+                "`inference.canonical_vae_reconstruction_latent_source` cannot be set when "
                 "prediction uses an external model. BenchRep cannot control how "
                 "the external VAE model's `predict_step()` produces reconstructions."
             )
 
     if model_family != VAE_FAMILY:
         raise ValueError(
-            "`inference.reconstruction_latent_source` is only supported for "
+            "`inference.canonical_vae_reconstruction_latent_source` is only supported for "
             "prediction using internal VAE models."
         )
 

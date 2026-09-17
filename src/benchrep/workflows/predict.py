@@ -326,14 +326,14 @@ def _predict(
 
     elif run_spec.model_family == VAE_FAMILY:
         configured_source = (
-            resolved_prediction_config.inference.reconstruction_latent_source
+            resolved_prediction_config.inference.canonical_vae_reconstruction_latent_source
         )
-        effective_source = run_spec.reconstruction_latent_source
+        effective_source = run_spec.canonical_vae_reconstruction_latent_source
         assert effective_source is not None
 
         if configured_source is None:
             run_log.info(
-                "`inference.reconstruction_latent_source` was not configured; "
+                "`inference.canonical_vae_reconstruction_latent_source` was not configured; "
                 "defaulting to the posterior mean (`z_mu`)."
             )
         elif effective_source == "mean":
@@ -446,7 +446,7 @@ def _predict(
             config=run_spec.training_config,
             composite_model_spec=run_spec.composite_model_spec,
             prediction_reconstruction_latent_source=(
-                run_spec.reconstruction_latent_source
+                run_spec.canonical_vae_reconstruction_latent_source
             ),
         )
     else:
