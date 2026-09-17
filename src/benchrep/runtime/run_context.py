@@ -56,7 +56,7 @@ class RunContext:
     is still stored on the context object so downstream code has a single source
     of truth for path names.
 
-    The context does not write model weights, configs, logs, embeddings,
+    The context does not write model weights, configs, logs, anndata,
     reconstructions, metrics, or figures itself. It only owns the directory
     layout and exposes immutable paths for the rest of the pipeline.
 
@@ -93,11 +93,11 @@ class RunContext:
         Parent directory for generated evaluation figures.
     evaluation_metrics_dir:
         Directory for machine-readable evaluation metric records.
-    evaluation_embeddings_dir:
+    evaluation_anndata_dir:
         Directory for embedding-side evaluation artifacts.
     evaluation_reconstructions_dir:
         Directory for reconstruction-side evaluation artifacts.
-    evaluation_embeddings_figures_dir:
+    evaluation_anndata_figures_dir:
         Directory for embedding-side evaluation figures.
     evaluation_reconstructions_figures_dir:
         Directory for reconstruction-side evaluation figures.
@@ -127,9 +127,9 @@ class RunContext:
     evaluation_artifacts_dir: Path
     evaluation_figures_dir: Path
     evaluation_metrics_dir: Path
-    evaluation_embeddings_dir: Path
+    evaluation_anndata_dir: Path
     evaluation_reconstructions_dir: Path
-    evaluation_embeddings_figures_dir: Path
+    evaluation_anndata_figures_dir: Path
     evaluation_reconstructions_figures_dir: Path
     evaluation_reconstruction_inputs_dir: Path
     evaluation_reconstruction_predictions_dir: Path
@@ -202,9 +202,9 @@ class RunContext:
 
         evaluation_metrics_dir = records_dir / "metrics"
 
-        evaluation_embeddings_dir = evaluation_artifacts_dir / "embeddings"
+        evaluation_anndata_dir = evaluation_artifacts_dir / "anndata"
         evaluation_reconstructions_dir = evaluation_artifacts_dir / "reconstructions"
-        evaluation_embeddings_figures_dir = evaluation_figures_dir / "embeddings"
+        evaluation_anndata_figures_dir = evaluation_figures_dir / "anndata"
         evaluation_reconstructions_figures_dir = evaluation_figures_dir / "reconstructions"
         evaluation_reconstruction_inputs_dir = evaluation_reconstructions_dir / "inputs"
         evaluation_reconstruction_predictions_dir = evaluation_reconstructions_dir / "predictions"
@@ -226,9 +226,9 @@ class RunContext:
                 evaluation_artifacts_dir,
                 evaluation_figures_dir,
                 evaluation_metrics_dir,
-                evaluation_embeddings_dir,
+                evaluation_anndata_dir,
                 evaluation_reconstructions_dir,
-                evaluation_embeddings_figures_dir,
+                evaluation_anndata_figures_dir,
                 evaluation_reconstructions_figures_dir,
                 evaluation_reconstruction_inputs_dir,
                 evaluation_reconstruction_predictions_dir,
@@ -258,9 +258,9 @@ class RunContext:
             evaluation_artifacts_dir=evaluation_artifacts_dir,
             evaluation_figures_dir=evaluation_figures_dir,
             evaluation_metrics_dir=evaluation_metrics_dir,
-            evaluation_embeddings_dir=evaluation_embeddings_dir,
+            evaluation_anndata_dir=evaluation_anndata_dir,
             evaluation_reconstructions_dir=evaluation_reconstructions_dir,
-            evaluation_embeddings_figures_dir=evaluation_embeddings_figures_dir,
+            evaluation_anndata_figures_dir=evaluation_anndata_figures_dir,
             evaluation_reconstructions_figures_dir=evaluation_reconstructions_figures_dir,
             evaluation_reconstruction_inputs_dir=evaluation_reconstruction_inputs_dir,
             evaluation_reconstruction_predictions_dir=evaluation_reconstruction_predictions_dir,

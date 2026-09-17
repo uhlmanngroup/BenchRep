@@ -35,38 +35,27 @@ class EvaluateSourceInputsResult:
 def prepare_evaluate_source_inputs(
     run_spec: EvaluationRunSpec,
 ) -> EvaluateSourceInputsResult:
-    """Load and validate source inputs required by the evaluation runner."""
+    """Load and validate the artifact inputs selected for evaluation."""
 
     adata = None
-    embeddings_path = run_spec.input_spec.embeddings_path
+    anndata_spec = run_spec.input_spec.anndata
 
-    if embeddings_path is not None:
-        adata = _load_embeddings_adata(embeddings_path)
+    if anndata_spec is not None:
+        adata = _load_evaluation_anndata(anndata_spec.path)
         _validate_embedding_adata_basic_contract(adata)
 
-    _validate_enabled_step_preconditions(
-        run_spec=run_spec,
-    )
+    _validate_enabled_step_preconditions(run_spec=run_spec)
 
     reconstruction_input = None
-    recon_spec = run_spec.input_spec.reconstructions
+    reconstruction_spec = run_spec.input_spec.reconstructions
 
-    if recon_spec is not None:
-        if recon_spec.input_path is None:
-            raise ValueError("Resolved reconstruction input path is None.")
-
-        if recon_spec.reconstruction_path is None:
-            raise ValueError("Resolved reconstruction prediction path is None.")
-
-        if recon_spec.obs_path is None:
-            raise ValueError("Resolved reconstruction obs path is None.")
-
+    if reconstruction_spec is not None:
         reconstruction_input = load_reconstruction_evaluation_input(
-            input_path=recon_spec.input_path,
-            reconstruction_path=recon_spec.reconstruction_path,
-            obs_path=recon_spec.obs_path,
-            metadata_path=recon_spec.metadata_path,
-            n_examples=recon_spec.n_examples,
+            input_path=reconstruction_spec.input_path,
+            reconstruction_path=reconstruction_spec.reconstruction_path,
+            obs_path=reconstruction_spec.observations_path,
+            metadata_path=reconstruction_spec.metadata_path,
+            n_examples=reconstruction_spec.n_examples,
         )
 
         _validate_reconstruction_obs_length(reconstruction_input)
@@ -101,35 +90,32 @@ def finalize_evaluation_step_spec(
     )
 
 
-def _load_embeddings_adata(path: Path | str) -> ad.AnnData:
-    embeddings_path = Path(path)
+def _load_evaluation_anndata(
+    path: Path | str,
+) -> ad.AnnData:
+    """Load the AnnData artifact selected for evaluation."""
 
-    if embeddings_path.suffix.lower() != ".h5ad":
+    anndata_path = Path(path)
+
+    if anndata_path.suffix.lower() != ".h5ad":
         raise ValueError(
-            "Evaluation embeddings input must be an AnnData `.h5ad` file. "
-            f"Got: {embeddings_path}"
+            "Evaluation AnnData input must be an `.h5ad` file. "
+            f"Got: {anndata_path}"
         )
 
-    if not embeddings_path.is_file():
+    if not anndata_path.is_file():
         raise FileNotFoundError(
-            f"Embeddings AnnData file does not exist: {embeddings_path}"
+            f"Evaluation AnnData file does not exist: {anndata_path}"
         )
 
     try:
-        adata = ad.read_h5ad(embeddings_path)
+        return ad.read_h5ad(anndata_path)
+
     except Exception as exc:
         raise RuntimeError(
-            f"Could not load embeddings AnnData from '{embeddings_path}'. "
+            f"Could not load evaluation AnnData from '{anndata_path}'. "
             f"Original error ({type(exc).__name__}): {exc}"
         ) from exc
-
-    if not isinstance(adata, ad.AnnData):
-        raise TypeError(
-            "Loaded embeddings object must be an AnnData object, "
-            f"got {type(adata).__name__}."
-        )
-
-    return adata
 
 
 def _validate_embedding_adata_basic_contract(adata: ad.AnnData) -> None:
@@ -139,12 +125,12 @@ def _validate_embedding_adata_basic_contract(adata: ad.AnnData) -> None:
 
     if adata.n_obs < 1:
         raise ValueError(
-            "Evaluation embeddings AnnData must contain at least one observation."
+            "Evaluation anndata AnnData must contain at least one observation."
         )
 
     if adata.n_vars < 1:
         raise ValueError(
-            "Evaluation embeddings AnnData must contain at least one variable."
+            "Evaluation anndata AnnData must contain at least one variable."
         )
 
     if adata.X.shape != (adata.n_obs, adata.n_vars):
@@ -199,7 +185,7 @@ def _validate_finite_embedding_values(adata: ad.AnnData) -> None:
     preview_rows = affected_rows[:10].tolist()
 
     raise ValueError(
-        "Evaluation embeddings must contain only finite values. "
+        "Evaluation anndata must contain only finite values. "
         f"Found {int(nan_mask.sum())} NaN values and "
         f"{int(infinite_mask.sum())} infinite values across "
         f"{len(affected_rows)} observations. First affected observation "

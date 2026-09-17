@@ -626,72 +626,66 @@ def write_evaluation_manifest(
     status_report: EvaluationStatusReport,
     created_at: str,
     completed_at: str,
+    capture_stdout: bool,
 ) -> dict[str, Any]:
-    """Write the evaluation workflow manifest."""
+    """Write the evaluation manifest and embed its reproducibility artifacts."""
+
     config = run_spec.evaluation_config
     step_spec = run_spec.step_spec
+    anndata_spec = run_spec.input_spec.anndata
     reconstruction_spec = run_spec.input_spec.reconstructions
-
     prediction_manifest = run_spec.prediction_manifest
 
     prediction_run: Mapping[str, Any] = {}
-    prediction_provenance: Mapping[str, Any] | None = None
     prediction_summary: Mapping[str, Any] = {}
+    prediction_status = None
 
     if prediction_manifest is not None:
+        prediction_status = prediction_manifest.get("status")
+
         run_value = prediction_manifest.get("run", {})
         if isinstance(run_value, Mapping):
             prediction_run = run_value
-
-        provenance_value = prediction_manifest.get("provenance")
-        if isinstance(provenance_value, Mapping):
-            prediction_provenance = provenance_value
 
         summary_value = prediction_manifest.get("summary", {})
         if isinstance(summary_value, Mapping):
             prediction_summary = summary_value
 
-    embeddings_source = run_spec.input_spec.embeddings_source
-    reconstructions_source = run_spec.input_spec.reconstructions_source
+    anndata_source = (
+        anndata_spec.source
+        if anndata_spec is not None
+        else None
+    )
+    reconstructions_source = (
+        reconstruction_spec.source
+        if reconstruction_spec is not None
+        else None
+    )
 
     if run_spec.input_spec.prediction_manifest_path is None:
         source_mode = "direct"
     elif (
-        embeddings_source == "direct_path"
-        or reconstructions_source == "direct_path"
+            anndata_source == "direct_path"
+            or reconstructions_source == "direct_path"
     ):
         source_mode = "mixed"
     else:
         source_mode = "prediction_manifest"
 
-    grid_params = step_spec.plot_params.get("reconstruction_grid", {})
+    grid_params = step_spec.plot_params.get(
+        "reconstruction_grid",
+        {},
+    )
     if not isinstance(grid_params, Mapping):
         grid_params = {}
 
     tiff_paths = export_paths.reconstruction_tiff_paths
     grid_paths = export_paths.reconstruction_grid_paths
 
-    provenance = (
-        dict(prediction_provenance)
-        if prediction_provenance is not None
-        else {}
-    )
-
-    provenance["evaluation"] = {
-        "config": {
-            "run_reconstructable_from_resolved_config": True,
-            "effective_source": config_composition_result.effective_source,
-            "yaml_supplied": config_composition_result.yaml_supplied,
-            "yaml_used_as_base": config_composition_result.yaml_used_as_base,
-            "original_config_path": paths_to_strings(
-                config_composition_result.original_config_path
-            ),
-        },
-    }
-
     records = _build_common_records(
         config_composition_result,
         run_context,
+        capture_stdout=capture_stdout,
     )
 
     anndata_output_locations = (
@@ -706,7 +700,7 @@ def write_evaluation_manifest(
     outcome_statuses = [
         outcome.status
         for section in (
-            status_report.embeddings,
+            status_report.anndata,
             status_report.reconstructions,
             status_report.exports,
         )
@@ -737,15 +731,29 @@ def write_evaluation_manifest(
             ),
             "prediction_run_name": prediction_run.get("run_name"),
             "prediction_output_dir": prediction_run.get("output_dir"),
-            "embeddings": {
-                "source": embeddings_source,
-                "path": paths_to_strings(
-                    run_spec.input_spec.embeddings_path
+            "prediction_status": prediction_status,
+            "anndata": {
+                "source": anndata_source,
+                "available": anndata_spec is not None,
+                "path": (
+                    paths_to_strings(anndata_spec.path)
+                    if anndata_spec is not None
+                    else None
                 ),
             },
             "reconstructions": {
                 "source": reconstructions_source,
                 "available": reconstruction_spec is not None,
+                "pair_id": (
+                    reconstruction_spec.pair_id
+                    if reconstruction_spec is not None
+                    else None
+                ),
+                "bundle_dir": (
+                    paths_to_strings(reconstruction_spec.bundle_dir)
+                    if reconstruction_spec is not None
+                    else None
+                ),
                 "n_examples_limit": (
                     reconstruction_spec.n_examples
                     if reconstruction_spec is not None
@@ -764,8 +772,10 @@ def write_evaluation_manifest(
                         if reconstruction_spec is not None
                         else None
                     ),
-                    "obs": (
-                        paths_to_strings(reconstruction_spec.obs_path)
+                    "observations": (
+                        paths_to_strings(
+                            reconstruction_spec.observations_path
+                        )
                         if reconstruction_spec is not None
                         else None
                     ),
@@ -784,22 +794,33 @@ def write_evaluation_manifest(
                 else sorted(run_spec.inherited_config_fields)
             ),
         },
-        "provenance": provenance,
+        "construction": {
+            "config": {
+                "run_reconstructable_from_resolved_config": True,
+                "effective_source": (
+                    config_composition_result.effective_source
+                ),
+                "yaml_supplied": config_composition_result.yaml_supplied,
+                "yaml_used_as_base": (
+                    config_composition_result.yaml_used_as_base
+                ),
+            },
+        },
         "records": records,
         "exports": {
-            "embeddings": {
+            "anndata": {
                 "path": paths_to_strings(
-                    export_paths.evaluated_embeddings_path
+                    export_paths.evaluated_anndata_path
                 ),
                 "n_obs": (
                     int(adata.n_obs)
-                    if export_paths.evaluated_embeddings_path is not None
+                    if export_paths.evaluated_anndata_path is not None
                        and adata is not None
                     else None
                 ),
                 "n_vars": (
                     int(adata.n_vars)
-                    if export_paths.evaluated_embeddings_path is not None
+                    if export_paths.evaluated_anndata_path is not None
                        and adata is not None
                     else None
                 ),
@@ -857,13 +878,25 @@ def write_evaluation_manifest(
             },
         },
         "summary": {
-            "project_name": prediction_summary.get("project_name"),
-            "model": prediction_summary.get("model"),
-            "encoder": prediction_summary.get("encoder"),
-            "decoder": prediction_summary.get("decoder"),
+            "project_name": run_spec.run_identity.project_name,
+            "model_name": prediction_summary.get("model_name"),
+            "model_class": prediction_summary.get("model_class"),
+            "model_architecture": prediction_summary.get(
+                "model_architecture"
+            ),
+            "dataset": prediction_summary.get("dataset"),
             "source_mode": source_mode,
-            "has_embeddings": run_spec.input_spec.embeddings_path is not None,
+            "has_anndata": anndata_spec is not None,
             "has_reconstructions": reconstruction_spec is not None,
+            "reconstruction_pair_id": (
+                reconstruction_spec.pair_id
+                if reconstruction_spec is not None
+                else None
+            ),
+        },
+        "appendix": {
+            "resolved_config": config_to_serializable_dict(config),
+            "prediction_manifest": prediction_manifest,
         },
     }
 
@@ -883,8 +916,8 @@ def _evaluation_status_report_to_manifest(
 
     section_specs = (
         (
-            "embeddings",
-            status_report.embeddings,
+            "anndata",
+            status_report.anndata,
             anndata_output_locations,
         ),
         (
