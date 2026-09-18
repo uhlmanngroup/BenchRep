@@ -15,15 +15,15 @@ from benchrep.architecture.data.transforms import TransformPipeline
 class BaseDataset(Dataset[dict[str, Any]], ABC):
     """Base interface for BenchRep-compatible datasets.
 
-    Subclasses should follow the standard PyTorch Dataset API and implement
-    ``__len__`` and ``__getitem__``.
+    Subclasses follow the standard PyTorch Dataset API and implement
+    `__len__` and `__getitem__`. Each sample must be a dictionary mapping field
+    names to values.
 
-    Each sample returned by ``__getitem__`` must be a dictionary containing at
-    least the key ``"x"``. ``sample["x"]`` must be the input tensor consumed by
-    models.
-
-    Optional keys may include labels, identifiers, metadata, paths, coordinates,
-    or any other information needed by downstream workflows.
+    Required fields are determined by the consuming model family. Canonical
+    autoencoders and VAEs require a tensor under `"x"`. Composite models require
+    the tensor fields declared under `composite_model_declarations.expects`.
+    Samples may additionally contain labels, identifiers, metadata, paths,
+    coordinates, or other workflow-specific values.
     """
 
     @abstractmethod
@@ -38,24 +38,15 @@ class BaseDataset(Dataset[dict[str, Any]], ABC):
 
     @staticmethod
     def validate_sample(sample: dict[str, Any]) -> dict[str, Any]:
-        """Validate and return a sample following the BenchRep dataset contract."""
+        """Validate and return a generic BenchRep dataset sample."""
+
         if not isinstance(sample, dict):
             raise TypeError(
-                "Dataset samples must be dictionaries containing at least key 'x'. "
-                f"Got {type(sample).__name__}."
+                "Dataset samples must be dictionaries mapping field names "
+                f"to values, got {type(sample).__name__}."
             )
 
-        if "x" not in sample:
-            raise KeyError(
-                "Dataset sample must contain key 'x'. "
-                f"Available keys: {tuple(sample.keys())}."
-            )
-
-        if not isinstance(sample["x"], torch.Tensor):
-            raise TypeError(
-                "sample['x'] must be a torch.Tensor, "
-                f"got {type(sample['x']).__name__}."
-            )
+        return sample
 
         return sample
 

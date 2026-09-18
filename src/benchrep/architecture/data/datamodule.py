@@ -14,8 +14,9 @@ from benchrep.architecture.data.transforms import TransformPipeline
 class BenchRepDataModule(L.LightningDataModule):
     """LightningDataModule for BenchRep-compatible datasets.
 
-    Datasets are expected to return dictionary samples following the internal
-    contract used by BenchRep models and enforced by BaseDataset, with at least key ``"x"``.
+    Datasets must return dictionary samples following the generic
+    `BaseDataset` contract. Model-specific required fields are validated by the
+    consuming canonical or Composite model.
 
     The BenchRepDataModule supports training-only runs, training with an explicit validation
     dataset, training with a validation split from the training dataset, test-only
