@@ -55,10 +55,22 @@ _LOGGER_REQUIRED_ADDITIONAL_CALLBACKS = frozenset({
     "learning_rate_monitor",
 })
 
+_BENCHREP_MANAGED_TRAINER_ARGUMENTS = frozenset({
+    "default_root_dir",
+    "logger",
+    "callbacks",
+    "enable_checkpointing",
+})
+
 Float32MatmulPrecision: TypeAlias = Literal[
     "medium",
     "high",
     "highest",
+]
+
+StrictPositiveInt: TypeAlias = Annotated[
+    int,
+    Field(strict=True, gt=0),
 ]
 
 
@@ -146,17 +158,41 @@ class TrainingRunConfig(_TrainingConfigBaseModel):
 # Architecture configuration
 # -------------------------
 class TrainingModelConfig(NamedConfig):
-    """Selects the BenchRep model family and its assembly parameters.
+    """Selects one of BenchRep's built-in model families.
 
     Use `benchrep.inspect_registry("model")` to inspect available model names
     and aliases, and `benchrep.inspect_registry("model", "<name>")` for details
-    about a specific registered implementation.
+    about a specific model family.
 
-    Supported parameters and required encoder, decoder, and loss sections depend
-    on the selected model. For supported models assembled from configuration,
-    this configuration is recorded during training and reused to reconstruct the
-    model for linked prediction runs.
+    Canonical autoencoders and VAEs define their architecture through the
+    top-level `encoder` and `decoder` sections. Composite models instead use
+    `composite_model_declarations`, `composite_model_components`, and
+    `composite_model_assembly`.
+
+    The model registry exposes BenchRep's built-in model families for discovery
+    and configuration; it does not support custom model registration.
     """
+
+    params: dict[
+        Literal["latent_dim"],
+        StrictPositiveInt,
+    ] = Field(
+        default_factory=dict,
+        description="Model-family parameters used by a config-built model.",
+        json_schema_extra={
+            "omit_behavior": "Uses an empty parameter mapping.",
+            "null_behavior": "Not allowed; use an empty mapping instead.",
+            "notes": [
+                "`vae` requires `latent_dim` as its only model-family parameter.",
+                "`autoencoder` and `composite` do not accept model-family parameters.",
+                "Constructor arguments for an externally supplied canonical model "
+                "class belong in `overrides.model.params`, as described by "
+                "`RuntimeOverridesConfig`.",
+                "An externally supplied model instance must already be initialized "
+                "and cannot receive constructor parameters.",
+            ],
+        },
+    )
 
 
 class TrainingEncoderConfig(NamedConfig):
@@ -180,11 +216,16 @@ class TrainingDecoderConfig(NamedConfig):
     aliases, and `benchrep.inspect_registry("decoder", "<name>")` for the
     registered constructor signature and documentation.
 
-    `params` are passed as keyword arguments to the selected decoder constructor,
-    except for model-dependent dimensions supplied by BenchRep. `input_dim` is
-    overridden by BenchRep and derived from the encoder output or VAE latent
-    dimension. When required, `initial_shape` is inferred from
-    `encoder.feature_shape` and must not be configured manually.
+    `params` are passed as keyword arguments to the selected decoder constructor.
+    For canonical autoencoders, BenchRep supplies `input_dim` from
+    `encoder.output_dim`; for canonical VAEs, it supplies
+    `model.params.latent_dim`. An explicitly configured `input_dim` is permitted
+    only when it agrees with the value supplied by BenchRep.
+
+    When the decoder accepts `initial_shape`, an explicitly configured value is
+    used when present; otherwise, BenchRep attempts to infer it from
+    `encoder.feature_shape`. If both are available, they must agree. Resolution
+    fails when `initial_shape` is required but neither source provides it.
 
     User-registered decoders must satisfy BenchRep's decoder interface and must
     be registered again when reconstructing the model in a linked prediction
@@ -247,10 +288,11 @@ class TrainingLossTermConfig(_TrainingConfigBaseModel):
     weight: float = Field(
         default=1.0,
         ge=0.0,
+        allow_inf_nan=False,
         description=(
-            "Direct scalar coefficient applied to this raw loss before it is added "
-            "to the total training loss. Weights are not normalized across losses "
-            "or within loss roles."
+            "Finite, nonnegative scalar coefficient applied to this raw loss "
+            "before it is added to the total training loss. Weights are not "
+            "normalized across losses or within loss roles."
         ),
         json_schema_extra={
             "omit_behavior": "Uses a weight of 1.0.",
@@ -502,6 +544,30 @@ class TrainingTrainerConfig(_TrainingConfigBaseModel):
         },
     )
 
+    @model_validator(mode="after")
+    def validate_benchrep_managed_arguments(
+        self,
+    ) -> TrainingTrainerConfig:
+        configured_arguments = sorted(
+            _BENCHREP_MANAGED_TRAINER_ARGUMENTS
+            & set(self.model_extra or {})
+        )
+
+        if configured_arguments:
+            formatted_arguments = ", ".join(
+                repr(argument)
+                for argument in configured_arguments
+            )
+
+            raise ValueError(
+                "The following `trainer` arguments are managed by BenchRep "
+                f"and cannot be configured directly: {formatted_arguments}. "
+                "Use the top-level `run`, `logger`, `checkpointing`, "
+                "`early_stopping`, and `additional_callbacks` sections instead."
+            )
+
+        return self
+
 
 class TrainingLoggerConfig(NamedConfig):
     """Selects and configures a training logger from the logger registry.
@@ -556,13 +622,15 @@ class TrainingCheckpointConfig(_TrainingConfigBaseModel):
     Checkpoint paths and ranking information are recorded in the training
     manifest for use by linked prediction runs.
 
-    When `monitor` names a metric, checkpoints are ranked using that metric and
-    `mode`, `save_top_k`, and `filename` configure the ranked checkpoints.
+    When `monitor` names a metric and `save_top_k` is nonzero, checkpoints
+    are ranked using that metric. `mode`, `save_top_k`, and `filename`
+    configure these ranked checkpoints.
 
-    When `monitor=None`, BenchRep disables ranked checkpointing by constructing
-    ModelCheckpoint with `monitor=None` and `save_top_k=0`. In that mode,
-    `mode`, `save_top_k`, and `filename` have no effect, and `save_last=True`
-    is required so that training produces a checkpoint.
+    Ranked checkpointing is disabled when `monitor=None` or `save_top_k=0`.
+    When `monitor=None`, the resolver materializes this decision by setting
+    `save_top_k=0`. Whenever ranked checkpointing is disabled,
+    `save_last=True` is required so that training produces a checkpoint;
+    `mode` and `filename` then have no effect.
     """
 
     monitor: str | None = Field(
@@ -589,7 +657,7 @@ class TrainingCheckpointConfig(_TrainingConfigBaseModel):
             "null_behavior": "Not allowed.",
             "notes": [
                 "`min` treats lower values as better; `max` treats higher values as better.",
-                "Has no effect when `monitor=None`.",
+                "Has no effect when `monitor=None` or `save_top_k=0`.",
             ],
         },
     )
@@ -633,7 +701,7 @@ class TrainingCheckpointConfig(_TrainingConfigBaseModel):
                 "Lightning resolves placeholders from the epoch, step, and logged metrics "
                 "and appends the checkpoint extension.",
                 "Does not control the `last.ckpt` filename.",
-                "Has no effect when `monitor=None`.",
+                "Has no effect when `monitor=None` or `save_top_k=0`.",
             ],
         },
     )
@@ -815,20 +883,27 @@ class TrainingAdditionalCallbackConfig(NamedConfig):
 # Inspection configuration
 # -------------------------
 class TrainingTorchviewConfig(_TrainingConfigBaseModel):
-    """Configures best-effort model-graph export with torchview.
+    """Configures best-effort model-execution graph export with Torchview.
 
     When enabled, BenchRep performs this inspection after training completes.
-    It reads the shape of `batch["x"]` from the first training batch, replaces
-    its batch dimension with one, and passes that synthesized input size to
-    `torchview.draw_graph()`. The resulting Graphviz graph is rendered as
-    `model_graph.png` in the training run's architecture directory.
+    For canonical models, it reads `batch["x"]` from the first training batch,
+    replaces its batch dimension with one, and passes the resulting input size
+    to `torchview.draw_graph()`.
 
-    The graph represents the execution observed by torchview for one synthetic
-    input shape. It may not capture alternative data-dependent branches,
-    dynamic control flow, other supported input shapes, training/evaluation
-    differences, or operations unsupported by torchview. It should therefore
-    be treated as a diagnostic visualization rather than an authoritative
-    description of every possible model execution.
+    For Composite models, BenchRep reads every input declared under
+    `composite_model_declarations.expects` from the first training batch,
+    retains the first observation from each tensor, and passes the resulting
+    input mapping to the model as one positional argument.
+
+    The resulting Graphviz graph is rendered as
+    `torchview_model_graph.svg` in the training run's architecture directory.
+
+    The graph represents the execution observed by Torchview for those inputs.
+    It may not capture alternative data-dependent branches, dynamic control
+    flow, other supported input shapes, training/evaluation differences, or
+    operations unsupported by Torchview. It should therefore be treated as a
+    diagnostic visualization rather than an authoritative description of
+    every possible model execution.
 
     Export is best effort. Missing optional dependencies, incompatible model
     inputs, unsupported operations, tracing failures, and rendering failures
@@ -1199,6 +1274,11 @@ class TrainingDataModuleConfig(_TrainingConfigBaseModel):
         json_schema_extra={
             "omit_behavior": "Reserves 10% of the dataset for validation.",
             "null_behavior": "Not allowed.",
+            "notes": [
+                "Validation size is calculated as "
+                "`int(dataset_size * val_fraction)`; setup fails if this produces an "
+                "empty validation subset.",
+            ],
         },
     )
 
@@ -1247,12 +1327,28 @@ class TrainingDataModuleConfig(_TrainingConfigBaseModel):
         },
     )
 
+    @model_validator(mode="after")
+    def validate_worker_configuration(
+        self,
+    ) -> TrainingDataModuleConfig:
+        if self.persistent_workers and self.num_workers == 0:
+            raise ValueError(
+                "`datamodule.persistent_workers=True` requires "
+                "`datamodule.num_workers` to be greater than zero."
+            )
+
+        return self
+
 
 # -------------------------
 # Transform config
 # -------------------------
 class TrainingTransformStepConfig(NamedConfig):
     """Configuration for one transform in an ordered transform sequence.
+
+    `params` are passed as keyword arguments to the registered transform
+    constructor. The constructed object must be callable and must return a
+    tensor when executed within a BenchRep transform pipeline.
 
     Use `benchrep.inspect_registry("transform")` to inspect available names and
     aliases, and `benchrep.inspect_registry("transform", "<name>")` for the
@@ -1294,9 +1390,68 @@ class TrainingTransformStepConfig(NamedConfig):
 
 
 class TrainingTransformPipelineConfig(_TrainingConfigBaseModel):
-    input: str | None = None
-    output: str | None = None
-    steps: list[TrainingTransformStepConfig] = Field(min_length=1)
+    """Configures one ordered, field-routed training transform pipeline.
+
+    Pipelines execute in their configured list order. Each pipeline reads from
+    the current sample mapping, applies its eligible transform steps in order,
+    and assigns the resulting tensor to `output`. Consequently, a later
+    pipeline may consume a field produced or overwritten by an earlier one.
+
+    Canonical models support only the fixed in-place route `x` to `x`; both
+    routing fields may be omitted or both may explicitly contain `x`.
+
+    For Composite models, an omitted `input` resolves to the unique declaration
+    having role `sample_image`, and an omitted `output` resolves to the effective
+    input name. Explicit names must reference image-valued declarations under
+    `composite_model_declarations.expects`.
+
+    When `input` and `output` differ, BenchRep clones the input tensor before
+    applying transforms so the source field remains unchanged. Existing output
+    fields are overwritten.
+    """
+
+    input: str | None = Field(
+        default=None,
+        description="Sample field from which this transform pipeline reads.",
+        json_schema_extra={
+            "omit_behavior": (
+                "Canonical models use `x`. Composite models use the declaration "
+                "assigned role `sample_image`."
+            ),
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+
+    output: str | None = Field(
+        default=None,
+        description="Sample field to which the transformed tensor is assigned.",
+        json_schema_extra={
+            "omit_behavior": "Uses the effective `input` field.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Canonical models require `x`.",
+                "Composite models require an image-valued declaration under "
+                "`composite_model_declarations.expects`.",
+                "An existing field with this name is overwritten.",
+            ],
+        },
+    )
+
+    steps: list[TrainingTransformStepConfig] = Field(
+        min_length=1,
+        description="Ordered transform steps belonging to this routed pipeline.",
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+            "notes": [
+                "Steps are filtered independently for training and validation "
+                "according to `apply_to`.",
+                "If no steps in this pipeline target a particular split, the "
+                "pipeline is omitted from that split.",
+                "Validation-targeted steps may be inherited by linked prediction.",
+            ],
+        },
+    )
 
     @field_validator("input", "output")
     @classmethod
@@ -1305,6 +1460,7 @@ class TrainingTransformPipelineConfig(_TrainingConfigBaseModel):
             raise ValueError(
                 "Transform pipeline input and output names must be nonempty."
             )
+
         return value
 
 
@@ -1316,6 +1472,15 @@ class TrainingConfig(_TrainingConfigBaseModel):
 
     Requirements for model and data configuration depend on whether external
     model or datamodule objects are supplied at runtime.
+
+    Config-built autoencoders and VAEs use the top-level `encoder` and `decoder`
+    sections. Config-built Composite models instead define a declaration-driven
+    execution graph through `composite_model_declarations`,
+    `composite_model_components`, and `composite_model_assembly`.
+
+    Whole-model runtime overrides are supported only by the canonical
+    autoencoder and VAE entrypoints. Composite models must be assembled from
+    configuration.
 
     Use `benchrep.inspect_config(TrainingConfig)` to inspect this configuration.
     Nested configuration types shown in the output can be inspected the same
@@ -1382,50 +1547,131 @@ class TrainingConfig(_TrainingConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
             "notes": [
                 "Ignored when an external model object is supplied.",
+                "Whole-model overrides are supported only by the canonical autoencoder "
+                "and VAE entrypoints.",
             ],
         },
     )
 
     encoder: TrainingEncoderConfig | None = Field(
         default=None,
-        description="Encoder used when assembling the configured model.",
+        description="Encoder used to assemble a canonical autoencoder or VAE.",
         json_schema_extra={
             "omit_behavior": (
-                "Allowed when an external model is supplied; otherwise an encoder "
-                "configuration is required."
+                "Required for config-built autoencoders and VAEs. It must be "
+                "omitted for Composite models and may be omitted when an "
+                "external canonical model is supplied."
             ),
             "null_behavior": "Equivalent to omission.",
             "notes": [
-                "Ignored when an external model object is supplied.",
+                "Ignored and removed from the resolved configuration when an "
+                "external model is supplied.",
+                "Composite encoders are declared under "
+                "`composite_model_components`.",
             ],
         },
     )
 
     decoder: TrainingDecoderConfig | None = Field(
         default=None,
-        description="Decoder used when required by the configured model.",
+        description="Decoder used to assemble a canonical autoencoder or VAE.",
         json_schema_extra={
             "omit_behavior": (
-                "No decoder is configured. Config-built autoencoders and VAEs "
-                "require this section."
+                "Required for config-built autoencoders and VAEs. It must be "
+                "omitted for Composite models and may be omitted when an "
+                "external canonical model is supplied."
             ),
             "null_behavior": "Equivalent to omission.",
             "notes": [
-                "Ignored when an external model object is supplied.",
+                "Ignored and removed from the resolved configuration when an "
+                "external model is supplied.",
+                "Composite decoders are declared under "
+                "`composite_model_components`.",
             ],
         },
     )
 
-    composite_model_declarations: CompositeModelDeclarationsConfig | None = None
-
-    composite_model_components: dict[str, CompositeModelComponentConfig] | None = Field(
+    composite_model_declarations: (
+        CompositeModelDeclarationsConfig | None
+    ) = Field(
         default=None,
-        min_length=1,
+        description=(
+            "Semantic declarations for the Composite model's batch inputs, "
+            "batch metadata, and produced model outputs."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Required when `model.name` resolves to `composite`; otherwise "
+                "this section must be omitted."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Exactly one input must have role `sample_image`.",
+                "At most one batch-metadata field may have role `index`.",
+                "Declared input and metadata names identify fields expected in "
+                "each dataset sample and collated batch.",
+                "Every declared output must be produced exactly once by the "
+                "assembly graph.",
+                "Ignored and removed from the resolved configuration when an "
+                "external model is supplied.",
+            ],
+        },
     )
 
-    composite_model_assembly: dict[str, CompositeModelAssemblyStepConfig] | None = Field(
+    composite_model_components: (
+        dict[str, CompositeModelComponentConfig] | None
+    ) = Field(
         default=None,
         min_length=1,
+        description=(
+            "Reusable architecture components available to the Composite "
+            "assembly graph, keyed by user-defined component ID."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Required when `model.name` resolves to `composite`; otherwise "
+                "this section must be omitted."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Each component selects the encoder, decoder, or head registry.",
+                "Each component ID is instantiated once and may be invoked by "
+                "multiple assembly steps, thereby sharing parameters.",
+                "Every configured component must be used by at least one "
+                "assembly step.",
+                "Ignored and removed from the resolved configuration when an "
+                "external model is supplied.",
+            ],
+        },
+    )
+
+    composite_model_assembly: (
+        dict[str, CompositeModelAssemblyStepConfig] | None
+    ) = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Composite execution steps, keyed by user-defined step ID, that "
+            "wire declared inputs and produced outputs through configured "
+            "components."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Required when `model.name` resolves to `composite`; otherwise "
+                "this section must be omitted."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "A component ID may be reused by multiple steps.",
+                "Step execution order is derived from output dependencies, not "
+                "from mapping order.",
+                "Dependency cycles are rejected.",
+                "Inputs must reference `expects.<name>` or `produces.<name>`.",
+                "Outputs must reference declarations under `produces`.",
+                "Ignored and removed from the resolved configuration when an "
+                "external model is supplied.",
+            ],
+        },
     )
 
     losses: dict[SupportedLossRole, LossRoleTerms] | None = Field(
@@ -1494,8 +1740,8 @@ class TrainingConfig(_TrainingConfigBaseModel):
     transform_pipelines: list[TrainingTransformPipelineConfig] = Field(
         default_factory=list,
         description=(
-            "Ordered transform pipelines applied to each dataset sample's `input` tensor "
-            "before batching."
+            "Ordered, split-specific transform pipelines routed between "
+            "tensor-valued dataset-sample fields before batching."
         ),
         json_schema_extra={
             "omit_behavior": (
@@ -1685,6 +1931,12 @@ class TrainingConfig(_TrainingConfigBaseModel):
 
         model_name = MODELS.resolve_key(self.model.name)
 
+        if model_name != "vae" and self.model.params:
+            raise ValueError(
+                f"`model.params` must be empty for {model_name!r}; only `vae` "
+                "accepts model-family parameters."
+            )
+
         if model_name == "composite":
             return self
 
@@ -1749,14 +2001,6 @@ class TrainingConfig(_TrainingConfigBaseModel):
             if "latent_dim" not in self.model.params:
                 raise ValueError(
                     "VAE requires `model.params.latent_dim`."
-                )
-
-            latent_dim = self.model.params.get("latent_dim")
-
-            if not isinstance(latent_dim, int) or latent_dim <= 0:
-                raise ValueError(
-                    "VAE requires `model.params.latent_dim` to be a "
-                    "positive integer."
                 )
 
             has_complete_standard_objective = (
