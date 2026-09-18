@@ -7,13 +7,6 @@ import torchvision
 from benchrep.architecture.encoders.base import BaseEncoder
 
 
-import torch
-from torch import nn
-import torchvision
-
-from benchrep.architecture.encoders.base import BaseEncoder
-
-
 class TorchvisionResNet(BaseEncoder):
     def __init__(
         self,
