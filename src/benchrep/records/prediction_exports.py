@@ -406,7 +406,7 @@ def _export_anndata(
         Resolved AnnData export plan containing selected output keys, their
         scalar/vector structures, the primary key, and observation sources.
     output_dir:
-        Directory in which ``predictions.h5ad`` is written.
+        Directory in which ``anndata.h5ad`` is written.
 
     Returns
     -------
@@ -478,7 +478,7 @@ def _export_anndata(
         },
     }
 
-    output_path = output_dir / "predictions.h5ad"
+    output_path = output_dir / "anndata.h5ad"
 
     write_h5ad(
         adata,
