@@ -121,6 +121,9 @@ def resolve_training_config(
                 "model": None,
                 "encoder": None,
                 "decoder": None,
+                "composite_model_declarations": None,
+                "composite_model_components": None,
+                "composite_model_assembly": None,
                 "losses": None,
                 "optimizer": None,
             }
