@@ -8,6 +8,7 @@ from benchrep.assembly.resolvers.prediction_config_resolver import (
     _resolve_checkpoint_path,
     _apply_composite_model_assembly_input_overrides,
     _resolve_prediction_composite_model_spec,
+    _resolve_prediction_transform_pipelines,
 )
 from benchrep.assembly.schemas import (
     CompositeModelAssemblyInputOverrideConfig,
@@ -16,8 +17,16 @@ from benchrep.assembly.schemas import (
     PredictionInferenceConfig,
     TrainingConfig,
     PredictionSourceConfig,
+    CompositeModelDeclarationsConfig,
+    PredictionTransformPipelineConfig,
+    PredictionTransformStepConfig,
+    TrainingTransformPipelineConfig,
+    TrainingTransformStepConfig,
 )
-from benchrep.interfaces.model_families import AUTOENCODER_FAMILY
+from benchrep.interfaces.model_families import (
+    AUTOENCODER_FAMILY,
+    COMPOSITE_FAMILY,
+)
 
 
 @pytest.mark.parametrize(
@@ -301,3 +310,183 @@ def test_canonical_and_composite_inference_settings_are_mutually_exclusive(
                 "reconstruct": _build_input_override(),
             },
         )
+
+
+def test_prediction_transforms_inherit_only_validation_steps_and_routes(
+) -> None:
+    training_config = _build_composite_training_config_with_transforms(
+        [
+            TrainingTransformPipelineConfig(
+                input="x",
+                output="x",
+                steps=[
+                    TrainingTransformStepConfig(
+                        name="training_only",
+                        apply_to=["training"],
+                    ),
+                    TrainingTransformStepConfig(
+                        name="both_splits",
+                        apply_to=["training", "validation"],
+                    ),
+                    TrainingTransformStepConfig(
+                        name="validation_only",
+                        apply_to=["validation"],
+                    ),
+                ],
+            ),
+            TrainingTransformPipelineConfig(
+                input="x",
+                output="positive_x",
+                steps=[
+                    TrainingTransformStepConfig(
+                        name="positive_view",
+                        apply_to=["validation"],
+                    ),
+                ],
+            ),
+            TrainingTransformPipelineConfig(
+                input="x",
+                output="negative_x",
+                steps=[
+                    TrainingTransformStepConfig(
+                        name="negative_training_only",
+                        apply_to=["training"],
+                    ),
+                ],
+            ),
+        ]
+    )
+
+    resolved, source = _resolve_prediction_transform_pipelines(
+        prediction_config=PredictionConfig.model_construct(
+            transform_pipelines=None,
+        ),
+        training_config=training_config,
+        training_datamodule_external=False,
+        model_family=COMPOSITE_FAMILY,
+    )
+
+    assert source == "training_config"
+    assert [
+        pipeline.model_dump(mode="python")
+        for pipeline in resolved
+    ] == [
+        {
+            "input": "x",
+            "output": "x",
+            "steps": [
+                {"name": "both_splits", "params": {}},
+                {"name": "validation_only", "params": {}},
+            ],
+        },
+        {
+            "input": "x",
+            "output": "positive_x",
+            "steps": [
+                {"name": "positive_view", "params": {}},
+            ],
+        },
+    ]
+
+
+def test_explicit_prediction_transforms_replace_inherited_routes() -> None:
+    training_config = _build_composite_training_config_with_transforms(
+        [
+            TrainingTransformPipelineConfig(
+                input="x",
+                output="x",
+                steps=[
+                    TrainingTransformStepConfig(
+                        name="inherited_validation_step",
+                        apply_to=["validation"],
+                    ),
+                ],
+            ),
+        ]
+    )
+    explicit_pipelines = [
+        PredictionTransformPipelineConfig(
+            input="x",
+            output="positive_x",
+            steps=[
+                PredictionTransformStepConfig(
+                    name="make_positive_view",
+                ),
+            ],
+        ),
+        PredictionTransformPipelineConfig(
+            input="positive_x",
+            output="positive_x",
+            steps=[
+                PredictionTransformStepConfig(
+                    name="finish_positive_view",
+                ),
+            ],
+        ),
+    ]
+
+    resolved, source = _resolve_prediction_transform_pipelines(
+        prediction_config=PredictionConfig.model_construct(
+            transform_pipelines=explicit_pipelines,
+        ),
+        training_config=training_config,
+        training_datamodule_external=False,
+        model_family=COMPOSITE_FAMILY,
+    )
+
+    assert source == "prediction_config"
+    assert resolved == tuple(explicit_pipelines)
+    assert [
+        (pipeline.input, pipeline.output)
+        for pipeline in resolved
+    ] == [
+        ("x", "positive_x"),
+        ("positive_x", "positive_x"),
+    ]
+
+
+def test_empty_prediction_transform_list_disables_inheritance() -> None:
+    training_config = _build_composite_training_config_with_transforms(
+        [
+            TrainingTransformPipelineConfig(
+                input="x",
+                output="x",
+                steps=[
+                    TrainingTransformStepConfig(
+                        name="inherited_validation_step",
+                        apply_to=["validation"],
+                    ),
+                ],
+            ),
+        ]
+    )
+
+    resolved, source = _resolve_prediction_transform_pipelines(
+        prediction_config=PredictionConfig.model_construct(
+            transform_pipelines=[],
+        ),
+        training_config=training_config,
+        training_datamodule_external=False,
+        model_family=COMPOSITE_FAMILY,
+    )
+
+    assert resolved == ()
+    assert source == "prediction_config"
+
+
+def _build_composite_training_config_with_transforms(
+    pipelines: list[TrainingTransformPipelineConfig],
+) -> TrainingConfig:
+    return TrainingConfig.model_construct(
+        transform_pipelines=pipelines,
+        composite_model_declarations=CompositeModelDeclarationsConfig(
+            expects={
+                "x": "sample_image",
+                "positive_x": "positive_image",
+                "negative_x": "negative_image",
+            },
+            produces={
+                "embedding": "embedding_vector",
+            },
+        ),
+    )

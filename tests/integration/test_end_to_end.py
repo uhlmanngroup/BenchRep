@@ -183,6 +183,12 @@ def test_internal_end_to_end(
     assert evaluation_result.manifest_path.is_file()
     _assert_completed_manifest(evaluation_result.manifest_path, "evaluation")
 
+    _assert_nested_provenance_chain(
+        training_result=training_result,
+        prediction_result=prediction_result,
+        evaluation_result=evaluation_result,
+    )
+
     assert evaluation_result.status_report.status == "completed"
     assert evaluation_result.status_report.anndata.status == "completed"
     assert (
@@ -279,6 +285,48 @@ def _count_paths(value: Any) -> int:
         return sum(_count_paths(item) for item in value)
 
     return 0
+
+
+def _assert_nested_provenance_chain(
+    *,
+    training_result: Any,
+    prediction_result: Any,
+    evaluation_result: Any,
+) -> None:
+    with evaluation_result.manifest_path.open(encoding="utf-8") as handle:
+        evaluation_manifest = yaml.safe_load(handle)
+
+    evaluation_appendix = evaluation_manifest["appendix"]
+    embedded_prediction_manifest = evaluation_appendix[
+        "prediction_manifest"
+    ]
+    embedded_training_manifest = embedded_prediction_manifest[
+        "appendix"
+    ]["training_manifest"]
+
+    with prediction_result.manifest_path.open(encoding="utf-8") as handle:
+        prediction_manifest = yaml.safe_load(handle)
+
+    with training_result.manifest_path.open(encoding="utf-8") as handle:
+        training_manifest = yaml.safe_load(handle)
+
+    assert embedded_prediction_manifest == prediction_manifest
+    assert embedded_training_manifest == training_manifest
+
+    result_appendices = (
+        (evaluation_result, evaluation_appendix),
+        (prediction_result, embedded_prediction_manifest["appendix"]),
+        (training_result, embedded_training_manifest["appendix"]),
+    )
+
+    for result, appendix in result_appendices:
+        resolved_config_path = (
+            result.run_context.config_dir / "resolved_config.yaml"
+        )
+        with resolved_config_path.open(encoding="utf-8") as handle:
+            on_disk_resolved_config = yaml.safe_load(handle)
+
+        assert appendix["resolved_config"] == on_disk_resolved_config
 
 
 def _assert_vae_reconstruction_provenance(
