@@ -210,6 +210,16 @@ def register_builtins() -> None:
             "random_rotate",
             "rand_rotation",
         )
+        TRANSFORMS._register_builtin(
+            "gaussian_blur",
+            v2.GaussianBlur,
+            "gaussianblur",
+        )
+        TRANSFORMS._register_builtin(
+            "gaussian_noise",
+            v2.GaussianNoise,
+            "gaussiannoise",
+        )
 
         # --- Architecture and training ---
         ENCODERS._register_builtin(
