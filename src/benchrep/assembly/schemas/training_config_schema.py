@@ -1401,7 +1401,8 @@ class TrainingTransformPipelineConfig(_TrainingConfigBaseModel):
     routing fields may be omitted or both may explicitly contain `x`.
 
     For Composite models, an omitted `input` resolves to the unique declaration
-    having role `sample_image`, and an omitted `output` resolves to the effective
+    having role `sample_image`. When multiple declarations have that role,
+    `input` must be explicit. An omitted `output` resolves to the effective
     input name. Explicit names must reference image-valued declarations under
     `composite_model_declarations.expects`.
 
@@ -1415,8 +1416,9 @@ class TrainingTransformPipelineConfig(_TrainingConfigBaseModel):
         description="Sample field from which this transform pipeline reads.",
         json_schema_extra={
             "omit_behavior": (
-                "Canonical models use `x`. Composite models use the declaration "
-                "assigned role `sample_image`."
+                "Canonical models use `x`. Composite models use the unique "
+                "declaration assigned role `sample_image`; omission raises "
+                "an error when multiple declarations have that role."
             ),
             "null_behavior": "Equivalent to omission.",
         },
@@ -1606,7 +1608,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
             ),
             "null_behavior": "Equivalent to omission.",
             "notes": [
-                "Exactly one input must have role `sample_image`.",
+                "At least one input must have role `sample_image`.",
                 "At most one batch-metadata field may have role `index`.",
                 "Declared input and metadata names identify fields expected in "
                 "each dataset sample and collated batch.",
@@ -2157,11 +2159,9 @@ class TrainingConfig(_TrainingConfigBaseModel):
             if role == "sample_image"
         ]
 
-        if len(sample_inputs) != 1:
+        if not sample_inputs:
             raise ValueError(
-                "Composite models require exactly one input with role `sample_image`; "
-                f"found {len(sample_inputs)}. Multimodal models with multiple primary "
-                "samples are not supported."
+                "Composite models require at least one input with role `sample_image`."
             )
 
         if self.composite_model_declarations.batch_metadata is not None:

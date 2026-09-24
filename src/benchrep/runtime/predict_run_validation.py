@@ -230,9 +230,10 @@ def infer_prediction_observation_count(
             if role == "sample_image"
         ]
 
-        if len(sample_image_names) != 1:
+        if not sample_image_names:
             return None
 
+        # Prediction output validation checks agreement across batch dimensions.
         sample_image_name = sample_image_names[0]
 
         batch_size_source = (

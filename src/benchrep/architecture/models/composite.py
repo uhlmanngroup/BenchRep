@@ -56,8 +56,8 @@ class CompositeModel(L.LightningModule):
         )
 
         self.model_spec = model_spec
-        # Retain the primary sample input name only for determining the
-        # runtime batch size used by Lightning logging.
+        # Use the first declared sample image as the batch-size reference
+        # for tensor validation and Lightning logging.
         self._sample_image_input_name = (
             _get_sample_image_input_name(model_spec)
         )
@@ -668,7 +668,7 @@ def _validate_and_bind_assembly_step_result(
 def _get_sample_image_input_name(
     model_spec: CompositeModelSpec,
 ) -> str:
-    """Return the declaration name carrying the primary sample image."""
+    """Return the first declared sample image as the batch-size reference."""
 
     sample_image_input_names = [
         model_input_name
@@ -677,11 +677,10 @@ def _get_sample_image_input_name(
         if model_input_role == "sample_image"
     ]
 
-    if len(sample_image_input_names) != 1:
+    if not sample_image_input_names:
         raise ValueError(
-            "CompositeModel requires exactly one declared model input "
-            "with role 'sample_image'; found "
-            f"{len(sample_image_input_names)}."
+            "CompositeModel requires at least one declared model input "
+            "with role 'sample_image'."
         )
 
     return sample_image_input_names[0]

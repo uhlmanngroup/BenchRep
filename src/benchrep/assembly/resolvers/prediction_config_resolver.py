@@ -1240,16 +1240,28 @@ def _resolve_explicit_prediction_transform_routes(
     assert declarations_config is not None
 
     input_roles = declarations_config.expects
-    sample_image_name = next(
+    sample_image_names = [
         name
         for name, role in input_roles.items()
         if role == "sample_image"
-    )
+    ]
 
     resolved: list[PredictionTransformPipelineConfig] = []
 
     for index, pipeline in enumerate(configs):
-        input_name = pipeline.input or sample_image_name
+        input_name = pipeline.input
+
+        if input_name is None:
+            if len(sample_image_names) != 1:
+                raise ValueError(
+                    f"`transform_pipelines[{index}].input` must be provided "
+                    "when the Composite declarations do not contain exactly "
+                    "one input with role `sample_image`; found "
+                    f"{sample_image_names}."
+                )
+
+            input_name = sample_image_names[0]
+
         output_name = pipeline.output or input_name
 
         for field_name, declared_name in (

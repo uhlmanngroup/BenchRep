@@ -312,19 +312,30 @@ def _resolve_transform_pipelines(
     assert declarations_config is not None
 
     input_roles = declarations_config.expects
-    sample_image_name = next(
+    sample_image_names = [
         name
         for name, role in input_roles.items()
         if role == "sample_image"
-    )
+    ]
 
     resolved: list[TrainingTransformPipelineConfig] = []
 
     for index, pipeline in enumerate(config):
-        # Default fallback is in-place augmentation of whatever is declared
-        # under the "sample_image" role, which can only have one assignment,
-        # or whatever is under the input field.
-        input_name = pipeline.input or sample_image_name
+        # Infer an omitted input only when exactly one sample image is declared.
+        # An omitted output defaults to the effective input.
+        input_name = pipeline.input
+
+        if input_name is None:
+            if len(sample_image_names) != 1:
+                raise ValueError(
+                    f"`transform_pipelines[{index}].input` must be provided "
+                    "when the Composite declarations do not contain exactly "
+                    "one input with role `sample_image`; found "
+                    f"{sample_image_names}."
+                )
+
+            input_name = sample_image_names[0]
+
         output_name = pipeline.output or input_name
 
         for field_name, declared_name in (
