@@ -63,7 +63,7 @@ _NODE_LABEL_HEIGHT_POINTS: Final[str] = "116"
 _NODE_TITLE_CELL_WIDTH_POINTS: Final[str] = "198"
 _NODE_BADGE_CELL_WIDTH_POINTS: Final[str] = "46"
 _NODE_TEXT_WRAP_WIDTH: Final[int] = 28
-_NODE_TITLE_WRAP_WIDTH: Final[int] = 28
+_NODE_TITLE_WRAP_WIDTH: Final[int] = 22
 
 
 class ModelGraphDependencyError(RuntimeError):
@@ -252,7 +252,7 @@ def build_composite_model_spec_graph(
     graph.attr(
         "graph",
         rankdir="LR",
-        bgcolor="transparent",
+        bgcolor="white",
         pad="0.35",
         nodesep="0.38",
         ranksep="0.90",
