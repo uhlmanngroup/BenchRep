@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 import torch
 
 import anndata as ad
@@ -231,7 +232,7 @@ def _dual_encoder_decoder_case() -> CompositeArchitectureCase:
         declarations={
             "expects": {
                 "x": "sample_image",
-                "positive_x": "positive_image",
+                "second_image": "sample_image",
                 "label": "categorical_prediction_target_scalar",
             },
             "batch_metadata": {"sample_id": "index"},
@@ -256,7 +257,7 @@ def _dual_encoder_decoder_case() -> CompositeArchitectureCase:
             },
             "encode_b": {
                 "component": "encoder_b",
-                "inputs": {"x": "expects.positive_x"},
+                "inputs": {"x": "expects.second_image"},
                 "outputs": "produces.embedding_b",
             },
             "decode_a": {
@@ -285,13 +286,13 @@ def _dual_encoder_decoder_case() -> CompositeArchitectureCase:
                     "params": {"reduction": "mean"},
                     "composite_wiring": {
                         "reconstruction": "produces.reconstruction_b",
-                        "target": "expects.positive_x",
+                        "target": "expects.second_image",
                     },
                 },
             },
         },
         transform_pipelines=[
-            _copy_image_branch("positive_x"),
+            _copy_image_branch("second_image"),
         ],
         primary_key="embedding_a",
         expected_output_shapes={
@@ -486,6 +487,12 @@ def test_composite_architecture_trains_checkpoints_and_predicts(
     assert len(prediction_result.predictions) == 1
     prediction_batch = prediction_result.predictions[0]
 
+    prediction_manifest = load_yaml(prediction_result.manifest_path)
+    assert (
+        prediction_manifest["status_report"]["inference"]["n_observations"]
+        == BATCH_SIZE
+    )
+
     assert set(prediction_batch.model_inputs) == set(
         case.declarations["expects"]
     )
@@ -510,7 +517,31 @@ def test_composite_architecture_trains_checkpoints_and_predicts(
         prediction_result=prediction_result,
         prediction_batch=prediction_batch,
         case=case,
-    ) 
+    )
+
+    for input_name, input_tensor in prediction_batch.model_inputs.items():
+        mismatched_inputs = dict(prediction_batch.model_inputs)
+        mismatched_inputs[input_name] = input_tensor[:-1]
+
+        with pytest.raises(ValueError, match="has batch size"):
+            prediction_result.model(mismatched_inputs)
+
+
+def test_composite_requires_at_least_one_sample_image() -> None:
+    raw = _make_training_config(
+        _dual_encoder_decoder_case()
+    ).model_dump(mode="python")
+
+    input_roles = raw["composite_model_declarations"]["expects"]
+    for name, role in input_roles.items():
+        if role == "sample_image":
+            input_roles[name] = "condition_image"
+
+    with pytest.raises(
+        ValidationError,
+        match="at least one input with role `sample_image`",
+    ):
+        TrainingConfig.model_validate(raw)
 
 
 def _make_training_config(
@@ -733,7 +764,7 @@ def _assert_reconstruction_exports(
         ("reconstruction_01", "x", "reconstruction_a"),
         (
             "reconstruction_02",
-            "positive_x",
+            "second_image",
             "reconstruction_b",
         ),
     ]
