@@ -18,10 +18,8 @@ from __future__ import annotations
 import torch
 from torch import nn
 
-from benchrep.architecture.heads.base import BaseHead
 
-
-class GaussianVariationalHead(BaseHead):
+class GaussianVariationalHead(nn.Module):
     """Map encoder features to a sampled latent vector and posterior parameters.
 
     The head predicts the mean and log-variance of a diagonal Gaussian

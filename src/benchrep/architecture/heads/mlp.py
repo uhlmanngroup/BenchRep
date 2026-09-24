@@ -5,7 +5,6 @@ from collections.abc import Sequence
 import torch
 from torch import nn
 
-from benchrep.architecture.heads.base import BaseHead
 from benchrep.architecture.utils import (
     resolve_activation,
     resolve_normalization,
@@ -13,7 +12,7 @@ from benchrep.architecture.utils import (
 )
 
 
-class MLPHead(BaseHead):
+class MLPHead(nn.Module):
     """MLP head mapping feature vectors to output vectors.
 
     Parameters

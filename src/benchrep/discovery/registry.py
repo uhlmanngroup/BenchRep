@@ -101,9 +101,10 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
             "TrainingConfig.composite_model_components[*] (kind='encoder')",
         ),
         contract=(
-            "ArchitectureComponent.component must satisfy BenchRep's "
-            "`BaseEncoder` interface. Its runtime contract describes the "
-            "component's supported Composite wiring."
+            "ArchitectureComponent.component must be an `nn.Module` class. "
+            "Its declared runtime contract defines the supported Composite "
+            "wiring. Canonical encoder use additionally requires the component "
+            "to satisfy BenchRep's `BaseEncoder` interface."
         ),
     ),
     "decoder": ComponentRegistryInfo(
@@ -115,9 +116,10 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
             "TrainingConfig.composite_model_components[*] (kind='decoder')",
         ),
         contract=(
-            "ArchitectureComponent.component must satisfy BenchRep's "
-            "`BaseDecoder` interface. Its runtime contract describes the "
-            "component's supported Composite wiring."
+            "ArchitectureComponent.component must be an `nn.Module` class. "
+            "Its declared runtime contract defines the supported Composite "
+            "wiring. Canonical decoder use additionally requires the component "
+            "to satisfy BenchRep's `BaseDecoder` interface."
         ),
     ),
     "head": ComponentRegistryInfo(
@@ -128,9 +130,9 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
             "TrainingConfig.composite_model_components[*] (kind='head')",
         ),
         contract=(
-            "ArchitectureComponent.component must satisfy BenchRep's "
-            "`BaseHead` interface. Its runtime contract describes the "
-            "component's supported Composite wiring."
+            "ArchitectureComponent.component must be an `nn.Module` class. "
+            "Its declared runtime contract defines the supported Composite "
+            "wiring, including accepted forward inputs and result structure."
         ),
     ),
     "model": ComponentRegistryInfo(

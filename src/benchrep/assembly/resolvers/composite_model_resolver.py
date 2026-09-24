@@ -12,9 +12,7 @@ from __future__ import annotations
 
 import inspect
 from dataclasses import dataclass
-from typing import Any, Final, Literal, TypeAlias
-
-from torch import nn
+from typing import Any, Literal, TypeAlias
 
 from benchrep.architecture.composite_model_component_contracts import (
     ArchitectureComponent,
@@ -33,9 +31,6 @@ from benchrep.architecture.composite_model_roles import (
     TENSOR_STRUCTURE_BY_ROLE,
     TensorStructure,
 )
-from benchrep.architecture.decoders import BaseDecoder
-from benchrep.architecture.encoders import BaseEncoder
-from benchrep.architecture.heads import BaseHead
 from benchrep.assembly.registries.core import (
     ARCHITECTURE_REGISTRIES_BY_KIND,
     LOSS_REGISTRIES_BY_ROLE,
@@ -58,17 +53,6 @@ CompositeModelContextSource: TypeAlias = Literal[
     "batch",
     "model_output",
 ]
-
-
-# Mapping from component registry to architecture interface.
-_COMPONENT_INTERFACES_BY_KIND: Final[
-    dict[CompositeModelComponentKind, type[nn.Module]]
-] = {
-    "encoder": BaseEncoder,
-    "decoder": BaseDecoder,
-    "head": BaseHead,
-}
-
 
 # ---------------------------------------------------------------------------
 # Resolved specification types
@@ -418,18 +402,6 @@ def _resolve_component(
             f"`{component_config_path}.name` resolves to "
             f"{config.kind} registry entry {registry_entry_name!r}, "
             "which must be an ArchitectureComponent."
-        )
-
-    # Confirm that the component implements its architecture interface.
-    expected_interface = _COMPONENT_INTERFACES_BY_KIND[config.kind]
-
-    if not issubclass(entry.component, expected_interface):
-        raise TypeError(
-            f"`{component_config_path}.name` resolves to "
-            f"{config.kind} registry entry {registry_entry_name!r}, "
-            f"which wraps `{entry.component.__module__}."
-            f"{entry.component.__qualname__}` and must subclass "
-            f"`{expected_interface.__name__}`."
         )
 
     # Check the configured constructor arguments without instantiation.

@@ -9,7 +9,6 @@ from benchrep.assembly.builders.data_builder import (
 from benchrep.assembly.builders.architecture_builder import (
     build_decoder,
     build_encoder,
-    build_head,
 )
 from benchrep.assembly.builders.model_builder import build_model
 from benchrep.assembly.builders.trainer_builder import build_trainer
@@ -27,7 +26,6 @@ __all__ = [
     "build_transform_pipelines_bundle",
     "build_decoder",
     "build_encoder",
-    "build_head",
     "build_model",
     "build_optimizer_factory",
     "build_trainer",

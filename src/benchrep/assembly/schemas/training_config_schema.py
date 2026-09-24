@@ -1637,6 +1637,10 @@ class TrainingConfig(_TrainingConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
             "notes": [
                 "Each component selects the encoder, decoder, or head registry.",
+                "Composite compatibility is defined by each registered "
+                "`ArchitectureComponent` runtime contract; Composite encoders and "
+                "decoders do not need to satisfy the canonical `BaseEncoder` or "
+                "`BaseDecoder` interfaces.",
                 "Each component ID is instantiated once and may be invoked by "
                 "multiple assembly steps, thereby sharing parameters.",
                 "Every configured component must be used by at least one "

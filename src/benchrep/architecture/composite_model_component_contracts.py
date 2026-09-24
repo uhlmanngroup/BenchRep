@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 from dataclasses import dataclass
 from typing import Final, TypeAlias, get_args
 
@@ -155,18 +156,23 @@ ComponentResult: TypeAlias = (
 class ArchitectureComponent:
     """Associate an architecture module class with its Composite runtime contract.
 
-    ``component`` is instantiated from the constructor parameters supplied in
-    ``composite_model_components``. Constructor parameters are intentionally
-    separate from this contract.
+    ``component`` must be an ``nn.Module`` class and is instantiated from the
+    constructor parameters supplied in ``composite_model_components``.
+    Constructor parameters are intentionally separate from this contract.
 
-    ``runtime_inputs`` declares the required keyword arguments accepted by the
-    component's ``forward`` method and the tensor structures supported by each
-    argument. ``runtime_result`` declares whether ``forward`` returns one tensor or
-    a mapping of named tensors.
+    ``runtime_inputs`` declares the keyword arguments accepted by the component's
+    ``forward`` method and the tensor structures supported by each argument. The
+    declared input names must be compatible with the actual ``forward`` signature.
+
+    ``runtime_result`` declares whether ``forward`` returns one tensor or a mapping
+    of named tensors.
+
+    Composite compatibility is defined by this explicit runtime contract; the
+    wrapped module does not need to subclass BenchRep's canonical ``BaseEncoder``
+    or ``BaseDecoder`` interfaces. Canonical model builders may impose those
+    additional interfaces when using the encoder and decoder registries.
 
     Composite resolution uses this metadata to validate assembly wiring.
-    Canonical model builders instantiate the registered component without needing
-    to interpret its Composite runtime contract.
     """
 
     component: type[nn.Module]
@@ -221,3 +227,22 @@ class ArchitectureComponent:
                 "ArchitectureComponent.runtime_result must be a "
                 "ComponentTensorResult or ComponentMappingResult."
             )
+
+        runtime_input_placeholders = {
+            runtime_input.name: object()
+            for runtime_input in self.runtime_inputs
+        }
+        forward_signature = inspect.signature(self.component.forward)
+
+        try:
+            forward_signature.bind(
+                None,
+                **runtime_input_placeholders,
+            )
+        except TypeError as error:
+            raise TypeError(
+                "ArchitectureComponent runtime inputs "
+                f"{tuple(runtime_input_placeholders)} are incompatible with "
+                f"`{self.component.__qualname__}.forward"
+                f"{forward_signature}`: {error}"
+            ) from error

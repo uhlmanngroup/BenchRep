@@ -11,12 +11,19 @@ from torch import nn
 from benchrep.architecture.losses.composite_model_contracts import (
     LossComponent,
 )
+from benchrep.architecture.composite_model_component_contracts import (
+    ArchitectureComponent,
+    ComponentPort,
+    ComponentTensorResult,
+)
 from benchrep.architecture.losses.custom_objective import (
     BaseCustomObjectiveLoss,
 )
 from benchrep.assembly.registries.core import (
+    ARCHITECTURE_REGISTRIES_BY_KIND,
     LOSS_REGISTRIES_BY_ROLE,
     LossRegistry,
+    Registry,
 )
 from benchrep.assembly.resolvers.composite_model_resolver import (
     CompositeModelSpec,
@@ -64,6 +71,22 @@ class CanonicalOnlyReconstructionLoss(nn.Module):
         target: torch.Tensor,
     ) -> torch.Tensor:
         return torch.mean((reconstruction - target) ** 2)
+
+
+class PlainMultiInputHead(nn.Module):
+    def forward(
+        self,
+        *,
+        first: torch.Tensor,
+        second: torch.Tensor,
+    ) -> torch.Tensor:
+        return torch.cat(
+            (
+                first.flatten(start_dim=1),
+                second.flatten(start_dim=1),
+            ),
+            dim=1,
+        )
 
 
 class ResolverCustomObjectiveLoss(BaseCustomObjectiveLoss):
@@ -883,3 +906,76 @@ def test_rejects_invalid_loss_constructor_parameters() -> None:
         ),
     ):
         resolver_arguments.resolve()
+
+
+def test_resolves_plain_nn_module_head_with_explicit_runtime_contract(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    head_registry = Registry(
+        "head",
+        entry_type=ArchitectureComponent,
+    )
+
+    head_registry.register(
+        "plain_multi_input_head",
+        ArchitectureComponent(
+            component=PlainMultiInputHead,
+            runtime_inputs=(
+                ComponentPort(
+                    name="first",
+                    supported_structures=("image",),
+                ),
+                ComponentPort(
+                    name="second",
+                    supported_structures=("image",),
+                ),
+            ),
+            runtime_result=ComponentTensorResult(
+                supported_structures=("vector",),
+            ),
+        ),
+    )
+
+    monkeypatch.setitem(
+        ARCHITECTURE_REGISTRIES_BY_KIND,
+        "head",
+        head_registry,
+    )
+
+    resolver_arguments = CompositeResolverArguments(
+        declarations_config=CompositeModelDeclarationsConfig(
+            expects={
+                "first_image": "sample_image",
+                "second_image": "condition_image",
+            },
+            produces={
+                "fused": "embedding_vector",
+            },
+        ),
+        components_config={
+            "fusion": CompositeModelComponentConfig(
+                kind="head",
+                name="plain_multi_input_head",
+                params={},
+            ),
+        },
+        assembly_config={
+            "fuse": CompositeModelAssemblyStepConfig(
+                component="fusion",
+                inputs={
+                    "first": "expects.first_image",
+                    "second": "expects.second_image",
+                },
+                outputs="produces.fused",
+            ),
+        },
+        losses_config={},
+    )
+
+    model_spec = resolver_arguments.resolve()
+
+    assert model_spec.components_by_id["fusion"].component_kind == "head"
+    assert (
+        model_spec.components_by_id["fusion"].registry_entry_name
+        == "plain_multi_input_head"
+    )

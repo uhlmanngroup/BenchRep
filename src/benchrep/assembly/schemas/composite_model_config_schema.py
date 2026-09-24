@@ -40,6 +40,13 @@ class CompositeModelDeclarationsConfig(_CompositeModelConfigBaseModel):
 # Component configuration
 # -------------------------
 class CompositeModelComponentConfig(CompositeModelNamedConfig):
+    """Select one registered architecture component for a Composite model.
+
+    Composite compatibility is defined by the registered
+    ``ArchitectureComponent`` runtime contract rather than by canonical
+    encoder or decoder base classes.
+    """
+
     kind: CompositeModelComponentKind
 
 
