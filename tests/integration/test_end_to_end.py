@@ -153,7 +153,14 @@ def test_internal_end_to_end(
     assert len(reconstruction_export.pairs) == 1
 
     reconstruction_pair_export = reconstruction_export.pairs[0]
-    assert reconstruction_pair_export.pair.id == "reconstruction"
+    assert (
+            reconstruction_pair_export.pair.id
+            == "reconstruction_bundle_01"
+    )
+    assert (
+            reconstruction_pair_export.paths.bundle_dir.name
+            == "reconstruction_bundle_01"
+    )
     assert reconstruction_pair_export.outcome.status == "completed"
 
     reconstruction_paths = reconstruction_pair_export.paths

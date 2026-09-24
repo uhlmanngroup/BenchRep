@@ -206,14 +206,8 @@ def export_prediction_outputs(
     ] = []
 
     if export_spec.reconstructions.enabled:
-        for pair_index, pair in enumerate(
-            export_spec.reconstructions.pairs,
-            start=1,
-        ):
-            bundle_dir = (
-                reconstruction_dir
-                / f"{pair_index:02d}_{pair.id}"
-            )
+        for pair in export_spec.reconstructions.pairs:
+            bundle_dir = reconstruction_dir / pair.id
             bundle_paths = PredictionReconstructionBundlePaths(
                 bundle_dir=bundle_dir,
             )

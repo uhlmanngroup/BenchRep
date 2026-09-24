@@ -1725,7 +1725,7 @@ def _resolve_prediction_reconstruction_pairs(
     if isinstance(model_family, CanonicalModelFamilySpec):
         return (
             PredictionReconstructionPairSpec(
-                id="reconstruction",
+                id="reconstruction_bundle_01",
                 input="input",
                 reconstruction="reconstruction",
             ),
@@ -1815,7 +1815,7 @@ def _resolve_prediction_reconstruction_pairs(
 
     return tuple(
         PredictionReconstructionPairSpec(
-            id=f"reconstruction_{index:02d}",
+            id=f"reconstruction_bundle_{index:02d}",
             input=input_name,
             reconstruction=reconstruction_name,
         )

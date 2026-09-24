@@ -761,9 +761,13 @@ def _assert_reconstruction_exports(
         return
 
     expected_pairs = [
-        ("reconstruction_01", "x", "reconstruction_a"),
         (
-            "reconstruction_02",
+            "reconstruction_bundle_01",
+            "x",
+            "reconstruction_a",
+        ),
+        (
+            "reconstruction_bundle_02",
             "second_image",
             "reconstruction_b",
         ),
@@ -779,21 +783,19 @@ def _assert_reconstruction_exports(
         for pair_result in reconstruction_result.pairs
     ] == expected_pairs
 
-    for pair_index, (
-        pair_result,
-        (pair_id, input_name, reconstruction_name),
-    ) in enumerate(
-        zip(
-            reconstruction_result.pairs,
-            expected_pairs,
-            strict=True,
-        ),
-        start=1,
+    for pair_result, (
+            pair_id,
+            input_name,
+            reconstruction_name,
+    ) in zip(
+        reconstruction_result.pairs,
+        expected_pairs,
+        strict=True,
     ):
         assert pair_result.outcome.status == "completed"
 
         paths = pair_result.paths
-        assert paths.bundle_dir.name == f"{pair_index:02d}_{pair_id}"
+        assert paths.bundle_dir.name == pair_id
         assert paths.n_examples_exported == BATCH_SIZE
         assert paths.input_path is not None
         assert paths.reconstruction_path is not None
