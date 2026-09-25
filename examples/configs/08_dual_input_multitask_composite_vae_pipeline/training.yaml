@@ -1,0 +1,299 @@
+stage: training
+
+run:
+  output_root: outputs
+  project_name: 08_dual_input_multitask_composite_vae_pipeline
+
+reproducibility:
+  seed: 137
+  seed_workers: true
+  float32_matmul_precision: highest
+
+dataset:
+  name: enriched_mnist
+  params:
+    root: examples/data/mnist
+    split: train
+    download: true
+
+transform_pipelines:
+  - input: morphology
+    steps:
+      - name: to_dtype
+        apply_to: [training, validation]
+        params:
+          dtype: float32
+          scale: true
+
+  - input: skeleton
+    steps:
+      - name: to_dtype
+        apply_to: [training, validation]
+        params:
+          dtype: float32
+          scale: true
+
+datamodule:
+  batch_size: 128
+  val_fraction: 0.1
+  num_workers: 4
+  pin_memory: auto
+  persistent_workers: true
+  drop_last: false
+
+model:
+  name: composite
+
+composite_model_declarations:
+  expects:
+    morphology: sample_image
+    skeleton: sample_image
+    digit_label: categorical_prediction_target_scalar
+    mean_stroke_width: continuous_prediction_target_scalar
+
+  batch_metadata:
+    sample_id: index
+    acquisition_batch: group
+
+  produces:
+    morphology_encoder_features: projection_vector
+    skeleton_encoder_features: projection_vector
+    fused_features: embedding_vector
+
+    z_sample: embedding_vector
+    z_mu: embedding_vector
+    z_logvar: continuous_auxiliary_vector
+
+    morphology_reconstruction: reconstruction_image
+    skeleton_reconstruction: reconstruction_image
+
+    digit_logits: categorical_prediction_vector
+    stroke_width_prediction: continuous_prediction_vector
+
+composite_model_components:
+  morphology_encoder:
+    kind: encoder
+    name: conv2d
+    params:
+      input_shape: [1, 28, 28]
+      output_dim: 64
+      channels: [32, 64]
+      kernel_size: 3
+      stride: 2
+      padding: 1
+      activation: relu
+      normalization: null
+      dropout: 0.0
+
+  skeleton_encoder:
+    kind: encoder
+    name: conv2d
+    params:
+      input_shape: [1, 28, 28]
+      output_dim: 64
+      channels: [32, 64]
+      kernel_size: 3
+      stride: 2
+      padding: 1
+      activation: relu
+      normalization: null
+      dropout: 0.0
+
+  feature_fusion:
+    kind: head
+    name: concatenate
+    params: {}
+
+  variational_head:
+    kind: head
+    name: gaussian_variational
+    params:
+      in_features: 128
+      latent_dim: 32
+
+  morphology_decoder:
+    kind: decoder
+    name: upsample_conv2d
+    params:
+      input_dim: 32
+      initial_shape: [64, 7, 7]
+      output_shape: [1, 28, 28]
+      channels: [32, 16]
+      upsample_scale_factor: 2
+      upsample_mode: nearest
+      kernel_size: 3
+      stride: 1
+      padding: 1
+      activation: relu
+      normalization: null
+      dropout: 0.0
+      output_activation: sigmoid
+
+  skeleton_decoder:
+    kind: decoder
+    name: upsample_conv2d
+    params:
+      input_dim: 32
+      initial_shape: [64, 7, 7]
+      output_shape: [1, 28, 28]
+      channels: [32, 16]
+      upsample_scale_factor: 2
+      upsample_mode: nearest
+      kernel_size: 3
+      stride: 1
+      padding: 1
+      activation: relu
+      normalization: null
+      dropout: 0.0
+      output_activation: sigmoid
+
+  digit_classifier:
+    kind: head
+    name: mlp
+    params:
+      input_dim: 32
+      output_dim: 10
+      hidden_dims: [32]
+      activation: relu
+      normalization: null
+      dropout: 0.0
+
+  stroke_width_regressor:
+    kind: head
+    name: mlp
+    params:
+      input_dim: 32
+      output_dim: 1
+      hidden_dims: [32]
+      activation: relu
+      normalization: null
+      dropout: 0.0
+
+composite_model_assembly:
+  encode_morphology:
+    component: morphology_encoder
+    inputs:
+      x: expects.morphology
+    outputs: produces.morphology_encoder_features
+
+  encode_skeleton:
+    component: skeleton_encoder
+    inputs:
+      x: expects.skeleton
+    outputs: produces.skeleton_encoder_features
+
+  fuse:
+    component: feature_fusion
+    inputs:
+      morphology: produces.morphology_encoder_features
+      skeleton: produces.skeleton_encoder_features
+    outputs: produces.fused_features
+
+  parameterize:
+    component: variational_head
+    inputs:
+      x: produces.fused_features
+    outputs:
+      z_sample: produces.z_sample
+      z_mu: produces.z_mu
+      z_logvar: produces.z_logvar
+
+  reconstruct_morphology:
+    component: morphology_decoder
+    inputs:
+      z: produces.z_sample
+    outputs: produces.morphology_reconstruction
+
+  reconstruct_skeleton:
+    component: skeleton_decoder
+    inputs:
+      z: produces.z_sample
+    outputs: produces.skeleton_reconstruction
+
+  classify:
+    component: digit_classifier
+    inputs:
+      x: produces.z_sample
+    outputs: produces.digit_logits
+
+  regress:
+    component: stroke_width_regressor
+    inputs:
+      x: produces.z_sample
+    outputs: produces.stroke_width_prediction
+
+losses:
+  reconstruction:
+    - name: mse
+      id: morphology
+      weight: 1.0
+      params:
+        reduction: mean
+      composite_wiring:
+        reconstruction: produces.morphology_reconstruction
+        target: expects.morphology
+
+    - name: mse
+      id: skeleton
+      weight: 1.0
+      params:
+        reduction: mean
+      composite_wiring:
+        reconstruction: produces.skeleton_reconstruction
+        target: expects.skeleton
+
+  regularization:
+    - name: gaussian_kld
+      weight: 0.0001
+      params:
+        reduction: mean
+      composite_wiring:
+        z_mu: produces.z_mu
+        z_logvar: produces.z_logvar
+
+  classification:
+    - name: cross_entropy
+      weight: 0.25
+      params:
+        reduction: mean
+        label_smoothing: 0.0
+      composite_wiring:
+        prediction: produces.digit_logits
+        target: expects.digit_label
+
+  regression:
+    - name: mse
+      weight: 0.1
+      params:
+        reduction: mean
+      composite_wiring:
+        prediction: produces.stroke_width_prediction
+        target: expects.mean_stroke_width
+
+optimizer:
+  name: adamw
+  params:
+    lr: 0.001
+
+trainer:
+  max_epochs: 10
+  accelerator: auto
+  devices: auto
+  log_every_n_steps: 20
+  deterministic: false
+  benchmark: false
+  precision: 32-true
+
+logger: null
+
+checkpointing:
+  monitor: val/loss
+  mode: min
+  save_top_k: 1
+  save_last: true
+
+inspection:
+  torchview:
+    enabled: true
+    expand_nested: true
+    depth: 10

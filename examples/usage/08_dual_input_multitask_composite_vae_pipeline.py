@@ -1,25 +1,59 @@
-"""Define the enriched two-view MNIST dataset used by Example 08."""
+"""Run a dual-input, multitask Composite VAE pipeline on enriched MNIST.
+
+Registers a custom dataset supplying morphology and skeleton images, digit
+labels, stroke-width targets, and simulated acquisition-batch metadata.
+
+Registers a two-input concatenation head that combines encoder features
+before variational parameterization. The model reconstructs both images
+and predicts digit identity and stroke width.
+
+Run from the repository root:
+
+    python examples/usage/08_dual_input_multitask_composite_vae_pipeline.py
+"""
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Final, Literal
 
 import numpy as np
 import torch
+from torch import nn
 from scipy import ndimage
 from skimage.morphology import skeletonize
 from torchvision.datasets import MNIST
 
 from benchrep.architecture.data import BaseDataset
 
+from benchrep import (
+    inspect_registry,
+    train_composite,
+    predict_composite,
+    evaluate,
+)
 
+from benchrep.architecture.composite_model_component_contracts import (
+    ArchitectureComponent,
+    ComponentPort,
+    ComponentTensorResult,
+)
+from benchrep.assembly.registries import DATASETS, HEADS
+
+
+# Resolve config paths relative to this script.
+CONFIG_DIR = (
+    Path(__file__).resolve().parents[1]
+    / "configs"
+    / "08_dual_input_multitask_composite_vae_pipeline"
+)
+
+# Custom dataset constants
 Split = Literal["train", "test"]
-
-GLOBAL_SEED: Final = 137
+DATASET_CONSTRUCTION_SEED: Final = 137
 N_ACQUISITION_BATCHES: Final = 10
-
 CHANNEL_NAMES: Final = (
     "morphology",
     "skeleton",
@@ -45,7 +79,7 @@ def build_acquisition_batch_profiles() -> tuple[
 ]:
     """Create reproducible acquisition conditions with independently varied effects."""
 
-    rng = np.random.default_rng(GLOBAL_SEED)
+    rng = np.random.default_rng(DATASET_CONSTRUCTION_SEED)
     n_batches = N_ACQUISITION_BATCHES
 
     # Intensity multiplication for the whole img, affects foreground
@@ -203,9 +237,9 @@ class EnrichedMNISTDataset(BaseDataset):
         )
 
         split_seed = (
-            GLOBAL_SEED
+            DATASET_CONSTRUCTION_SEED
             if split == "train"
-            else GLOBAL_SEED + 1_000_000
+            else DATASET_CONSTRUCTION_SEED + 1_000_000
         )
 
         self.batch_ids = assign_acquisition_batches(
@@ -264,8 +298,89 @@ class EnrichedMNISTDataset(BaseDataset):
             "morphology": self.images[index, 0:1].clone(),
             "skeleton": self.images[index, 1:2].clone(),
             "digit_label": torch.tensor(label, dtype=torch.long),
-            "mean_stroke_width": self.mean_stroke_widths[index].clone(),
+            "mean_stroke_width": (
+                self.mean_stroke_widths[index].reshape(1).clone()
+            ),
             "sample_id": f"{self.split}_{index:05d}",
             "acquisition_batch": f"batch_{batch_id:02d}",
         }
         return self.validate_sample(sample)
+
+
+class ConcatenationHead(nn.Module):
+    """Concatenate morphology and skeleton feature vectors.
+
+    Inputs have shapes [batch, morphology_features] and
+    [batch, skeleton_features]. The output retains the batch dimension
+    and combines both feature dimensions.
+    """
+
+    def forward(
+        self,
+        *,
+        morphology: torch.Tensor,
+        skeleton: torch.Tensor,
+    ) -> torch.Tensor:
+        return torch.cat((morphology, skeleton), dim=1)
+
+
+def main() -> None:
+    # Register external dataset
+    DATASETS.register(
+        "enriched_mnist",
+        EnrichedMNISTDataset,
+    )
+
+    # Register external head
+    HEADS.register(
+        "concatenate",
+        ArchitectureComponent(
+            component=ConcatenationHead,
+            runtime_inputs=(
+                ComponentPort(
+                    name="morphology",
+                    supported_structures=("vector",),
+                ),
+                ComponentPort(
+                    name="skeleton",
+                    supported_structures=("vector",),
+                ),
+            ),
+            runtime_result=ComponentTensorResult(
+                supported_structures=("vector",),
+            ),
+        ),
+    )
+
+    print("\n=== External components ===")
+    inspect_registry("dataset", "enriched_mnist")
+    inspect_registry("head", "concatenate")
+
+    print("\n=== Training ===")
+    training_result = train_composite(
+        config_path=CONFIG_DIR / "training.yaml",
+    )
+    print(f"Training manifest: {training_result.manifest_path}")
+
+    print("\n=== Prediction ===")
+    prediction_result = predict_composite(
+        config_path=CONFIG_DIR / "prediction.yaml",
+        training_manifest_path=training_result.manifest_path,
+    )
+    print(f"Prediction manifest: {prediction_result.manifest_path}")
+
+    print("\n=== Evaluation ===")
+    evaluation_result = evaluate(
+        config_path=CONFIG_DIR / "evaluation.yaml",
+        prediction_manifest_path=prediction_result.manifest_path,
+    )
+    print(f"Evaluation manifest: {evaluation_result.manifest_path}")
+
+    print("\n=== Pipeline complete ===")
+    print(f"Training outputs:   {training_result.run_context.output_dir}")
+    print(f"Prediction outputs: {prediction_result.run_context.output_dir}")
+    print(f"Evaluation outputs: {evaluation_result.run_context.output_dir}")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,61 @@
+stage: prediction
+
+source:
+  training_manifest_path: null
+  checkpoint: best
+
+dataset:
+  name: enriched_mnist
+  params:
+    root: examples/data/mnist
+    split: test
+    download: true
+
+# Inherit validation-applicable training preprocessing
+transform_pipelines: null
+
+data:
+  batch_size: null
+  num_workers: null
+  max_batches: null
+
+inference:
+  seed: null
+  seed_workers: null
+  deterministic: null
+  float32_matmul_precision: null
+
+  composite_model_assembly_input_overrides:
+    reconstruct_morphology:
+      inputs:
+        z: produces.z_mu
+
+    reconstruct_skeleton:
+      inputs:
+        z: produces.z_mu
+
+    classify:
+      inputs:
+        x: produces.z_mu
+
+    regress:
+      inputs:
+        x: produces.z_mu
+
+exports:
+  anndata:
+    enabled: true
+    mode: all
+    keys: null
+    primary_key: z_mu
+
+  reconstructions:
+    enabled: true
+    mode: all
+    pairs: null
+    n_examples: 32
+    selection: random
+    stratify_by: digit_label
+    seed: null
+    include_input: true
+    include_reconstruction: true
