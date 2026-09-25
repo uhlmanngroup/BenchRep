@@ -21,6 +21,7 @@ from benchrep.assembly.registries.utils import normalize_name
 from benchrep.assembly.resolvers.loss_resolver import (
     LossSpec,
     resolve_canonical_loss_configs,
+    resolve_composite_loss_configs,
 )
 from benchrep.assembly.resolvers.composite_model_resolver import (
     CompositeModelSpec,
@@ -174,10 +175,19 @@ def resolve_training_config(
                 assembly_config=(
                     resolved_config.composite_model_assembly
                 ),
-                losses_config=resolved_config.losses,
             )
 
-            loss_specs = composite_model_spec.loss_specs
+            loss_specs = resolve_composite_loss_configs(
+                resolved_config.losses,
+                model_input_roles_by_name=(
+                    composite_model_spec.declarations
+                    .model_input_roles_by_name
+                ),
+                model_output_roles_by_name=(
+                    composite_model_spec.declarations
+                    .model_output_roles_by_name
+                ),
+            )
 
         else:
             loss_specs = resolve_canonical_loss_configs(

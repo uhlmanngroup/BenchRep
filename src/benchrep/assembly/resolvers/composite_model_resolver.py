@@ -11,7 +11,7 @@ model building; they do not instantiate PyTorch modules themselves.
 from __future__ import annotations
 
 import inspect
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any
 
 from benchrep.architecture.composite_model_component_contracts import (
@@ -19,9 +19,7 @@ from benchrep.architecture.composite_model_component_contracts import (
     ComponentMappingResult,
     ComponentTensorResult,
 )
-from benchrep.architecture.losses.composite_model_contracts import (
-    LossComponent,
-)
+
 from benchrep.architecture.composite_model_roles import (
     CompositeModelBatchMetadataRole,
     CompositeModelComponentKind,
@@ -33,21 +31,11 @@ from benchrep.architecture.composite_model_roles import (
 )
 from benchrep.assembly.registries.core import (
     ARCHITECTURE_REGISTRIES_BY_KIND,
-    LOSS_REGISTRIES_BY_ROLE,
 )
 from benchrep.assembly.schemas.composite_model_config_schema import (
     CompositeModelDeclarationsConfig,
     CompositeModelAssemblyStepConfig,
     CompositeModelComponentConfig,
-)
-from benchrep.assembly.schemas.training_config_schema import (
-    SupportedLossRole,
-    TrainingLossTermConfig,
-)
-from benchrep.assembly.resolvers.loss_resolver import (
-    LossContextSource,
-    LossSpec,
-    resolve_loss_configs,
 )
 
 
@@ -93,7 +81,7 @@ class CompositeModelAssemblyStepSpec:
 
 @dataclass(frozen=True)
 class CompositeModelSpec:
-    """Contain the complete resolved plan for one Composite model."""
+    """Contain the resolved architecture plan for one Composite model."""
 
     declarations: CompositeModelDeclarationsSpec
     components_by_id: dict[str, CompositeModelComponentSpec]
@@ -101,7 +89,6 @@ class CompositeModelSpec:
         int,
         tuple[CompositeModelAssemblyStepSpec, ...],
     ]
-    loss_specs: tuple[LossSpec, ...]
 
 
 def resolve_composite_model_config(
@@ -115,17 +102,12 @@ def resolve_composite_model_config(
         str,
         CompositeModelAssemblyStepConfig,
     ],
-    losses_config: dict[
-        SupportedLossRole,
-        list[TrainingLossTermConfig],
-    ],
 ) -> CompositeModelSpec:
-    """Resolve Composite model configuration into one executable specification.
+    """Resolve Composite model configuration into one architecture specification.
 
-    This function resolves each configured declaration, component, assembly
-    step, and loss term, validates the complete data-flow graph, and orders
-    component invocations by dependency level. It does not instantiate any
-    PyTorch modules.
+    This function resolves each configured declaration, component, and assembly
+    step, validates the complete data-flow graph, and orders component invocations
+    by dependency level. It does not instantiate any PyTorch modules.
     """
     declarations_spec = _resolve_declarations(
         declarations_config
@@ -151,31 +133,6 @@ def resolve_composite_model_config(
         in assembly_config.items()
     }
 
-    base_loss_specs = resolve_loss_configs(losses_config)
-
-    configured_loss_terms = [
-        (
-            f"losses.{loss_role}[{loss_index}]",
-            loss_config,
-        )
-        for loss_role, configured_losses in losses_config.items()
-        for loss_index, loss_config in enumerate(configured_losses)
-    ]
-
-    loss_specs: list[LossSpec] = [
-        _resolve_composite_loss_spec(
-            base_loss_spec,
-            loss_config,
-            config_path=config_path,
-            declarations=declarations_spec,
-        )
-        for (config_path, loss_config), base_loss_spec in zip(
-            configured_loss_terms,
-            base_loss_specs,
-            strict=True,
-        )
-    ]
-
     assembly_steps_by_dependency_level = (
         _validate_and_order_assembly_steps(
             assembly_step_specs_by_id,
@@ -190,7 +147,6 @@ def resolve_composite_model_config(
         assembly_steps_by_dependency_level=(
             assembly_steps_by_dependency_level
         ),
-        loss_specs=tuple(loss_specs),
     )
 
 
@@ -676,171 +632,4 @@ def _resolve_assembly_step(
     )
 
 
-def _resolve_composite_loss_spec(
-    loss_spec: LossSpec,
-    config: TrainingLossTermConfig,
-    *,
-    config_path: str,
-    declarations: CompositeModelDeclarationsSpec,
-) -> LossSpec:
-    """Resolve Composite-specific wiring for one resolved loss term."""
 
-    loss_role = loss_spec.loss_role
-    registry_entry_name = loss_spec.registry_entry_name
-
-    # Retrieve the already-resolved loss contract.
-    registry = LOSS_REGISTRIES_BY_ROLE[loss_role]
-    loss_component = registry.get(registry_entry_name)
-
-    if not isinstance(loss_component, LossComponent):
-        raise TypeError(
-            f"`{config_path}.name` resolves to registry entry "
-            f"{registry_entry_name!r}, which must be a LossComponent."
-        )
-
-    inputs_from_model_inputs: dict[str, str] = {}
-    inputs_from_model_outputs: dict[str, str] = {}
-    context_inputs: dict[str, LossContextSource] = {}
-
-    if loss_role == "custom_objective":
-        # Resolve automatically supplied full-context inputs.
-        if config.composite_wiring is not None:
-            raise ValueError(
-                f"`{config_path}.composite_wiring` must not be "
-                "configured for a custom objective because its "
-                "runtime inputs are supplied automatically."
-            )
-
-        # Custom objectives always receive these complete mappings, so there
-        # is no per-loss Composite runtime contract to resolve.
-        context_inputs = {
-            "batch": "batch",
-            "model_output": "model_output",
-        }
-
-    else:
-        # Composite wiring cannot be inferred from a canonical calling
-        # convention because it also requires declared semantic roles.
-        if loss_component.runtime_inputs is None:
-            raise ValueError(
-                f"`{config_path}` resolves to loss registry entry "
-                f"{registry_entry_name!r}, which does not declare "
-                "a Composite runtime contract."
-            )
-
-        # Validate and resolve explicit tensor inputs.
-        if config.composite_wiring is None:
-            raise ValueError(
-                f"`{config_path}.composite_wiring` is required for "
-                f"loss role {loss_role!r} under a Composite model."
-            )
-
-        runtime_inputs_by_name = {
-            runtime_input.name: runtime_input
-            for runtime_input in loss_component.runtime_inputs
-        }
-
-        configured_input_names = set(config.composite_wiring)
-        required_input_names = set(runtime_inputs_by_name)
-
-        missing_inputs = sorted(
-            required_input_names - configured_input_names
-        )
-        unexpected_inputs = sorted(
-            configured_input_names - required_input_names
-        )
-
-        if missing_inputs or unexpected_inputs:
-            problems: list[str] = []
-
-            if missing_inputs:
-                problems.append(f"missing keys {missing_inputs}")
-
-            if unexpected_inputs:
-                problems.append(
-                    f"unexpected keys {unexpected_inputs}"
-                )
-
-            raise ValueError(
-                f"`{config_path}.composite_wiring` does not match "
-                f"the runtime-input contract for loss registry entry "
-                f"{registry_entry_name!r}: "
-                f"{'; '.join(problems)}."
-            )
-
-        for input_name, runtime_input in runtime_inputs_by_name.items():
-            configured_reference = config.composite_wiring[input_name]
-
-            source, separator, declaration_name = (
-                configured_reference.partition(".")
-            )
-
-            if (
-                separator != "."
-                or source not in {"expects", "produces"}
-            ):
-                raise ValueError(
-                    f"`{config_path}.composite_wiring.{input_name}` "
-                    "must be an `expects.<name>` or "
-                    f"`produces.<name>` reference; got "
-                    f"{configured_reference!r}."
-                )
-
-            if source == "expects":
-                if (
-                    declaration_name
-                    not in declarations.model_input_roles_by_name
-                ):
-                    raise ValueError(
-                        f"`{config_path}.composite_wiring."
-                        f"{input_name}` references "
-                        f"{configured_reference!r}, but "
-                        f"{declaration_name!r} is not declared under "
-                        "`composite_model_declarations.expects`."
-                    )
-
-                role: CompositeModelTensorRole = (
-                    declarations.model_input_roles_by_name[
-                        declaration_name
-                    ]
-                )
-                inputs_from_model_inputs[input_name] = (
-                    declaration_name
-                )
-
-            else:
-                if (
-                    declaration_name
-                    not in declarations.model_output_roles_by_name
-                ):
-                    raise ValueError(
-                        f"`{config_path}.composite_wiring."
-                        f"{input_name}` references "
-                        f"{configured_reference!r}, but "
-                        f"{declaration_name!r} is not declared under "
-                        "`composite_model_declarations.produces`."
-                    )
-
-                role = declarations.model_output_roles_by_name[
-                    declaration_name
-                ]
-                inputs_from_model_outputs[input_name] = (
-                    declaration_name
-                )
-
-            if role not in runtime_input.supported_roles:
-                raise ValueError(
-                    f"`{config_path}.composite_wiring.{input_name}` "
-                    f"references {configured_reference!r}, which has "
-                    f"role {role!r}, but loss registry entry "
-                    f"{registry_entry_name!r} supports only "
-                    f"{runtime_input.supported_roles!r} for runtime "
-                    f"input {input_name!r}."
-                )
-
-    return replace(
-        loss_spec,
-        inputs_from_model_inputs=inputs_from_model_inputs,
-        inputs_from_model_outputs=inputs_from_model_outputs,
-        context_inputs=context_inputs,
-    )

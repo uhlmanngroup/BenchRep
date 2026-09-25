@@ -461,11 +461,10 @@ def test_composite_architecture_trains_checkpoints_and_predicts(
     assert best_checkpoint.is_file()
     assert last_checkpoint.is_file()
 
-    model_spec = training_result.run_spec.composite_model_spec
-    assert model_spec is not None
+    assert training_result.run_spec.composite_model_spec is not None
     assert {
                (loss.loss_role, loss.loss_id)
-               for loss in model_spec.loss_specs
+               for loss in training_result.run_spec.loss_specs
            } == case.expected_losses
     assert set(training_result.model.components_by_id) == set(
         case.components

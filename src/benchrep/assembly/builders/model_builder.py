@@ -59,6 +59,10 @@ def build_model(
     ----------
     config:
         Validated BenchRep config object.
+    loss_specs:
+        Resolved loss specifications used to build the configured model's
+        loss terms. Composite loss specifications additionally contain resolved
+        runtime wiring.
     composite_model_spec:
         Resolved Composite model specification. Required when building a
         CompositeModel and unused by canonical models.
@@ -434,6 +438,7 @@ def build_composite(
 
     return CompositeModel(
         model_spec=model_spec,
+        loss_specs=loss_specs,
         components_by_id=components_by_id,
         losses_by_role=losses_by_role,
         optimizer_factory=optimizer_factory,

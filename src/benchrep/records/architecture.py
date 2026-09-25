@@ -19,6 +19,7 @@ if TYPE_CHECKING:
         CompositeModelSpec,
     )
 
+    from benchrep.assembly.resolvers.loss_resolver import LossSpec
 
 # ---------------------------------------------------------------------------
 # Constants for BenchRep owned architecture graph generation of composite models
@@ -224,6 +225,7 @@ def prepare_composite_torchview_input_data(
 # ---------------------------------------------------------------------------
 def build_composite_model_spec_graph(
     model_spec: CompositeModelSpec,
+    loss_specs: tuple[LossSpec, ...],
     *,
     graph_name: str = "Composite model specification",
 ) -> Digraph:
@@ -530,9 +532,7 @@ def build_composite_model_spec_graph(
 
     # Losses are separate graph sinks. Their incoming edge labels identify
     # the loss module's forward parameter receiving each tensor or context.
-    for loss_index, loss_spec in enumerate(
-        model_spec.loss_specs
-    ):
+    for loss_index, loss_spec in enumerate(loss_specs):
         loss_node_id = f"loss_{loss_index}"
         loss_node_ids.append(loss_node_id)
 
@@ -636,6 +636,7 @@ def build_composite_model_spec_graph(
 
 def export_composite_model_spec_graph(
     model_spec: CompositeModelSpec,
+    loss_specs: tuple[LossSpec, ...],
     *,
     output_path: Path | str,
     graph_name: str = "Composite model specification",
@@ -658,6 +659,7 @@ def export_composite_model_spec_graph(
 
     graph = build_composite_model_spec_graph(
         model_spec,
+        loss_specs=loss_specs,
         graph_name=graph_name,
     )
 

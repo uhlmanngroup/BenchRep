@@ -22,6 +22,7 @@ if TYPE_CHECKING:
         CompositeModelAssemblyStepSpec,
         CompositeModelSpec,
     )
+    from benchrep.assembly.resolvers.loss_resolver import LossSpec
 
 
 class CompositeModel(L.LightningModule):
@@ -31,14 +32,16 @@ class CompositeModel(L.LightningModule):
     once and supplies it under its component ID. Assembly steps may invoke the
     same component ID repeatedly, preserving parameter sharing.
 
-    The resolved model specification remains the source of truth for assembly
-    order, tensor bindings, loss wiring, and configured loss weights.
+    The resolved model specification defines architecture assembly and tensor
+    bindings. Resolved loss specifications independently define loss identities
+    and runtime wiring.
     """
 
     def __init__(
         self,
         *,
         model_spec: CompositeModelSpec,
+        loss_specs: tuple[LossSpec, ...],
         components_by_id: dict[str, nn.Module],
         losses_by_role: dict[str, dict[str, LossTerm]],
         optimizer_factory: Callable[
@@ -52,14 +55,15 @@ class CompositeModel(L.LightningModule):
             model_spec=model_spec,
             components_by_id=components_by_id,
         )
-        _validate_loss_terms_match_spec(
-            model_spec=model_spec,
+        _validate_loss_terms_match_specs(
+            loss_specs=loss_specs,
             losses_by_role=losses_by_role,
         )
 
         validate_loss_weights(losses_by_role)
 
         self.model_spec = model_spec
+        self.loss_specs = loss_specs
         # Use the first declared sample image as the batch-size reference
         # for tensor validation and Lightning logging.
         self._sample_image_input_name = (
@@ -244,13 +248,13 @@ class CompositeModel(L.LightningModule):
         batch_size = sample_image.shape[0]
         total_loss: torch.Tensor | None = None
 
-        # model_spec.loss_specs is a flat tuple containing one LossSpec for
-        # every configured loss across all roles. Each spec contains the loss
-        # role, resolved identity, weight, and resolved wiring.
+        # self.loss_specs is a flat tuple containing one LossSpec for every
+        # configured loss across all roles. Each spec contains the loss role,
+        # resolved identity, and resolved wiring.
         #
         # Instantiated loss modules are stored under:
         # losses_by_role[loss_role][loss_id].
-        for loss_spec in self.model_spec.loss_specs:
+        for loss_spec in self.loss_specs:
             loss_role = loss_spec.loss_role
             loss_id = loss_spec.loss_id
 
@@ -336,8 +340,8 @@ class CompositeModel(L.LightningModule):
 
         if total_loss is None:
             raise RuntimeError(
-                "CompositeModel cannot calculate a loss because its "
-                "resolved specification contains no configured losses."
+                "CompositeModel cannot calculate a loss because no resolved "
+                "loss specifications were provided."
             )
 
         self.log(
@@ -390,9 +394,9 @@ def _validate_components_match_spec(
     )
 
 
-def _validate_loss_terms_match_spec(
+def _validate_loss_terms_match_specs(
     *,
-    model_spec: CompositeModelSpec,
+    loss_specs: tuple[LossSpec, ...],
     losses_by_role: dict[str, dict[str, LossTerm]],
 ) -> None:
     """Validate that every resolved loss was instantiated exactly once."""
@@ -402,7 +406,7 @@ def _validate_loss_terms_match_spec(
             loss_spec.loss_role,
             loss_spec.loss_id,
         )
-        for loss_spec in model_spec.loss_specs
+        for loss_spec in loss_specs
     }
 
     received_loss_ids = {
@@ -434,8 +438,8 @@ def _validate_loss_terms_match_spec(
         )
 
     raise ValueError(
-        "CompositeModel loss terms do not match the resolved model "
-        f"specification: {'; '.join(problems)}."
+        "CompositeModel loss terms do not match the resolved loss "
+        f"specifications: {'; '.join(problems)}."
     )
 
 

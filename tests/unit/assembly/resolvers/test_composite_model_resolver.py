@@ -1,28 +1,18 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
 
 import pytest
 import torch
 from torch import nn
 
-from benchrep.architecture.losses.composite_model_contracts import (
-    LossComponent,
-)
 from benchrep.architecture.composite_model_component_contracts import (
     ArchitectureComponent,
     ComponentPort,
     ComponentTensorResult,
 )
-from benchrep.architecture.losses.custom_objective import (
-    BaseCustomObjectiveLoss,
-)
 from benchrep.assembly.registries.core import (
     ARCHITECTURE_REGISTRIES_BY_KIND,
-    LOSS_REGISTRIES_BY_ROLE,
-    LossRegistry,
     Registry,
 )
 from benchrep.assembly.resolvers.composite_model_resolver import (
@@ -34,10 +24,6 @@ from benchrep.assembly.schemas.composite_model_config_schema import (
     CompositeModelComponentConfig,
     CompositeModelDeclarationsConfig,
 )
-from benchrep.assembly.schemas.training_config_schema import (
-    SupportedLossRole,
-    TrainingLossTermConfig,
-)
 
 
 @dataclass
@@ -47,30 +33,13 @@ class CompositeResolverArguments:
     declarations_config: CompositeModelDeclarationsConfig
     components_config: dict[str, CompositeModelComponentConfig]
     assembly_config: dict[str, CompositeModelAssemblyStepConfig]
-    losses_config: dict[
-        SupportedLossRole,
-        list[TrainingLossTermConfig],
-    ]
 
     def resolve(self) -> CompositeModelSpec:
         return resolve_composite_model_config(
             declarations_config=self.declarations_config,
             components_config=self.components_config,
             assembly_config=self.assembly_config,
-            losses_config=self.losses_config,
         )
-
-
-class CanonicalOnlyReconstructionLoss(nn.Module):
-    """Provide a valid canonical signature without a Composite contract."""
-
-    def forward(
-        self,
-        *,
-        reconstruction: torch.Tensor,
-        target: torch.Tensor,
-    ) -> torch.Tensor:
-        return torch.mean((reconstruction - target) ** 2)
 
 
 class PlainMultiInputHead(nn.Module):
@@ -87,19 +56,6 @@ class PlainMultiInputHead(nn.Module):
             ),
             dim=1,
         )
-
-
-class ResolverCustomObjectiveLoss(BaseCustomObjectiveLoss):
-    """Provide the fixed full-context custom-objective interface."""
-
-    def forward(
-        self,
-        *,
-        batch: Mapping[str, Any],
-        model_output: Mapping[str, torch.Tensor],
-    ) -> torch.Tensor:
-        del batch
-        return model_output["embedding"].sum() * 0.0
 
 
 def _minimal_autoencoder_arguments() -> CompositeResolverArguments:
@@ -147,21 +103,10 @@ def _minimal_autoencoder_arguments() -> CompositeResolverArguments:
                 outputs="produces.reconstruction",
             ),
         },
-        losses_config={
-            "reconstruction": [
-                TrainingLossTermConfig(
-                    name="mse",
-                    composite_wiring={
-                        "reconstruction": "produces.reconstruction",
-                        "target": "expects.image",
-                    },
-                ),
-            ],
-        },
     )
 
 
-def test_resolves_variational_graph_mapping_results_and_loss_aliases() -> None:
+def test_resolves_variational_graph_mapping_results() -> None:
     resolver_arguments = CompositeResolverArguments(
         declarations_config=CompositeModelDeclarationsConfig(
             expects={
@@ -231,27 +176,6 @@ def test_resolves_variational_graph_mapping_results_and_loss_aliases() -> None:
                 outputs="produces.reconstruction",
             ),
         },
-        losses_config={
-            "reconstruction": [
-                TrainingLossTermConfig(
-                    name="mean_squared_error",
-                    composite_wiring={
-                        "reconstruction": "produces.reconstruction",
-                        "target": "expects.image",
-                    },
-                ),
-            ],
-            "regularization": [
-                TrainingLossTermConfig(
-                    name="kl",
-                    weight=0.001,
-                    composite_wiring={
-                        "z_mu": "produces.latent_mean",
-                        "z_logvar": "produces.latent_log_variance",
-                    },
-                ),
-            ],
-        },
     )
 
     model_spec = resolver_arguments.resolve()
@@ -285,19 +209,6 @@ def test_resolves_variational_graph_mapping_results_and_loss_aliases() -> None:
     latent_step = model_spec.assembly_steps_by_dependency_level[1][0]
     assert latent_step.results_to_model_outputs == {
         "z_sample": "latent_sample",
-        "z_mu": "latent_mean",
-        "z_logvar": "latent_log_variance",
-    }
-
-    loss_specs_by_role = {
-        loss_term.loss_role: loss_term
-        for loss_term in model_spec.loss_specs
-    }
-    assert loss_specs_by_role["reconstruction"].registry_entry_name == "mse"
-    assert loss_specs_by_role["regularization"].registry_entry_name == (
-        "gaussian_kl"
-    )
-    assert loss_specs_by_role["regularization"].inputs_from_model_outputs == {
         "z_mu": "latent_mean",
         "z_logvar": "latent_log_variance",
     }
@@ -358,22 +269,9 @@ def test_orders_branches_and_preserves_shared_component_ids() -> None:
                 outputs="produces.anchor_projection",
             ),
         },
-        losses_config={
-            "contrastive": [
-                TrainingLossTermConfig(
-                    name="triplet_margin",
-                    composite_wiring={
-                        "anchor": "produces.anchor_embedding",
-                        "positive": "produces.positive_embedding",
-                        "negative": "produces.negative_embedding",
-                    },
-                ),
-            ],
-        },
     )
 
     model_spec = resolver_arguments.resolve()
-
     assert tuple(model_spec.assembly_steps_by_dependency_level) == (0, 1)
     assert tuple(
         step.step_id
@@ -499,17 +397,6 @@ def test_rejects_cyclic_assembly_dependencies() -> None:
                 outputs="produces.projection",
             ),
         },
-        losses_config={
-            "classification": [
-                TrainingLossTermConfig(
-                    name="cross_entropy",
-                    composite_wiring={
-                        "prediction": "produces.prediction",
-                        "target": "expects.label",
-                    },
-                ),
-            ],
-        },
     )
 
     with pytest.raises(
@@ -547,191 +434,6 @@ def test_rejects_component_input_with_incompatible_tensor_structure() -> None:
     ):
         resolver_arguments.resolve()
 
-
-def test_rejects_loss_input_with_incompatible_semantic_role() -> None:
-    resolver_arguments = _minimal_autoencoder_arguments()
-    resolver_arguments.losses_config["reconstruction"][0] = (
-        TrainingLossTermConfig(
-            name="mse",
-            composite_wiring={
-                "reconstruction": "produces.embedding",
-                "target": "expects.image",
-            },
-        )
-    )
-
-    with pytest.raises(
-        ValueError,
-        match="supports only",
-    ):
-        resolver_arguments.resolve()
-
-
-def test_rejects_ordinary_loss_without_composite_contract(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    canonical_only_registry = LossRegistry(
-        "resolver test reconstruction loss",
-        canonical_runtime_input_names=(
-            "reconstruction",
-            "target",
-        ),
-    )
-    canonical_only_registry.register(
-        "canonical_only",
-        LossComponent(CanonicalOnlyReconstructionLoss),
-    )
-    monkeypatch.setitem(
-        LOSS_REGISTRIES_BY_ROLE,
-        "reconstruction",
-        canonical_only_registry,
-    )
-
-    resolver_arguments = _minimal_autoencoder_arguments()
-    resolver_arguments.losses_config = {
-        "reconstruction": [
-            TrainingLossTermConfig(
-                name="canonical_only",
-                composite_wiring={
-                    "reconstruction": "produces.reconstruction",
-                    "target": "expects.image",
-                },
-            ),
-        ],
-    }
-
-    with pytest.raises(
-        ValueError,
-        match="does not declare a Composite runtime contract",
-    ):
-        resolver_arguments.resolve()
-
-
-def test_resolves_custom_objective_with_fixed_context_inputs(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    custom_objective_registry = LossRegistry(
-        "resolver test custom objective loss",
-        canonical_runtime_input_names=(
-            "batch",
-            "model_output",
-        ),
-        required_component_base=BaseCustomObjectiveLoss,
-        explicit_composite_runtime_inputs_supported=False,
-    )
-    custom_objective_registry.register(
-        "resolver_custom_objective",
-        LossComponent(ResolverCustomObjectiveLoss),
-    )
-    monkeypatch.setitem(
-        LOSS_REGISTRIES_BY_ROLE,
-        "custom_objective",
-        custom_objective_registry,
-    )
-
-    resolver_arguments = CompositeResolverArguments(
-        declarations_config=CompositeModelDeclarationsConfig(
-            expects={"image": "sample_image"},
-            produces={"embedding": "embedding_vector"},
-        ),
-        components_config={
-            "encoder": CompositeModelComponentConfig(
-                kind="encoder",
-                name="mlp",
-                params={
-                    "input_shape": (1, 8, 8),
-                    "output_dim": 4,
-                },
-            ),
-        },
-        assembly_config={
-            "encode": CompositeModelAssemblyStepConfig(
-                component="encoder",
-                inputs={"x": "expects.image"},
-                outputs="produces.embedding",
-            ),
-        },
-        losses_config={
-            "custom_objective": [
-                TrainingLossTermConfig(
-                    name="resolver_custom_objective",
-                )
-            ],
-        },
-    )
-
-    model_spec = resolver_arguments.resolve()
-
-    assert len(model_spec.loss_specs) == 1
-    assert model_spec.loss_specs[0].context_inputs == {
-        "batch": "batch",
-        "model_output": "model_output",
-    }
-    assert model_spec.loss_specs[0].inputs_from_model_inputs == {}
-    assert model_spec.loss_specs[0].inputs_from_model_outputs == {}
-
-
-def test_rejects_composite_wiring_for_custom_objective(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    custom_objective_registry = LossRegistry(
-        "resolver test custom objective loss",
-        canonical_runtime_input_names=(
-            "batch",
-            "model_output",
-        ),
-        required_component_base=BaseCustomObjectiveLoss,
-        explicit_composite_runtime_inputs_supported=False,
-    )
-    custom_objective_registry.register(
-        "resolver_custom_objective",
-        LossComponent(ResolverCustomObjectiveLoss),
-    )
-    monkeypatch.setitem(
-        LOSS_REGISTRIES_BY_ROLE,
-        "custom_objective",
-        custom_objective_registry,
-    )
-
-    resolver_arguments = CompositeResolverArguments(
-        declarations_config=CompositeModelDeclarationsConfig(
-            expects={"image": "sample_image"},
-            produces={"embedding": "embedding_vector"},
-        ),
-        components_config={
-            "encoder": CompositeModelComponentConfig(
-                kind="encoder",
-                name="mlp",
-                params={
-                    "input_shape": (1, 8, 8),
-                    "output_dim": 4,
-                },
-            ),
-        },
-        assembly_config={
-            "encode": CompositeModelAssemblyStepConfig(
-                component="encoder",
-                inputs={"x": "expects.image"},
-                outputs="produces.embedding",
-            ),
-        },
-        losses_config={
-            "custom_objective": [
-                TrainingLossTermConfig(
-                    name="resolver_custom_objective",
-                    composite_wiring={
-                        "batch": "expects.image",
-                    },
-                ),
-            ],
-        },
-    )
-
-    with pytest.raises(
-        ValueError,
-        match="must not be configured for a custom objective",
-    ):
-        resolver_arguments.resolve()
 
 def test_rejects_mapping_outputs_for_single_tensor_result() -> None:
     resolver_arguments = _minimal_autoencoder_arguments()
@@ -855,25 +557,6 @@ def test_rejects_missing_and_unexpected_component_input_keys() -> None:
         resolver_arguments.resolve()
 
 
-def test_rejects_missing_and_unexpected_loss_input_keys() -> None:
-    resolver_arguments = _minimal_autoencoder_arguments()
-    resolver_arguments.losses_config["reconstruction"][0] = (
-        TrainingLossTermConfig(
-            name="mse",
-            composite_wiring={
-                "reconstruction": "produces.reconstruction",
-                "source": "expects.image",
-            },
-        )
-    )
-
-    with pytest.raises(
-        ValueError,
-        match=r"missing keys \['target'\]; unexpected keys \['source'\]",
-    ):
-        resolver_arguments.resolve()
-
-
 def test_rejects_invalid_component_constructor_parameters() -> None:
     resolver_arguments = _minimal_autoencoder_arguments()
     resolver_arguments.components_config["encoder"] = (
@@ -893,29 +576,6 @@ def test_rejects_invalid_component_constructor_parameters() -> None:
             "Invalid constructor parameters at "
             "`composite_model_components.encoder.params`"
         ),
-    ):
-        resolver_arguments.resolve()
-
-
-def test_rejects_invalid_loss_constructor_parameters() -> None:
-    resolver_arguments = _minimal_autoencoder_arguments()
-    resolver_arguments.losses_config["reconstruction"][0] = (
-        TrainingLossTermConfig(
-            name="mse",
-            params={"unknown_parameter": True},
-            composite_wiring={
-                "reconstruction": "produces.reconstruction",
-                "target": "expects.image",
-            },
-        )
-    )
-
-    with pytest.raises(
-        ValueError,
-            match=(
-                    "Invalid constructor parameters at "
-                    r"`losses\.reconstruction\[0\]\.params`"
-            ),
     ):
         resolver_arguments.resolve()
 
@@ -981,7 +641,6 @@ def test_resolves_plain_nn_module_head_with_explicit_runtime_contract(
                 outputs="produces.fused",
             ),
         },
-        losses_config={},
     )
 
     model_spec = resolver_arguments.resolve()

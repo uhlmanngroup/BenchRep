@@ -28,6 +28,8 @@ from benchrep.assembly.registries.core import MODELS
 from benchrep.assembly.resolvers.loss_resolver import (
     LossSpec,
     resolve_canonical_loss_configs,
+    resolve_composite_loss_configs,
+
 )
 from benchrep.assembly.resolvers.composite_model_resolver import (
     CompositeModelSpec,
@@ -311,9 +313,17 @@ def resolve_prediction_config(
         assert training_config.losses is not None
 
         if composite_model_spec is not None:
-            # Composite resolution has already resolved and validated its losses,
-            # including declaration-aware wiring.
-            loss_specs = composite_model_spec.loss_specs
+            loss_specs = resolve_composite_loss_configs(
+                training_config.losses,
+                model_input_roles_by_name=(
+                    composite_model_spec.declarations
+                    .model_input_roles_by_name
+                ),
+                model_output_roles_by_name=(
+                    composite_model_spec.declarations
+                    .model_output_roles_by_name
+                ),
+            )
 
         else:
             loss_specs = resolve_canonical_loss_configs(
@@ -1006,7 +1016,6 @@ def _resolve_prediction_composite_model_spec(
     assert training_config.composite_model_declarations is not None
     assert training_config.composite_model_components is not None
     assert training_config.composite_model_assembly is not None
-    assert training_config.losses is not None
 
     effective_assembly_config = training_config.composite_model_assembly
 
@@ -1022,7 +1031,6 @@ def _resolve_prediction_composite_model_spec(
         declarations_config=training_config.composite_model_declarations,
         components_config=training_config.composite_model_components,
         assembly_config=effective_assembly_config,
-        losses_config=training_config.losses,
     )
 
 

@@ -512,7 +512,8 @@ def _train(
         try:
             composite_model_spec_graph_path = (
                 export_composite_model_spec_graph(
-                    run_spec.composite_model_spec,
+                    model_spec=run_spec.composite_model_spec,
+                    loss_specs=run_spec.loss_specs,
                     output_path=(
                             run_context.training_architecture_dir
                             / "composite_model_spec_graph.svg"
