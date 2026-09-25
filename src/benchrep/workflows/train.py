@@ -356,11 +356,7 @@ def _train(
     )
 
     if not model_is_external:
-        model = build_model(
-            config=resolved_training_config,
-            loss_specs=run_spec.loss_specs,
-            composite_model_spec=run_spec.composite_model_spec,
-        )
+        model = build_model(run_spec=run_spec)
     else:
         run_log.info(
             "External model was provided; model/encoder/decoder/losses/optimizer "

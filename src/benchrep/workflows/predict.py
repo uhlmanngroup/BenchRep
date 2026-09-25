@@ -459,14 +459,7 @@ def _predict(
         assert run_spec.training_config.model is not None
         assert run_spec.training_config.optimizer is not None
 
-        model = build_model(
-            config=run_spec.training_config,
-            loss_specs=run_spec.loss_specs,
-            composite_model_spec=run_spec.composite_model_spec,
-            prediction_reconstruction_latent_source=(
-                run_spec.canonical_vae_reconstruction_latent_source
-            ),
-        )
+        model = build_model(run_spec=run_spec)
     else:
         run_log.info(
             "External model was provided; resolved model architecture, losses, "

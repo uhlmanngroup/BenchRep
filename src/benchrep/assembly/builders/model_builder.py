@@ -30,47 +30,33 @@ from benchrep.assembly.registries.core import (
     OPTIMIZERS,
     ARCHITECTURE_REGISTRIES_BY_KIND,
 )
+from benchrep.assembly.resolvers import (
+    TrainingRunSpec,
+    PredictionRunSpec,
+)
 from benchrep.assembly.resolvers.composite_model_resolver import CompositeModelSpec
 from benchrep.assembly.resolvers.loss_resolver import LossSpec
 from benchrep.interfaces.model_families import SupportedModel
 
 
 def build_model(
-    config: TrainingConfig,
-    *,
-    loss_specs: tuple[LossSpec, ...],
-    composite_model_spec: CompositeModelSpec | None = None,
-    prediction_reconstruction_latent_source: (
-        Literal["mean", "sample"] | None
-    ) = None,
+    run_spec: TrainingRunSpec | PredictionRunSpec,
 ) -> SupportedModel:
-    """Build a config-built BenchRep model.
+    """Build a config-built BenchRep model from a resolved run specification.
 
-    This public model-builder entry point reads the model name from ``config``
-    and dispatches to the matching model-specific builder.
+    This public model-builder entry point reads the resolved training
+    configuration and model-building specifications from ``run_spec`` and
+    dispatches to the matching model-specific builder.
 
-    Each model-specific builder is responsible for requiring only the config
-    sections that its model type actually needs. For example, an autoencoder
-    requires an encoder, decoder, compatible loss configuration, and optimizer,
-    while a future contrastive model may require an encoder, projection head,
-    contrastive loss, and optimizer, but no decoder.
+    Each model-specific builder is responsible for requiring only the
+    configuration sections and resolved specifications that its model type
+    actually needs.
 
     Parameters
     ----------
-    config:
-        Validated BenchRep config object.
-    loss_specs:
-        Resolved loss specifications used to build the configured model's
-        loss terms. Composite loss specifications additionally contain resolved
-        runtime wiring.
-    composite_model_spec:
-        Resolved Composite model specification. Required when building a
-        CompositeModel and unused by canonical models.
-    prediction_reconstruction_latent_source:
-        VAE-only selection of the latent representation decoded during
-        prediction. ``"mean"`` uses the posterior mean and ``"sample"`` uses
-        the sampled latent. ``None`` resolves to ``"mean"`` for canonical VAEs
-        and is required for all other model types.
+    run_spec:
+        Resolved training or prediction run specification containing the
+        training configuration and resolved model-building specifications.
 
     Returns
     -------
@@ -78,6 +64,16 @@ def build_model(
         Instantiated BenchRep model.
     """
     run_log = get_run_logger()
+
+    config = run_spec.training_config
+    loss_specs = run_spec.loss_specs
+    composite_model_spec = run_spec.composite_model_spec
+
+    prediction_reconstruction_latent_source = (
+        run_spec.canonical_vae_reconstruction_latent_source
+        if run_spec.stage == "prediction"
+        else None
+    )
 
     if config.model is None:
         raise ValueError("Model config section is required.")
@@ -136,9 +132,8 @@ def build_model(
                 "VAE requires `model.params.latent_dim` to be a positive integer."
             )
 
-
         if prediction_reconstruction_latent_source is None:
-            prediction_reconstruction_latent_source: Literal["mean", "sample"] = "mean"
+            prediction_reconstruction_latent_source = "mean"
 
         model = build_vae(
             encoder=config.encoder,
