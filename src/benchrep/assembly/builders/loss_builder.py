@@ -68,12 +68,12 @@ def _log_built_losses(
     run_log = get_run_logger()
 
     descriptions = [
-        f"{loss_role}=[{', '.join(entries)}]"
+        f"    {loss_role}: {', '.join(entries)}"
         for loss_role, entries in log_entries_by_role.items()
         if entries
     ]
 
     run_log.info(
-        "Built losses: %s",
-        "; ".join(descriptions),
+        "Built losses:\n%s",
+        "\n".join(descriptions),
     )
