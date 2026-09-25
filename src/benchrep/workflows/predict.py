@@ -15,7 +15,7 @@ from benchrep.assembly.config import (
 from benchrep.assembly.builders import (
     build_dataset,
     build_datamodule,
-    build_transform_pipeline,
+    build_transform_pipeline_sequence,
     build_model,
     build_trainer,
     build_runtime_component,
@@ -25,8 +25,10 @@ from benchrep.interfaces.model_families import (
     SupportedModel,
     SupportedModelBaseClass,
     ModelFamilySpec,
+    CanonicalModelFamilySpec,
     AUTOENCODER_FAMILY,
     VAE_FAMILY,
+    COMPOSITE_FAMILY,
 )
 from benchrep.assembly.resolvers import resolve_prediction_config, PredictionRunSpec
 from benchrep.assembly.resolvers.utils import (
@@ -43,9 +45,15 @@ from benchrep.records import (
     get_runtime_environment_filename,
     collect_prediction_environment_context,
     write_runtime_environment,
+    export_composite_model_spec_graph,
+    ModelGraphDependencyError,
 )
 from benchrep.records.utils import now_isoformat
-from benchrep.records.prediction_exports import PredictionExportPaths
+from benchrep.records.prediction_exports import (
+    PredictionAnnDataExportResult,
+    PredictionExportResult,
+    PredictionReconstructionsExportResult,
+)
 from benchrep.runtime import RunContext
 from benchrep.runtime.predict_run_validation import (
     validate_predict_contract_compatibility,
@@ -76,7 +84,8 @@ class PredictionWorkflowResult:
     model: SupportedModel
     trainer: L.Trainer
     predictions: list[Any]
-    export_paths: Any
+    export_result: PredictionExportResult
+    composite_model_spec_graph_path: Path | None
     status_report: PredictionStatusReport
     manifest_path: Path
 
@@ -98,6 +107,7 @@ def predict_ae(
                 | None
         ) = None,
         compatibility_policy: CompatibilityPolicy = "error",
+        capture_stdout: bool = False,
 ) -> PredictionWorkflowResult:
     return _predict(
         model_family=AUTOENCODER_FAMILY,
@@ -108,6 +118,7 @@ def predict_ae(
         model=model,
         datamodule=datamodule,
         compatibility_policy=compatibility_policy,
+        capture_stdout=capture_stdout,
     )
 
 
@@ -127,6 +138,7 @@ def predict_vae(
                 | None
         ) = None,
         compatibility_policy: CompatibilityPolicy = "error",
+        capture_stdout: bool = False,
 ) -> PredictionWorkflowResult:
     return _predict(
         model_family=VAE_FAMILY,
@@ -137,6 +149,32 @@ def predict_vae(
         model=model,
         datamodule=datamodule,
         compatibility_policy=compatibility_policy,
+        capture_stdout=capture_stdout,
+    )
+
+
+def predict_composite(
+    config_path: Path | str | None = None,
+    full_config_object: PredictionConfig | None = None,
+    config_components: (
+        Mapping[str, SupportedPredictionConfigComponent] | None
+    ) = None,
+    training_manifest_path: Path | str | None = None,
+    datamodule: (
+        L.LightningDataModule
+        | type[L.LightningDataModule]
+        | None
+    ) = None,
+    capture_stdout: bool = False,
+) -> PredictionWorkflowResult:
+    return _predict(
+        model_family=COMPOSITE_FAMILY,
+        config_path=config_path,
+        full_config_object=full_config_object,
+        config_components=config_components,
+        training_manifest_path=training_manifest_path,
+        datamodule=datamodule,
+        capture_stdout=capture_stdout,
     )
 
 
@@ -157,14 +195,26 @@ def _predict(
                 | None
         ) = None,
         compatibility_policy: CompatibilityPolicy = "error",
+        capture_stdout: bool = False,
 ) -> PredictionWorkflowResult:
     register_builtins()
 
-    model_source = resolve_component_source(
-        model,
-        expected_base_class=model_family.model_base_class,
-        component_name="model",
-    )
+    if isinstance(model_family, CanonicalModelFamilySpec):
+        model_source = resolve_component_source(
+            model,
+            expected_base_class=model_family.model_base_class,
+            component_name="model",
+        )
+    else:
+        if model is not None:
+            raise TypeError(
+                "Whole-model overrides are supported only for the canonical "
+                "`autoencoder` and `vae` model families; they are not supported "
+                "for `composite`."
+            )
+
+        model_source = "config"
+
     datamodule_source = resolve_component_source(
         datamodule,
         expected_base_class=L.LightningDataModule,
@@ -243,18 +293,43 @@ def _predict(
         run_spec.checkpoint_path,
     )
     run_log.info(
-        "Resolved prediction exports: mode=%s, embeddings_enabled=%s, "
-        "embedding_keys=%s, primary_key=%s, reconstructions_enabled=%s, "
-        "n_examples=%s, selection=%s, reconstruction_seed=%s",
-        run_spec.export_spec.mode,
-        run_spec.export_spec.embeddings.enabled,
-        run_spec.export_spec.embeddings.keys,
-        run_spec.export_spec.embeddings.primary_key,
+        "Resolved prediction exports: "
+        "anndata=(enabled=%s, mode=%s, keys=%s, primary_key=%s), "
+        "reconstructions=(enabled=%s, mode=%s, pairs=%s, "
+        "n_examples=%s, selection=%s, seed=%s)",
+        run_spec.export_spec.anndata.enabled,
+        run_spec.export_spec.anndata.mode,
+        run_spec.export_spec.anndata.keys,
+        run_spec.export_spec.anndata.primary_key,
         run_spec.export_spec.reconstructions.enabled,
+        run_spec.export_spec.reconstructions.mode,
+        [
+            {
+                "id": pair.id,
+                "input": pair.input,
+                "reconstruction": pair.reconstruction,
+            }
+            for pair in run_spec.export_spec.reconstructions.pairs
+        ],
         run_spec.export_spec.reconstructions.n_examples,
         run_spec.export_spec.reconstructions.selection,
         run_spec.export_spec.reconstructions.seed,
     )
+
+    composite_assembly_input_overrides = (
+        resolved_prediction_config.inference
+        .composite_model_assembly_input_overrides
+    )
+
+    if composite_assembly_input_overrides is not None:
+        run_log.info(
+            "Applied prediction-time Composite assembly input overrides: %s",
+            {
+                step_id: dict(step_override.inputs)
+                for step_id, step_override
+                in composite_assembly_input_overrides.items()
+            },
+        )
 
     if model_is_external and run_spec.model_family == VAE_FAMILY:
         warning = (
@@ -269,14 +344,14 @@ def _predict(
 
     elif run_spec.model_family == VAE_FAMILY:
         configured_source = (
-            resolved_prediction_config.inference.reconstruction_latent_source
+            resolved_prediction_config.inference.canonical_vae_reconstruction_latent_source
         )
-        effective_source = run_spec.reconstruction_latent_source
+        effective_source = run_spec.canonical_vae_reconstruction_latent_source
         assert effective_source is not None
 
         if configured_source is None:
             run_log.info(
-                "`inference.reconstruction_latent_source` was not configured; "
+                "`inference.canonical_vae_reconstruction_latent_source` was not configured; "
                 "defaulting to the posterior mean (`z_mu`)."
             )
         elif effective_source == "mean":
@@ -289,22 +364,28 @@ def _predict(
                 "VAE reconstructions will be decoded from the sampled latent "
                 "(`z_sample`)."
             )
-    if run_spec.transform_source == "default_identity":
-        warning = (
-            "Training used an external datamodule, so validation-targeted "
-            "transforms could not be inherited. No prediction transforms were "
-            "configured; using an identity transform pipeline."
+    if run_spec.transform_pipeline_source == "default_identity":
+        run_log.info(
+            "No prediction transform pipelines were configured or inherited; "
+            "samples will pass through unchanged."
         )
-        inference_warnings.append(warning)
-        run_log.warning(warning)
 
-    elif run_spec.transform_source != "external_datamodule":
-        assert run_spec.transform_configs is not None
+    elif run_spec.transform_pipeline_source != "external_datamodule":
+        assert run_spec.transform_pipeline_configs is not None
+
+        pipeline_summary = [
+            {
+                "input": pipeline.input,
+                "output": pipeline.output,
+                "steps": [step.name for step in pipeline.steps],
+            }
+            for pipeline in run_spec.transform_pipeline_configs
+        ]
 
         run_log.info(
-            "Resolved prediction transforms: source=%s, transforms=%s",
-            run_spec.transform_source,
-            [transform.name for transform in run_spec.transform_configs],
+            "Resolved prediction transform pipelines: source=%s, pipelines=%s",
+            run_spec.transform_pipeline_source,
+            pipeline_summary,
         )
 
     # Bookkeeping --- config
@@ -344,10 +425,10 @@ def _predict(
 
         assert dataset_config is not None
         assert datamodule_config is not None
-        assert run_spec.transform_configs is not None
+        assert run_spec.transform_pipeline_configs is not None
 
-        prediction_pipeline = build_transform_pipeline(
-            run_spec.transform_configs,
+        prediction_pipelines = build_transform_pipeline_sequence(
+            run_spec.transform_pipeline_configs,
         )
 
         dataset = build_dataset(
@@ -359,7 +440,7 @@ def _predict(
             datamodule_config=datamodule_config,
             seed=run_spec.seed,
             stage=run_spec.stage,
-            prediction_pipeline=prediction_pipeline,
+            prediction_pipelines=prediction_pipelines,
         )
     else:
         run_log.info(
@@ -376,19 +457,58 @@ def _predict(
 
     if not model_is_external:
         assert run_spec.training_config.model is not None
-        assert run_spec.training_config.encoder is not None
-        assert run_spec.training_config.losses is not None
         assert run_spec.training_config.optimizer is not None
 
-        model = build_model(
-            config=run_spec.training_config,
-            prediction_reconstruction_latent_source=run_spec.reconstruction_latent_source,
-        )
+        model = build_model(run_spec=run_spec)
     else:
         run_log.info(
-            "External model was provided; resolved model/encoder/decoder/losses/optimizer "
-            "config sections will be ignored."
+            "External model was provided; resolved model architecture, losses, "
+            "and optimizer configuration will be ignored."
         )
+
+    # Automatically export the resolved and potentially edited Composite model specification graph.
+    composite_model_spec_graph_path = None
+
+    if run_spec.composite_model_spec is not None:
+        try:
+            composite_model_spec_graph_path = (
+                export_composite_model_spec_graph(
+                    model_spec=run_spec.composite_model_spec,
+                    loss_specs=run_spec.loss_specs,
+                    output_path=(
+                        run_context.prediction_architecture_dir
+                        / "composite_model_spec_graph.svg"
+                    ),
+                    graph_name=(
+                        "Prediction-time Composite model specification"
+                    ),
+                )
+            )
+
+            run_log.info(
+                "Automatically exported prediction-time Composite model "
+                "specification graph to: '%s'",
+                composite_model_spec_graph_path,
+            )
+
+        except ModelGraphDependencyError as exc:
+            run_log.info(
+                "BenchRep automatically exports a Composite model "
+                "specification graph for Composite prediction runs. This "
+                "optional export was skipped because a required model-graph "
+                "dependency is unavailable: %s",
+                exc,
+            )
+
+        except Exception as exc:
+            warning = (
+                "BenchRep automatically exports a Composite model "
+                "specification graph for Composite prediction runs, but the "
+                "export failed and was skipped: "
+                f"{type(exc).__name__}: {exc}"
+            )
+            inference_warnings.append(warning)
+            run_log.warning(warning, exc_info=True)
 
     # Preflight check and source input validation
     assert model is not None
@@ -441,7 +561,7 @@ def _predict(
     run_log.info("Starting prediction...")
 
     try:
-        with capture_console_streams(log_out_dir=run_context.log_dir, capture_stdout=False):
+        with capture_console_streams(log_out_dir=run_context.log_dir, capture_stdout=capture_stdout):
             raw_predictions = trainer.predict(
                 model,
                 datamodule=datamodule,
@@ -475,7 +595,7 @@ def _predict(
     try:
         validate_prediction_outputs(
             predictions=predictions,
-            model_family=run_spec.model_family,
+            run_spec=run_spec,
         )
 
     except Exception as exc:
@@ -498,34 +618,48 @@ def _predict(
             ),
         )
 
-        export_paths = PredictionExportPaths()
         skipped_issue = (
             "Skipped because prediction output validation failed."
         )
 
-        if run_spec.export_spec.embeddings.enabled:
-            embedding_outcome = PredictionOutcome(
-                name="embeddings",
-                status="skipped",
-                issues=(skipped_issue,),
-            )
-        else:
-            embedding_outcome = PredictionOutcome(
-                name="embeddings",
-                status="disabled",
-            )
+        anndata_outcome = PredictionOutcome(
+            name="anndata",
+            status=(
+                "skipped"
+                if run_spec.export_spec.anndata.enabled
+                else "disabled"
+            ),
+            issues=(
+                (skipped_issue,)
+                if run_spec.export_spec.anndata.enabled
+                else ()
+            ),
+        )
 
-        if run_spec.export_spec.reconstructions.enabled:
-            reconstruction_outcome = PredictionOutcome(
-                name="reconstructions",
-                status="skipped",
-                issues=(skipped_issue,),
-            )
-        else:
-            reconstruction_outcome = PredictionOutcome(
-                name="reconstructions",
-                status="disabled",
-            )
+        reconstruction_outcome = PredictionOutcome(
+            name="reconstructions",
+            status=(
+                "skipped"
+                if run_spec.export_spec.reconstructions.enabled
+                else "disabled"
+            ),
+            issues=(
+                (skipped_issue,)
+                if run_spec.export_spec.reconstructions.enabled
+                else ()
+            ),
+        )
+
+        export_result = PredictionExportResult(
+            anndata=PredictionAnnDataExportResult(
+                path=None,
+                outcome=anndata_outcome,
+            ),
+            reconstructions=PredictionReconstructionsExportResult(
+                pairs=(),
+                outcome=reconstruction_outcome,
+            ),
+        )
 
     else:
         inference_status: PredictionOutcomeStatus = (
@@ -543,6 +677,7 @@ def _predict(
         n_predicted_observations = (
             infer_prediction_observation_count(
                 predictions=predictions,
+                run_spec=run_spec,
             )
         )
 
@@ -558,38 +693,48 @@ def _predict(
         export_result = export_prediction_outputs(
             predictions=predictions,
             export_spec=run_spec.export_spec,
-            embedding_dir=run_context.prediction_embeddings_dir,
-            reconstruction_dir=run_context.prediction_reconstructions_dir,
+            anndata_dir=run_context.prediction_anndata_dir,
+            reconstruction_dir=(
+                run_context.prediction_reconstructions_dir
+            ),
         )
 
-        export_paths = export_result.paths
-        embedding_outcome, reconstruction_outcome = (
+        anndata_outcome, reconstruction_outcome = (
             export_result.outcomes
         )
 
-        if export_paths.embedding_export is not None:
+        if export_result.anndata.path is not None:
             run_log.info(
-                "Exported embedding artifact to: '%s'",
-                export_paths.embedding_export.embeddings_h5ad_path,
+                "Exported AnnData artifact to: '%s'",
+                export_result.anndata.path,
             )
 
-        if export_paths.reconstruction_paths is not None:
+        for pair_result in export_result.reconstructions.pairs:
+            if pair_result.outcome.status not in {
+                "completed",
+                "completed_with_warnings",
+            }:
+                continue
+
+            paths = pair_result.paths
+
             run_log.info(
-                "Exported reconstruction artifacts: input=%s, "
+                "Exported reconstruction pair %r: input=%s, "
                 "reconstruction=%s, obs=%s, metadata=%s, "
                 "n_examples_exported=%s",
-                export_paths.reconstruction_paths.input_path,
-                export_paths.reconstruction_paths.reconstruction_path,
-                export_paths.reconstruction_paths.obs_path,
-                export_paths.reconstruction_paths.metadata_path,
-                export_paths.reconstruction_paths.n_examples_exported,
+                pair_result.pair.id,
+                paths.input_path,
+                paths.reconstruction_path,
+                paths.obs_path,
+                paths.metadata_path,
+                paths.n_examples_exported,
             )
 
         run_log.info("Finished exporting prediction outputs")
 
     status_report = build_prediction_status_report(
         inference=inference_outcome,
-        embeddings_export=embedding_outcome,
+        anndata_export=anndata_outcome,
         reconstructions_export=reconstruction_outcome,
     )
 
@@ -602,7 +747,10 @@ def _predict(
         output_path=manifest_path,
         run_spec=run_spec,
         run_context=run_context,
-        export_paths=export_paths,
+        composite_model_spec_graph_path=(
+            composite_model_spec_graph_path
+        ),
+        export_result=export_result,
         created_at=created_at,
         completed_at=completed_at,
         status_report=status_report,
@@ -610,6 +758,7 @@ def _predict(
         datamodule_class_name=type(datamodule).__name__,
         n_batches=n_prediction_batches,
         n_observations=n_predicted_observations,
+        capture_stdout=capture_stdout,
     )
 
     run_log.info("Exported prediction manifest to: '%s'", manifest_path)
@@ -626,10 +775,13 @@ def _predict(
             outcome
             for outcome in (
                 status_report.inference,
-                status_report.embeddings_export,
+                status_report.anndata_export,
                 status_report.reconstructions_export,
             )
-            if outcome.status == "failed"
+            if outcome.status in {
+                "failed",
+                "partially_completed",
+            }
         ]
 
         failure_summary = "; ".join(
@@ -650,8 +802,11 @@ def _predict(
         datamodule=datamodule,
         model=model,
         trainer=trainer,
+        composite_model_spec_graph_path=(
+            composite_model_spec_graph_path
+        ),
         predictions=predictions,
-        export_paths=export_paths,
+        export_result=export_result,
         status_report=status_report,
         manifest_path=manifest_path,
     )

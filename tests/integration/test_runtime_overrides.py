@@ -768,6 +768,7 @@ def _assert_successful_train_predict(
 ) -> None:
     assert training_result.manifest_path.is_file()
     assert prediction_result.manifest_path.is_file()
+
     assert training_result.run_spec.model_source == expected_model_source
     assert (
         training_result.run_spec.datamodule_source
@@ -778,6 +779,7 @@ def _assert_successful_train_predict(
         prediction_result.run_spec.datamodule_source
         == expected_datamodule_source
     )
+
     assert training_result.checkpoint_callback.best_model_path
     assert Path(
         training_result.checkpoint_callback.best_model_path
@@ -785,27 +787,29 @@ def _assert_successful_train_predict(
 
     assert len(prediction_result.predictions) == 4
 
+    expected_reconstructability = (
+        expected_model_source == "config"
+        and expected_datamodule_source == "config"
+    )
+
     with training_result.manifest_path.open(
         encoding="utf-8",
     ) as handle:
         training_manifest = yaml.safe_load(handle)
 
+    training_construction = training_manifest["construction"]
+
     assert training_manifest["status"] == "completed"
     assert (
-        training_manifest["provenance"]["model"]["source"]
+        training_construction["model"]["source"]
         == expected_model_source
     )
     assert (
-        training_manifest["provenance"]["datamodule"]["source"]
+        training_construction["datamodule"]["source"]
         == expected_datamodule_source
     )
-
-    expected_reconstructability = (
-        expected_model_source == "config"
-        and expected_datamodule_source == "config"
-    )
     assert (
-        training_manifest["provenance"]["config"][
+        training_construction["config"][
             "run_reconstructable_from_resolved_config"
         ]
         is expected_reconstructability
@@ -816,24 +820,22 @@ def _assert_successful_train_predict(
     ) as handle:
         prediction_manifest = yaml.safe_load(handle)
 
-    prediction_provenance = prediction_manifest["provenance"][
-        "prediction"
-    ]
+    prediction_construction = prediction_manifest["construction"]
 
     assert prediction_manifest["status"] == "completed"
     assert (
-        prediction_provenance["model"]["source"]
+        prediction_construction["model"]["source"]
         == expected_model_source
     )
     assert (
-        prediction_provenance["datamodule"]["source"]
+        prediction_construction["datamodule"]["source"]
         == expected_datamodule_source
     )
     assert (
-            prediction_provenance["config"][
-                "run_reconstructable_from_resolved_config"
-            ]
-            is expected_reconstructability
+        prediction_construction["config"][
+            "run_reconstructable_from_resolved_config"
+        ]
+        is expected_reconstructability
     )
 
 

@@ -16,12 +16,13 @@ dataset:
     split: train
     download: true
 
-transforms:
-  - name: to_dtype
-    apply_to: [ training, validation ]
-    params:
-      dtype: float32
-      scale: true
+transform_pipelines:
+  - steps:
+      - name: to_dtype
+        apply_to: [training, validation]
+        params:
+          dtype: float32
+          scale: true
 
 datamodule:
   batch_size: 48
@@ -87,17 +88,17 @@ decoder:
 
 losses:
   reconstruction:
-    mse:
+    - name: mse
       weight: 0.8
       params:
         reduction: mean
-    mae:
+    - name: mae
       weight: 0.2
       params:
         reduction: mean
 
   regularization:
-    gaussian_kld:
+    - name: gaussian_kld
       weight: 0.000001
       params:
         reduction: mean

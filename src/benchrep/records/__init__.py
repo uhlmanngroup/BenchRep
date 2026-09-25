@@ -9,7 +9,14 @@ from benchrep.records.manifests import (
     write_prediction_manifest,
     write_evaluation_manifest,
 )
-from benchrep.records.architecture import export_torchview_graph, infer_dummy_input_size
+from benchrep.records.architecture import (
+    export_torchview_graph,
+    infer_dummy_input_size,
+    prepare_composite_torchview_input_data,
+    ModelGraphDependencyError,
+    build_composite_model_spec_graph,
+    export_composite_model_spec_graph,
+)
 from benchrep.records.prediction_exports import export_prediction_outputs
 from benchrep.records.evaluation_exports import export_evaluation_outputs
 from benchrep.records.anndata_io import (
@@ -35,6 +42,10 @@ __all__ = [
     "write_evaluation_manifest",
     "export_torchview_graph",
     "infer_dummy_input_size",
+    "prepare_composite_torchview_input_data",
+    "ModelGraphDependencyError",
+    "build_composite_model_spec_graph",
+    "export_composite_model_spec_graph",
     "export_prediction_outputs",
     "export_evaluation_outputs",
     "read_h5ad",

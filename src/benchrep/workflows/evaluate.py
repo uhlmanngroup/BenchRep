@@ -59,12 +59,15 @@ class EvaluationWorkflowResult:
     status_report: EvaluationStatusReport
     manifest_path: Path
 
-
 def evaluate(
         config_path: Path | str | None = None,
         full_config_object: EvaluationConfig | None = None,
-        config_components: Mapping[str, SupportedEvaluationConfigComponent] | None = None,
+        config_components: Mapping[
+                               str,
+                               SupportedEvaluationConfigComponent,
+                           ] | None = None,
         prediction_manifest_path: Path | str | None = None,
+        capture_stdout: bool = False,
 ) -> EvaluationWorkflowResult:
     register_builtins()
 
@@ -117,12 +120,29 @@ def evaluate(
         config_composition_result.effective_source,
     )
     run_log.info("Evaluation outputs will be saved to: '%s'", run_context.output_dir)
-    if run_spec.input_spec.embeddings_path is None:
-        run_log.info("No embeddings path was resolved.")
+
+    anndata_spec = run_spec.input_spec.anndata
+
+    if anndata_spec is None:
+        run_log.info("No AnnData input was resolved.")
     else:
         run_log.info(
-            "Resolved embeddings path: '%s'",
-            run_spec.input_spec.embeddings_path,
+            "Resolved AnnData input: source=%s, path='%s'",
+            anndata_spec.source,
+            anndata_spec.path,
+        )
+
+    reconstruction_spec = run_spec.input_spec.reconstructions
+
+    if reconstruction_spec is None:
+        run_log.info("No reconstruction bundle was resolved.")
+    else:
+        run_log.info(
+            "Resolved reconstruction input: source=%s, pair_id=%s, "
+            "bundle_dir='%s'",
+            reconstruction_spec.source,
+            reconstruction_spec.pair_id,
+            reconstruction_spec.bundle_dir,
         )
 
     # Bookkeeping --- config
@@ -161,7 +181,7 @@ def evaluate(
     reconstruction_input = source_inputs.reconstruction_input
 
     if adata is None:
-        run_log.info("No embedding evaluation input was loaded.")
+        run_log.info("No AnnData evaluation input was loaded.")
     else:
         run_log.info(
             "Loaded AnnData with shape %s, obs columns=%s, obsm keys=%s",
@@ -183,7 +203,7 @@ def evaluate(
         )
 
     # Create and run AnnData evaluation pipeline
-    embedding_outcomes: tuple[EvaluationOutcome, ...] = ()
+    anndata_outcomes: tuple[EvaluationOutcome, ...] = ()
 
     if adata is not None:
         # Finalize automatic settings that depend on the loaded AnnData columns.
@@ -195,17 +215,17 @@ def evaluate(
             ),
         )
 
-        embeddings_pipeline = create_anndata_evaluation_pipeline(run_spec)
+        anndata_pipeline = create_anndata_evaluation_pipeline(run_spec)
 
         run_log.info("Starting AnnData evaluation pipeline...")
 
         with capture_console_streams(
                 log_out_dir=run_context.log_dir,
-                capture_stdout=False,
+                capture_stdout=capture_stdout,
         ):
-            adata = embeddings_pipeline.run(adata)
+            adata = anndata_pipeline.run(adata)
 
-        embedding_outcomes = embeddings_pipeline.outcomes
+        anndata_outcomes = anndata_pipeline.outcomes
 
         run_log.info("Finished AnnData evaluation pipeline.")
         run_log.info("Final obsm keys: %s", tuple(adata.obsm.keys()))
@@ -224,7 +244,7 @@ def evaluate(
 
         with capture_console_streams(
             log_out_dir=run_context.log_dir,
-            capture_stdout=False,
+            capture_stdout=capture_stdout,
         ):
             reconstruction_outputs = reconstruction_pipeline.run(
                 reconstruction_input
@@ -247,12 +267,12 @@ def evaluate(
 
     export_result = export_evaluation_outputs(
         adata=adata,
-        anndata_outcomes=embedding_outcomes,
+        anndata_outcomes=anndata_outcomes,
         reconstruction_input=reconstruction_input,
         reconstruction_outputs=reconstruction_outputs,
         step_spec=run_spec.step_spec,
-        embeddings_dir=run_context.evaluation_embeddings_dir,
-        embeddings_figures_dir=run_context.evaluation_embeddings_figures_dir,
+        anndata_dir=run_context.evaluation_anndata_dir,
+        anndata_figures_dir=run_context.evaluation_anndata_figures_dir,
         metrics_dir=run_context.evaluation_metrics_dir,
         reconstructions_dir=run_context.evaluation_reconstructions_dir,
         reconstruction_figures_dir=(
@@ -266,7 +286,7 @@ def evaluate(
     run_log.info("Finished evaluation artifact export.")
 
     status_report = build_evaluation_status_report(
-        embedding_outcomes=embedding_outcomes,
+        anndata_outcomes=anndata_outcomes,
         reconstruction_outcomes=reconstruction_outcomes,
         export_outcomes=export_result.outcomes,
     )
@@ -290,6 +310,7 @@ def evaluate(
         status_report=status_report,
         created_at=created_at,
         completed_at=completed_at,
+        capture_stdout=capture_stdout,
     )
 
     run_log.info("Exported evaluation manifest to: '%s'", manifest_path)
@@ -321,7 +342,7 @@ def _log_evaluation_status_report(
     """Log recorded evaluation issues."""
 
     sections = (
-        ("embeddings", status_report.embeddings),
+        ("anndata", status_report.anndata),
         ("reconstructions", status_report.reconstructions),
         ("exports", status_report.exports),
     )

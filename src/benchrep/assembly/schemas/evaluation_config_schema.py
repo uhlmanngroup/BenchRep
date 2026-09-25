@@ -24,6 +24,16 @@ PredictabilityTargetKey: TypeAlias = Annotated[
     StringConstraints(strip_whitespace=True, min_length=1),
 ]
 
+
+EvaluationReconstructionPairId: TypeAlias = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True,
+        min_length=1,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]*$",
+    ),
+]
+
 NSplits: TypeAlias = Annotated[int, Field(ge=2)]
 
 PositiveFloatOrList: TypeAlias = (
@@ -207,11 +217,12 @@ class EvaluationMetricGroupConfig(_EvaluationConfigBaseModel):
 # Source and run config
 # -------------------------
 class EvaluationSourceConfig(_EvaluationConfigBaseModel):
-    """Selects the embedding and reconstruction inputs for evaluation.
+    """Selects the AnnData and reconstruction inputs for evaluation.
 
-    Evaluation requires at least one usable embedding or reconstruction input.
-    Either artifact type may be supplied directly or inferred from a prediction
-    manifest, allowing embedding-only, reconstruction-only, or combined evaluation.
+    Evaluation requires at least one usable AnnData artifact or reconstruction
+    input. Either artifact type may be supplied directly or inferred from a
+    prediction manifest, allowing AnnData-only, reconstruction-only, or combined
+    evaluation.
 
     A directly configured artifact path takes precedence over the corresponding
     path recorded in the manifest. The manifest still provides upstream
@@ -248,32 +259,30 @@ class EvaluationSourceConfig(_EvaluationConfigBaseModel):
         },
     )
 
-    embeddings_path: Path | None = Field(
+    anndata_path: Path | None = Field(
         default=None,
         description=(
-            "Path to an AnnData `.h5ad` file. `adata.X` must be a non-empty, "
-            "two-dimensional, finite real numeric matrix with shape "
-            "`(n_observations, n_embedding_dimensions)`; dense and sparse matrices "
-            "are supported. Each row represents one sample and each column one "
-            "embedding dimension."
+            "Path to an AnnData `.h5ad` file containing the representation "
+            "and observations used by AnnData-based evaluation."
         ),
         json_schema_extra={
             "omit_behavior": (
-                "Infers the embeddings path from the prediction manifest when available; "
-                "otherwise embedding-dependent evaluation is unavailable."
+                "Infers the AnnData path from the prediction manifest when "
+                "available; otherwise AnnData-dependent evaluation is unavailable."
             ),
             "null_behavior": "Equivalent to omission.",
             "notes": [
                 "`adata.X` is the representation consumed by dimensionality "
-                "reduction, clustering, embedding metrics, and predictability probes.",
-                "`adata.obs` may provide per-sample annotations such as external "
-                "clustering labels, predictability targets, cross-validation groups, "
-                "or metadata columns used to color reduction plots. Required keys "
-                "depend on the enabled steps.",
-                "No BenchRep-specific `obs`, `obsm`, or `uns` entries are required. "
-                "Existing entries are preserved unless an enabled step explicitly "
-                "overwrites them.",
-                "A directly configured path overrides the embeddings path recorded "
+                "reduction, clustering, embedding metrics, and predictability "
+                "probes.",
+                "`adata.obs` may provide labels, predictability targets, "
+                "cross-validation groups, and plotting metadata.",
+                "`adata.obsm` entries are preserved but are not analyzed by "
+                "the evaluation workflow.",
+                "To evaluate another representation, export it as the prediction "
+                "primary key or provide an AnnData artifact with that "
+                "representation in `adata.X`.",
+                "A directly configured path overrides the AnnData path recorded "
                 "in the prediction manifest.",
             ],
         },
@@ -319,9 +328,36 @@ class EvaluationSourceConfig(_EvaluationConfigBaseModel):
         },
     )
 
+    reconstruction_pair_id: EvaluationReconstructionPairId | None = Field(
+        default=None,
+        description=(
+            "Identifier of the single reconstruction pair selected from the "
+            "prediction manifest for evaluation."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Automatically selects the pair when the prediction manifest "
+                "contains exactly one usable reconstruction pair. Multiple "
+                "usable pairs require an explicit identifier when reconstruction "
+                "analysis is requested."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "This field applies only when selecting a reconstruction bundle "
+                "from a prediction manifest.",
+                "A directly configured `reconstructions_path` already identifies "
+                "the bundle and cannot be combined with this field.",
+                "After resolution, the selected bundle is materialized into "
+                "`reconstructions_path` and this field is reset to null.",
+                "The selected pair identifier remains recorded in the evaluation "
+                "manifest.",
+            ],
+        },
+    )
+
     @field_validator(
         "prediction_manifest_path",
-        "embeddings_path",
+        "anndata_path",
         "reconstructions_path",
     )
     @classmethod
@@ -334,28 +370,47 @@ class EvaluationSourceConfig(_EvaluationConfigBaseModel):
     @field_validator("prediction_manifest_path")
     @classmethod
     def validate_prediction_manifest_extension(
-        cls,
-        value: Path | None,
+            cls,
+            value: Path | None,
     ) -> Path | None:
-        if value is not None and value.suffix.lower() not in {".yaml", ".yml"}:
+        if (
+                value is not None
+                and value.suffix.lower() not in {".yaml", ".yml"}
+        ):
             raise ValueError(
                 "source.prediction_manifest_path must point to a YAML file."
             )
 
         return value
 
-    @field_validator("embeddings_path")
+    @field_validator("anndata_path")
     @classmethod
-    def validate_embeddings_extension(
+    def validate_anndata_extension(
         cls,
         value: Path | None,
     ) -> Path | None:
         if value is not None and value.suffix.lower() != ".h5ad":
             raise ValueError(
-                "source.embeddings_path must point to an AnnData .h5ad file."
+                "source.anndata_path must point to an AnnData .h5ad file."
             )
 
         return value
+
+    @model_validator(mode="after")
+    def validate_reconstruction_source_selection(
+        self,
+    ) -> EvaluationSourceConfig:
+        if (
+            self.reconstructions_path is not None
+            and self.reconstruction_pair_id is not None
+        ):
+            raise ValueError(
+                "source.reconstruction_pair_id cannot be set together with "
+                "source.reconstructions_path. A pair identifier applies only "
+                "to reconstruction bundles selected from a prediction manifest."
+            )
+
+        return self
 
 
 class EvaluationRunConfig(_EvaluationConfigBaseModel):
@@ -488,7 +543,7 @@ class EvaluationPCAConfig(EvaluationStepConfig):
     """Configures PCA as an evaluation step.
 
     PCA operates directly on `adata.X`. It is enabled automatically when
-    embeddings are available and disabled when they are unavailable.
+    anndata are available and disabled when they are unavailable.
     """
 
     enabled: bool | None = Field(
@@ -496,7 +551,7 @@ class EvaluationPCAConfig(EvaluationStepConfig):
         description="Whether PCA is included in the evaluation pipeline.",
         json_schema_extra={
             "omit_behavior": (
-                "Enables PCA when embeddings are available; otherwise disables it."
+                "Enables PCA when anndata are available; otherwise disables it."
             ),
             "null_behavior": "Equivalent to omission.",
         },
@@ -670,9 +725,9 @@ class EvaluationUMAPParams(_EvaluationConfigBaseModel):
 class EvaluationUMAPConfig(EvaluationStepConfig):
     """Configures the optional Scanpy UMAP evaluation step.
 
-    UMAP requires embeddings and the optional Scanpy dependency. It is disabled
+    UMAP requires anndata and the optional Scanpy dependency. It is disabled
     by default and is skipped with a warning if explicitly enabled without
-    embeddings.
+    anndata.
     """
 
     enabled: bool | None = Field(
@@ -797,8 +852,8 @@ class EvaluationTSNEParams(BaseModel):
 class EvaluationTSNEConfig(EvaluationStepConfig):
     """Configures the optional Scanpy t-SNE evaluation step.
 
-    t-SNE requires embeddings. It is disabled by default and raises an error if
-    explicitly enabled without embeddings.
+    t-SNE requires anndata. It is disabled by default and raises an error if
+    explicitly enabled without anndata.
     """
 
     enabled: bool | None = Field(
@@ -947,7 +1002,7 @@ class EvaluationKMeansConfig(EvaluationStepConfig):
 
     KMeans clusters `adata.X` directly and does not consume reduction outputs.
     It is disabled by default and is skipped with a warning if explicitly
-    enabled without embeddings.
+    enabled without anndata.
     """
 
     enabled: bool | None = Field(
@@ -1151,9 +1206,9 @@ class EvaluationLeidenConfig(EvaluationStepConfig):
     """Configures the optional Scanpy Leiden evaluation step.
 
     Leiden constructs its own neighbor graph and does not cluster UMAP
-    coordinates. It requires embeddings and the optional Scanpy, igraph, and
+    coordinates. It requires anndata and the optional Scanpy, igraph, and
     Leiden dependencies. The step is disabled by default and is skipped with a
-    warning if explicitly enabled without embeddings.
+    warning if explicitly enabled without anndata.
     """
 
     enabled: bool | None = Field(
@@ -1305,7 +1360,7 @@ class EvaluationHDBSCANConfig(EvaluationStepConfig):
     no non-noise clusters or only one non-noise cluster completes with warnings.
 
     The step is disabled by default and is skipped with a warning if explicitly
-    enabled without embeddings.
+    enabled without anndata.
     """
 
     enabled: bool | None = Field(
@@ -1686,12 +1741,12 @@ class EvaluationEmbeddingMetricConfig(EvaluationMetricGroupConfig):
         description="Whether embedding metrics are computed.",
         json_schema_extra={
             "omit_behavior": (
-                "Enables the group when embeddings are available; otherwise "
+                "Enables the group when anndata are available; otherwise "
                 "disables it."
             ),
             "null_behavior": "Equivalent to omission.",
             "notes": [
-                "With `enabled=True`, unavailable embeddings produce an error "
+                "With `enabled=True`, unavailable anndata produce an error "
                 "instead of disabling the group.",
             ],
         },
@@ -2673,7 +2728,7 @@ class EvaluationPredictabilityConfig(EvaluationStepConfig):
             "omit_behavior": "Disables predictability evaluation.",
             "null_behavior": "Equivalent to omission.",
             "notes": [
-                "With `enabled=True`, unavailable embeddings or configured "
+                "With `enabled=True`, unavailable anndata or configured "
                 "target data produce an error instead of disabling the step.",
             ],
         },
@@ -2971,7 +3026,7 @@ class EvaluationPlotsConfig(EvaluationStepConfig):
 class EvaluationConfig(_EvaluationConfigBaseModel):
     """Complete configuration for a BenchRep evaluation workflow.
 
-    Evaluation may consume embeddings, reconstructions, or both. The configured
+    Evaluation may consume anndata, reconstructions, or both. The configured
     pipeline can perform dimensionality reduction, clustering, metric evaluation,
     predictability probing, and artifact or figure export.
 
@@ -3076,14 +3131,14 @@ class EvaluationConfig(_EvaluationConfigBaseModel):
         )
 
         if (
-            self.source.embeddings_path is None
+            self.source.anndata_path is None
             and self.source.reconstructions_path is None
             and self.source.prediction_manifest_path is None
             and not prediction_manifest_path_overridden
         ):
             raise ValueError(
                 "At least one evaluation source must be provided through "
-                "source.embeddings_path, source.reconstructions_path, "
+                "source.anndata_path, source.reconstructions_path, "
                 "source.prediction_manifest_path, or the "
                 "prediction_manifest_path workflow argument."
             )

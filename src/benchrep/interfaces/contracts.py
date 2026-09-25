@@ -97,3 +97,12 @@ class VAEPredictionOutput:
     sample_id: PredictionObsValue | None = None
     label: PredictionObsValue | None = None
     metadata: PredictionMetadata | None = None
+
+
+@dataclass(slots=True)
+class CompositePredictionOutput:
+    """Prediction output returned by configuration-built Composite models."""
+
+    model_inputs: dict[str, torch.Tensor]
+    model_outputs: dict[str, torch.Tensor]
+    batch_metadata: PredictionMetadata

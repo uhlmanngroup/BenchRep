@@ -1,4 +1,4 @@
-"""Define the enriched multichannel MNIST dataset used by Example 09."""
+"""Define the enriched two-view MNIST dataset used by Example 08."""
 
 from __future__ import annotations
 
@@ -25,9 +25,6 @@ CHANNEL_NAMES: Final = (
     "skeleton",
 )
 
-DIGIT_LABEL_KEY: Final = "digit_label"
-STROKE_WIDTH_KEY: Final = "mean_stroke_width"
-BATCH_KEY: Final = "acquisition_batch"
 IMAGE_SIZE: Final = 28
 
 
@@ -119,6 +116,11 @@ def derive_skeleton_and_stroke_width(
 
     distance_map = ndimage.distance_transform_edt(binary_mask)
     centerline_radii = distance_map[skeleton]
+    if centerline_radii.size == 0:
+        raise ValueError(
+            "Cannot estimate stroke width because the thresholded image "
+            "has no skeleton pixels."
+        )
 
     # Approximate stroke width along the skeleton
     mean_stroke_width = float(np.mean(2.0 * centerline_radii - 1.0))
@@ -188,6 +190,11 @@ class EnrichedMNISTDataset(BaseDataset):
     ) -> None:
         super().__init__()
 
+        if split not in ("train", "test"):
+            raise ValueError(
+                f"split must be 'train' or 'test', got {split!r}."
+            )
+
         self.split = split
         self.dataset = MNIST(
             root=root,
@@ -254,12 +261,11 @@ class EnrichedMNISTDataset(BaseDataset):
         batch_id = int(self.batch_ids[index])
 
         sample = {
-            "x": self.images[index],
+            "morphology": self.images[index, 0:1].clone(),
+            "skeleton": self.images[index, 1:2].clone(),
+            "digit_label": torch.tensor(label, dtype=torch.long),
+            "mean_stroke_width": self.mean_stroke_widths[index].clone(),
             "sample_id": f"{self.split}_{index:05d}",
-            "metadata": {
-                DIGIT_LABEL_KEY: str(label),
-                STROKE_WIDTH_KEY: self.mean_stroke_widths[index],
-                BATCH_KEY: f"batch_{batch_id:02d}",
-            },
+            "acquisition_batch": f"batch_{batch_id:02d}",
         }
         return self.validate_sample(sample)

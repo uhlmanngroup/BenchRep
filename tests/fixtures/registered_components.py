@@ -15,6 +15,15 @@ from torch.nn import functional as F
 from benchrep.architecture.decoders import BaseDecoder
 from benchrep.architecture.encoders import BaseEncoder
 from benchrep.architecture.losses import BaseCustomObjectiveLoss
+from benchrep.architecture.composite_model_component_contracts import (
+    ArchitectureComponent,
+    ComponentPort,
+    ComponentTensorResult,
+)
+from benchrep.architecture.losses.composite_model_contracts import (
+    LossComponent,
+    LossTensorPort,
+)
 from benchrep.assembly.registries.core import (
     DATASETS,
     TRANSFORMS,
@@ -309,23 +318,76 @@ def register_custom_test_components() -> None:
     )
     ENCODERS.register(
         "custom_test_encoder",
-        CustomRegisteredEncoder,
+        ArchitectureComponent(
+            component=CustomRegisteredEncoder,
+            runtime_inputs=(
+                ComponentPort(
+                    name="x",
+                    supported_structures=("image",),
+                ),
+            ),
+            runtime_result=ComponentTensorResult(
+                supported_structures=("vector",),
+            ),
+        ),
     )
     DECODERS.register(
         "custom_test_decoder",
-        CustomRegisteredDecoder,
+        ArchitectureComponent(
+            component=CustomRegisteredDecoder,
+            runtime_inputs=(
+                ComponentPort(
+                    name="z",
+                    supported_structures=("vector",),
+                ),
+            ),
+            runtime_result=ComponentTensorResult(
+                supported_structures=("image",),
+            ),
+        ),
     )
     RECONSTRUCTION_LOSSES.register(
         "custom_test_reconstruction_loss",
-        CustomReconstructionLoss,
+        LossComponent(
+            component=CustomReconstructionLoss,
+            runtime_inputs=(
+                LossTensorPort(
+                    name="reconstruction",
+                    supported_roles=("reconstruction_image",),
+                ),
+                LossTensorPort(
+                    name="target",
+                    supported_roles=(
+                        "sample_image",
+                        "positive_image",
+                        "negative_image",
+                    ),
+                ),
+            ),
+        ),
     )
     REGULARIZATION_LOSSES.register(
         "custom_test_regularization_loss",
-        CustomRegularizationLoss,
+        LossComponent(
+            component=CustomRegularizationLoss,
+            runtime_inputs=(
+                LossTensorPort(
+                    name="z_mu",
+                    supported_roles=(
+                        "embedding_vector",
+                        "continuous_auxiliary_vector",
+                    ),
+                ),
+                LossTensorPort(
+                    name="z_logvar",
+                    supported_roles=("continuous_auxiliary_vector",),
+                ),
+            ),
+        ),
     )
     CUSTOM_OBJECTIVE_LOSSES.register(
         "custom_test_objective_loss",
-        CustomCombinedObjectiveLoss,
+        LossComponent(CustomCombinedObjectiveLoss),
     )
     OPTIMIZERS.register(
         "custom_test_optimizer",

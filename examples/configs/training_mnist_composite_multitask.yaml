@@ -1,0 +1,187 @@
+stage: training
+
+run:
+  output_root: outputs
+  project_name: mnist_composite_vae_multitask
+
+reproducibility:
+  seed: 137
+  seed_workers: true
+  float32_matmul_precision: highest
+
+dataset:
+  name: mnist
+  params:
+    root: examples/data/mnist
+    split: train
+    download: true
+
+transform_pipelines:
+  - steps:
+      - name: to_dtype
+        apply_to: [training, validation]
+        params:
+          dtype: float32
+          scale: true
+
+datamodule:
+  batch_size: 128
+  val_fraction: 0.1
+  num_workers: 4
+  pin_memory: auto
+  persistent_workers: true
+  drop_last: false
+
+model:
+  name: composite
+
+composite_model_declarations:
+  expects:
+    x: sample_image
+    label: categorical_prediction_target_scalar
+
+  batch_metadata:
+    sample_id: index
+
+  produces:
+    encoder_features: projection_vector
+    z_sample: embedding_vector
+    z_mu: embedding_vector
+    z_logvar: continuous_auxiliary_vector
+    reconstruction: reconstruction_image
+    digit_logits: categorical_prediction_vector
+
+composite_model_components:
+  image_encoder:
+    kind: encoder
+    name: mlp
+    params:
+      input_shape: [1, 28, 28]
+      output_dim: 64
+      hidden_dims: [512, 256]
+      activation: null
+      normalization: null
+      dropout: 0.0
+
+  variational_head:
+    kind: head
+    name: gaussian_variational
+    params:
+      in_features: 64
+      latent_dim: 32
+
+  image_decoder:
+    kind: decoder
+    name: mlp
+    params:
+      input_dim: 32
+      output_shape: [1, 28, 28]
+      hidden_dims: [256, 512]
+      activation: null
+      normalization: null
+      dropout: 0.0
+      output_activation: sigmoid
+
+  digit_classifier:
+    kind: head
+    name: mlp
+    params:
+      input_dim: 32
+      output_dim: 10
+      hidden_dims: []
+      activation: null
+      normalization: null
+      dropout: 0.0
+
+composite_model_assembly:
+  encode:
+    component: image_encoder
+    inputs:
+      x: expects.x
+    outputs: produces.encoder_features
+
+  parameterize:
+    component: variational_head
+    inputs:
+      x: produces.encoder_features
+    outputs:
+      z_sample: produces.z_sample
+      z_mu: produces.z_mu
+      z_logvar: produces.z_logvar
+
+  reconstruct:
+    component: image_decoder
+    inputs:
+      z: produces.z_sample
+    outputs: produces.reconstruction
+
+  classify:
+    component: digit_classifier
+    inputs:
+      x: produces.z_sample
+    outputs: produces.digit_logits
+
+losses:
+  reconstruction:
+    - name: mse
+      weight: 1.0
+      params:
+        reduction: mean
+      composite_wiring:
+        reconstruction: produces.reconstruction
+        target: expects.x
+
+  regularization:
+    - name: gaussian_kld
+      weight: 0.0001
+      params:
+        reduction: mean
+      composite_wiring:
+        z_mu: produces.z_mu
+        z_logvar: produces.z_logvar
+
+  classification:
+    - name: cross_entropy
+      weight: 0.25
+      params:
+        reduction: mean
+        label_smoothing: 0.0
+      composite_wiring:
+        prediction: produces.digit_logits
+        target: expects.label
+
+optimizer:
+  name: adam
+  params:
+    lr: 0.001
+
+trainer:
+  max_epochs: 2
+  accelerator: auto
+  devices: auto
+  log_every_n_steps: 20
+  deterministic: false
+  benchmark: false
+  precision: 32-true
+
+logger:
+  name: wandb
+  wandb_api_key_path:
+  params:
+    project: benchrep
+    name: test
+    id: null
+    resume: never
+    log_model: False
+
+checkpointing:
+  monitor: val/loss
+  mode: min
+  save_top_k: 1
+  save_last: true
+
+inspection:
+  torchview:
+    enabled: true
+    expand_nested: true
+    depth: 10

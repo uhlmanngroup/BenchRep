@@ -20,16 +20,16 @@ class GaussianKLDivergenceLoss(nn.Module):
     Args:
         reduction:
             How to reduce the per-sample KL values. Supported values are
-            ``"mean"``, ``"sum"``, and ``"none"``.
+            ``"mean"`` and ``"sum"``.
     """
 
     def __init__(self, reduction: str = "mean") -> None:
         super().__init__()
 
-        if reduction not in {"mean", "sum", "none"}:
+        valid_reductions = ("mean", "sum")
+        if reduction not in valid_reductions:
             raise ValueError(
-                "reduction must be one of {'mean', 'sum', 'none'}, "
-                f"got {reduction!r}."
+                f"reduction must be one of {valid_reductions}, got {reduction!r}."
             )
 
         self.reduction = reduction
@@ -49,8 +49,7 @@ class GaussianKLDivergenceLoss(nn.Module):
                 ``(..., latent_dim)``.
 
         Returns:
-            Reduced KL divergence value, or per-sample KL values if
-            ``reduction="none"``.
+            Scalar KL divergence reduced across samples.
         """
 
         if z_mu.shape != z_logvar.shape:
@@ -67,7 +66,4 @@ class GaussianKLDivergenceLoss(nn.Module):
         if self.reduction == "mean":
             return kl_per_sample.mean()
 
-        if self.reduction == "sum":
-            return kl_per_sample.sum()
-
-        return kl_per_sample
+        return kl_per_sample.sum()

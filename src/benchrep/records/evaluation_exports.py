@@ -45,7 +45,7 @@ RECONSTRUCTION_GRID_LABEL_VALUE_MAX_LENGTH = 32
 
 @dataclass(frozen=True)
 class EvaluationExportPaths:
-    evaluated_embeddings_path: Path | None
+    evaluated_anndata_path: Path | None
     metrics_json_path: Path | None
     reduction_plot_paths: dict[str, list[Path]] | None = None
     cluster_size_plot_paths: dict[str, list[Path]] | None = None
@@ -66,8 +66,8 @@ def export_evaluation_outputs(
     reconstruction_input: ReconstructionEvaluationInput | None,
     reconstruction_outputs: Mapping[str, Any] | None,
     step_spec: "EvaluationStepSpec",
-    embeddings_dir: str | Path,
-    embeddings_figures_dir: str | Path,
+    anndata_dir: str | Path,
+    anndata_figures_dir: str | Path,
     metrics_dir: str | Path,
     reconstructions_dir: str | Path,
     reconstruction_figures_dir: str | Path,
@@ -101,9 +101,9 @@ def export_evaluation_outputs(
         Outputs returned by the reconstruction evaluation pipeline, when run.
     step_spec
         Resolved evaluation step configuration.
-    embeddings_dir
+    anndata_dir
         Directory for the evaluated AnnData artifact.
-    embeddings_figures_dir
+    anndata_figures_dir
         Directory for embedding reduction and diagnostic figures.
     metrics_dir
         Directory for the consolidated evaluation metrics JSON.
@@ -121,8 +121,8 @@ def export_evaluation_outputs(
     """
     run_log = get_run_logger()
 
-    embeddings_dir = Path(embeddings_dir)
-    embeddings_figures_dir = Path(embeddings_figures_dir)
+    anndata_dir = Path(anndata_dir)
+    anndata_figures_dir = Path(anndata_figures_dir)
     metrics_dir = Path(metrics_dir)
     reconstructions_dir = Path(reconstructions_dir)
     reconstruction_figures_dir = Path(reconstruction_figures_dir)
@@ -137,7 +137,7 @@ def export_evaluation_outputs(
         for outcome in anndata_outcomes
     )
 
-    evaluated_embeddings_path = None
+    evaluated_anndata_path = None
 
     if has_successful_anndata_step:
         if adata is None:
@@ -146,43 +146,41 @@ def export_evaluation_outputs(
                 "was available for export."
             )
 
-        embeddings_dir.mkdir(parents=True, exist_ok=True)
-        evaluated_embeddings_path = (
-                embeddings_dir / "evaluated_embeddings.h5ad"
-        )
+        anndata_dir.mkdir(parents=True, exist_ok=True)
+        evaluated_anndata_path = anndata_dir / "evaluated_anndata.h5ad"
 
         with warnings.catch_warnings(record=True) as caught_warnings:
             warnings.simplefilter("always")
             write_h5ad(
                 adata,
-                evaluated_embeddings_path,
+                evaluated_anndata_path,
                 overwrite=overwrite,
             )
 
-        embedding_issues = _format_captured_export_warnings(caught_warnings)
-        embedding_status: EvaluationOutcomeStatus = (
+        anndata_issues = _format_captured_export_warnings(caught_warnings)
+        anndata_status: EvaluationOutcomeStatus = (
             "completed_with_warnings"
-            if embedding_issues
+            if anndata_issues
             else "completed"
         )
 
         outcomes.append(
             EvaluationOutcome(
-                name="evaluated_embeddings",
+                name="evaluated_anndata",
                 category="exports",
-                status=embedding_status,
-                issues=embedding_issues,
+                status=anndata_status,
+                issues=anndata_issues,
             )
         )
 
         run_log.info(
-            "Saved evaluated embeddings AnnData to: '%s'",
-            evaluated_embeddings_path,
+            "Saved evaluated AnnData artifact to: '%s'",
+            evaluated_anndata_path,
         )
     else:
         outcomes.append(
             EvaluationOutcome(
-                name="evaluated_embeddings",
+                name="evaluated_anndata",
                 category="exports",
                 status="disabled",
             )
@@ -208,7 +206,7 @@ def export_evaluation_outputs(
         reduction_plot_paths, outcome = _run_recoverable_export(
             name="reduction_plots",
             export_fn=lambda: export_reduction_plots(
-                output_dir=embeddings_figures_dir,
+                output_dir=anndata_figures_dir,
                 adata=adata,
                 step_spec=step_spec,
                 overwrite=overwrite,
@@ -241,7 +239,7 @@ def export_evaluation_outputs(
         cluster_size_plot_paths, outcome = _run_recoverable_export(
             name="cluster_size_plots",
             export_fn=lambda: export_cluster_size_plots(
-                output_dir=embeddings_figures_dir,
+                output_dir=anndata_figures_dir,
                 adata=adata,
                 step_spec=step_spec,
                 overwrite=overwrite,
@@ -269,7 +267,7 @@ def export_evaluation_outputs(
                 "Saved %d embedding reduction and diagnostic plot file(s) "
                 "to: '%s'",
                 n_embedding_plot_files,
-                embeddings_figures_dir,
+                anndata_figures_dir,
             )
 
     # Optional reconstruction artifacts.
@@ -375,7 +373,7 @@ def export_evaluation_outputs(
         )
 
     paths = EvaluationExportPaths(
-        evaluated_embeddings_path=evaluated_embeddings_path,
+        evaluated_anndata_path=evaluated_anndata_path,
         metrics_json_path=metrics_json_path,
         reduction_plot_paths=reduction_plot_paths,
         cluster_size_plot_paths=cluster_size_plot_paths,

@@ -40,7 +40,7 @@ def test_resolve_step_spec_uses_default_predictability_target() -> None:
     config = EvaluationConfig.model_validate(
         {
             "source": {
-                "embeddings_path": "embeddings.h5ad",
+                "anndata_path": "anndata.h5ad",
             },
             "metrics": {
                 "predictability": {
@@ -84,7 +84,7 @@ def test_resolve_step_spec_resolves_predictability_targets_independently() -> No
     config = EvaluationConfig.model_validate(
         {
             "source": {
-                "embeddings_path": "embeddings.h5ad",
+                "anndata_path": "anndata.h5ad",
             },
             "metrics": {
                 "predictability": {
@@ -207,7 +207,7 @@ def test_enabled_predictability_rejects_empty_targets_or_selections(
         EvaluationConfig.model_validate(
             {
                 "source": {
-                    "embeddings_path": "embeddings.h5ad",
+                    "anndata_path": "anndata.h5ad",
                 },
                 "metrics": {
                     "predictability": {
@@ -223,7 +223,7 @@ def test_predictability_resolution_error_identifies_target() -> None:
     config = EvaluationConfig.model_validate(
         {
             "source": {
-                "embeddings_path": "embeddings.h5ad",
+                "anndata_path": "anndata.h5ad",
             },
             "metrics": {
                 "predictability": {
@@ -264,7 +264,7 @@ def test_resolve_step_spec_rejects_no_enabled_work() -> None:
     config = EvaluationConfig.model_validate(
         {
             "source": {
-                "embeddings_path": "embeddings.h5ad",
+                "anndata_path": "anndata.h5ad",
             },
             "reductions": {
                 "pca": {"enabled": False},

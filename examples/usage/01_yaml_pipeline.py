@@ -40,7 +40,7 @@ def main() -> None:
     print("\n=== Evaluation ===")
     evaluation_result = evaluate(
         config_path=CONFIG_DIR / "evaluation.yaml",
-        # The prediction manifest supplies the exported embeddings,
+        # The prediction manifest supplies the exported AnnData,
         # reconstructions, provenance, and inherited run identity.
         prediction_manifest_path=prediction_result.manifest_path,
     )

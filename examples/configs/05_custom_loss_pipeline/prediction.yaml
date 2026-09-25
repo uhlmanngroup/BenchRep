@@ -12,7 +12,7 @@ dataset:
     download: true
 
 # Inherit the validation transforms recorded during training.
-transforms: null
+transform_pipelines: null
 
 data:
   batch_size: null
@@ -24,19 +24,23 @@ inference:
   seed_workers: null
   deterministic: null
   float32_matmul_precision: null
-  reconstruction_latent_source: mean
+  canonical_vae_reconstruction_latent_source: mean
 
 exports:
-  mode: standard
-
-  embeddings:
+  anndata:
     enabled: true
+    mode: custom
+    keys:
+      - embedding
+    primary_key: embedding
 
   reconstructions:
     enabled: true
+    mode: all
+    pairs: null
     n_examples: 32
     selection: random
     stratify_by: label
     seed: null
     include_input: true
-    include_prediction: true
+    include_reconstruction: true

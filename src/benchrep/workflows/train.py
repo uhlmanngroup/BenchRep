@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Mapping
+from typing import Any
 
 import lightning as L
 from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
@@ -38,17 +39,22 @@ from benchrep.records import (
     write_training_manifest,
     export_torchview_graph,
     infer_dummy_input_size,
+    prepare_composite_torchview_input_data,
     get_runtime_environment_filename,
     collect_training_environment_context,
     write_runtime_environment,
+    ModelGraphDependencyError,
+    export_composite_model_spec_graph,
 )
 from benchrep.records.utils import now_isoformat
 from benchrep.interfaces.model_families import (
     SupportedModel,
     SupportedModelBaseClass,
     ModelFamilySpec,
+    CanonicalModelFamilySpec,
     AUTOENCODER_FAMILY,
     VAE_FAMILY,
+    COMPOSITE_FAMILY,
 )
 from benchrep.interfaces.models import (
     BenchRepAutoencoderModel,
@@ -62,7 +68,7 @@ from benchrep.assembly.schemas import TrainingConfig
 from benchrep.assembly.builders import (
     build_datamodule,
     build_dataset,
-    build_transform_pipelines,
+    build_transform_pipelines_bundle,
     build_model,
     build_trainer,
     build_runtime_component,
@@ -84,6 +90,7 @@ class TrainingWorkflowResult:
     trainer: L.Trainer
     checkpoint_callback: ModelCheckpoint
     early_stopping_callback: EarlyStopping | None
+    composite_model_spec_graph_path: Path | None
     torchview_graph_path: Path | None
     status_report: TrainingStatusReport
     manifest_path: Path
@@ -105,6 +112,7 @@ def train_ae(
                 | None
         ) = None,
         compatibility_policy: CompatibilityPolicy = "error",
+        capture_stdout: bool = False,
 ) -> TrainingWorkflowResult:
     return _train(
         model_family=AUTOENCODER_FAMILY,
@@ -114,6 +122,7 @@ def train_ae(
         model=model,
         datamodule=datamodule,
         compatibility_policy=compatibility_policy,
+        capture_stdout=capture_stdout,
     )
 
 
@@ -132,6 +141,7 @@ def train_vae(
                 | None
         ) = None,
         compatibility_policy: CompatibilityPolicy = "error",
+        capture_stdout: bool = False,
 ) -> TrainingWorkflowResult:
     return _train(
         model_family=VAE_FAMILY,
@@ -141,6 +151,30 @@ def train_vae(
         model=model,
         datamodule=datamodule,
         compatibility_policy=compatibility_policy,
+        capture_stdout=capture_stdout,
+    )
+
+
+def train_composite(
+    config_path: Path | str | None = None,
+    full_config_object: TrainingConfig | None = None,
+    config_components: (
+        Mapping[str, SupportedTrainingConfigComponent] | None
+    ) = None,
+    datamodule: (
+        L.LightningDataModule
+        | type[L.LightningDataModule]
+        | None
+    ) = None,
+    capture_stdout: bool = False,
+) -> TrainingWorkflowResult:
+    return _train(
+        model_family=COMPOSITE_FAMILY,
+        config_path=config_path,
+        full_config_object=full_config_object,
+        config_components=config_components,
+        datamodule=datamodule,
+        capture_stdout=capture_stdout,
     )
 
 
@@ -159,15 +193,26 @@ def _train(
                 | type[L.LightningDataModule]
                 | None
         ) = None,
-        compatibility_policy: CompatibilityPolicy = "error"
+        compatibility_policy: CompatibilityPolicy = "error",
+        capture_stdout: bool = False,
 ) -> TrainingWorkflowResult:
     register_builtins()
 
-    model_source = resolve_component_source(
-        model,
-        expected_base_class=model_family.model_base_class,
-        component_name="model",
-    )
+    if isinstance(model_family, CanonicalModelFamilySpec):
+        model_source = resolve_component_source(
+            model,
+            expected_base_class=model_family.model_base_class,
+            component_name="model",
+        )
+    else:
+        if model is not None:
+            raise TypeError(
+                "Whole-model overrides are supported only for the canonical "
+                "`autoencoder` and `vae` model families; they are not supported "
+                "for `composite`."
+            )
+
+        model_source = "config"
     datamodule_source = resolve_component_source(
         datamodule,
         expected_base_class=L.LightningDataModule,
@@ -263,9 +308,10 @@ def _train(
         assert datamodule_config is not None
 
         validation_transform_names = tuple(
-            transform.name
-            for transform in resolved_training_config.transforms
-            if "validation" in transform.apply_to
+            step.name
+            for pipeline in resolved_training_config.transform_pipelines
+            for step in pipeline.steps
+            if "validation" in step.apply_to
         )
 
         if (
@@ -280,8 +326,8 @@ def _train(
                 validation_transform_names,
             )
 
-        transform_pipelines = build_transform_pipelines(
-            resolved_training_config.transforms,
+        transform_pipelines = build_transform_pipelines_bundle(
+            resolved_training_config.transform_pipelines,
         )
 
         dataset = build_dataset(
@@ -293,14 +339,14 @@ def _train(
             datamodule_config=datamodule_config,
             seed=resolved_training_config.reproducibility.seed,
             stage=run_spec.stage,
-            training_pipeline=transform_pipelines.training,
-            validation_pipeline=transform_pipelines.validation,
+            training_pipelines=transform_pipelines.training,
+            validation_pipelines=transform_pipelines.validation,
         )
     else:
         run_log.info(
-            "External datamodule was provided; dataset, datamodule, and transforms "
-            "config sections will be ignored regardless of whether they came from "
-            "YAML, a full config object, or config_components."
+            "External datamodule was provided; dataset, datamodule, and transform "
+            "pipelines config sections will be ignored regardless of whether they "
+            "came from YAML, a full config object, or config_components."
         )
 
     model = build_runtime_component(
@@ -310,7 +356,7 @@ def _train(
     )
 
     if not model_is_external:
-        model = build_model(config=resolved_training_config)
+        model = build_model(run_spec=run_spec)
     else:
         run_log.info(
             "External model was provided; model/encoder/decoder/losses/optimizer "
@@ -368,7 +414,7 @@ def _train(
     try:
         with capture_console_streams(
             log_out_dir=run_context.log_dir,
-            capture_stdout=False,
+            capture_stdout=capture_stdout,
         ):
             trainer.fit(model, datamodule=datamodule)
 
@@ -455,49 +501,103 @@ def _train(
         *checkpoint_warnings,
     ]
 
+    # Automatically export the resolved Composite model specification graph.
+    composite_model_spec_graph_path = None
+
+    if run_spec.composite_model_spec is not None:
+        try:
+            composite_model_spec_graph_path = (
+                export_composite_model_spec_graph(
+                    model_spec=run_spec.composite_model_spec,
+                    loss_specs=run_spec.loss_specs,
+                    output_path=(
+                            run_context.training_architecture_dir
+                            / "composite_model_spec_graph.svg"
+                    ),
+                )
+            )
+
+            run_log.info(
+                "Automatically exported Composite model specification "
+                "graph to: '%s'",
+                composite_model_spec_graph_path,
+            )
+
+        except ModelGraphDependencyError as exc:
+            run_log.info(
+                "BenchRep automatically exports a Composite model "
+                "specification graph for Composite training runs. This "
+                "optional export was skipped because a required model-graph "
+                "dependency is unavailable: %s",
+                exc,
+            )
+
+        except Exception as exc:
+            warning = (
+                "BenchRep automatically exports a Composite model "
+                "specification graph for Composite training runs, but the "
+                "export failed and was skipped: "
+                f"{type(exc).__name__}: {exc}"
+            )
+            training_warnings.append(warning)
+            run_log.warning(warning, exc_info=True)
+
     for error in training_errors:
         run_log.error(error)
 
     for warning in checkpoint_warnings:
         run_log.warning(warning)
 
-    # Export torchview graph if possible
+    # Export Torchview graph if requested.
     torchview_graph_path = None
 
     if resolved_training_config.inspection.torchview.enabled:
         try:
-            dummy_input_size = infer_dummy_input_size(datamodule)
+            torchview_export_kwargs: dict[str, Any]
+
+            if run_spec.composite_model_spec is not None:
+                torchview_input_data = prepare_composite_torchview_input_data(
+                    datamodule=datamodule,
+                    model_spec=run_spec.composite_model_spec,
+                )
+                torchview_export_kwargs = {
+                    "input_data": torchview_input_data,
+                }
+            else:
+                dummy_input_size = infer_dummy_input_size(datamodule)
+                torchview_export_kwargs = {
+                    "input_size": dummy_input_size,
+                }
+
             torchview_graph_path = export_torchview_graph(
                 model=model,
-                input_size=dummy_input_size,
-                output_path=run_context.training_architecture_dir / "model_graph.png",
-                expand_nested=resolved_training_config.inspection.torchview.expand_nested,
+                output_path=(
+                        run_context.training_architecture_dir / "torchview_model_graph.svg"
+                ),
+                expand_nested=(
+                    resolved_training_config
+                    .inspection
+                    .torchview
+                    .expand_nested
+                ),
                 depth=resolved_training_config.inspection.torchview.depth,
+                **torchview_export_kwargs,
             )
 
-            if torchview_graph_path is not None:
-                run_log.info("Exported torchview graph to: '%s'", torchview_graph_path)
-            else:
-                warning = (
-                    "Torchview graph export was requested, but no graph "
-                    "was produced."
-                )
-                training_warnings.append(warning)
-                run_log.warning(warning)
+            run_log.info(
+                "Exported Torchview graph to: '%s'",
+                torchview_graph_path,
+            )
 
-        except Exception as exc:
+        except Exception as error:
             torchview_graph_path = None
 
             warning = (
-                "Torchview graph export failed and was skipped: "
-                f"{type(exc).__name__}: {exc}"
+                "Torchview graph export was requested but failed and was "
+                f"skipped: {type(error).__name__}: {error}"
             )
             training_warnings.append(warning)
-
-            run_log.warning(
-                warning,
-                exc_info=True,
-            )
+            run_log.warning(warning, exc_info=True)
 
     # Finalize status
     status_report = build_training_status_report(
@@ -518,12 +618,14 @@ def _train(
         run_context=run_context,
         checkpoint_callback=checkpoint_callback,
         early_stopping_record=early_stopping_record,
+        composite_model_spec_graph_path=composite_model_spec_graph_path,
         torchview_graph_path=torchview_graph_path,
         created_at=created_at,
         completed_at=completed_at,
         status_report=status_report,
         model_class_name=type(model).__name__,
         datamodule_class_name=type(datamodule).__name__,
+        capture_stdout=capture_stdout,
     )
 
     run_log.info("Exported training manifest to: '%s'", manifest_path)
@@ -553,5 +655,6 @@ def _train(
         early_stopping_callback=early_stopping_callback,
         status_report=status_report,
         manifest_path=manifest_path,
+        composite_model_spec_graph_path=composite_model_spec_graph_path,
         torchview_graph_path=torchview_graph_path,
     )

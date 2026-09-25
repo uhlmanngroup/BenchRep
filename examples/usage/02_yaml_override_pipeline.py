@@ -124,7 +124,7 @@ def main() -> None:
     )
     # BenchRep writes the harmonized effective configuration as resolved_config.yaml.
     # It can be supplied directly as config_path in a future run when the manifest
-    # records `provenance.config.run_reconstructable_from_resolved_config: true`.
+    # records `construction.config.run_reconstructable_from_resolved_config: true`.
     resolved_training_config_path = (
         training_result.run_context.config_dir
         / "resolved_config.yaml"
@@ -149,7 +149,7 @@ def main() -> None:
     print("\n=== Evaluation ===")
     evaluation_result = evaluate(
         config_path=CONFIG_DIR / "evaluation.yaml",
-        # The prediction manifest supplies the exported embeddings,
+        # The prediction manifest supplies the exported AnnData,
         # reconstructions, provenance, and inherited run identity.
         prediction_manifest_path=prediction_result.manifest_path,
     )

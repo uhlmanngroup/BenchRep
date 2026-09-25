@@ -54,7 +54,7 @@ CONFIG_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "configs"
             "training_tiny_synthetic_vae.yaml",
             train_vae,
             predict_vae,
-            {"embedding", "z_mu", "z_logvar"},
+            {"embedding", "z_logvar", "z_sample"},
             id="vae",
         ),
     ],
@@ -94,7 +94,7 @@ def test_internal_end_to_end(
     if training_config_name == "training_tiny_synthetic_vae.yaml":
         model = prediction_result.model
         assert isinstance(model, VAE)
-        assert prediction_result.run_spec.reconstruction_latent_source == "mean"
+        assert prediction_result.run_spec.canonical_vae_reconstruction_latent_source == "mean"
         assert model.prediction_reconstruction_latent_source == "mean"
 
         with torch.no_grad():
@@ -134,17 +134,37 @@ def test_internal_end_to_end(
         prediction_manifest["source"]["checkpoint_path"]
     ) == prediction_result.run_spec.checkpoint_path
 
-    embedding_export = prediction_result.export_paths.embedding_export
-    reconstruction_paths = prediction_result.export_paths.reconstruction_paths
+    anndata_export = prediction_result.export_result.anndata
+    reconstruction_export = (
+        prediction_result.export_result.reconstructions
+    )
 
-    assert embedding_export is not None
-    assert embedding_export.embeddings_h5ad_path is not None
-    assert embedding_export.embeddings_h5ad_path.is_file()
-    assert embedding_export.resolved_primary_key == "embedding"
-    assert embedding_export.resolved_keys is not None
-    assert expected_embedding_keys <= set(embedding_export.resolved_keys)
+    assert anndata_export.path is not None
+    assert anndata_export.path.is_file()
+    assert (
+            prediction_result.run_spec.export_spec.anndata.primary_key
+            == "embedding"
+    )
+    assert expected_embedding_keys <= set(
+        prediction_result.run_spec.export_spec.anndata.keys
+    )
 
-    assert reconstruction_paths is not None
+    assert reconstruction_export.outcome.status == "completed"
+    assert len(reconstruction_export.pairs) == 1
+
+    reconstruction_pair_export = reconstruction_export.pairs[0]
+    assert (
+            reconstruction_pair_export.pair.id
+            == "reconstruction_bundle_01"
+    )
+    assert (
+            reconstruction_pair_export.paths.bundle_dir.name
+            == "reconstruction_bundle_01"
+    )
+    assert reconstruction_pair_export.outcome.status == "completed"
+
+    reconstruction_paths = reconstruction_pair_export.paths
+
     assert reconstruction_paths.n_examples_exported == 8
     assert reconstruction_paths.input_path is not None
     assert reconstruction_paths.reconstruction_path is not None
@@ -170,8 +190,14 @@ def test_internal_end_to_end(
     assert evaluation_result.manifest_path.is_file()
     _assert_completed_manifest(evaluation_result.manifest_path, "evaluation")
 
+    _assert_nested_provenance_chain(
+        training_result=training_result,
+        prediction_result=prediction_result,
+        evaluation_result=evaluation_result,
+    )
+
     assert evaluation_result.status_report.status == "completed"
-    assert evaluation_result.status_report.embeddings.status == "completed"
+    assert evaluation_result.status_report.anndata.status == "completed"
     assert (
         evaluation_result.status_report.reconstructions.status
         == "completed"
@@ -189,7 +215,7 @@ def test_internal_end_to_end(
     } <= set(evaluation_result.adata.obs.columns)
 
     export_paths = evaluation_result.export_paths
-    assert export_paths.evaluated_embeddings_path.is_file()
+    assert export_paths.evaluated_anndata_path.is_file()
     assert export_paths.metrics_json_path.is_file()
     assert _count_paths(export_paths.reduction_plot_paths) > 0
     assert _count_paths(export_paths.cluster_size_plot_paths) > 0
@@ -221,7 +247,7 @@ def test_internal_vae_prediction_can_reconstruct_from_sample(
         config_path=CONFIG_DIR / "prediction_tiny_synthetic.yaml",
         config_components={
             "inference": PredictionInferenceConfig(
-                reconstruction_latent_source="sample",
+                canonical_vae_reconstruction_latent_source="sample",
             ),
         },
         training_manifest_path=training_result.manifest_path,
@@ -229,7 +255,7 @@ def test_internal_vae_prediction_can_reconstruct_from_sample(
 
     model = prediction_result.model
     assert isinstance(model, VAE)
-    assert prediction_result.run_spec.reconstruction_latent_source == "sample"
+    assert prediction_result.run_spec.canonical_vae_reconstruction_latent_source == "sample"
     assert model.prediction_reconstruction_latent_source == "sample"
 
     with torch.no_grad():
@@ -268,6 +294,48 @@ def _count_paths(value: Any) -> int:
     return 0
 
 
+def _assert_nested_provenance_chain(
+    *,
+    training_result: Any,
+    prediction_result: Any,
+    evaluation_result: Any,
+) -> None:
+    with evaluation_result.manifest_path.open(encoding="utf-8") as handle:
+        evaluation_manifest = yaml.safe_load(handle)
+
+    evaluation_appendix = evaluation_manifest["appendix"]
+    embedded_prediction_manifest = evaluation_appendix[
+        "prediction_manifest"
+    ]
+    embedded_training_manifest = embedded_prediction_manifest[
+        "appendix"
+    ]["training_manifest"]
+
+    with prediction_result.manifest_path.open(encoding="utf-8") as handle:
+        prediction_manifest = yaml.safe_load(handle)
+
+    with training_result.manifest_path.open(encoding="utf-8") as handle:
+        training_manifest = yaml.safe_load(handle)
+
+    assert embedded_prediction_manifest == prediction_manifest
+    assert embedded_training_manifest == training_manifest
+
+    result_appendices = (
+        (evaluation_result, evaluation_appendix),
+        (prediction_result, embedded_prediction_manifest["appendix"]),
+        (training_result, embedded_training_manifest["appendix"]),
+    )
+
+    for result, appendix in result_appendices:
+        resolved_config_path = (
+            result.run_context.config_dir / "resolved_config.yaml"
+        )
+        with resolved_config_path.open(encoding="utf-8") as handle:
+            on_disk_resolved_config = yaml.safe_load(handle)
+
+        assert appendix["resolved_config"] == on_disk_resolved_config
+
+
 def _assert_vae_reconstruction_provenance(
     prediction_result: Any,
     *,
@@ -281,8 +349,8 @@ def _assert_vae_reconstruction_provenance(
         manifest = yaml.safe_load(handle)
 
     recorded_source = (
-        manifest["provenance"]["prediction"]["inference"]
-        ["reconstruction_latent_source"]
+        manifest["appendix"]["resolved_config"]["inference"]
+        ["canonical_vae_reconstruction_latent_source"]
     )
 
     assert recorded_source == configured_source
@@ -299,11 +367,11 @@ def _assert_vae_reconstruction_provenance(
 
     assert (
         reproducibility["resolved_config"]
-        ["reconstruction_latent_source"]
+        ["canonical_vae_reconstruction_latent_source"]
         == configured_source
     )
     assert (
-        reproducibility["resolved"]["reconstruction_latent_source"]
+        reproducibility["resolved"]["canonical_vae_reconstruction_latent_source"]
         == effective_source
     )
 

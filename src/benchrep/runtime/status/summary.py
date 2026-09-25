@@ -8,6 +8,7 @@ _STATUS_BUCKETS = {
     "completed": "ok",
     "completed_with_warnings": "warnings",
     "completed_after_interruption": "warnings",
+    "partially_completed": "errors",
     "failed": "errors",
     "skipped": "skipped",
 }

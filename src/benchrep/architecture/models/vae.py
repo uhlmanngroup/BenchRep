@@ -145,9 +145,9 @@ class VAE(BenchRepVAEModel):
         encoder_features = self.encode(x)
         latent = self.variational_head(encoder_features)
         if reconstruction_latent_source == "mean":
-            reconstruction = self.decode(latent.z_mu)
+            reconstruction = self.decode(latent["z_mu"])
         elif reconstruction_latent_source == "sample":
-            reconstruction = self.decode(latent.z_sample)
+            reconstruction = self.decode(latent["z_sample"])
         else:
             raise ValueError(
                 "reconstruction_latent_source must be 'mean' or 'sample', "
@@ -155,11 +155,11 @@ class VAE(BenchRepVAEModel):
             )
 
         return {
-            "embedding": latent.z_mu,
+            "embedding": latent["z_mu"],
             "reconstruction": reconstruction,
-            "z_sample": latent.z_sample,
-            "z_mu": latent.z_mu,
-            "z_logvar": latent.z_logvar,
+            "z_sample": latent["z_sample"],
+            "z_mu": latent["z_mu"],
+            "z_logvar": latent["z_logvar"],
         }
 
     def encode(self, x: torch.Tensor) -> torch.Tensor:
@@ -238,18 +238,18 @@ class VAE(BenchRepVAEModel):
 
             role_label = role.replace("_", " ").title()
 
-            for loss_name, loss_term in loss_terms.items():
+            for loss_id, loss_term in loss_terms.items():
                 raw_loss = loss_term.loss(**loss_kwargs)
 
                 if not isinstance(raw_loss, torch.Tensor):
                     raise TypeError(
-                        f"{role_label} loss {loss_name!r} must return a "
+                        f"{role_label} loss {loss_id!r} must return a "
                         f"torch.Tensor, got {type(raw_loss).__name__}."
                     )
 
                 if raw_loss.ndim != 0:
                     raise ValueError(
-                        f"{role_label} loss {loss_name!r} must return a "
+                        f"{role_label} loss {loss_id!r} must return a "
                         f"scalar tensor, got shape {tuple(raw_loss.shape)}."
                     )
 
@@ -257,7 +257,7 @@ class VAE(BenchRepVAEModel):
                 total_loss = total_loss + weighted_loss
 
                 self.log(
-                    f"{stage}/{role}/{loss_name}",
+                    f"{stage}/{role}/{loss_id}",
                     raw_loss,
                     on_step=stage == "train",
                     on_epoch=True,
@@ -266,7 +266,7 @@ class VAE(BenchRepVAEModel):
                 )
 
                 self.log(
-                    f"{stage}/{role}/{loss_name}_weighted",
+                    f"{stage}/{role}/{loss_id}_weighted",
                     weighted_loss,
                     on_step=stage == "train",
                     on_epoch=True,

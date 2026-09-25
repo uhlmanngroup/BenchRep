@@ -76,9 +76,13 @@ def register_builtins() -> None:
             TRANSFORMS,
             ENCODERS,
             DECODERS,
+            HEADS,
             MODELS,
             RECONSTRUCTION_LOSSES,
             REGULARIZATION_LOSSES,
+            CLASSIFICATION_LOSSES,
+            CONTRASTIVE_LOSSES,
+            REGRESSION_LOSSES,
             OPTIMIZERS,
             LOGGERS,
             CALLBACKS,
@@ -89,6 +93,18 @@ def register_builtins() -> None:
             EVAL_EMBEDDING_METRICS,
             EVAL_PREDICTABILITY_PROBES,
             EVAL_RECONSTRUCTION_METRICS,
+        )
+
+        from benchrep.architecture.composite_model_component_contracts import (
+            ArchitectureComponent,
+            ComponentPort,
+            ComponentTensorResult,
+            ComponentMappingResult,
+        )
+
+        from benchrep.architecture.losses.composite_model_contracts import (
+            LossComponent,
+            LossTensorPort,
         )
 
         from benchrep.architecture.data import (
@@ -105,14 +121,22 @@ def register_builtins() -> None:
             Conv2DEncoder,
             TorchvisionResNet,
         )
+        from benchrep.architecture.heads import (
+            GaussianVariationalHead,
+            MLPHead,
+        )
         from benchrep.architecture.losses import (
             MSEReconstructionLoss,
             MAEReconstructionLoss,
             GaussianKLDivergenceLoss,
+            TripletMarginContrastiveLoss,
+            CrossEntropyClassificationLoss,
+            MSERegressionLoss,
         )
         from benchrep.architecture.models import (
             Autoencoder,
             VAE,
+            CompositeModel,
         )
         from benchrep.evaluation.embeddings.clustering import run_kmeans, run_leiden, run_hdbscan
         from benchrep.evaluation.embeddings.reductions import run_pca, run_tsne, run_umap
@@ -186,13 +210,68 @@ def register_builtins() -> None:
             "random_rotate",
             "rand_rotation",
         )
+        TRANSFORMS._register_builtin(
+            "gaussian_blur",
+            v2.GaussianBlur,
+            "gaussianblur",
+        )
+        TRANSFORMS._register_builtin(
+            "gaussian_noise",
+            v2.GaussianNoise,
+            "gaussiannoise",
+        )
 
         # --- Architecture and training ---
-        ENCODERS._register_builtin("mlp", MLPEncoder, "dense", "fully_connected", "fc")
-        ENCODERS._register_builtin("conv2d", Conv2DEncoder, "conv", "cnn", "convolutional")
+        ENCODERS._register_builtin(
+            "mlp",
+            ArchitectureComponent(
+                component=MLPEncoder,
+                runtime_inputs=(
+                    ComponentPort(
+                        name="x",
+                        supported_structures=("image",),
+                    ),
+                ),
+                runtime_result=ComponentTensorResult(
+                    supported_structures=("vector",),
+                ),
+            ),
+            "dense",
+            "fully_connected",
+            "fc",
+        )
+        ENCODERS._register_builtin(
+            "conv2d",
+            ArchitectureComponent(
+                component=Conv2DEncoder,
+                runtime_inputs=(
+                    ComponentPort(
+                        name="x",
+                        supported_structures=("image",),
+                    ),
+                ),
+                runtime_result=ComponentTensorResult(
+                    supported_structures=("vector",),
+                ),
+            ),
+            "conv",
+            "cnn",
+            "convolutional",
+        )
         ENCODERS._register_builtin(
             "torchvision_resnet",
-            TorchvisionResNet,
+            ArchitectureComponent(
+                component=TorchvisionResNet,
+                runtime_inputs=(
+                    ComponentPort(
+                        name="x",
+                        supported_structures=("image",),
+                    ),
+                ),
+                runtime_result=ComponentTensorResult(
+                    supported_structures=("vector",),
+                ),
+            ),
             "torchvision_resnets",
             "resnet",
             "resnets",
@@ -200,14 +279,92 @@ def register_builtins() -> None:
             "tv_resnets",
         )
 
-        DECODERS._register_builtin("mlp", MLPDecoder, "dense", "fully_connected", "fc")
+        DECODERS._register_builtin(
+            "mlp",
+            ArchitectureComponent(
+                component=MLPDecoder,
+                runtime_inputs=(
+                    ComponentPort(
+                        name="z",
+                        supported_structures=("vector",),
+                    ),
+                ),
+                runtime_result=ComponentTensorResult(
+                    supported_structures=("image",),
+                ),
+            ),
+            "dense",
+            "fully_connected",
+            "fc",
+        )
         DECODERS._register_builtin(
             "upsample_conv2d",
-            UpsampleConv2DDecoder,
+            ArchitectureComponent(
+                component=UpsampleConv2DDecoder,
+                runtime_inputs=(
+                    ComponentPort(
+                        name="z",
+                        supported_structures=("vector",),
+                    ),
+                ),
+                runtime_result=ComponentTensorResult(
+                    supported_structures=("image",),
+                ),
+            ),
             "upsampleconv2d",
             "upsample_conv",
             "upconv",
             "resize_conv",
+        )
+
+        HEADS._register_builtin(
+            "mlp",
+            ArchitectureComponent(
+                component=MLPHead,
+                runtime_inputs=(
+                    ComponentPort(
+                        name="x",
+                        supported_structures=("vector",),
+                    ),
+                ),
+                runtime_result=ComponentTensorResult(
+                    supported_structures=("scalar", "vector"),
+                ),
+            ),
+            "dense",
+            "fully_connected",
+            "fc",
+        )
+
+        HEADS._register_builtin(
+            "gaussian_variational",
+            ArchitectureComponent(
+                component=GaussianVariationalHead,
+                runtime_inputs=(
+                    ComponentPort(
+                        name="x",
+                        supported_structures=("vector",),
+                    ),
+                ),
+                runtime_result=ComponentMappingResult(
+                    outputs=(
+                        ComponentPort(
+                            name="z_sample",
+                            supported_structures=("vector",),
+                        ),
+                        ComponentPort(
+                            name="z_mu",
+                            supported_structures=("vector",),
+                        ),
+                        ComponentPort(
+                            name="z_logvar",
+                            supported_structures=("vector",),
+                        ),
+                    ),
+                ),
+            ),
+            "variational",
+            "gaussian",
         )
 
         MODELS._register_builtin("autoencoder", Autoencoder, "ae")
@@ -218,13 +375,74 @@ def register_builtins() -> None:
             "variational_ae",
             "gaussian_vae",
         )
+        MODELS._register_builtin(
+            "composite",
+            CompositeModel,
+            "composite_model",
+        )
 
-        RECONSTRUCTION_LOSSES._register_builtin("mse", MSEReconstructionLoss, "l2")
-        RECONSTRUCTION_LOSSES._register_builtin("mae", MAEReconstructionLoss, "l1")
+        RECONSTRUCTION_LOSSES._register_builtin(
+            "mse",
+            LossComponent(
+                component=MSEReconstructionLoss,
+                runtime_inputs=(
+                    LossTensorPort(
+                        name="reconstruction",
+                        supported_roles=("reconstruction_image",),
+                    ),
+                    LossTensorPort(
+                        name="target",
+                        supported_roles=(
+                            "sample_image",
+                            "positive_image",
+                            "negative_image",
+                        ),
+                    ),
+                ),
+            ),
+            "l2",
+            "mean_squared_error",
+        )
+        RECONSTRUCTION_LOSSES._register_builtin(
+            "mae",
+            LossComponent(
+                component=MAEReconstructionLoss,
+                runtime_inputs=(
+                    LossTensorPort(
+                        name="reconstruction",
+                        supported_roles=("reconstruction_image",),
+                    ),
+                    LossTensorPort(
+                        name="target",
+                        supported_roles=(
+                            "sample_image",
+                            "positive_image",
+                            "negative_image",
+                        ),
+                    ),
+                ),
+            ),
+            "l1",
+        )
 
         REGULARIZATION_LOSSES._register_builtin(
             "gaussian_kl",
-            GaussianKLDivergenceLoss,
+            LossComponent(
+                component=GaussianKLDivergenceLoss,
+                runtime_inputs=(
+                    LossTensorPort(
+                        name="z_mu",
+                        supported_roles=(
+                            "embedding_vector",
+                            "continuous_auxiliary_vector",
+                        ),
+                    ),
+                    LossTensorPort(
+                        name="z_logvar",
+                        supported_roles=("continuous_auxiliary_vector",),
+                    ),
+                ),
+            ),
             "kl",
             "kld",
             "kldiv",
@@ -232,6 +450,86 @@ def register_builtins() -> None:
             "gaussian_kld",
             "gaussian_kldiv",
             "gaussian_kl_div",
+        )
+
+        CONTRASTIVE_LOSSES._register_builtin(
+            "triplet_margin",
+            LossComponent(
+                component=TripletMarginContrastiveLoss,
+                runtime_inputs=(
+                    LossTensorPort(
+                        name="anchor",
+                        supported_roles=(
+                            "embedding_vector",
+                            "projection_vector",
+                        ),
+                    ),
+                    LossTensorPort(
+                        name="positive",
+                        supported_roles=(
+                            "embedding_vector",
+                            "projection_vector",
+                        ),
+                    ),
+                    LossTensorPort(
+                        name="negative",
+                        supported_roles=(
+                            "embedding_vector",
+                            "projection_vector",
+                        ),
+                    ),
+                ),
+            ),
+            "triplet",
+            "triplet_margin_loss",
+        )
+
+        CLASSIFICATION_LOSSES._register_builtin(
+            "cross_entropy",
+            LossComponent(
+                component=CrossEntropyClassificationLoss,
+                runtime_inputs=(
+                    LossTensorPort(
+                        name="prediction",
+                        supported_roles=(
+                            "categorical_prediction_vector",
+                        ),
+                    ),
+                    LossTensorPort(
+                        name="target",
+                        supported_roles=(
+                            "categorical_prediction_target_scalar",
+                        ),
+                    ),
+                ),
+            ),
+            "categorical_cross_entropy",
+            "ce",
+        )
+
+        REGRESSION_LOSSES._register_builtin(
+            "mse",
+            LossComponent(
+                component=MSERegressionLoss,
+                runtime_inputs=(
+                    LossTensorPort(
+                        name="prediction",
+                        supported_roles=(
+                            "continuous_prediction_scalar",
+                            "continuous_prediction_vector",
+                        ),
+                    ),
+                    LossTensorPort(
+                        name="target",
+                        supported_roles=(
+                            "continuous_prediction_target_scalar",
+                            "continuous_prediction_target_vector",
+                        ),
+                    ),
+                ),
+            ),
+            "l2",
+            "mean_squared_error",
         )
 
         OPTIMIZERS._register_builtin("adam", torch.optim.Adam)

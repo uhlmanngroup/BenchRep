@@ -15,7 +15,7 @@ dataset:
     noise_std: 0.05
     seed: 137
 
-transforms: null
+transform_pipelines: null
 
 data:
   batch_size: 8
@@ -29,16 +29,19 @@ inference:
   float32_matmul_precision: highest
 
 exports:
-  mode: all
-  embeddings:
+  anndata:
     enabled: true
-    keys: auto
-    primary_key: auto
+    mode: all
+    keys: null
+    primary_key: null
+
   reconstructions:
     enabled: true
+    mode: all
+    pairs: null
     n_examples: 8
     selection: random
     stratify_by: label
     seed: 137
     include_input: true
-    include_prediction: true
+    include_reconstruction: true

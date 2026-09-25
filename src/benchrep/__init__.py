@@ -6,8 +6,8 @@ try:
 except PackageNotFoundError:
     __version__ = "0+unknown"
 
-from benchrep.workflows.train import train_ae, train_vae
-from benchrep.workflows.predict import predict_ae, predict_vae
+from benchrep.workflows.train import train_ae, train_vae, train_composite
+from benchrep.workflows.predict import predict_ae, predict_vae, predict_composite
 from benchrep.workflows.evaluate import evaluate
 from benchrep.discovery.registry import (
     list_registries,
@@ -21,8 +21,10 @@ __all__ = [
     "__version__",
     "train_ae",
     "train_vae",
+    "train_composite",
     "predict_ae",
     "predict_vae",
+    "predict_composite",
     "evaluate",
     "list_registries",
     "list_registered_components",

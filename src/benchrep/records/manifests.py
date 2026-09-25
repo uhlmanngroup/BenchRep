@@ -16,13 +16,14 @@ from benchrep.assembly.resolvers import (
     PredictionRunSpec,
     EvaluationRunSpec,
 )
-from benchrep.records.prediction_exports import PredictionExportPaths
+from benchrep.records.prediction_exports import PredictionExportResult
 from benchrep.records.evaluation_exports import EvaluationExportPaths
 from benchrep.records.logs import (
     RUN_LOG_FILENAME,
     STDERR_LOG_FILENAME,
     STDOUT_LOG_FILENAME,
 )
+from benchrep.records.configs import config_to_serializable_dict
 from benchrep.records.utils import (
     paths_to_strings,
     count_paths,
@@ -39,6 +40,10 @@ from benchrep.runtime.status import (
     EvaluationSectionStatus,
     EvaluationStatusReport,
 )
+from benchrep.interfaces.model_families import (
+    CanonicalModelFamilySpec,
+    VAE_FAMILY,
+)
 
 
 if TYPE_CHECKING:
@@ -53,12 +58,14 @@ def write_training_manifest(
     run_context: RunContext,
     checkpoint_callback: ModelCheckpoint,
     early_stopping_record: EarlyStoppingRecord | None,
+    composite_model_spec_graph_path: Path | None = None,
     torchview_graph_path: Path | None = None,
     created_at: str,
     completed_at: str,
     status_report: TrainingStatusReport,
     model_class_name: str,
     datamodule_class_name: str,
+    capture_stdout: bool,
 ) -> dict[str, Any]:
     # Source flags
     model_is_external = run_spec.model_source != "config"
@@ -67,8 +74,12 @@ def write_training_manifest(
     config = run_spec.training_config
 
     configured_model = config.model.name if config.model is not None else None
-    configured_encoder = config.encoder.name if config.encoder is not None else None
-    configured_decoder = config.decoder.name if config.decoder is not None else None
+
+    model_architecture_summary = _build_model_architecture_summary(
+        config=config,
+        model_family=run_spec.model_family,
+        model_is_external=model_is_external,
+    )
 
     configured_dataset = (
         config.dataset.model_dump(mode="json")
@@ -76,28 +87,8 @@ def write_training_manifest(
         else None
     )
 
-    configured_transforms = (
-        [
-            transform.model_dump(mode="json")
-            for transform in config.transforms
-        ]
-        if not datamodule_is_external
-        else None
-    )
-
-    transform_names_by_split = (
-        {
-            "training": [
-                transform.name
-                for transform in config.transforms
-                if "training" in transform.apply_to
-            ],
-            "validation": [
-                transform.name
-                for transform in config.transforms
-                if "validation" in transform.apply_to
-            ],
-        }
+    transform_pipelines_by_split = (
+        _summarize_transform_pipelines(config)
         if not datamodule_is_external
         else None
     )
@@ -111,8 +102,15 @@ def write_training_manifest(
     records = _build_common_records(
         config_composition_result,
         run_context,
+        capture_stdout=capture_stdout,
     )
     records["architecture"] = {
+        "composite_model_spec_graph_applicable": (
+                run_spec.composite_model_spec is not None
+        ),
+        "composite_model_spec_graph_path": paths_to_strings(
+            composite_model_spec_graph_path
+        ),
         "torchview_requested": config.inspection.torchview.enabled,
         "torchview_graph_path": paths_to_strings(torchview_graph_path),
     }
@@ -132,18 +130,17 @@ def write_training_manifest(
 
     summary = {
         "model_source": run_spec.model_source,
+        "model_name": None if model_is_external else configured_model,
+        "model_class": model_class_name,
+        "model_architecture": model_architecture_summary,
         "datamodule_source": run_spec.datamodule_source,
-        "model": model_class_name if model_is_external else configured_model,
-        "model_family": run_spec.model_family.name,
-        "encoder": None if model_is_external else configured_encoder,
-        "decoder": None if model_is_external else configured_decoder,
+        "datamodule_class": datamodule_class_name,
         "dataset": (
             configured_dataset["name"]
             if configured_dataset is not None
             else None
         ),
-        "transforms": transform_names_by_split,
-        "datamodule": datamodule_class_name if datamodule_is_external else None,
+        "transform_pipelines": transform_pipelines_by_split,
         "batch_size": (
             configured_datamodule.get("batch_size")
             if configured_datamodule is not None
@@ -153,8 +150,12 @@ def write_training_manifest(
             None
             if model_is_external or config.losses is None
             else {
-                role: list(loss_terms)
-                for role, loss_terms in config.losses.items()
+                role: [
+                    loss_spec.loss_id
+                    for loss_spec in run_spec.loss_specs
+                    if loss_spec.loss_role == role
+                ]
+                for role in config.losses
             }
         ),
         "optimizer": (
@@ -220,31 +221,21 @@ def write_training_manifest(
             "run_name": run_context.run_name,
             "output_dir": str(run_context.output_dir),
         },
-        "provenance": {
+        "construction": {
             "config": {
                 "run_reconstructable_from_resolved_config": (
-                    not model_is_external and not datamodule_is_external
+                        not model_is_external and not datamodule_is_external
                 ),
                 "effective_source": config_composition_result.effective_source,
                 "yaml_supplied": config_composition_result.yaml_supplied,
                 "yaml_used_as_base": config_composition_result.yaml_used_as_base,
-                "original_config_path": (
-                    str(config_composition_result.original_config_path)
-                    if config_composition_result.original_config_path is not None
-                    else None
-                ),
             },
             "model": {
                 "source": run_spec.model_source,
                 "family": run_spec.model_family.name,
                 "class_name": model_class_name,
                 "config_reconstructable": not model_is_external,
-                "configured_model": None if model_is_external else configured_model,
-                "configured_encoder": None if model_is_external else configured_encoder,
-                "configured_decoder": None if model_is_external else configured_decoder,
             },
-            "dataset": configured_dataset,
-            "transforms": configured_transforms,
             "datamodule": {
                 "source": run_spec.datamodule_source,
                 "class_name": datamodule_class_name,
@@ -253,13 +244,15 @@ def write_training_manifest(
                         and configured_dataset is not None
                         and configured_datamodule is not None
                 ),
-                "configured_datamodule": configured_datamodule,
             },
         },
         "records": records,
         "early_stopping": early_stopping,
         "checkpoints": checkpoints,
         "summary": summary,
+        "appendix": {
+            "resolved_config": config_to_serializable_dict(config),
+        },
     }
 
     write_yaml_record(manifest, output_path)
@@ -273,7 +266,8 @@ def write_prediction_manifest(
     output_path: Path,
     run_spec: PredictionRunSpec,
     run_context: RunContext,
-    export_paths: PredictionExportPaths,
+    composite_model_spec_graph_path: Path | None = None,
+    export_result: PredictionExportResult,
     created_at: str,
     completed_at: str,
     status_report: PredictionStatusReport,
@@ -281,13 +275,16 @@ def write_prediction_manifest(
     datamodule_class_name: str,
     n_batches: int,
     n_observations: int | None,
+    capture_stdout: bool,
 ) -> dict[str, Any]:
-    model_family = run_spec.model_family
-    model_source = run_spec.model_source
-    datamodule_source = run_spec.datamodule_source
-    training_provenance = run_spec.training_manifest.get("provenance", {})
-    training_status = run_spec.training_manifest.get("status")
-    training_status_report = run_spec.training_manifest.get("status_report")
+    config = run_spec.prediction_config
+    training_manifest = run_spec.training_manifest
+
+    model_is_external = run_spec.model_source != "config"
+    datamodule_is_external = run_spec.datamodule_source != "config"
+
+    training_status = training_manifest.get("status")
+    training_status_report = training_manifest.get("status_report")
     training_status_record = (
         training_status_report.get("training")
         if isinstance(training_status_report, Mapping)
@@ -298,102 +295,207 @@ def write_prediction_manifest(
         if isinstance(training_status_record, Mapping)
         else None
     )
-    training_config_provenance = training_provenance.get("config", {})
-    training_run_reconstructable = bool(
-        training_config_provenance.get(
-            "run_reconstructable_from_resolved_config",
-            False,
-        )
-    )
-
-    model_is_external = model_source != "config"
-    datamodule_is_external = datamodule_source != "config"
 
     configured_model = (
         run_spec.training_config.model.name
         if run_spec.training_config.model is not None
         else None
     )
-    configured_encoder = (
-        run_spec.training_config.encoder.name
-        if run_spec.training_config.encoder is not None
-        else None
+
+    composite_assembly_input_overrides = (
+        config.inference.composite_model_assembly_input_overrides
     )
-    configured_decoder = (
-        run_spec.training_config.decoder.name
-        if run_spec.training_config.decoder is not None
+
+    composite_assembly_input_override_summary = (
+        {
+            step_id: dict(step_override.inputs)
+            for step_id, step_override
+            in composite_assembly_input_overrides.items()
+        }
+        if composite_assembly_input_overrides is not None
         else None
     )
 
-    configured_dataset = (
-        run_spec.dataset_config.model_dump(mode="json")
-        if not datamodule_is_external and run_spec.dataset_config is not None
+    model_architecture_summary = _build_model_architecture_summary(
+        config=run_spec.training_config,
+        model_family=run_spec.model_family,
+        model_is_external=model_is_external,
+    )
+
+    dataset_name = (
+        run_spec.dataset_config.name
+        if (
+            not datamodule_is_external
+            and run_spec.dataset_config is not None
+        )
         else None
     )
 
-    configured_transforms = (
-        [
-            transform.model_dump(mode="json")
-            for transform in run_spec.transform_configs
-        ]
+    transform_pipelines_by_split = (
+        _summarize_transform_pipelines(config)
         if not datamodule_is_external
-        and run_spec.transform_configs is not None
         else None
     )
-
-    configured_datamodule = (
-        run_spec.datamodule_config.model_dump(mode="json")
-        if not datamodule_is_external and run_spec.datamodule_config is not None
-        else None
-    )
-
-    if configured_datamodule is not None:
-        configured_datamodule["batch_size"] = run_spec.batch_size
-
-
-    embedding_spec = run_spec.export_spec.embeddings
-    reconstruction_spec = run_spec.export_spec.reconstructions
-    embedding_export = export_paths.embedding_export
-    reconstruction_paths = export_paths.reconstruction_paths
 
     records = _build_common_records(
         config_composition_result,
         run_context,
+        capture_stdout=capture_stdout,
     )
+    records["architecture"] = {
+        "composite_model_spec_graph_applicable": (
+            run_spec.composite_model_spec is not None
+        ),
+        "composite_model_spec_graph_path": paths_to_strings(
+            composite_model_spec_graph_path
+        ),
+    }
+
+    anndata_spec = run_spec.export_spec.anndata
+    reconstruction_spec = run_spec.export_spec.reconstructions
+
+    pair_results_by_id = {
+        result.pair.id: result
+        for result in export_result.reconstructions.pairs
+    }
+
+    reconstruction_pair_status_records: dict[
+        str,
+        dict[str, Any],
+    ] = {}
+
+    reconstruction_pair_export_records: dict[
+        str,
+        dict[str, Any],
+    ] = {}
+
+    for pair in reconstruction_spec.pairs:
+        pair_result = pair_results_by_id.get(pair.id)
+
+        if pair_result is None:
+            pair_status = status_report.reconstructions_export.status
+            pair_issues = list(
+                status_report.reconstructions_export.issues
+            )
+            paths = None
+        else:
+            pair_status = pair_result.outcome.status
+            pair_issues = list(pair_result.outcome.issues)
+            paths = pair_result.paths
+
+        reconstruction_pair_status_records[pair.id] = {
+            "status": pair_status,
+            "issues": pair_issues,
+        }
+
+        reconstruction_pair_export_records[pair.id] = {
+            "input": pair.input,
+            "reconstruction": pair.reconstruction,
+            "n_examples_exported": (
+                paths.n_examples_exported
+                if paths is not None
+                else None
+            ),
+            "n_strata": (
+                paths.n_strata
+                if paths is not None
+                else None
+            ),
+            "n_represented_strata": (
+                paths.n_represented_strata
+                if paths is not None
+                else None
+            ),
+            "n_omitted_strata": (
+                paths.n_omitted_strata
+                if paths is not None
+                else None
+            ),
+            "paths": {
+                "bundle_dir": (
+                    paths_to_strings(paths.bundle_dir)
+                    if paths is not None
+                    else None
+                ),
+                "input": (
+                    paths_to_strings(paths.input_path)
+                    if paths is not None
+                    else None
+                ),
+                "reconstruction": (
+                    paths_to_strings(paths.reconstruction_path)
+                    if paths is not None
+                    else None
+                ),
+                "observations": (
+                    paths_to_strings(paths.obs_path)
+                    if paths is not None
+                    else None
+                ),
+                "metadata": (
+                    paths_to_strings(paths.metadata_path)
+                    if paths is not None
+                    else None
+                ),
+            },
+        }
 
     summary = {
-        "project_name": run_spec.run_identity.project_name,
-        "model_source": model_source,
-        "datamodule_source": datamodule_source,
-        "model": model_class_name if model_is_external else configured_model,
-        "model_family": model_family.name,
-        "encoder": None if model_is_external else configured_encoder,
-        "decoder": None if model_is_external else configured_decoder,
-        "dataset": (
-            configured_dataset["name"] if configured_dataset is not None else None
+        "model_source": run_spec.model_source,
+        "model_name": (
+            None
+            if model_is_external
+            else configured_model
         ),
-        "transforms": (
-            {
-                "prediction": [
-                    transform["name"]
-                    for transform in configured_transforms
-                ],
-            }
-            if configured_transforms is not None
-            else None
+        "model_class": model_class_name,
+        "model_architecture": model_architecture_summary,
+        "composite_model_assembly_input_overrides": (
+            composite_assembly_input_override_summary
         ),
-        "datamodule": datamodule_class_name if datamodule_is_external else None,
+        "datamodule_source": run_spec.datamodule_source,
+        "datamodule_class": datamodule_class_name,
+        "dataset": dataset_name,
+        "transform_pipelines": transform_pipelines_by_split,
         "batch_size": (
-            configured_datamodule.get("batch_size") if configured_datamodule is not None else None
+            None
+            if datamodule_is_external
+            else run_spec.batch_size
         ),
         "max_batches": run_spec.max_batches,
+        "checkpoint": {
+            "selection": str(run_spec.checkpoint_selection),
+            "source": run_spec.checkpoint_source,
+        },
+        "seed": run_spec.seed,
+        "float32_matmul_precision": (
+            run_spec.float32_matmul_precision
+        ),
+        "trainer": {
+            "deterministic": (
+                run_spec.trainer_config.deterministic
+            ),
+        },
+        "exports": {
+            "anndata": {
+                "enabled": anndata_spec.enabled,
+                "keys": list(anndata_spec.keys),
+                "primary_key": anndata_spec.primary_key,
+            },
+            "reconstructions": {
+                "enabled": reconstruction_spec.enabled,
+                "pairs": [
+                    pair.id
+                    for pair in reconstruction_spec.pairs
+                ],
+            },
+        },
     }
 
     outcome_summary = build_outcome_summary(
         outcome.status
         for outcome in (
             status_report.inference,
-            status_report.embeddings_export,
+            status_report.anndata_export,
             status_report.reconstructions_export,
         )
     )
@@ -409,32 +511,20 @@ def write_prediction_manifest(
                 "n_observations": n_observations,
             },
             "exports": {
-                "embeddings": {
-                    "status": status_report.embeddings_export.status,
+                "anndata": {
+                    "status": status_report.anndata_export.status,
                     "issues": list(
-                        status_report.embeddings_export.issues
+                        status_report.anndata_export.issues
                     ),
                 },
                 "reconstructions": {
-                    "status": status_report.reconstructions_export.status,
+                    "status": (
+                        status_report.reconstructions_export.status
+                    ),
                     "issues": list(
                         status_report.reconstructions_export.issues
                     ),
-                    "n_strata": (
-                        reconstruction_paths.n_strata
-                        if reconstruction_paths is not None
-                        else None
-                    ),
-                    "n_represented_strata": (
-                        reconstruction_paths.n_represented_strata
-                        if reconstruction_paths is not None
-                        else None
-                    ),
-                    "n_omitted_strata": (
-                        reconstruction_paths.n_omitted_strata
-                        if reconstruction_paths is not None
-                        else None
-                    ),
+                    "pairs": reconstruction_pair_status_records,
                 },
             },
         },
@@ -446,13 +536,20 @@ def write_prediction_manifest(
             "output_dir": str(run_context.output_dir),
         },
         "source": {
-            "training_manifest_path": str(run_spec.training_manifest_path),
+            "training_manifest_path": str(
+                run_spec.training_manifest_path
+            ),
             "training_run_name": run_spec.training_run_name,
-            "training_output_dir": str(run_spec.training_output_dir),
+            "training_output_dir": str(
+                run_spec.training_output_dir
+            ),
             "training_status": training_status,
-            "training_interruption_signal": training_interruption_signal,
-            "resolved_training_config_path": str(run_spec.resolved_training_config_path),
-            "checkpoint_selection": str(run_spec.checkpoint_selection),
+            "training_interruption_signal": (
+                training_interruption_signal
+            ),
+            "checkpoint_selection": str(
+                run_spec.checkpoint_selection
+            ),
             "checkpoint_source": run_spec.checkpoint_source,
             "checkpoint_path": str(run_spec.checkpoint_path),
         },
@@ -461,118 +558,89 @@ def write_prediction_manifest(
                 run_spec.inherited_config_fields,
             ),
         },
-        "provenance": {
-            "training": training_provenance,
-            "prediction": {
-                "config": {
-                    "run_reconstructable_from_resolved_config": (
-                        training_run_reconstructable
-                        and not model_is_external
-                        and not datamodule_is_external
-                    ),
-                    "effective_source": config_composition_result.effective_source,
-                    "yaml_supplied": config_composition_result.yaml_supplied,
-                    "yaml_used_as_base": config_composition_result.yaml_used_as_base,
-                    "original_config_path": (
-                        str(config_composition_result.original_config_path)
-                        if config_composition_result.original_config_path is not None
-                        else None
-                    ),
-                },
-                "model": {
-                    "source": model_source,
-                    "family": model_family.name,
-                    "class_name": model_class_name,
-                    "config_reconstructable": (
-                            not model_is_external and configured_model is not None
-                    ),
-                    "configured_model": None if model_is_external else configured_model,
-                    "configured_encoder": None if model_is_external else configured_encoder,
-                    "configured_decoder": None if model_is_external else configured_decoder,
-                },
-                "inference": (
-                    run_spec.prediction_config.inference.model_dump(
-                        mode="json",
-                    )
+        "construction": {
+            "config": {
+                "run_reconstructable_from_resolved_config": (
+                    not model_is_external
+                    and not datamodule_is_external
                 ),
-                "dataset": configured_dataset,
-                "transforms": configured_transforms,
-                "datamodule": {
-                    "source": datamodule_source,
-                    "class_name": datamodule_class_name,
-                    "config_reconstructable": (
-                            not datamodule_is_external
-                            and configured_dataset is not None
-                            and configured_datamodule is not None
-                    ),
-                    "configured_datamodule": configured_datamodule,
-                },
+                "effective_source": (
+                    config_composition_result.effective_source
+                ),
+                "yaml_supplied": (
+                    config_composition_result.yaml_supplied
+                ),
+                "yaml_used_as_base": (
+                    config_composition_result.yaml_used_as_base
+                ),
+            },
+            "model": {
+                "source": run_spec.model_source,
+                "family": run_spec.model_family.name,
+                "class_name": model_class_name,
+                "config_reconstructable": not model_is_external,
+                "assembly_input_overrides_applied": (
+                    composite_assembly_input_overrides is not None
+                ),
+            },
+            "datamodule": {
+                "source": run_spec.datamodule_source,
+                "class_name": datamodule_class_name,
+                "config_reconstructable": (
+                    not datamodule_is_external
+                    and run_spec.dataset_config is not None
+                    and run_spec.datamodule_config is not None
+                ),
             },
         },
         "records": records,
         "exports": {
-            "mode": run_spec.export_spec.mode,
-            "embeddings": {
-                "enabled": embedding_spec.enabled,
-                "requested_keys": embedding_spec.keys,
-                "requested_primary_key": embedding_spec.primary_key,
-                "path": (
-                    paths_to_strings(embedding_export.embeddings_h5ad_path)
-                    if embedding_export is not None
-                    else None
-                ),
-                "resolved_keys": (
-                    embedding_export.resolved_keys
-                    if embedding_export is not None
-                    else None
-                ),
-                "resolved_primary_key": (
-                    embedding_export.resolved_primary_key
-                    if embedding_export is not None
-                    else None
+            "anndata": {
+                "enabled": anndata_spec.enabled,
+                "mode": anndata_spec.mode,
+                "keys": list(anndata_spec.keys),
+                "primary_key": anndata_spec.primary_key,
+                "observations": [
+                    {
+                        "name": observation.name,
+                        "source": observation.source,
+                        "use_as_index": observation.use_as_index,
+                    }
+                    for observation in anndata_spec.observations
+                ],
+                "path": paths_to_strings(
+                    export_result.anndata.path
                 ),
             },
             "reconstructions": {
-                "configured_enabled": (
-                    run_spec.prediction_config.exports.reconstructions.enabled
-                ),
                 "enabled": reconstruction_spec.enabled,
-                "n_examples_requested": reconstruction_spec.n_examples,
-                "n_examples_exported": (
-                    reconstruction_paths.n_examples_exported
-                    if reconstruction_paths is not None
-                    else None
+                "mode": reconstruction_spec.mode,
+                "n_examples_requested": (
+                    reconstruction_spec.n_examples
                 ),
                 "selection": reconstruction_spec.selection,
                 "stratify_by": reconstruction_spec.stratify_by,
                 "seed": reconstruction_spec.seed,
                 "include_input": reconstruction_spec.include_input,
-                "include_prediction": reconstruction_spec.include_prediction,
-                "paths": {
-                    "input": (
-                        paths_to_strings(reconstruction_paths.input_path)
-                        if reconstruction_paths is not None
-                        else None
-                    ),
-                    "reconstruction": (
-                        paths_to_strings(reconstruction_paths.reconstruction_path)
-                        if reconstruction_paths is not None
-                        else None
-                    ),
-                    "obs": (
-                        paths_to_strings(reconstruction_paths.obs_path)
-                        if reconstruction_paths is not None
-                        else None
-                    ),
-                    "metadata": (
-                        paths_to_strings(reconstruction_paths.metadata_path)
-                        if reconstruction_paths is not None
-                        else None
-                    ),
-                },
+                "include_reconstruction": (
+                    reconstruction_spec.include_reconstruction
+                ),
+                "observations": [
+                    {
+                        "name": observation.name,
+                        "source": observation.source,
+                    }
+                    for observation
+                    in reconstruction_spec.observations
+                ],
+                "pairs": reconstruction_pair_export_records,
             },
         },
         "summary": summary,
+        "appendix": {
+            "resolved_config": config_to_serializable_dict(config),
+            "training_manifest": training_manifest,
+        },
     }
 
     write_yaml_record(manifest, output_path)
@@ -591,72 +659,66 @@ def write_evaluation_manifest(
     status_report: EvaluationStatusReport,
     created_at: str,
     completed_at: str,
+    capture_stdout: bool,
 ) -> dict[str, Any]:
-    """Write the evaluation workflow manifest."""
+    """Write the evaluation manifest and embed its reproducibility artifacts."""
+
     config = run_spec.evaluation_config
     step_spec = run_spec.step_spec
+    anndata_spec = run_spec.input_spec.anndata
     reconstruction_spec = run_spec.input_spec.reconstructions
-
     prediction_manifest = run_spec.prediction_manifest
 
     prediction_run: Mapping[str, Any] = {}
-    prediction_provenance: Mapping[str, Any] | None = None
     prediction_summary: Mapping[str, Any] = {}
+    prediction_status = None
 
     if prediction_manifest is not None:
+        prediction_status = prediction_manifest.get("status")
+
         run_value = prediction_manifest.get("run", {})
         if isinstance(run_value, Mapping):
             prediction_run = run_value
-
-        provenance_value = prediction_manifest.get("provenance")
-        if isinstance(provenance_value, Mapping):
-            prediction_provenance = provenance_value
 
         summary_value = prediction_manifest.get("summary", {})
         if isinstance(summary_value, Mapping):
             prediction_summary = summary_value
 
-    embeddings_source = run_spec.input_spec.embeddings_source
-    reconstructions_source = run_spec.input_spec.reconstructions_source
+    anndata_source = (
+        anndata_spec.source
+        if anndata_spec is not None
+        else None
+    )
+    reconstructions_source = (
+        reconstruction_spec.source
+        if reconstruction_spec is not None
+        else None
+    )
 
     if run_spec.input_spec.prediction_manifest_path is None:
         source_mode = "direct"
     elif (
-        embeddings_source == "direct_path"
-        or reconstructions_source == "direct_path"
+            anndata_source == "direct_path"
+            or reconstructions_source == "direct_path"
     ):
         source_mode = "mixed"
     else:
         source_mode = "prediction_manifest"
 
-    grid_params = step_spec.plot_params.get("reconstruction_grid", {})
+    grid_params = step_spec.plot_params.get(
+        "reconstruction_grid",
+        {},
+    )
     if not isinstance(grid_params, Mapping):
         grid_params = {}
 
     tiff_paths = export_paths.reconstruction_tiff_paths
     grid_paths = export_paths.reconstruction_grid_paths
 
-    provenance = (
-        dict(prediction_provenance)
-        if prediction_provenance is not None
-        else {}
-    )
-
-    provenance["evaluation"] = {
-        "config": {
-            "run_reconstructable_from_resolved_config": True,
-            "effective_source": config_composition_result.effective_source,
-            "yaml_supplied": config_composition_result.yaml_supplied,
-            "yaml_used_as_base": config_composition_result.yaml_used_as_base,
-            "original_config_path": paths_to_strings(
-                config_composition_result.original_config_path
-            ),
-        },
-    }
-
     records = _build_common_records(
         config_composition_result,
         run_context,
+        capture_stdout=capture_stdout,
     )
 
     anndata_output_locations = (
@@ -671,7 +733,7 @@ def write_evaluation_manifest(
     outcome_statuses = [
         outcome.status
         for section in (
-            status_report.embeddings,
+            status_report.anndata,
             status_report.reconstructions,
             status_report.exports,
         )
@@ -702,15 +764,29 @@ def write_evaluation_manifest(
             ),
             "prediction_run_name": prediction_run.get("run_name"),
             "prediction_output_dir": prediction_run.get("output_dir"),
-            "embeddings": {
-                "source": embeddings_source,
-                "path": paths_to_strings(
-                    run_spec.input_spec.embeddings_path
+            "prediction_status": prediction_status,
+            "anndata": {
+                "source": anndata_source,
+                "available": anndata_spec is not None,
+                "path": (
+                    paths_to_strings(anndata_spec.path)
+                    if anndata_spec is not None
+                    else None
                 ),
             },
             "reconstructions": {
                 "source": reconstructions_source,
                 "available": reconstruction_spec is not None,
+                "pair_id": (
+                    reconstruction_spec.pair_id
+                    if reconstruction_spec is not None
+                    else None
+                ),
+                "bundle_dir": (
+                    paths_to_strings(reconstruction_spec.bundle_dir)
+                    if reconstruction_spec is not None
+                    else None
+                ),
                 "n_examples_limit": (
                     reconstruction_spec.n_examples
                     if reconstruction_spec is not None
@@ -729,8 +805,10 @@ def write_evaluation_manifest(
                         if reconstruction_spec is not None
                         else None
                     ),
-                    "obs": (
-                        paths_to_strings(reconstruction_spec.obs_path)
+                    "observations": (
+                        paths_to_strings(
+                            reconstruction_spec.observations_path
+                        )
                         if reconstruction_spec is not None
                         else None
                     ),
@@ -749,22 +827,33 @@ def write_evaluation_manifest(
                 else sorted(run_spec.inherited_config_fields)
             ),
         },
-        "provenance": provenance,
+        "construction": {
+            "config": {
+                "run_reconstructable_from_resolved_config": True,
+                "effective_source": (
+                    config_composition_result.effective_source
+                ),
+                "yaml_supplied": config_composition_result.yaml_supplied,
+                "yaml_used_as_base": (
+                    config_composition_result.yaml_used_as_base
+                ),
+            },
+        },
         "records": records,
         "exports": {
-            "embeddings": {
+            "anndata": {
                 "path": paths_to_strings(
-                    export_paths.evaluated_embeddings_path
+                    export_paths.evaluated_anndata_path
                 ),
                 "n_obs": (
                     int(adata.n_obs)
-                    if export_paths.evaluated_embeddings_path is not None
+                    if export_paths.evaluated_anndata_path is not None
                        and adata is not None
                     else None
                 ),
                 "n_vars": (
                     int(adata.n_vars)
-                    if export_paths.evaluated_embeddings_path is not None
+                    if export_paths.evaluated_anndata_path is not None
                        and adata is not None
                     else None
                 ),
@@ -822,13 +911,25 @@ def write_evaluation_manifest(
             },
         },
         "summary": {
-            "project_name": prediction_summary.get("project_name"),
-            "model": prediction_summary.get("model"),
-            "encoder": prediction_summary.get("encoder"),
-            "decoder": prediction_summary.get("decoder"),
+            "project_name": run_spec.run_identity.project_name,
+            "model_name": prediction_summary.get("model_name"),
+            "model_class": prediction_summary.get("model_class"),
+            "model_architecture": prediction_summary.get(
+                "model_architecture"
+            ),
+            "dataset": prediction_summary.get("dataset"),
             "source_mode": source_mode,
-            "has_embeddings": run_spec.input_spec.embeddings_path is not None,
+            "has_anndata": anndata_spec is not None,
             "has_reconstructions": reconstruction_spec is not None,
+            "reconstruction_pair_id": (
+                reconstruction_spec.pair_id
+                if reconstruction_spec is not None
+                else None
+            ),
+        },
+        "appendix": {
+            "resolved_config": config_to_serializable_dict(config),
+            "prediction_manifest": prediction_manifest,
         },
     }
 
@@ -848,8 +949,8 @@ def _evaluation_status_report_to_manifest(
 
     section_specs = (
         (
-            "embeddings",
-            status_report.embeddings,
+            "anndata",
+            status_report.anndata,
             anndata_output_locations,
         ),
         (
@@ -1131,6 +1232,8 @@ def _anndata_location(attribute: str, *keys: str) -> str:
 def _build_common_records(
     config_composition_result: ConfigCompositionResult[Any],
     run_context: RunContext,
+    *,
+    capture_stdout: bool = False,
 ) -> dict[str, Any]:
     has_original_config = (
         config_composition_result.original_config_path is not None
@@ -1159,8 +1262,9 @@ def _build_common_records(
             run_context.log_dir / STDERR_LOG_FILENAME
         ),
         "console_stdout_path": (
-            f"{run_context.log_dir / STDOUT_LOG_FILENAME} "
-            "[optional; only written when stdout capture is enabled]"
+            str(run_context.log_dir / STDOUT_LOG_FILENAME)
+            if capture_stdout
+            else None
         ),
     }
 
@@ -1228,3 +1332,100 @@ def _collect_paths(value: Any) -> list[Path]:
         return paths
 
     return []
+
+
+def _build_model_architecture_summary(
+    *,
+    config: TrainingConfig,
+    model_family: Any,
+    model_is_external: bool,
+) -> dict[str, Any] | None:
+    """Build a concise architecture summary for a trained model."""
+    if model_is_external:
+        return None
+
+    if isinstance(model_family, CanonicalModelFamilySpec):
+        assert config.model is not None
+        assert config.encoder is not None
+        assert config.decoder is not None
+
+        architecture_summary: dict[str, Any] = {
+            "encoder": config.encoder.name,
+            "decoder": config.decoder.name,
+        }
+
+        if model_family == VAE_FAMILY:
+            architecture_summary["latent_dim"] = config.model.params[
+                "latent_dim"
+            ]
+
+        return architecture_summary
+
+    assert config.composite_model_declarations is not None
+    assert config.composite_model_components is not None
+    assert config.composite_model_assembly is not None
+
+    return {
+        "declarations": (
+            config.composite_model_declarations.model_dump(
+                mode="json"
+            )
+        ),
+        "components": {
+            component_id: {
+                "kind": component.kind,
+                "name": component.name,
+            }
+            for component_id, component
+            in config.composite_model_components.items()
+        },
+        "assembly": {
+            step_id: {
+                "component": step.component,
+            }
+            for step_id, step
+            in config.composite_model_assembly.items()
+        },
+    }
+
+
+def _summarize_transform_pipelines(
+    config: TrainingConfig | PredictionConfig,
+) -> dict[str, list[str]]:
+    """Summarize ordered transform pipelines by effective workflow split."""
+
+    if isinstance(config, TrainingConfig):
+        splits = ("training", "validation")
+        transform_pipelines = config.transform_pipelines
+    else:
+        splits = ("prediction",)
+        transform_pipelines = config.transform_pipelines or []
+
+    pipelines_by_split: dict[str, list[str]] = {
+        split: []
+        for split in splits
+    }
+
+    for split in splits:
+        for pipeline in transform_pipelines:
+            if isinstance(config, TrainingConfig):
+                n_steps = sum(
+                    1
+                    for step in pipeline.steps
+                    if split in step.apply_to
+                )
+            else:
+                n_steps = len(pipeline.steps)
+
+            if n_steps == 0:
+                continue
+
+            assert pipeline.input is not None
+            assert pipeline.output is not None
+
+            pipelines_by_split[split].append(
+                f"{pipeline.input} -> {pipeline.output} "
+                f"[n_steps={n_steps}]"
+            )
+
+    return pipelines_by_split

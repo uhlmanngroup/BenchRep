@@ -1,0 +1,54 @@
+stage: prediction
+
+source:
+  training_manifest_path: null
+  checkpoint: best
+
+dataset:
+  name: mnist
+  params:
+    root: examples/data/mnist
+    split: test
+    download: true
+
+# null/omitted = inherit validation-applicable training preprocessing
+# explicit list = replace inherited transforms
+# [] = apply no configured transforms
+transform_pipelines: null
+
+data:
+  batch_size: null
+  num_workers: null
+  max_batches: null
+
+inference:
+  seed: null
+  seed_workers: null
+  deterministic: null
+  float32_matmul_precision: null
+
+  composite_model_assembly_input_overrides:
+    reconstruct:
+      inputs:
+        z: produces.z_mu
+    classify:
+      inputs:
+        x: produces.z_mu
+
+exports:
+  anndata:
+    enabled: true
+    mode: all
+    keys: null
+    primary_key: z_mu
+
+  reconstructions:
+    enabled: true
+    mode: all
+    pairs: null
+    n_examples: 32
+    selection: random
+    stratify_by: label
+    seed: null
+    include_input: true
+    include_reconstruction: true

@@ -1,0 +1,70 @@
+from __future__ import annotations
+
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from benchrep.architecture.composite_model_roles import (
+    CompositeModelInputRole,
+    CompositeModelBatchMetadataRole,
+    CompositeModelOutputRole,
+    CompositeModelComponentKind,
+)
+
+
+# -------------------------
+# Generic reusable blocks
+# -------------------------
+class _CompositeModelConfigBaseModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class CompositeModelNamedConfig(_CompositeModelConfigBaseModel):
+    name: str
+    params: dict[str, Any] = Field(default_factory=dict)
+
+
+# -------------------------
+# Composite model declarations
+# -------------------------
+class CompositeModelDeclarationsConfig(_CompositeModelConfigBaseModel):
+    expects: dict[str, CompositeModelInputRole] = Field(
+        min_length=1,
+    )
+    batch_metadata: dict[str, CompositeModelBatchMetadataRole] | None = None
+    produces: dict[str, CompositeModelOutputRole] = Field(
+        min_length=1,
+    )
+
+# -------------------------
+# Component configuration
+# -------------------------
+class CompositeModelComponentConfig(CompositeModelNamedConfig):
+    """Select one registered architecture component for a Composite model.
+
+    Composite compatibility is defined by the registered
+    ``ArchitectureComponent`` runtime contract rather than by canonical
+    encoder or decoder base classes.
+    """
+
+    kind: CompositeModelComponentKind
+
+
+# -------------------------
+# Assembly configuration
+# -------------------------
+class CompositeModelAssemblyStepConfig(_CompositeModelConfigBaseModel):
+    component: str
+
+    inputs: dict[str, str] = Field(
+        min_length=1,
+    )
+
+    outputs: str | dict[str, str] = Field(
+        min_length=1,
+        description=(
+            "Binding for the component's runtime result. A single tensor uses one "
+            "`produces.<name>` reference; a mapping uses runtime result keys mapped "
+            "to `produces.<name>` references."
+        ),
+    )

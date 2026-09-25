@@ -7,7 +7,11 @@ from collections.abc import Sequence
 import torch
 from torch import nn
 
-from benchrep.architecture.utils import resolve_activation
+from benchrep.architecture.utils import (
+    resolve_activation,
+    resolve_normalization,
+    validate_normalization,
+)
 from benchrep.architecture.encoders.base import BaseEncoder
 
 
@@ -31,7 +35,7 @@ class MLPEncoder(BaseEncoder):
         Dropout probability applied after activation. Set to 0.0 to disable.
     normalization:
         Optional normalization after each hidden linear layer. Supported values are:
-        None, "batchnorm", and "layernorm".
+        None, "batchnorm", "layernorm", and "rmsnorm".
     """
 
     def __init__(
@@ -60,19 +64,10 @@ class MLPEncoder(BaseEncoder):
 
         activation_cls = resolve_activation(activation)
 
-        if normalization is not None:
-            if not isinstance(normalization, str):
-                raise TypeError(
-                    "normalization must be None or a string, "
-                    f"got {type(normalization).__name__}."
-                )
-            normalization = normalization.lower()
-        valid_normalizations = (None, "batchnorm", "layernorm")
-
-        if normalization not in valid_normalizations:
-            raise ValueError(
-                f"normalization must be one of {valid_normalizations}, got {normalization!r}."
-            )
+        normalization = validate_normalization(
+            normalization,
+            layout="vector",
+        )
 
         self._input_shape = tuple(input_shape)
         self.input_dim = math.prod(self._input_shape)
@@ -88,10 +83,14 @@ class MLPEncoder(BaseEncoder):
         for hidden_dim in self.hidden_dims:
             layers.append(nn.Linear(prev_dim, hidden_dim))
 
-            if normalization == "batchnorm":
-                layers.append(nn.BatchNorm1d(hidden_dim))
-            elif normalization == "layernorm":
-                layers.append(nn.LayerNorm(hidden_dim))
+            normalization_layer = resolve_normalization(
+                normalization,
+                num_features=hidden_dim,
+                layout="vector",
+            )
+
+            if normalization_layer is not None:
+                layers.append(normalization_layer)
 
             layers.append(activation_cls())
 

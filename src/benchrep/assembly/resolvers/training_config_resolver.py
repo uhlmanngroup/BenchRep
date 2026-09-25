@@ -9,13 +9,31 @@ from benchrep.assembly.schemas import (
     TrainingCheckpointConfig,
     TrainingConfig,
     TrainingDataModuleConfig,
+    CompositeModelDeclarationsConfig,
+    TrainingTransformPipelineConfig,
 )
-from benchrep.interfaces.model_families import ModelFamilySpec
+from benchrep.interfaces.model_families import (
+    CanonicalModelFamilySpec,
+    ModelFamilySpec,
+)
+from benchrep.assembly.registries.core import MODELS
 from benchrep.assembly.registries.utils import normalize_name
+from benchrep.assembly.resolvers.loss_resolver import (
+    LossSpec,
+    resolve_canonical_loss_configs,
+    resolve_composite_loss_configs,
+)
+from benchrep.assembly.resolvers.composite_model_resolver import (
+    CompositeModelSpec,
+    resolve_composite_model_config,
+)
 from benchrep.assembly.resolvers.utils import (
     ComponentSource,
     RunIdentitySpec,
     resolve_runtime_override_config,
+)
+from benchrep.architecture.composite_model_roles import (
+    TENSOR_STRUCTURE_BY_ROLE,
 )
 
 
@@ -28,6 +46,8 @@ class TrainingRunSpec:
     datamodule_source: ComponentSource
     compatibility_policy: Literal["error", "warn"]
     run_identity: RunIdentitySpec
+    loss_specs: tuple[LossSpec, ...] = ()
+    composite_model_spec: CompositeModelSpec | None = None
 
 
 def resolve_training_config(
@@ -48,6 +68,23 @@ def resolve_training_config(
 
     model_is_external = model_source != "config"
     datamodule_is_external = datamodule_source != "config"
+
+    resolved_transform_pipelines = _resolve_transform_pipelines(
+        training_config.transform_pipelines,
+        model_family=model_family,
+        declarations_config=training_config.composite_model_declarations,
+        datamodule_overridden=datamodule_is_external,
+    )
+
+    if (
+        model_is_external
+        and not isinstance(model_family, CanonicalModelFamilySpec)
+    ):
+        raise ValueError(
+            "Whole-model overrides are supported only for the canonical "
+            "`autoencoder` and `vae` model families; they are not supported "
+            "for `composite`."
+        )
 
     resolved_datamodule = _resolve_datamodule_config(
         training_config.datamodule,
@@ -81,6 +118,7 @@ def resolve_training_config(
         "overrides": resolved_overrides,
         "datamodule": resolved_datamodule,
         "checkpointing": resolved_checkpointing,
+        "transform_pipelines": resolved_transform_pipelines,
     }
 
     if model_is_external:
@@ -89,6 +127,9 @@ def resolve_training_config(
                 "model": None,
                 "encoder": None,
                 "decoder": None,
+                "composite_model_declarations": None,
+                "composite_model_components": None,
+                "composite_model_assembly": None,
                 "losses": None,
                 "optimizer": None,
             }
@@ -98,7 +139,7 @@ def resolve_training_config(
         resolved_updates.update(
             {
                 "dataset": None,
-                "transforms": [],
+                "transform_pipelines": [],
                 "datamodule": None,
             }
         )
@@ -106,6 +147,52 @@ def resolve_training_config(
     resolved_config = training_config.model_copy(
         update=resolved_updates,
     )
+
+    # Model loss/spec resolution.
+    loss_specs: tuple[LossSpec, ...] = ()
+    composite_model_spec: CompositeModelSpec | None = None
+
+    if not model_is_external:
+        assert resolved_config.model is not None
+        assert resolved_config.losses is not None
+
+        configured_model_name = MODELS.resolve_key(
+            resolved_config.model.name
+        )
+
+        if configured_model_name == "composite":
+            assert resolved_config.composite_model_declarations is not None
+            assert resolved_config.composite_model_components is not None
+            assert resolved_config.composite_model_assembly is not None
+
+            composite_model_spec = resolve_composite_model_config(
+                declarations_config=(
+                    resolved_config.composite_model_declarations
+                ),
+                components_config=(
+                    resolved_config.composite_model_components
+                ),
+                assembly_config=(
+                    resolved_config.composite_model_assembly
+                ),
+            )
+
+            loss_specs = resolve_composite_loss_configs(
+                resolved_config.losses,
+                model_input_roles_by_name=(
+                    composite_model_spec.declarations
+                    .model_input_roles_by_name
+                ),
+                model_output_roles_by_name=(
+                    composite_model_spec.declarations
+                    .model_output_roles_by_name
+                ),
+            )
+
+        else:
+            loss_specs = resolve_canonical_loss_configs(
+                resolved_config.losses
+            )
 
     model_name = _resolve_training_model_name(
         training_config=resolved_config,
@@ -126,6 +213,8 @@ def resolve_training_config(
             project_name=resolved_config.run.project_name,
             model_name=model_name,
         ),
+        loss_specs=loss_specs,
+        composite_model_spec=composite_model_spec,
     )
 
 
@@ -174,21 +263,28 @@ def _resolve_training_model_name(
         return f"{model_family.name}_external_{model_override_name}"
 
     assert training_config.model is not None
-    assert training_config.encoder is not None
 
-    configured_model_name = normalize_name(
-        training_config.model.name,
-        field_name="config.model.name",
+    configured_model_name = MODELS.resolve_key(
+        normalize_name(
+            training_config.model.name,
+            field_name="model.name",
+        )
     )
 
-    if configured_model_name not in model_family.config_model_names:
+    if configured_model_name != model_family.name:
         raise ValueError(
             "Configured model is incompatible with the selected training "
             "model family: "
             f"family={model_family.name!r}, "
             f"configured_model={configured_model_name!r}, "
-            f"expected one of {model_family.config_model_names!r}."
+            f"expected={model_family.name!r}."
         )
+
+    if configured_model_name == "composite":
+        return configured_model_name
+
+    # Canonical models path
+    assert training_config.encoder is not None
 
     model_name = (
         f"{training_config.model.name}_"
@@ -199,3 +295,100 @@ def _resolve_training_model_name(
         model_name = f"{model_name}_{training_config.decoder.name}"
 
     return model_name
+
+
+def _resolve_transform_pipelines(
+    config: list[TrainingTransformPipelineConfig],
+    *,
+    model_family: ModelFamilySpec,
+    declarations_config: CompositeModelDeclarationsConfig | None,
+    datamodule_overridden: bool,
+) -> list[TrainingTransformPipelineConfig]:
+    if datamodule_overridden or not config:
+        return []
+
+    # For canonical models, only in-place augmentations are supported.
+    if isinstance(model_family, CanonicalModelFamilySpec):
+        for index, pipeline in enumerate(config):
+            route = (pipeline.input, pipeline.output)
+
+            if route not in {
+                (None, None),
+                ("x", "x"),
+            }:
+                raise ValueError(
+                    "Canonical model transform pipelines use the fixed route "
+                    "`x` to `x`; omit both fields or provide that resolved "
+                    f"route: transform_pipelines[{index}]."
+                )
+
+        return [
+            pipeline.model_copy(
+                update={
+                    "input": "x",
+                    "output": "x",
+                }
+            )
+            for pipeline in config
+        ]
+
+    # Composite models require declarations.
+    assert declarations_config is not None
+
+    input_roles = declarations_config.expects
+    sample_image_names = [
+        name
+        for name, role in input_roles.items()
+        if role == "sample_image"
+    ]
+
+    resolved: list[TrainingTransformPipelineConfig] = []
+
+    for index, pipeline in enumerate(config):
+        # Infer an omitted input only when exactly one sample image is declared.
+        # An omitted output defaults to the effective input.
+        input_name = pipeline.input
+
+        if input_name is None:
+            if len(sample_image_names) != 1:
+                raise ValueError(
+                    f"`transform_pipelines[{index}].input` must be provided "
+                    "when the Composite declarations do not contain exactly "
+                    "one input with role `sample_image`; found "
+                    f"{sample_image_names}."
+                )
+
+            input_name = sample_image_names[0]
+
+        output_name = pipeline.output or input_name
+
+        for field_name, declared_name in (
+            ("input", input_name),
+            ("output", output_name),
+        ):
+            if declared_name not in input_roles:
+                raise ValueError(
+                    f"`transform_pipelines[{index}].{field_name}` references "
+                    f"{declared_name!r}, which is not declared under "
+                    "`composite_model_declarations.expects`."
+                )
+
+            role = input_roles[declared_name]
+
+            if TENSOR_STRUCTURE_BY_ROLE[role] != "image":
+                raise ValueError(
+                    f"`transform_pipelines[{index}].{field_name}` references "
+                    f"{declared_name!r} with role {role!r}; transform pipeline "
+                    "routing supports only image-valued declarations."
+                )
+
+        resolved.append(
+            pipeline.model_copy(
+                update={
+                    "input": input_name,
+                    "output": output_name,
+                }
+            )
+        )
+
+    return resolved

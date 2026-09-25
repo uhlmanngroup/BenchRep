@@ -81,14 +81,14 @@ def test_prediction_resolved_config_roundtrip_materializes_inheritance(
         training_manifest_path
     )
     raw_config["dataset"] = None
-    raw_config["transforms"] = None
+    raw_config["transform_pipelines"] = None
     raw_config["data"]["batch_size"] = None
     raw_config["data"]["num_workers"] = None
     raw_config["inference"]["seed"] = None
     raw_config["inference"]["seed_workers"] = None
     raw_config["inference"]["deterministic"] = None
     raw_config["inference"]["float32_matmul_precision"] = None
-    raw_config["inference"]["reconstruction_latent_source"] = None
+    raw_config["inference"]["canonical_vae_reconstruction_latent_source"] = None
     raw_config["exports"]["reconstructions"]["seed"] = None
 
     config = parse_prediction_config(raw_config)
@@ -101,7 +101,7 @@ def test_prediction_resolved_config_roundtrip_materializes_inheritance(
     assert first.inherited_config_fields == frozenset(
         {
             "dataset",
-            "transforms",
+            "transform_pipelines",
             "data.batch_size",
             "data.num_workers",
             "inference.seed",
@@ -111,7 +111,7 @@ def test_prediction_resolved_config_roundtrip_materializes_inheritance(
             "exports.reconstructions.seed",
         }
     )
-    assert first.reconstruction_latent_source == "mean"
+    assert first.canonical_vae_reconstruction_latent_source == "mean"
 
     resolved_path = _save_resolved_config(
         tmp_path / "prediction",
@@ -134,7 +134,9 @@ def test_prediction_resolved_config_roundtrip_materializes_inheritance(
     assert second.run_identity == first.run_identity
     assert second.checkpoint_path == first.checkpoint_path
     assert second.dataset_config == first.dataset_config
-    assert second.transform_configs == first.transform_configs
+    assert second.transform_pipeline_configs == first.transform_pipeline_configs
+    assert first.transform_pipeline_source == "training_config"
+    assert second.transform_pipeline_source == "prediction_config"
     assert second.datamodule_config == first.datamodule_config
     assert second.batch_size == first.batch_size
     assert second.num_workers == first.num_workers
@@ -147,8 +149,8 @@ def test_prediction_resolved_config_roundtrip_materializes_inheritance(
         == first.float32_matmul_precision
     )
     assert (
-        second.reconstruction_latent_source
-        == first.reconstruction_latent_source
+        second.canonical_vae_reconstruction_latent_source
+        == first.canonical_vae_reconstruction_latent_source
     )
     assert second.export_spec == first.export_spec
 
@@ -163,7 +165,7 @@ def test_evaluation_resolved_config_roundtrip_materializes_inputs_and_inheritanc
     raw_config["source"]["prediction_manifest_path"] = str(
         prediction_manifest_path
     )
-    raw_config["source"]["embeddings_path"] = None
+    raw_config["source"]["anndata_path"] = None
     raw_config["source"]["reconstructions_path"] = None
     raw_config["reconstruction"]["n_examples"] = None
 
@@ -186,10 +188,12 @@ def test_evaluation_resolved_config_roundtrip_materializes_inputs_and_inheritanc
     assert first.inherited_config_fields == frozenset(
         {
             "run.output_root",
+            "source.anndata_path",
+            "source.reconstructions_path",
             "reconstruction.n_examples",
         }
     )
-    assert first.evaluation_config.source.embeddings_path is not None
+    assert first.evaluation_config.source.anndata_path is not None
     assert first.evaluation_config.source.reconstructions_path is not None
     assert first.evaluation_config.run.output_root == (
         tmp_path / "outputs"
@@ -204,23 +208,54 @@ def test_evaluation_resolved_config_roundtrip_materializes_inputs_and_inheritanc
 
     second = resolve_evaluation_config(replay_config)
 
-    # The replay consumes explicit paths/values from the resolved config, so
-    # provenance-of-resolution differs while the effective plan stays equal.
     assert second.inherited_config_fields == frozenset()
     assert _config_dump(second.evaluation_config) == _config_dump(
         first.evaluation_config
     )
     assert second.run_identity == first.run_identity
     assert second.step_spec == first.step_spec
+
     assert (
-        second.input_spec.prediction_manifest_path
-        == first.input_spec.prediction_manifest_path
+            second.input_spec.prediction_manifest_path
+            == first.input_spec.prediction_manifest_path
+    )
+
+    first_anndata = first.input_spec.anndata
+    second_anndata = second.input_spec.anndata
+
+    assert first_anndata is not None
+    assert second_anndata is not None
+    assert second_anndata.path == first_anndata.path
+
+    first_reconstructions = first.input_spec.reconstructions
+    second_reconstructions = second.input_spec.reconstructions
+
+    assert first_reconstructions is not None
+    assert second_reconstructions is not None
+    assert (
+            second_reconstructions.bundle_dir
+            == first_reconstructions.bundle_dir
     )
     assert (
-        second.input_spec.embeddings_path
-        == first.input_spec.embeddings_path
+            second_reconstructions.input_path
+            == first_reconstructions.input_path
     )
-    assert second.input_spec.reconstructions == first.input_spec.reconstructions
+    assert (
+            second_reconstructions.reconstruction_path
+            == first_reconstructions.reconstruction_path
+    )
+    assert (
+            second_reconstructions.observations_path
+            == first_reconstructions.observations_path
+    )
+    assert (
+            second_reconstructions.metadata_path
+            == first_reconstructions.metadata_path
+    )
+    assert (
+            second_reconstructions.n_examples
+            == first_reconstructions.n_examples
+    )
 
 
 def _resolved_vae_training_config():
@@ -228,6 +263,20 @@ def _resolved_vae_training_config():
     raw_config["datamodule"]["pin_memory"] = "auto"
     raw_config["checkpointing"]["monitor"] = None
     raw_config["checkpointing"]["save_top_k"] = 3
+    raw_config["transform_pipelines"] = [
+        {
+            "steps": [
+                {
+                    "name": "to_dtype",
+                    "apply_to": ["validation"],
+                    "params": {
+                        "dtype": "float32",
+                        "scale": False,
+                    },
+                },
+            ],
+        },
+    ]
 
     config = parse_training_config(raw_config)
     run_spec = resolve_training_config(
@@ -257,6 +306,7 @@ def _write_training_manifest(
 
     output_dir = tmp_path / "outputs" / "training" / "source_run"
     manifest_path = training_dir / "training_manifest.yaml"
+
     _write_yaml(
         manifest_path,
         {
@@ -266,25 +316,36 @@ def _write_training_manifest(
                 "run_name": "source_run",
                 "output_dir": str(output_dir),
             },
-            "records": {
-                "resolved_config_path": str(resolved_config_path),
-            },
-            "provenance": {
+            "construction": {
+                "config": {
+                    "run_reconstructable_from_resolved_config": True,
+                },
                 "model": {
                     "source": "config",
                     "family": "vae",
+                    "class_name": "VAE",
+                    "config_reconstructable": True,
                 },
                 "datamodule": {
                     "source": "config",
+                    "class_name": "BenchRepDataModule",
+                    "config_reconstructable": True,
                 },
+            },
+            "records": {
+                "resolved_config_path": str(resolved_config_path),
             },
             "checkpoints": {
                 "checkpoint_dir": str(checkpoint_dir),
                 "best_checkpoint_path": str(checkpoint_path),
                 "last_checkpoint_path": str(checkpoint_path),
             },
+            "appendix": {
+                "resolved_config": load_yaml(resolved_config_path),
+            },
         },
     )
+
     return manifest_path
 
 
@@ -294,26 +355,38 @@ def _write_prediction_manifest(tmp_path: Path) -> Path:
     )
     prediction_output_dir.mkdir(parents=True)
 
-    embeddings_path = prediction_output_dir / "embeddings" / "embeddings.h5ad"
-    embeddings_path.parent.mkdir(parents=True)
-    embeddings_path.touch()
+    anndata_path = (
+        prediction_output_dir / "anndata" / "anndata.h5ad"
+    )
+    anndata_path.parent.mkdir(parents=True)
+    anndata_path.touch()
 
-    reconstruction_dir = prediction_output_dir / "reconstructions"
-    reconstruction_dir.mkdir()
-    input_path = reconstruction_dir / "input.pt"
-    reconstruction_path = reconstruction_dir / "reconstruction.pt"
-    obs_path = reconstruction_dir / "obs.pt"
-    metadata_path = reconstruction_dir / "reconstruction_export_metadata.pt"
+    pair_id = "x_reconstruction"
+    bundle_dir = (
+        prediction_output_dir
+        / "reconstructions"
+        / pair_id
+    )
+    bundle_dir.mkdir(parents=True)
+
+    input_path = bundle_dir / "input.pt"
+    reconstruction_path = bundle_dir / "reconstruction.pt"
+    observations_path = bundle_dir / "obs.pt"
+    metadata_path = (
+        bundle_dir / "reconstruction_export_metadata.pt"
+    )
 
     for path in (
         input_path,
         reconstruction_path,
-        obs_path,
+        observations_path,
         metadata_path,
     ):
         path.touch()
 
-    manifest_path = prediction_output_dir / "prediction_manifest.yaml"
+    manifest_path = (
+        prediction_output_dir / "prediction_manifest.yaml"
+    )
     _write_yaml(
         manifest_path,
         {
@@ -324,27 +397,52 @@ def _write_prediction_manifest(tmp_path: Path) -> Path:
                 "output_dir": str(prediction_output_dir),
             },
             "exports": {
-                "embeddings": {
-                    "path": str(embeddings_path),
+                "anndata": {
+                    "path": str(anndata_path),
                 },
                 "reconstructions": {
-                    "n_examples_exported": 8,
-                    "paths": {
-                        "input": str(input_path),
-                        "reconstruction": str(reconstruction_path),
-                        "obs": str(obs_path),
-                        "metadata": str(metadata_path),
+                    "pairs": {
+                        pair_id: {
+                            "input": "x",
+                            "reconstruction": "reconstruction",
+                            "n_examples_exported": 8,
+                            "paths": {
+                                "bundle_dir": str(bundle_dir),
+                                "input": str(input_path),
+                                "reconstruction": str(
+                                    reconstruction_path
+                                ),
+                                "observations": str(
+                                    observations_path
+                                ),
+                                "metadata": str(metadata_path),
+                            },
+                        },
                     },
                 },
             },
             "summary": {
-                "project_name": "integration_test",
-                "model": "vae",
-                "encoder": "mlp",
-                "decoder": "mlp",
+                "model_name": "vae",
+                "model_class": "VAE",
+                "model_architecture": {
+                    "encoder": "mlp",
+                    "decoder": "mlp",
+                },
+            },
+            "appendix": {
+                "training_manifest": {
+                    "appendix": {
+                        "resolved_config": {
+                            "run": {
+                                "project_name": "integration_test",
+                            },
+                        },
+                    },
+                },
             },
         },
     )
+
     return manifest_path
 
 

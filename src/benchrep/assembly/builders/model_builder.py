@@ -3,11 +3,10 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable
 from typing import Literal
 
-import inspect
-
 import torch
 from torch import nn
 
+from benchrep.assembly.builders.architecture_builder import build_encoder, build_decoder
 from benchrep.records import get_run_logger
 from benchrep.architecture.encoders import BaseEncoder
 from benchrep.architecture.decoders import BaseDecoder
@@ -15,76 +14,87 @@ from benchrep.architecture.heads import GaussianVariationalHead
 from benchrep.architecture.models import (
     Autoencoder,
     VAE,
+    CompositeModel,
 )
-from benchrep.architecture.losses.base import LossTerm
+from benchrep.assembly.builders.loss_builder import build_loss_terms
 from benchrep.assembly.builders.optimizer_builder import build_optimizer_factory
 from benchrep.assembly.registries.utils import normalize_name
 from benchrep.assembly.schemas import (
     TrainingConfig,
     TrainingDecoderConfig,
     TrainingEncoderConfig,
-    TrainingLossTermConfig,
     TrainingOptimizerConfig,
 )
 from benchrep.assembly.registries.core import (
-    DECODERS,
-    ENCODERS,
     MODELS,
     OPTIMIZERS,
-    RECONSTRUCTION_LOSSES,
-    REGULARIZATION_LOSSES,
-    CUSTOM_OBJECTIVE_LOSSES,
+    ARCHITECTURE_REGISTRIES_BY_KIND,
 )
+from benchrep.assembly.resolvers import (
+    TrainingRunSpec,
+    PredictionRunSpec,
+)
+from benchrep.assembly.resolvers.composite_model_resolver import CompositeModelSpec
+from benchrep.assembly.resolvers.loss_resolver import LossSpec
 from benchrep.interfaces.model_families import SupportedModel
 
 
 def build_model(
-    config: TrainingConfig,
-    *,
-    prediction_reconstruction_latent_source: (
-        Literal["mean", "sample"] | None
-    ) = None,
+    run_spec: TrainingRunSpec | PredictionRunSpec,
 ) -> SupportedModel:
-    """Build a model from config.
+    """Build a config-built BenchRep model from a resolved run specification.
 
-    This is the public model-builder entry point. It reads ``config.model.name``
-    and dispatches to the matching model-specific builder.
+    This public model-builder entry point reads the resolved training
+    configuration and model-building specifications from ``run_spec`` and
+    dispatches to the matching model-specific builder.
 
-    Each model-specific builder is responsible for requiring only the config
-    sections that its model type actually needs. For example, an autoencoder
-    requires an encoder, decoder, compatible loss configuration, and optimizer,
-    while a future contrastive model may require an encoder, projection head,
-    contrastive loss, and optimizer, but no decoder.
+    Each model-specific builder is responsible for requiring only the
+    configuration sections and resolved specifications that its model type
+    actually needs.
 
     Parameters
     ----------
-    config:
-        Validated BenchRep config object.
-    prediction_reconstruction_latent_source:
-        VAE-only selection of the latent representation decoded during
-        prediction. ``"mean"`` uses the posterior mean and ``"sample"`` uses
-        the sampled latent. ``None`` resolves to ``"mean"`` for VAEs and is
-        required for autoencoders.
+    run_spec:
+        Resolved training or prediction run specification containing the
+        training configuration and resolved model-building specifications.
 
     Returns
     -------
     SupportedModel
-        Instantiated BenchRep autoencoder or variational autoencoder.
+        Instantiated BenchRep model.
     """
     run_log = get_run_logger()
+
+    config = run_spec.training_config
+    loss_specs = run_spec.loss_specs
+    composite_model_spec = run_spec.composite_model_spec
+
+    prediction_reconstruction_latent_source = (
+        run_spec.canonical_vae_reconstruction_latent_source
+        if run_spec.stage == "prediction"
+        else None
+    )
+
+    if config.model is None:
+        raise ValueError("Model config section is required.")
+
+
+    run_log.info("Building model components...")
 
     model_name = normalize_name(
         config.model.name,
         field_name="config.model.name",
     )
 
-    run_log.info("Building model components...")
-
     model_cls = MODELS.get(model_name)
 
     if model_cls is Autoencoder:
+        if config.encoder is None:
+            raise ValueError("Autoencoder requires an encoder config section.")
         if config.decoder is None:
             raise ValueError("Autoencoder requires a decoder config section.")
+        if config.optimizer is None:
+            raise ValueError("Autoencoder requires an optimizer config section.")
         if prediction_reconstruction_latent_source is not None:
             raise ValueError(
                 "`prediction_reconstruction_latent_source` is only supported "
@@ -95,14 +105,7 @@ def build_model(
             encoder=config.encoder,
             decoder=config.decoder,
             optimizer=config.optimizer,
-            reconstruction_losses=config.losses.get(
-                "reconstruction",
-                {},
-            ),
-            custom_objective_losses=config.losses.get(
-                "custom_objective",
-                {},
-            ),
+            loss_specs=loss_specs,
         )
 
         run_log.info("Assembled model: %s", type(model).__name__)
@@ -110,34 +113,71 @@ def build_model(
         return model
 
     elif model_cls is VAE:
+        if config.encoder is None:
+            raise ValueError("VAE requires an encoder config section.")
         if config.decoder is None:
             raise ValueError("VAE requires a decoder config section.")
+        if config.optimizer is None:
+            raise ValueError("VAE requires an optimizer config section.")
+        if config.model.params is None:
+            raise ValueError("VAE requires `model.params`.")
+
+        latent_dim = config.model.params.get("latent_dim")
+        if (
+                not isinstance(latent_dim, int)
+                or isinstance(latent_dim, bool)
+                or latent_dim <= 0
+        ):
+            raise ValueError(
+                "VAE requires `model.params.latent_dim` to be a positive integer."
+            )
+
         if prediction_reconstruction_latent_source is None:
-            prediction_reconstruction_latent_source: Literal["mean", "sample"] = "mean"
+            prediction_reconstruction_latent_source = "mean"
 
         model = build_vae(
             encoder=config.encoder,
             decoder=config.decoder,
             optimizer=config.optimizer,
-            latent_dim=config.model.params["latent_dim"],
-            reconstruction_losses=config.losses.get(
-                "reconstruction",
-                {},
-            ),
-            regularization_losses=config.losses.get(
-                "regularization",
-                {},
-            ),
-            custom_objective_losses=config.losses.get(
-                "custom_objective",
-                {},
-            ),
+            latent_dim=latent_dim,
+            loss_specs=loss_specs,
             prediction_reconstruction_latent_source=(
                 prediction_reconstruction_latent_source
             ),
         )
 
         run_log.info("Assembled model: %s", type(model).__name__)
+
+        return model
+
+    elif model_cls is CompositeModel:
+        if composite_model_spec is None:
+            raise ValueError(
+                "CompositeModel requires a resolved "
+                "`composite_model_spec`."
+            )
+
+        if config.optimizer is None:
+            raise ValueError(
+                "CompositeModel requires an optimizer config section."
+            )
+
+        if prediction_reconstruction_latent_source is not None:
+            raise ValueError(
+                "`prediction_reconstruction_latent_source` is only "
+                "supported when building a canonical VAE."
+            )
+
+        model = build_composite(
+            model_spec=composite_model_spec,
+            loss_specs=loss_specs,
+            optimizer=config.optimizer,
+        )
+
+        run_log.info(
+            "Assembled model: %s",
+            type(model).__name__,
+        )
 
         return model
 
@@ -148,24 +188,23 @@ def build_model(
 
 
 def build_autoencoder(
-    encoder: TrainingEncoderConfig | BaseEncoder,
-    decoder: TrainingDecoderConfig | BaseDecoder,
-    optimizer: (
-            TrainingOptimizerConfig |
-            Callable[[Iterable[nn.Parameter]], torch.optim.Optimizer]
-    ),
-    reconstruction_losses: dict[str, TrainingLossTermConfig | LossTerm],
-    custom_objective_losses: dict[
-        str,
-        TrainingLossTermConfig | LossTerm,
-    ],
+        encoder: TrainingEncoderConfig | BaseEncoder,
+        decoder: TrainingDecoderConfig | BaseDecoder,
+        optimizer: (
+                TrainingOptimizerConfig
+                | Callable[
+                    [Iterable[nn.Parameter]],
+                    torch.optim.Optimizer,
+                ]
+        ),
+        loss_specs: tuple[LossSpec, ...],
 ) -> Autoencoder:
     run_log = get_run_logger()
 
     # Resolve configs objs into instantiated components where needed
     if isinstance(encoder, TrainingEncoderConfig):
         encoder_name = encoder.name
-        encoder = _build_encoder(encoder)
+        encoder = build_encoder(encoder)
         run_log.info("Built encoder from config: %s -> %s",
                      encoder_name,
                      type(encoder).__name__)
@@ -175,7 +214,7 @@ def build_autoencoder(
 
     if isinstance(decoder, TrainingDecoderConfig):
         decoder_name = decoder.name
-        decoder = _build_decoder(
+        decoder = build_decoder(
             decoder,
             input_dim=encoder.output_dim,
             encoder=encoder,
@@ -199,47 +238,19 @@ def build_autoencoder(
         run_log.info("Using provided optimizer factory: %s",
                      getattr(optimizer, "__name__", type(optimizer).__name__))
 
-    sources_by_role = {
-        "reconstruction": {
-            loss_name: (
-                "provided"
-                if isinstance(loss_spec, LossTerm)
-                else "config"
-            )
-            for loss_name, loss_spec
-            in reconstruction_losses.items()
-        },
-        "custom_objective": {
-            loss_name: (
-                "provided"
-                if isinstance(loss_spec, LossTerm)
-                else "config"
-            )
-            for loss_name, loss_spec
-            in custom_objective_losses.items()
-        },
-    }
-
-    reconstruction_losses = _build_reconstruction_losses(
-        reconstruction_losses
-    )
-    custom_objective_losses = _build_custom_objective_losses(
-        custom_objective_losses
-    )
-
-    _log_resolved_losses(
-        losses_by_role={
-            "reconstruction": reconstruction_losses,
-            "custom_objective": custom_objective_losses,
-        },
-        sources_by_role=sources_by_role,
-    )
+    losses_by_role = build_loss_terms(loss_specs)
 
     return Autoencoder(
         encoder=encoder,
         decoder=decoder,
-        reconstruction_losses=reconstruction_losses,
-        custom_objective_losses=custom_objective_losses,
+        reconstruction_losses=losses_by_role.get(
+            "reconstruction",
+            {},
+        ),
+        custom_objective_losses=losses_by_role.get(
+            "custom_objective",
+            {},
+        ),
         optimizer_factory=optimizer_factory,
     )
 
@@ -248,18 +259,16 @@ def build_vae(
     encoder: TrainingEncoderConfig | BaseEncoder,
     decoder: TrainingDecoderConfig | BaseDecoder,
     optimizer: (
-            TrainingOptimizerConfig |
-            Callable[[Iterable[nn.Parameter]], torch.optim.Optimizer]
+        TrainingOptimizerConfig
+        | Callable[
+            [Iterable[nn.Parameter]],
+            torch.optim.Optimizer,
+        ]
     ),
     latent_dim: int,
-    reconstruction_losses: dict[str, TrainingLossTermConfig | LossTerm],
-    regularization_losses: dict[str, TrainingLossTermConfig | LossTerm],
-    custom_objective_losses: dict[
-        str,
-        TrainingLossTermConfig | LossTerm,
-    ],
+    loss_specs: tuple[LossSpec, ...],
     prediction_reconstruction_latent_source: (
-            Literal["mean", "sample"]
+        Literal["mean", "sample"]
     ) = "mean",
 ) -> VAE:
     run_log = get_run_logger()
@@ -267,7 +276,7 @@ def build_vae(
     # Resolve configs objs into instantiated components where needed
     if isinstance(encoder, TrainingEncoderConfig):
         encoder_name = encoder.name
-        encoder = _build_encoder(encoder)
+        encoder = build_encoder(encoder)
         run_log.info("Built encoder from config: %s -> %s",
                      encoder_name,
                      type(encoder).__name__)
@@ -277,7 +286,7 @@ def build_vae(
 
     if isinstance(decoder, TrainingDecoderConfig):
         decoder_name = decoder.name
-        decoder = _build_decoder(
+        decoder = build_decoder(
             decoder,
             input_dim=latent_dim,
             encoder=encoder,
@@ -330,62 +339,24 @@ def build_vae(
     run_log.info("Built variational head: %s",
                  type(variational_head).__name__)
 
-    sources_by_role = {
-        "reconstruction": {
-            loss_name: (
-                "provided"
-                if isinstance(loss_spec, LossTerm)
-                else "config"
-            )
-            for loss_name, loss_spec
-            in reconstruction_losses.items()
-        },
-        "regularization": {
-            loss_name: (
-                "provided"
-                if isinstance(loss_spec, LossTerm)
-                else "config"
-            )
-            for loss_name, loss_spec
-            in regularization_losses.items()
-        },
-        "custom_objective": {
-            loss_name: (
-                "provided"
-                if isinstance(loss_spec, LossTerm)
-                else "config"
-            )
-            for loss_name, loss_spec
-            in custom_objective_losses.items()
-        },
-    }
-
-    reconstruction_losses = _build_reconstruction_losses(
-        reconstruction_losses
-    )
-    regularization_losses = _build_regularization_losses(
-        regularization_losses
-    )
-    custom_objective_losses = _build_custom_objective_losses(
-        custom_objective_losses
-    )
-
-    _log_resolved_losses(
-        losses_by_role={
-            "reconstruction": reconstruction_losses,
-            "regularization": regularization_losses,
-            "custom_objective": custom_objective_losses,
-        },
-        sources_by_role=sources_by_role,
-    )
+    losses_by_role = build_loss_terms(loss_specs)
 
     return VAE(
         encoder=encoder,
         decoder=decoder,
         variational_head=variational_head,
-        reconstruction_losses=reconstruction_losses,
-        regularization_losses=regularization_losses,
-        custom_objective_losses=custom_objective_losses,
+        reconstruction_losses=losses_by_role.get(
+            "reconstruction",
+            {},
+        ),
+        regularization_losses=losses_by_role.get(
+            "regularization",
+            {},
+        ),
+        custom_objective_losses=losses_by_role.get(
+            "custom_objective",
+            {},
+        ),
         optimizer_factory=optimizer_factory,
         prediction_reconstruction_latent_source=(
             prediction_reconstruction_latent_source
@@ -393,160 +364,77 @@ def build_vae(
     )
 
 
-def _build_encoder(encoder_config: TrainingEncoderConfig) -> BaseEncoder:
-    encoder_name = normalize_name(
-        encoder_config.name,
-        field_name="config.encoder.name",
-    )
-
-    return ENCODERS.create(encoder_name, **encoder_config.params)
-
-
-def _build_decoder(
-    decoder_config: TrainingDecoderConfig,
-    input_dim: int,
-    encoder: BaseEncoder | None = None,
-) -> BaseDecoder:
-    """Build a decoder from config and wire model-dependent dimensions.
-
-    The decoder config supplies user-facing decoder parameters, while this helper
-    injects dimensions that are determined by the surrounding model assembly.
-
-    ``input_dim`` is always added to the decoder parameters. For ordinary
-    decoders, such as MLP decoders, this is sufficient.
-
-    Spatial decoders also require an ``initial_shape`` constructor argument:
-    the feature-map shape used to reshape the projected latent vector before
-    convolutional decoding. This shape should not be user-configured. If the
-    decoder constructor declares ``initial_shape``, this helper infers it from
-    ``encoder.feature_shape`` and passes it during construction.
-
-    Raises
-    ------
-    ValueError
-        If ``initial_shape`` is provided manually in decoder config, or if a
-        decoder requires ``initial_shape`` but it cannot be inferred from the
-        encoder.
-    """
-    decoder_name = normalize_name(
-        decoder_config.name,
-        field_name="config.decoder.name",
-    )
-    decoder_cls = DECODERS.get(decoder_name)
-    decoder_params = dict(decoder_config.params)
-
-    # Wire decoder input dimensionality from the supplied input dimension.
-    decoder_params["input_dim"] = input_dim
-
-    # Infer and pass initial_shape from encoder.feature_shape if needed.
-    decoder_signature = inspect.signature(decoder_cls)
-    if "initial_shape" in decoder_signature.parameters:
-        if "initial_shape" in decoder_params:
-            raise ValueError(
-                "'initial_shape' should not be provided in decoder config. "
-                "It is inferred from encoder.feature_shape."
-            )
-
-        feature_shape = getattr(encoder, "feature_shape", None)
-
-        if feature_shape is None:
-            raise ValueError(
-                f"Decoder {decoder_name!r} requires 'initial_shape', but it could "
-                "not be inferred because the encoder has no 'feature_shape' attribute."
-            )
-
-        decoder_params["initial_shape"] = feature_shape
-
-    return decoder_cls(**decoder_params)
-
-
-def _build_reconstruction_losses(
-    reconstruction_losses: dict[str, TrainingLossTermConfig | LossTerm],
-) -> dict[str, LossTerm]:
-    loss_terms: dict[str, LossTerm] = {}
-
-    for loss_name, loss_spec in reconstruction_losses.items():
-        if isinstance(loss_spec, LossTerm):
-            loss_terms[loss_name] = loss_spec
-            continue
-
-        loss_terms[loss_name] = LossTerm(
-            loss=RECONSTRUCTION_LOSSES.create(loss_name, **loss_spec.params),
-            weight=loss_spec.weight,
-        )
-
-    return loss_terms
-
-
-def _build_regularization_losses(
-    regularization_losses: dict[str, TrainingLossTermConfig | LossTerm],
-) -> dict[str, LossTerm]:
-    loss_terms: dict[str, LossTerm] = {}
-
-    for loss_name, loss_spec in regularization_losses.items():
-        if isinstance(loss_spec, LossTerm):
-            loss_terms[loss_name] = loss_spec
-            continue
-
-        loss_terms[loss_name] = LossTerm(
-            loss=REGULARIZATION_LOSSES.create(loss_name, **loss_spec.params),
-            weight=loss_spec.weight,
-        )
-
-    return loss_terms
-
-
-def _build_custom_objective_losses(
-    custom_objective_losses: dict[
-        str,
-        TrainingLossTermConfig | LossTerm,
-    ],
-) -> dict[str, LossTerm]:
-    loss_terms: dict[str, LossTerm] = {}
-
-    for loss_name, loss_spec in custom_objective_losses.items():
-        if isinstance(loss_spec, LossTerm):
-            loss_terms[loss_name] = loss_spec
-            continue
-
-        loss_terms[loss_name] = LossTerm(
-            loss=CUSTOM_OBJECTIVE_LOSSES.create(
-                loss_name,
-                **loss_spec.params,
-            ),
-            weight=loss_spec.weight,
-        )
-
-    return loss_terms
-
-
-def _log_resolved_losses(
+def build_composite(
     *,
-    losses_by_role: dict[str, dict[str, LossTerm]],
-    sources_by_role: dict[str, dict[str, str]],
-) -> None:
+    model_spec: CompositeModelSpec,
+    loss_specs: tuple[LossSpec, ...],
+    optimizer: (
+        TrainingOptimizerConfig
+        | Callable[
+            [Iterable[nn.Parameter]],
+            torch.optim.Optimizer,
+        ]
+    ),
+) -> CompositeModel:
+    """Build a Composite model from its resolved execution specification."""
+
     run_log = get_run_logger()
 
-    descriptions = []
+    # Instantiate components directly via registry, without builders
+    components_by_id: dict[str, nn.Module] = {}
 
-    for role, loss_terms in losses_by_role.items():
-        if not loss_terms:
-            continue
+    for component_id, component_spec in (
+        model_spec.components_by_id.items()
+    ):
+        component_registry = ARCHITECTURE_REGISTRIES_BY_KIND[
+            component_spec.component_kind
+        ]
 
-        sources = sources_by_role[role]
-
-        terms = ", ".join(
-            (
-                f"{loss_name} ({sources[loss_name]})"
-                f" -> {type(loss_term.loss).__name__}"
-                f" (weight={loss_term.weight})"
-            )
-            for loss_name, loss_term in loss_terms.items()
+        component_module = component_registry.create(
+            component_spec.registry_entry_name,
+            **component_spec.constructor_params,
         )
 
-        descriptions.append(f"{role}=[{terms}]")
+        components_by_id[component_id] = component_module
 
-    run_log.info(
-        "Resolved losses: %s",
-        "; ".join(descriptions),
+        run_log.info(
+            "Built Composite %s from config: %s (%s) -> %s",
+            component_spec.component_kind,
+            component_id,
+            component_spec.registry_entry_name,
+            type(component_module).__name__,
+        )
+
+    # Build losses
+    losses_by_role = build_loss_terms(loss_specs)
+
+    # Build optimizer factory
+    if isinstance(optimizer, TrainingOptimizerConfig):
+        optimizer_name = optimizer.name
+        optimizer_class = OPTIMIZERS.get(optimizer_name)
+        optimizer_factory = build_optimizer_factory(optimizer)
+
+        run_log.info(
+            "Built optimizer factory from config: %s -> %s",
+            optimizer_name,
+            optimizer_class.__name__,
+        )
+    else:
+        optimizer_factory = optimizer
+
+        run_log.info(
+            "Using provided optimizer factory: %s",
+            getattr(
+                optimizer,
+                "__name__",
+                type(optimizer).__name__,
+            ),
+        )
+
+    return CompositeModel(
+        model_spec=model_spec,
+        loss_specs=loss_specs,
+        components_by_id=components_by_id,
+        losses_by_role=losses_by_role,
+        optimizer_factory=optimizer_factory,
     )

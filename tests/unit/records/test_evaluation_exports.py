@@ -74,15 +74,15 @@ def _run_export(
         anndata_outcomes=(
             EvaluationOutcome(
                 name="test_anndata_step",
-                category="embeddings",
+                category="anndata",
                 status="completed",
             ),
         ),
         reconstruction_input=reconstruction_input,
         reconstruction_outputs=None,
         step_spec=step_spec,
-        embeddings_dir=tmp_path / "embeddings",
-        embeddings_figures_dir=tmp_path / "embedding_figures",
+        anndata_dir=tmp_path / "anndata",
+        anndata_figures_dir=tmp_path / "embedding_figures",
         metrics_dir=tmp_path / "metrics",
         reconstructions_dir=tmp_path / "reconstructions",
         reconstruction_figures_dir=tmp_path / "reconstruction_figures",
@@ -126,7 +126,7 @@ def test_irrelevant_plot_groups_are_disabled(
     assert outcomes["cluster_size_plots"].status == "disabled"
     assert outcomes["reconstruction_tiffs"].status == "disabled"
     assert outcomes["reconstruction_grids"].status == "disabled"
-    assert outcomes["evaluated_embeddings"].status == "completed"
+    assert outcomes["evaluated_anndata"].status == "completed"
     assert outcomes["metrics_json"].status == "completed"
 
 

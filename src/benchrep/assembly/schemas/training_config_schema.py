@@ -14,6 +14,7 @@ from pydantic import (
     Discriminator,
     Tag,
     field_validator,
+    StringConstraints,
 )
 
 from benchrep.assembly.registries.core import CALLBACKS, MODELS
@@ -24,6 +25,11 @@ from benchrep.architecture.models import (
 )
 from benchrep.assembly.schemas.runtime_override_config_schema import (
     RuntimeOverridesConfig,
+)
+from benchrep.assembly.schemas.composite_model_config_schema import (
+    CompositeModelAssemblyStepConfig,
+    CompositeModelComponentConfig,
+    CompositeModelDeclarationsConfig,
 )
 
 
@@ -38,7 +44,19 @@ def _require_present(value: object, field_name: str) -> None:
 SupportedLossRole: TypeAlias = Literal[
     "reconstruction",
     "regularization",
+    "contrastive",
+    "classification",
+    "regression",
     "custom_objective",
+]
+
+LossTermId: TypeAlias = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True,
+        min_length=1,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]*$",
+    ),
 ]
 
 
@@ -47,10 +65,22 @@ _LOGGER_REQUIRED_ADDITIONAL_CALLBACKS = frozenset({
     "learning_rate_monitor",
 })
 
+_BENCHREP_MANAGED_TRAINER_ARGUMENTS = frozenset({
+    "default_root_dir",
+    "logger",
+    "callbacks",
+    "enable_checkpointing",
+})
+
 Float32MatmulPrecision: TypeAlias = Literal[
     "medium",
     "high",
     "highest",
+]
+
+StrictPositiveInt: TypeAlias = Annotated[
+    int,
+    Field(strict=True, gt=0),
 ]
 
 
@@ -138,17 +168,41 @@ class TrainingRunConfig(_TrainingConfigBaseModel):
 # Architecture configuration
 # -------------------------
 class TrainingModelConfig(NamedConfig):
-    """Selects the BenchRep model family and its assembly parameters.
+    """Selects one of BenchRep's built-in model families.
 
     Use `benchrep.inspect_registry("model")` to inspect available model names
     and aliases, and `benchrep.inspect_registry("model", "<name>")` for details
-    about a specific registered implementation.
+    about a specific model family.
 
-    Supported parameters and required encoder, decoder, and loss sections depend
-    on the selected model. For supported models assembled from configuration,
-    this configuration is recorded during training and reused to reconstruct the
-    model for linked prediction runs.
+    Canonical autoencoders and VAEs define their architecture through the
+    top-level `encoder` and `decoder` sections. Composite models instead use
+    `composite_model_declarations`, `composite_model_components`, and
+    `composite_model_assembly`.
+
+    The model registry exposes BenchRep's built-in model families for discovery
+    and configuration; it does not support custom model registration.
     """
+
+    params: dict[
+        Literal["latent_dim"],
+        StrictPositiveInt,
+    ] = Field(
+        default_factory=dict,
+        description="Model-family parameters used by a config-built model.",
+        json_schema_extra={
+            "omit_behavior": "Uses an empty parameter mapping.",
+            "null_behavior": "Not allowed; use an empty mapping instead.",
+            "notes": [
+                "`vae` requires `latent_dim` as its only model-family parameter.",
+                "`autoencoder` and `composite` do not accept model-family parameters.",
+                "Constructor arguments for an externally supplied canonical model "
+                "class belong in `overrides.model.params`, as described by "
+                "`RuntimeOverridesConfig`.",
+                "An externally supplied model instance must already be initialized "
+                "and cannot receive constructor parameters.",
+            ],
+        },
+    )
 
 
 class TrainingEncoderConfig(NamedConfig):
@@ -172,11 +226,16 @@ class TrainingDecoderConfig(NamedConfig):
     aliases, and `benchrep.inspect_registry("decoder", "<name>")` for the
     registered constructor signature and documentation.
 
-    `params` are passed as keyword arguments to the selected decoder constructor,
-    except for model-dependent dimensions supplied by BenchRep. `input_dim` is
-    overridden by BenchRep and derived from the encoder output or VAE latent
-    dimension. When required, `initial_shape` is inferred from
-    `encoder.feature_shape` and must not be configured manually.
+    `params` are passed as keyword arguments to the selected decoder constructor.
+    For canonical autoencoders, BenchRep supplies `input_dim` from
+    `encoder.output_dim`; for canonical VAEs, it supplies
+    `model.params.latent_dim`. An explicitly configured `input_dim` is permitted
+    only when it agrees with the value supplied by BenchRep.
+
+    When the decoder accepts `initial_shape`, an explicitly configured value is
+    used when present; otherwise, BenchRep attempts to infer it from
+    `encoder.feature_shape`. If both are available, they must agree. Resolution
+    fails when `initial_shape` is required but neither source provides it.
 
     User-registered decoders must satisfy BenchRep's decoder interface and must
     be registered again when reconstructing the model in a linked prediction
@@ -188,44 +247,92 @@ class TrainingDecoderConfig(NamedConfig):
 # Optimization/loss configuration
 # -------------------------
 class TrainingLossTermConfig(_TrainingConfigBaseModel):
-    """Configuration for one weighted term in a role-specific loss mapping.
+    """Configuration for one weighted term in a role-specific loss list.
 
-    The surrounding mapping key is the registered component name. Its parent role
-    selects the registry and runtime calling convention:
+    `name` selects the registered loss, while the parent role selects the loss
+    registry:
 
-    - `reconstruction`: called with `reconstruction` and `target`.
-    - `regularization`: called with `z_mu` and `z_logvar`.
-    - `custom_objective`: called with `batch` and `model_output` mappings.
+    - `reconstruction`: compares reconstructed and source images.
+    - `regularization`: regularizes representations or model parameters.
+    - `contrastive`: compares related or unrelated representations.
+    - `classification`: evaluates categorical predictions.
+    - `regression`: evaluates continuous predictions.
+    - `custom_objective`: receives the complete batch and model-output mappings.
 
-    `params` are passed only to the registered component's constructor. Runtime
-    model tensors are supplied separately by the model when the objective is
-    evaluated.
+    `params` are passed only to the registered loss component's constructor.
+
+    Canonical autoencoders and VAEs use fixed loss calling conventions.
+    Reconstruction losses receive `reconstruction` and `target`, regularization
+    losses receive `z_mu` and `z_logvar`, and custom objectives receive `batch`
+    and `model_output`. A canonical-only ordinary loss may therefore be
+    registered as `LossComponent(MyLoss)` without declaring runtime inputs.
+
+    Composite models require every ordinary loss to declare its runtime
+    parameter names and supported semantic roles through `LossTensorPort`
+    entries. `composite_wiring` then maps those parameters to declarations under
+    `expects` or `produces`. Contrastive, classification, and regression losses
+    currently require this Composite contract because no canonical model uses
+    those roles.
+
+    Custom objectives follow one fixed interface under both model modes. Their
+    component must subclass `BaseCustomObjectiveLoss`, `runtime_inputs` must be
+    omitted, and `composite_wiring` must not be configured. BenchRep supplies
+    the complete `batch` and `model_output` mappings automatically.
 
     Every configured term must return a scalar tensor. BenchRep multiplies that
     value by the configured `weight` before adding it to the other configured
     terms.
 
-    Use `benchrep.inspect_registry("reconstruction_loss")`,
-    `benchrep.inspect_registry("regularization_loss")`, or
-    `benchrep.inspect_registry("custom_objective_loss")` to inspect available names,
-    aliases, constructors, and calling contracts.
+    Use `benchrep.inspect_registry("<loss-role>_loss")` to list registered
+    losses. Pass a registered loss name as the second argument to inspect its
+    constructor and Composite compatibility.
 
-    User-registered components must satisfy the selected role's calling convention
-    and must be registered again when reconstructing an internally assembled model
-    for linked prediction.
+    User registrations must be repeated in each process that reconstructs an
+    internally assembled model.
 
-    A custom objective may use any fields available in the batch or model output.
-    If it is used in place of reconstruction or regularization losses, the custom
-    objective is responsible for implementing the omitted behavior.
+    A custom objective may use any fields available in the batch or model
+    output. If it replaces reconstruction or regularization losses, it is
+    responsible for implementing the omitted behavior.
     """
+
+    name: str = Field(
+        description="Registered loss name or alias to instantiate for this term.",
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+
+    id: LossTermId | None = Field(
+        default=None,
+        description=(
+            "Optional user-defined identifier used to distinguish multiple "
+            "occurrences of the same registered loss within one loss role."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Uses the canonical registered loss name as the term identity. "
+                "An identifier is required only when needed to keep resolved "
+                "term identities unique within the role."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "The resolved term identity is `<id>_<canonical_loss_name>` when "
+                "an identifier is configured.",
+                "Aliases do not affect the canonical loss name used in the "
+                "resolved identity.",
+            ],
+        },
+    )
 
     weight: float = Field(
         default=1.0,
         ge=0.0,
+        allow_inf_nan=False,
         description=(
-            "Direct scalar coefficient applied to this raw loss before it is added "
-            "to the total training loss. Weights are not normalized across losses "
-            "or within loss roles."
+            "Finite, nonnegative scalar coefficient applied to this raw loss "
+            "before it is added to the total training loss. Weights are not "
+            "normalized across losses or within loss roles."
         ),
         json_schema_extra={
             "omit_behavior": "Uses a weight of 1.0.",
@@ -248,9 +355,36 @@ class TrainingLossTermConfig(_TrainingConfigBaseModel):
         },
     )
 
+    composite_wiring: dict[str, str] | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Composite-only mapping from an ordinary loss component's "
+            "forward() parameter names to declarations under `expects` "
+            "or `produces`."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Omission is required for every loss under canonical models and for custom "
+                "objectives under Composite. All other Composite losses require this field."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "The selected ordinary loss must declare matching "
+                "LossTensorPort entries in its runtime contract.",
+                "Keys must exactly match the loss component's declared "
+                "runtime input names.",
+                "Values must reference `expects.<name>` or "
+                "`produces.<name>`.",
+                "Custom objectives do not accept this field; BenchRep "
+                "supplies `batch` and `model_output` automatically.",
+            ],
+        },
+    )
+
 
 LossRoleTerms: TypeAlias = Annotated[
-    dict[str, TrainingLossTermConfig],
+    list[TrainingLossTermConfig],
     Field(min_length=1),
 ]
 
@@ -450,6 +584,30 @@ class TrainingTrainerConfig(_TrainingConfigBaseModel):
         },
     )
 
+    @model_validator(mode="after")
+    def validate_benchrep_managed_arguments(
+        self,
+    ) -> TrainingTrainerConfig:
+        configured_arguments = sorted(
+            _BENCHREP_MANAGED_TRAINER_ARGUMENTS
+            & set(self.model_extra or {})
+        )
+
+        if configured_arguments:
+            formatted_arguments = ", ".join(
+                repr(argument)
+                for argument in configured_arguments
+            )
+
+            raise ValueError(
+                "The following `trainer` arguments are managed by BenchRep "
+                f"and cannot be configured directly: {formatted_arguments}. "
+                "Use the top-level `run`, `logger`, `checkpointing`, "
+                "`early_stopping`, and `additional_callbacks` sections instead."
+            )
+
+        return self
+
 
 class TrainingLoggerConfig(NamedConfig):
     """Selects and configures a training logger from the logger registry.
@@ -504,13 +662,15 @@ class TrainingCheckpointConfig(_TrainingConfigBaseModel):
     Checkpoint paths and ranking information are recorded in the training
     manifest for use by linked prediction runs.
 
-    When `monitor` names a metric, checkpoints are ranked using that metric and
-    `mode`, `save_top_k`, and `filename` configure the ranked checkpoints.
+    When `monitor` names a metric and `save_top_k` is nonzero, checkpoints
+    are ranked using that metric. `mode`, `save_top_k`, and `filename`
+    configure these ranked checkpoints.
 
-    When `monitor=None`, BenchRep disables ranked checkpointing by constructing
-    ModelCheckpoint with `monitor=None` and `save_top_k=0`. In that mode,
-    `mode`, `save_top_k`, and `filename` have no effect, and `save_last=True`
-    is required so that training produces a checkpoint.
+    Ranked checkpointing is disabled when `monitor=None` or `save_top_k=0`.
+    When `monitor=None`, the resolver materializes this decision by setting
+    `save_top_k=0`. Whenever ranked checkpointing is disabled,
+    `save_last=True` is required so that training produces a checkpoint;
+    `mode` and `filename` then have no effect.
     """
 
     monitor: str | None = Field(
@@ -537,7 +697,7 @@ class TrainingCheckpointConfig(_TrainingConfigBaseModel):
             "null_behavior": "Not allowed.",
             "notes": [
                 "`min` treats lower values as better; `max` treats higher values as better.",
-                "Has no effect when `monitor=None`.",
+                "Has no effect when `monitor=None` or `save_top_k=0`.",
             ],
         },
     )
@@ -581,7 +741,7 @@ class TrainingCheckpointConfig(_TrainingConfigBaseModel):
                 "Lightning resolves placeholders from the epoch, step, and logged metrics "
                 "and appends the checkpoint extension.",
                 "Does not control the `last.ckpt` filename.",
-                "Has no effect when `monitor=None`.",
+                "Has no effect when `monitor=None` or `save_top_k=0`.",
             ],
         },
     )
@@ -763,20 +923,27 @@ class TrainingAdditionalCallbackConfig(NamedConfig):
 # Inspection configuration
 # -------------------------
 class TrainingTorchviewConfig(_TrainingConfigBaseModel):
-    """Configures best-effort model-graph export with torchview.
+    """Configures best-effort model-execution graph export with Torchview.
 
     When enabled, BenchRep performs this inspection after training completes.
-    It reads the shape of `batch["x"]` from the first training batch, replaces
-    its batch dimension with one, and passes that synthesized input size to
-    `torchview.draw_graph()`. The resulting Graphviz graph is rendered as
-    `model_graph.png` in the training run's architecture directory.
+    For canonical models, it reads `batch["x"]` from the first training batch,
+    replaces its batch dimension with one, and passes the resulting input size
+    to `torchview.draw_graph()`.
 
-    The graph represents the execution observed by torchview for one synthetic
-    input shape. It may not capture alternative data-dependent branches,
-    dynamic control flow, other supported input shapes, training/evaluation
-    differences, or operations unsupported by torchview. It should therefore
-    be treated as a diagnostic visualization rather than an authoritative
-    description of every possible model execution.
+    For Composite models, BenchRep reads every input declared under
+    `composite_model_declarations.expects` from the first training batch,
+    retains the first observation from each tensor, and passes the resulting
+    input mapping to the model as one positional argument.
+
+    The resulting Graphviz graph is rendered as
+    `torchview_model_graph.svg` in the training run's architecture directory.
+
+    The graph represents the execution observed by Torchview for those inputs.
+    It may not capture alternative data-dependent branches, dynamic control
+    flow, other supported input shapes, training/evaluation differences, or
+    operations unsupported by Torchview. It should therefore be treated as a
+    diagnostic visualization rather than an authoritative description of
+    every possible model execution.
 
     Export is best effort. Missing optional dependencies, incompatible model
     inputs, unsupported operations, tracing failures, and rendering failures
@@ -848,48 +1015,6 @@ class TrainingInspectionConfig(_TrainingConfigBaseModel):
 # Data configuration
 # -------------------------
 ParamsT = TypeVar("ParamsT")
-
-
-class TrainingTransformConfig(NamedConfig):
-    """Configuration for one transform in an ordered transform sequence.
-
-    Use `benchrep.inspect_registry("transform")` to inspect available names and
-    aliases, and `benchrep.inspect_registry("transform", "<name>")` for the
-    registered constructor signature and documentation.
-    """
-
-    apply_to: list[Literal["training", "validation"]] = Field(
-        min_length=1,
-        description=(
-            "Split pipelines that include this transform. The transform's "
-            "position in the surrounding sequence determines its order within "
-            "each targeted pipeline. Validation-targeted transforms are also "
-            "inherited by linked prediction runs when prediction transforms "
-            "are omitted or null."
-        ),
-        json_schema_extra={
-            "omit_behavior": "Required; omission raises a validation error.",
-            "null_behavior": "Not allowed.",
-            "notes": [
-                "If `datamodule.val_fraction` is 0, validation-targeted "
-                "transforms do not run during training but remain available "
-                "for inheritance by linked prediction."
-            ],
-        },
-    )
-
-    @field_validator("apply_to")
-    @classmethod
-    def validate_unique_transform_targets(
-        cls,
-        value: list[Literal["training", "validation"]],
-    ) -> list[Literal["training", "validation"]]:
-        if len(value) != len(set(value)):
-            raise ValueError(
-                "apply_to must not contain duplicate split targets."
-            )
-
-        return value
 
 
 class DatasetConfig(_TrainingConfigBaseModel, Generic[ParamsT]):
@@ -1189,6 +1314,11 @@ class TrainingDataModuleConfig(_TrainingConfigBaseModel):
         json_schema_extra={
             "omit_behavior": "Reserves 10% of the dataset for validation.",
             "null_behavior": "Not allowed.",
+            "notes": [
+                "Validation size is calculated as "
+                "`int(dataset_size * val_fraction)`; setup fails if this produces an "
+                "empty validation subset.",
+            ],
         },
     )
 
@@ -1237,6 +1367,144 @@ class TrainingDataModuleConfig(_TrainingConfigBaseModel):
         },
     )
 
+    @model_validator(mode="after")
+    def validate_worker_configuration(
+        self,
+    ) -> TrainingDataModuleConfig:
+        if self.persistent_workers and self.num_workers == 0:
+            raise ValueError(
+                "`datamodule.persistent_workers=True` requires "
+                "`datamodule.num_workers` to be greater than zero."
+            )
+
+        return self
+
+
+# -------------------------
+# Transform config
+# -------------------------
+class TrainingTransformStepConfig(NamedConfig):
+    """Configuration for one transform in an ordered transform sequence.
+
+    `params` are passed as keyword arguments to the registered transform
+    constructor. The constructed object must be callable and must return a
+    tensor when executed within a BenchRep transform pipeline.
+
+    Use `benchrep.inspect_registry("transform")` to inspect available names and
+    aliases, and `benchrep.inspect_registry("transform", "<name>")` for the
+    registered constructor signature and documentation.
+    """
+
+    apply_to: list[Literal["training", "validation"]] = Field(
+        min_length=1,
+        description=(
+            "Split pipelines that include this transform. The transform's "
+            "position in the surrounding sequence determines its order within "
+            "each targeted pipeline. Validation-targeted transforms are also "
+            "inherited by linked prediction runs when prediction transforms "
+            "are omitted or null."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+            "notes": [
+                "If `datamodule.val_fraction` is 0, validation-targeted "
+                "transforms do not run during training but remain available "
+                "for inheritance by linked prediction."
+            ],
+        },
+    )
+
+    @field_validator("apply_to")
+    @classmethod
+    def validate_unique_transform_targets(
+        cls,
+        value: list[Literal["training", "validation"]],
+    ) -> list[Literal["training", "validation"]]:
+        if len(value) != len(set(value)):
+            raise ValueError(
+                "apply_to must not contain duplicate split targets."
+            )
+
+        return value
+
+
+class TrainingTransformPipelineConfig(_TrainingConfigBaseModel):
+    """Configures one ordered, field-routed training transform pipeline.
+
+    Pipelines execute in their configured list order. Each pipeline reads from
+    the current sample mapping, applies its eligible transform steps in order,
+    and assigns the resulting tensor to `output`. Consequently, a later
+    pipeline may consume a field produced or overwritten by an earlier one.
+
+    Canonical models support only the fixed in-place route `x` to `x`; both
+    routing fields may be omitted or both may explicitly contain `x`.
+
+    For Composite models, an omitted `input` resolves to the unique declaration
+    having role `sample_image`. When multiple declarations have that role,
+    `input` must be explicit. An omitted `output` resolves to the effective
+    input name. Explicit names must reference image-valued declarations under
+    `composite_model_declarations.expects`.
+
+    When `input` and `output` differ, BenchRep clones the input tensor before
+    applying transforms so the source field remains unchanged. Existing output
+    fields are overwritten.
+    """
+
+    input: str | None = Field(
+        default=None,
+        description="Sample field from which this transform pipeline reads.",
+        json_schema_extra={
+            "omit_behavior": (
+                "Canonical models use `x`. Composite models use the unique "
+                "declaration assigned role `sample_image`; omission raises "
+                "an error when multiple declarations have that role."
+            ),
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+
+    output: str | None = Field(
+        default=None,
+        description="Sample field to which the transformed tensor is assigned.",
+        json_schema_extra={
+            "omit_behavior": "Uses the effective `input` field.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Canonical models require `x`.",
+                "Composite models require an image-valued declaration under "
+                "`composite_model_declarations.expects`.",
+                "An existing field with this name is overwritten.",
+            ],
+        },
+    )
+
+    steps: list[TrainingTransformStepConfig] = Field(
+        min_length=1,
+        description="Ordered transform steps belonging to this routed pipeline.",
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+            "notes": [
+                "Steps are filtered independently for training and validation "
+                "according to `apply_to`.",
+                "If no steps in this pipeline target a particular split, the "
+                "pipeline is omitted from that split.",
+                "Validation-targeted steps may be inherited by linked prediction.",
+            ],
+        },
+    )
+
+    @field_validator("input", "output")
+    @classmethod
+    def validate_field_name(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError(
+                "Transform pipeline input and output names must be nonempty."
+            )
+
+        return value
+
 
 # -------------------------
 # Full experiment configuration
@@ -1246,6 +1514,15 @@ class TrainingConfig(_TrainingConfigBaseModel):
 
     Requirements for model and data configuration depend on whether external
     model or datamodule objects are supplied at runtime.
+
+    Config-built autoencoders and VAEs use the top-level `encoder` and `decoder`
+    sections. Config-built Composite models instead define a declaration-driven
+    execution graph through `composite_model_declarations`,
+    `composite_model_components`, and `composite_model_assembly`.
+
+    Whole-model runtime overrides are supported only by the canonical
+    autoencoder and VAE entrypoints. Composite models must be assembled from
+    configuration.
 
     Use `benchrep.inspect_config(TrainingConfig)` to inspect this configuration.
     Nested configuration types shown in the output can be inspected the same
@@ -1312,47 +1589,144 @@ class TrainingConfig(_TrainingConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
             "notes": [
                 "Ignored when an external model object is supplied.",
+                "Whole-model overrides are supported only by the canonical autoencoder "
+                "and VAE entrypoints.",
             ],
         },
     )
 
     encoder: TrainingEncoderConfig | None = Field(
         default=None,
-        description="Encoder used when assembling the configured model.",
+        description="Encoder used to assemble a canonical autoencoder or VAE.",
         json_schema_extra={
             "omit_behavior": (
-                "Allowed when an external model is supplied; otherwise an encoder "
-                "configuration is required."
+                "Required for config-built autoencoders and VAEs. It must be "
+                "omitted for Composite models and may be omitted when an "
+                "external canonical model is supplied."
             ),
             "null_behavior": "Equivalent to omission.",
             "notes": [
-                "Ignored when an external model object is supplied.",
+                "Ignored and removed from the resolved configuration when an "
+                "external model is supplied.",
+                "Composite encoders are declared under "
+                "`composite_model_components`.",
             ],
         },
     )
 
     decoder: TrainingDecoderConfig | None = Field(
         default=None,
-        description="Decoder used when required by the configured model.",
+        description="Decoder used to assemble a canonical autoencoder or VAE.",
         json_schema_extra={
             "omit_behavior": (
-                "No decoder is configured. Config-built autoencoders and VAEs "
-                "require this section."
+                "Required for config-built autoencoders and VAEs. It must be "
+                "omitted for Composite models and may be omitted when an "
+                "external canonical model is supplied."
             ),
             "null_behavior": "Equivalent to omission.",
             "notes": [
-                "Ignored when an external model object is supplied.",
+                "Ignored and removed from the resolved configuration when an "
+                "external model is supplied.",
+                "Composite decoders are declared under "
+                "`composite_model_components`.",
+            ],
+        },
+    )
+
+    composite_model_declarations: (
+        CompositeModelDeclarationsConfig | None
+    ) = Field(
+        default=None,
+        description=(
+            "Semantic declarations for the Composite model's batch inputs, "
+            "batch metadata, and produced model outputs."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Required when `model.name` resolves to `composite`; otherwise "
+                "this section must be omitted."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "At least one input must have role `sample_image`.",
+                "At most one batch-metadata field may have role `index`.",
+                "Declared input and metadata names identify fields expected in "
+                "each dataset sample and collated batch.",
+                "Every declared output must be produced exactly once by the "
+                "assembly graph.",
+                "Ignored and removed from the resolved configuration when an "
+                "external model is supplied.",
+            ],
+        },
+    )
+
+    composite_model_components: (
+        dict[str, CompositeModelComponentConfig] | None
+    ) = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Reusable architecture components available to the Composite "
+            "assembly graph, keyed by user-defined component ID."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Required when `model.name` resolves to `composite`; otherwise "
+                "this section must be omitted."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Each component selects the encoder, decoder, or head registry.",
+                "Composite compatibility is defined by each registered "
+                "`ArchitectureComponent` runtime contract; Composite encoders and "
+                "decoders do not need to satisfy the canonical `BaseEncoder` or "
+                "`BaseDecoder` interfaces.",
+                "Each component ID is instantiated once and may be invoked by "
+                "multiple assembly steps, thereby sharing parameters.",
+                "Every configured component must be used by at least one "
+                "assembly step.",
+                "Ignored and removed from the resolved configuration when an "
+                "external model is supplied.",
+            ],
+        },
+    )
+
+    composite_model_assembly: (
+        dict[str, CompositeModelAssemblyStepConfig] | None
+    ) = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Composite execution steps, keyed by user-defined step ID, that "
+            "wire declared inputs and produced outputs through configured "
+            "components."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Required when `model.name` resolves to `composite`; otherwise "
+                "this section must be omitted."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "A component ID may be reused by multiple steps.",
+                "Step execution order is derived from output dependencies, not "
+                "from mapping order.",
+                "Dependency cycles are rejected.",
+                "Inputs must reference `expects.<name>` or `produces.<name>`.",
+                "Outputs must reference declarations under `produces`.",
+                "Ignored and removed from the resolved configuration when an "
+                "external model is supplied.",
             ],
         },
     )
 
     losses: dict[SupportedLossRole, LossRoleTerms] | None = Field(
         default_factory=dict,
-        description="Loss terms grouped by role and registered component name.",
+        description="Loss terms grouped by role.",
         json_schema_extra={
             "omit_behavior": (
-                "Uses an empty loss mapping, which does not satisfy the loss "
-                "requirements of config-built autoencoders or VAEs."
+                "Uses an empty loss configuration, which does not satisfy the loss "
+                "requirements of config-built models."
             ),
             "null_behavior": (
                 "Allowed when an external model is supplied; otherwise a loss "
@@ -1364,7 +1738,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
                 "BenchRep does not verify that a custom objective reproduces any "
                 "omitted reconstruction or regularization behavior.",
                 "All configured terms across all roles contribute additively to the total loss.",
-                "A nonempty `custom_objective` mapping may be used alone or alongside the "
+                "A nonempty `custom_objective` list may be used alone or alongside the "
                 "standard roles.",
                 "Without a custom objective, built-in autoencoders require `reconstruction`, "
                 "while built-in VAEs require both `reconstruction` and `regularization`.",
@@ -1409,11 +1783,11 @@ class TrainingConfig(_TrainingConfigBaseModel):
         },
     )
 
-    transforms: list[TrainingTransformConfig] = Field(
+    transform_pipelines: list[TrainingTransformPipelineConfig] = Field(
         default_factory=list,
         description=(
-            "Ordered transform definitions applied to each dataset sample's `x` tensor "
-            "before batching."
+            "Ordered, split-specific transform pipelines routed between "
+            "tensor-valued dataset-sample fields before batching."
         ),
         json_schema_extra={
             "omit_behavior": (
@@ -1563,9 +1937,16 @@ class TrainingConfig(_TrainingConfigBaseModel):
 
         if not model_overridden:
             _require_present(self.model, "model")
-            _require_present(self.encoder, "encoder")
             _require_present(self.losses, "losses")
             _require_present(self.optimizer, "optimizer")
+
+            assert self.model is not None
+
+            model_name = MODELS.resolve_key(self.model.name)
+
+            if model_name != "composite":
+                _require_present(self.encoder, "encoder")
+                _require_present(self.decoder, "decoder")
 
         if not datamodule_overridden:
             _require_present(self.dataset, "dataset")
@@ -1591,14 +1972,40 @@ class TrainingConfig(_TrainingConfigBaseModel):
             return self
 
         assert self.model is not None
-        assert self.encoder is not None
         assert self.losses is not None
         assert self.optimizer is not None
 
-        model_name = normalize_name(
-            self.model.name,
-            field_name="model.name",
+        model_name = MODELS.resolve_key(self.model.name)
+
+        if model_name != "vae" and self.model.params:
+            raise ValueError(
+                f"`model.params` must be empty for {model_name!r}; only `vae` "
+                "accepts model-family parameters."
+            )
+
+        if model_name == "composite":
+            return self
+
+        composite_only_loss_roles = (
+            "contrastive",
+            "classification",
+            "regression",
         )
+
+        configured_composite_only_roles = [
+            f"`losses.{role}`"
+            for role in composite_only_loss_roles
+            if self.losses.get(role)
+        ]
+
+        if configured_composite_only_roles:
+            raise ValueError(
+                "The following loss roles are supported only by Composite models: "
+                + ", ".join(configured_composite_only_roles)
+            )
+
+        assert self.encoder is not None
+        assert self.decoder is not None
 
         model_cls = MODELS.get(model_name)
 
@@ -1642,14 +2049,6 @@ class TrainingConfig(_TrainingConfigBaseModel):
                     "VAE requires `model.params.latent_dim`."
                 )
 
-            latent_dim = self.model.params.get("latent_dim")
-
-            if not isinstance(latent_dim, int) or latent_dim <= 0:
-                raise ValueError(
-                    "VAE requires `model.params.latent_dim` to be a "
-                    "positive integer."
-                )
-
             has_complete_standard_objective = (
                     has_reconstruction and has_regularization
             )
@@ -1660,9 +2059,328 @@ class TrainingConfig(_TrainingConfigBaseModel):
             ):
                 raise ValueError(
                     "VAE requires either a nonempty "
-                    "`losses.custom_objective` mapping or at least one loss "
+                    "`losses.custom_objective` list or at least one loss "
                     "under both `losses.reconstruction` and "
                     "`losses.regularization`."
                 )
 
         return self
+
+    @model_validator(mode="after")
+    def validate_loss_requirements(
+            self,
+            info: ValidationInfo,
+    ) -> TrainingConfig:
+        ctx = info.context or {}
+
+        model_overridden = (
+                ctx.get("model_is_external", False)
+                or self.overrides.model is not None
+        )
+
+        if model_overridden or self.model is None:
+            return self
+
+        model_name = MODELS.resolve_key(self.model.name)
+
+        if model_name == "composite" and not self.losses:
+            raise ValueError(
+                "Composite models require at least one configured loss."
+            )
+
+        if self.losses is None:
+            return self
+
+        configured_wiring = [
+            f"`losses.{loss_role}[{loss_index}].composite_wiring`"
+            for loss_role, loss_terms in self.losses.items()
+            for loss_index, loss_config in enumerate(loss_terms)
+            if loss_config.composite_wiring is not None
+        ]
+
+        if model_name != "composite":
+            if configured_wiring:
+                raise ValueError(
+                    "`composite_wiring` may only be configured when "
+                    "`model.name` is `composite`: "
+                    + ", ".join(configured_wiring)
+                )
+
+            return self
+
+        custom_objective_wiring = [
+            f"`losses.custom_objective[{loss_index}].composite_wiring`"
+            for loss_index, loss_config
+            in enumerate(self.losses.get("custom_objective", []))
+            if loss_config.composite_wiring is not None
+        ]
+
+        if custom_objective_wiring:
+            raise ValueError(
+                "Custom objective losses do not accept `composite_wiring`; "
+                "`batch` and `model_output` are supplied automatically: "
+                + ", ".join(custom_objective_wiring)
+            )
+
+        missing_wiring = [
+            f"`losses.{loss_role}[{loss_index}].composite_wiring`"
+            for loss_role, loss_terms in self.losses.items()
+            if loss_role != "custom_objective"
+            for loss_index, loss_config in enumerate(loss_terms)
+            if loss_config.composite_wiring is None
+        ]
+
+        if missing_wiring:
+            raise ValueError(
+                "Every non-custom-objective loss under Composite requires "
+                "`composite_wiring`: "
+                + ", ".join(missing_wiring)
+            )
+
+        return self
+
+    @model_validator(mode="after")
+    def validate_composite_requirements(
+            self,
+            info: ValidationInfo,
+    ) -> TrainingConfig:
+        ctx = info.context or {}
+
+        model_overridden = (
+                ctx.get("model_is_external", False)
+                or self.overrides.model is not None
+        )
+
+        if model_overridden or self.model is None:
+            return self
+
+        model_name = MODELS.resolve_key(self.model.name)
+
+        # Reject composite-model sections when using canonical models
+        composite_sections = {
+            "composite_model_declarations": self.composite_model_declarations,
+            "composite_model_components": self.composite_model_components,
+            "composite_model_assembly": self.composite_model_assembly,
+        }
+
+        if model_name != "composite":
+            configured = [
+                name
+                for name, value in composite_sections.items()
+                if value is not None
+            ]
+
+            if configured:
+                raise ValueError(
+                    "Composite model configuration sections may only be used with "
+                    "`model.name: composite`: "
+                    + ", ".join(configured)
+                )
+
+            return self
+
+        # Require composite-model sections and reject canonical architecture sections when using composite-model
+        _require_present(self.composite_model_declarations, "composite_model_declarations")
+        _require_present(self.composite_model_components, "composite_model_components")
+        _require_present(self.composite_model_assembly, "composite_model_assembly")
+
+        assert self.composite_model_declarations is not None
+        assert self.composite_model_components is not None
+        assert self.composite_model_assembly is not None
+
+        if self.encoder is not None or self.decoder is not None:
+            raise ValueError(
+                "Composite models define architecture through `composite_model_components` "
+                "and `composite_model_assembly`; top-level `encoder` and `decoder` sections "
+                "are not supported."
+            )
+
+        # Validate composite-model input declarations
+        sample_inputs = [
+            name
+            for name, role
+            in self.composite_model_declarations.expects.items()
+            if role == "sample_image"
+        ]
+
+        if not sample_inputs:
+            raise ValueError(
+                "Composite models require at least one input with role `sample_image`."
+            )
+
+        if self.composite_model_declarations.batch_metadata is not None:
+            index_fields = [
+                name
+                for name, role
+                in self.composite_model_declarations.batch_metadata.items()
+                if role == "index"
+            ]
+
+            if len(index_fields) > 1:
+                raise ValueError(
+                    "Composite models support at most one batch metadata field "
+                    "with `role: index`."
+                )
+
+        # Validate assembly component references
+        unknown_components = sorted({
+            step.component
+            for step in self.composite_model_assembly.values()
+            if step.component not in self.composite_model_components
+        })
+
+        if unknown_components:
+            raise ValueError(
+                "Composite model assembly references undefined components: "
+                + ", ".join(repr(name) for name in unknown_components)
+            )
+
+        # Validate assembly-produced outputs
+        valid_output_names = set(
+            self.composite_model_declarations.produces
+        )
+
+        output_references: list[tuple[str, str]] = []
+
+        for step_name, step in self.composite_model_assembly.items():
+            if isinstance(step.outputs, str):
+                output_references.append(
+                    (
+                        f"composite_model_assembly.{step_name}.outputs",
+                        step.outputs,
+                    )
+                )
+            else:
+                output_references.extend(
+                    (
+                        (
+                            f"composite_model_assembly.{step_name}."
+                            f"outputs.{output_name}"
+                        ),
+                        source,
+                    )
+                    for output_name, source in step.outputs.items()
+                )
+
+        produced_outputs: list[str] = []
+        invalid_output_references: list[str] = []
+
+        for location, source in output_references:
+            namespace, separator, name = source.partition(".")
+
+            if (
+                    separator != "."
+                    or namespace != "produces"
+                    or name not in valid_output_names
+            ):
+                invalid_output_references.append(
+                    f"{location} -> {source!r}"
+                )
+                continue
+
+            produced_outputs.append(name)
+
+        if invalid_output_references:
+            raise ValueError(
+                "Composite model assembly outputs must reference declared "
+                "`produces` values: "
+                + ", ".join(invalid_output_references)
+            )
+
+        duplicate_outputs = sorted({
+            name
+            for name in produced_outputs
+            if produced_outputs.count(name) > 1
+        })
+
+        if duplicate_outputs:
+            raise ValueError(
+                "Composite model produced data may originate from only one "
+                "assembly step: "
+                + ", ".join(repr(name) for name in duplicate_outputs)
+            )
+
+        unproduced_outputs = sorted(
+            valid_output_names - set(produced_outputs)
+        )
+
+        if unproduced_outputs:
+            raise ValueError(
+                "Composite model declares produced data that no assembly step "
+                "generates: "
+                + ", ".join(repr(name) for name in unproduced_outputs)
+            )
+
+        # Validate assembly and loss input references
+        valid_input_names = set(self.composite_model_declarations.expects)
+        invalid_references: list[str] = []
+
+        for step_name, step in self.composite_model_assembly.items():
+            for argument_name, source in step.inputs.items():
+                namespace, separator, name = source.partition(".")
+
+                if separator != ".":
+                    invalid_references.append(
+                        f"{step_name}.{argument_name} -> {source!r}"
+                    )
+                    continue
+
+                if namespace == "expects":
+                    valid_names = valid_input_names
+                elif namespace == "produces":
+                    valid_names = valid_output_names
+                else:
+                    invalid_references.append(
+                        f"{step_name}.{argument_name} -> {source!r}"
+                    )
+                    continue
+
+                if name not in valid_names:
+                    invalid_references.append(
+                        f"{step_name}.{argument_name} -> {source!r}"
+                    )
+
+        assert self.losses is not None
+
+        for loss_role, loss_terms in self.losses.items():
+            for loss_index, loss_config in enumerate(loss_terms):
+                if loss_config.composite_wiring is None:
+                    continue
+
+                for parameter_name, source in loss_config.composite_wiring.items():
+                    namespace, separator, name = source.partition(".")
+
+                    reference = (
+                        f"losses.{loss_role}[{loss_index}]."
+                        f"composite_wiring.{parameter_name}"
+                    )
+
+                    if separator != ".":
+                        invalid_references.append(
+                            f"{reference} -> {source!r}"
+                        )
+                        continue
+
+                    if namespace == "expects":
+                        valid_names = valid_input_names
+                    elif namespace == "produces":
+                        valid_names = valid_output_names
+                    else:
+                        invalid_references.append(
+                            f"{reference} -> {source!r}"
+                        )
+                        continue
+
+                    if name not in valid_names:
+                        invalid_references.append(
+                            f"{reference} -> {source!r}"
+                        )
+
+        if invalid_references:
+            raise ValueError(
+                "Composite model configuration contains invalid runtime source references: "
+                + ", ".join(invalid_references)
+            )
+
+        return self
+

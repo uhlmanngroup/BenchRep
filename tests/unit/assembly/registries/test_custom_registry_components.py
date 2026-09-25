@@ -22,7 +22,8 @@ from benchrep.assembly.schemas import (
     TrainingLossTermConfig,
     TrainingOptimizerConfig,
     EvaluationReconstructionMetricConfig,
-    TrainingTransformConfig,
+    TrainingTransformPipelineConfig,
+    TrainingTransformStepConfig,
 )
 from benchrep.discovery.registry import _COMPONENT_REGISTRIES
 from tests.fixtures.registered_components import (
@@ -98,11 +99,15 @@ def test_custom_registered_components_work_end_to_end(
         ),
         config_components={
             "dataset": dataset_config,
-            "transforms": [
-                TrainingTransformConfig(
-                    name="custom_test_transform",
-                    apply_to=["validation"],
-                    params={"scale": 1.0},
+            "transform_pipelines": [
+                TrainingTransformPipelineConfig(
+                    steps=[
+                        TrainingTransformStepConfig(
+                            name="custom_test_transform",
+                            apply_to=["validation"],
+                            params={"scale": 1.0},
+                        ),
+                    ],
                 ),
             ],
             "encoder": TrainingEncoderConfig(
@@ -119,24 +124,27 @@ def test_custom_registered_components_work_end_to_end(
                 },
             ),
             "losses": {
-                "reconstruction": {
-                    "custom_test_reconstruction_loss": TrainingLossTermConfig(
+                "reconstruction": [
+                    TrainingLossTermConfig(
+                        name="custom_test_reconstruction_loss",
                         weight=1.0,
                     ),
-                },
-                "regularization": {
-                    "custom_test_regularization_loss": TrainingLossTermConfig(
+                ],
+                "regularization": [
+                    TrainingLossTermConfig(
+                        name="custom_test_regularization_loss",
                         weight=0.0001,
                     ),
-                },
-                "custom_objective": {
-                    "custom_test_objective_loss": TrainingLossTermConfig(
+                ],
+                "custom_objective": [
+                    TrainingLossTermConfig(
+                        name="custom_test_objective_loss",
                         weight=0.1,
                         params={
                             "regularization_weight": 0.0001,
                         },
                     ),
-                },
+                ],
             },
             "optimizer": TrainingOptimizerConfig(
                 name="custom_test_optimizer",

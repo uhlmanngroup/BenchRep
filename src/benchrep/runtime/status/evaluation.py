@@ -40,7 +40,7 @@ class EvaluationSectionStatus:
 
 @dataclass(frozen=True)
 class EvaluationStatusReport:
-    embeddings: EvaluationSectionStatus
+    anndata: EvaluationSectionStatus
     reconstructions: EvaluationSectionStatus
     exports: EvaluationSectionStatus
     status: EvaluationStatus
@@ -108,24 +108,24 @@ def summarize_evaluation_outcomes(
 
 def build_evaluation_status_report(
     *,
-    embedding_outcomes: Sequence[EvaluationOutcome],
+    anndata_outcomes: Sequence[EvaluationOutcome],
     reconstruction_outcomes: Sequence[EvaluationOutcome],
     export_outcomes: Sequence[EvaluationOutcome],
     fatal_issue: str | None = None,
 ) -> EvaluationStatusReport:
-    embeddings = summarize_evaluation_outcomes(embedding_outcomes)
+    anndata = summarize_evaluation_outcomes(anndata_outcomes)
     reconstructions = summarize_evaluation_outcomes(
         reconstruction_outcomes
     )
     exports = summarize_evaluation_outcomes(export_outcomes)
 
     status = _summarize_workflow_status(
-        sections=(embeddings, reconstructions, exports),
+        sections=(anndata, reconstructions, exports),
         fatal_issue=fatal_issue,
     )
 
     return EvaluationStatusReport(
-        embeddings=embeddings,
+        anndata=anndata,
         reconstructions=reconstructions,
         exports=exports,
         status=status,

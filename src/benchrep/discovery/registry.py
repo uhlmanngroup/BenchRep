@@ -10,9 +10,13 @@ from benchrep.assembly.registries.core import (
     TRANSFORMS,
     ENCODERS,
     DECODERS,
+    HEADS,
     MODELS,
     RECONSTRUCTION_LOSSES,
     REGULARIZATION_LOSSES,
+    CONTRASTIVE_LOSSES,
+    CLASSIFICATION_LOSSES,
+    REGRESSION_LOSSES,
     CUSTOM_OBJECTIVE_LOSSES,
     OPTIMIZERS,
     LOGGERS,
@@ -25,6 +29,15 @@ from benchrep.assembly.registries.core import (
     EVAL_PREDICTABILITY_PROBES,
     EVAL_RECONSTRUCTION_METRICS,
     Registry,
+    LossRegistry,
+)
+from benchrep.architecture.composite_model_component_contracts import (
+    ArchitectureComponent,
+    ComponentMappingResult,
+    ComponentTensorResult,
+)
+from benchrep.architecture.losses.composite_model_contracts import (
+    LossComponent,
 )
 from benchrep.evaluation.metrics import EvaluationMetric
 
@@ -43,6 +56,13 @@ class ComponentRegistryInfo:
         """Return the registration policy enforced by the registry."""
         return self.registry.custom_registration_supported
 
+
+_COMPOSITE_ONLY_LOSS_COMPONENT_CONTRACT: Final[str] = (
+    "Entries must be LossComponent instances wrapping an nn.Module loss "
+    "that returns a scalar tensor. This loss role is supported only by "
+    "Composite models, so runtime_inputs must explicitly declare the "
+    "forward parameter names and semantic roles accepted by the component."
+)
 
 _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
     "dataset": ComponentRegistryInfo(
@@ -76,20 +96,43 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
         symbol="ENCODERS",
         registry=ENCODERS,
         runtime_instance_override_supported=False,
-        config_locations=("TrainingConfig.encoder",),
+        config_locations=(
+            "TrainingConfig.encoder",
+            "TrainingConfig.composite_model_components[*] (kind='encoder')",
+        ),
         contract=(
-            "The registered class must satisfy BenchRep's `BaseEncoder` "
-            "interface."
+            "ArchitectureComponent.component must be an `nn.Module` class. "
+            "Its declared runtime contract defines the supported Composite "
+            "wiring. Canonical encoder use additionally requires the component "
+            "to satisfy BenchRep's `BaseEncoder` interface."
         ),
     ),
     "decoder": ComponentRegistryInfo(
         symbol="DECODERS",
         registry=DECODERS,
         runtime_instance_override_supported=False,
-        config_locations=("TrainingConfig.decoder",),
+        config_locations=(
+            "TrainingConfig.decoder",
+            "TrainingConfig.composite_model_components[*] (kind='decoder')",
+        ),
         contract=(
-            "The registered class must satisfy BenchRep's `BaseDecoder` "
-            "interface."
+            "ArchitectureComponent.component must be an `nn.Module` class. "
+            "Its declared runtime contract defines the supported Composite "
+            "wiring. Canonical decoder use additionally requires the component "
+            "to satisfy BenchRep's `BaseDecoder` interface."
+        ),
+    ),
+    "head": ComponentRegistryInfo(
+        symbol="HEADS",
+        registry=HEADS,
+        runtime_instance_override_supported=False,
+        config_locations=(
+            "TrainingConfig.composite_model_components[*] (kind='head')",
+        ),
+        contract=(
+            "ArchitectureComponent.component must be an `nn.Module` class. "
+            "Its declared runtime contract defines the supported Composite "
+            "wiring, including accepted forward inputs and result structure."
         ),
     ),
     "model": ComponentRegistryInfo(
@@ -108,8 +151,12 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
         runtime_instance_override_supported=False,
         config_locations=("TrainingConfig.losses.reconstruction",),
         contract=(
-            "The registered loss must accept `reconstruction` and `target` "
-            "keyword arguments and return a loss tensor."
+            "Entries must be LossComponent instances wrapping an nn.Module "
+            "loss that returns a scalar tensor. Canonical models call "
+            "forward() with `reconstruction` and `target` as keyword "
+            "arguments; use LossComponent(MyLoss) for canonical-only use. "
+            "Composite use additionally requires explicit runtime_inputs "
+            "declaring the accepted parameter names and semantic roles."
         ),
     ),
     "regularization_loss": ComponentRegistryInfo(
@@ -118,9 +165,34 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
         runtime_instance_override_supported=False,
         config_locations=("TrainingConfig.losses.regularization",),
         contract=(
-            "The registered loss must accept `z_mu` and `z_logvar` keyword "
-            "arguments and return a loss tensor."
+            "Entries must be LossComponent instances wrapping an nn.Module "
+            "loss that returns a scalar tensor. Canonical VAEs call forward() "
+            "with `z_mu` and `z_logvar` as keyword arguments; use "
+            "LossComponent(MyLoss) for canonical-only use. Composite use "
+            "additionally requires explicit runtime_inputs declaring the "
+            "accepted parameter names and semantic roles."
         ),
+    ),
+    "contrastive_loss": ComponentRegistryInfo(
+        symbol="CONTRASTIVE_LOSSES",
+        registry=CONTRASTIVE_LOSSES,
+        runtime_instance_override_supported=False,
+        config_locations=("TrainingConfig.losses.contrastive",),
+        contract=_COMPOSITE_ONLY_LOSS_COMPONENT_CONTRACT,
+    ),
+    "classification_loss": ComponentRegistryInfo(
+        symbol="CLASSIFICATION_LOSSES",
+        registry=CLASSIFICATION_LOSSES,
+        runtime_instance_override_supported=False,
+        config_locations=("TrainingConfig.losses.classification",),
+        contract=_COMPOSITE_ONLY_LOSS_COMPONENT_CONTRACT,
+    ),
+    "regression_loss": ComponentRegistryInfo(
+        symbol="REGRESSION_LOSSES",
+        registry=REGRESSION_LOSSES,
+        runtime_instance_override_supported=False,
+        config_locations=("TrainingConfig.losses.regression",),
+        contract=_COMPOSITE_ONLY_LOSS_COMPONENT_CONTRACT,
     ),
     "custom_objective_loss": ComponentRegistryInfo(
         symbol="CUSTOM_OBJECTIVE_LOSSES",
@@ -130,8 +202,12 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
             "TrainingConfig.losses.custom_objective",
         ),
         contract=(
-            "The registered loss must accept keyword-only `batch` and "
-            "`model_output` mappings and return a scalar loss tensor."
+            "Entries must be LossComponent instances wrapping a "
+            "BaseCustomObjectiveLoss subclass. runtime_inputs must be omitted "
+            "because BenchRep always supplies the complete `batch` and "
+            "`model_output` mappings automatically under canonical and "
+            "Composite models. The component's forward() method must accept "
+            "both as keyword arguments and return a scalar tensor."
         ),
     ),
     "optimizer": ComponentRegistryInfo(
@@ -273,6 +349,8 @@ def inspect_registry(
             print(
                 "  custom registration: "
                 f"{_support_label(registry_info.custom_registration_supported)}; "
+                "registration entry: "
+                f"{_registration_entry_label(registry_info)}; "
                 "runtime instance override: "
                 f"{_support_label(registry_info.runtime_instance_override_supported)}"
             )
@@ -305,6 +383,19 @@ def inspect_registry(
             )
             print(f"    target: {_qualified_name(target)}")
 
+            if isinstance(entry, ArchitectureComponent):
+                _print_architecture_component_contract(
+                    entry,
+                    indentation="    ",
+                )
+
+            elif isinstance(entry, LossComponent):
+                _print_loss_component_contract(
+                    entry,
+                    registry=selected_registry,
+                    indentation="    ",
+                )
+
             if isinstance(entry, EvaluationMetric):
                 print(f"    result kind: {entry.result_kind}")
 
@@ -336,7 +427,16 @@ def inspect_registry(
     )
     print(f"Target: {_qualified_name(target)}")
 
-    if isinstance(entry, EvaluationMetric):
+    if isinstance(entry, ArchitectureComponent):
+        _print_architecture_component_contract(entry)
+
+    elif isinstance(entry, LossComponent):
+        _print_loss_component_contract(
+            entry,
+            registry=selected_registry,
+        )
+
+    elif isinstance(entry, EvaluationMetric):
         print(f"Result kind: {entry.result_kind}")
 
         if entry.vector_axis is not None:
@@ -390,6 +490,10 @@ def _print_registry_customization(
         f"{_support_label(registry_info.custom_registration_supported)}"
     )
     print(
+        "Registration entry: "
+        f"{_registration_entry_label(registry_info)}"
+    )
+    print(
         "Runtime instance override: "
         f"{_support_label(registry_info.runtime_instance_override_supported)}"
     )
@@ -424,6 +528,17 @@ def _print_registry_customization(
         )
 
 
+def _registration_entry_label(
+    registry_info: ComponentRegistryInfo,
+) -> str:
+    entry_type = registry_info.registry.entry_type
+
+    if entry_type is None:
+        return "callable"
+
+    return entry_type.__name__
+
+
 def _support_label(value: bool | None) -> str:
     if value is True:
         return "supported"
@@ -443,10 +558,107 @@ def _registry_object_path(
     )
 
 
+def _print_architecture_component_contract(
+    entry: ArchitectureComponent,
+    *,
+    indentation: str = "",
+) -> None:
+    """Print one architecture component's Composite runtime contract."""
+
+    print(f"{indentation}Composite runtime contract:")
+    print(f"{indentation}  Inputs:")
+
+    for runtime_input in entry.runtime_inputs:
+        supported_structures = " | ".join(
+            runtime_input.supported_structures
+        )
+
+        print(
+            f"{indentation}    {runtime_input.name}: "
+            f"{supported_structures}"
+        )
+
+    runtime_result = entry.runtime_result
+
+    if isinstance(runtime_result, ComponentTensorResult):
+        supported_structures = " | ".join(
+            runtime_result.supported_structures
+        )
+
+        print(
+            f"{indentation}  Result: tensor "
+            f"({supported_structures})"
+        )
+
+        return
+
+    if isinstance(runtime_result, ComponentMappingResult):
+        print(f"{indentation}  Result: mapping")
+
+        for output in runtime_result.outputs:
+            supported_structures = " | ".join(
+                output.supported_structures
+            )
+
+            print(
+                f"{indentation}    {output.name}: "
+                f"{supported_structures}"
+            )
+
+        return
+
+    raise RuntimeError(
+        "ArchitectureComponent contains an unsupported runtime result "
+        f"type: {type(runtime_result).__name__}."
+    )
+
+
+def _print_loss_component_contract(
+    entry: LossComponent,
+    *,
+    registry: Registry,
+    indentation: str = "",
+) -> None:
+    """Print one loss component's Composite runtime contract."""
+
+    if entry.runtime_inputs is None:
+        if (
+            isinstance(registry, LossRegistry)
+            and not registry.explicit_composite_runtime_inputs_supported
+        ):
+            contract_status = "fixed by registry"
+        else:
+            contract_status = "not declared"
+
+        print(
+            f"{indentation}Composite runtime contract: "
+            f"{contract_status}"
+        )
+        return
+
+    print(f"{indentation}Composite runtime contract:")
+    print(f"{indentation}  Inputs:")
+
+    for runtime_input in entry.runtime_inputs:
+        supported_roles = " | ".join(
+            runtime_input.supported_roles
+        )
+
+        print(
+            f"{indentation}    {runtime_input.name}: "
+            f"{supported_roles}"
+        )
+
+    print(f"{indentation}  Result: scalar tensor")
+
+
 def _registry_entry_target(entry: Any) -> Any:
     """Return the callable represented by a registry entry."""
 
-    if isinstance(entry, EvaluationMetric):
+    if isinstance(entry, (ArchitectureComponent, LossComponent)):
+        return entry.component
+
+    elif isinstance(entry, EvaluationMetric):
         return entry.fn
 
     return entry

@@ -110,6 +110,8 @@ def _resolve_registry_selection(
 # -------------------------
 EvaluationInheritableField = Literal[
     "run.output_root",
+    "source.anndata_path",
+    "source.reconstructions_path",
     "reconstruction.n_examples",
 ]
 
@@ -120,20 +122,33 @@ EvaluationArtifactSource = Literal[
 
 
 @dataclass(frozen=True)
+class EvaluationAnnDataInputSpec:
+    """Resolved AnnData artifact selected for evaluation."""
+
+    path: Path
+    source: EvaluationArtifactSource
+
+
+@dataclass(frozen=True)
 class EvaluationReconstructionInputSpec:
-    input_path: Path | None
-    reconstruction_path: Path | None
-    obs_path: Path | None
+    """Resolved reconstruction bundle selected for evaluation."""
+
+    bundle_dir: Path
+    source: EvaluationArtifactSource
+    pair_id: str | None
+    input_path: Path
+    reconstruction_path: Path
+    observations_path: Path
     metadata_path: Path | None
     n_examples: int | None
 
 
 @dataclass(frozen=True)
 class EvaluationInputSpec:
-    embeddings_path: Path | None
-    embeddings_source: EvaluationArtifactSource | None
+    """Resolved artifact inputs consumed by one evaluation run."""
+
+    anndata: EvaluationAnnDataInputSpec | None
     reconstructions: EvaluationReconstructionInputSpec | None
-    reconstructions_source: EvaluationArtifactSource | None
     prediction_manifest_path: Path | None
 
 
@@ -226,98 +241,84 @@ def resolve_evaluation_config(
     evaluation_config: EvaluationConfig,
     prediction_manifest_path_override: Path | str | None = None,
 ) -> EvaluationRunSpec:
-    """Resolve a parsed evaluation config into an executable run spec.
+    """Resolve an evaluation config into its executable runtime specification.
 
-    This function is the top-level evaluation resolver. It performs only
-    workflow-level orchestration: loading an optional prediction manifest,
-    resolving input paths, resolving reconstruction artifacts, deriving run
-    identity information, resolving step defaults, and packaging everything
-    into an immutable ``EvaluationRunSpec``.
-
-    Context-dependent decisions are delegated to smaller helpers. In particular,
-    reconstruction availability is resolved before step defaults, because
-    reconstruction metrics and error maps depend on whether reconstruction
-    artifacts are available.
-
-    Parameters
-    ----------
-    evaluation_config
-        Parsed evaluation configuration.
-
-    Returns
-    -------
-    EvaluationRunSpec
-        Fully resolved evaluation runtime specification.
+    The resolver loads an optional prediction manifest, resolves at most one
+    AnnData artifact and one reconstruction bundle, derives run identity and
+    step availability, and materializes the concrete artifact paths used by
+    the evaluation run.
     """
 
     inherited_config_fields: set[EvaluationInheritableField] = set()
 
-    # Resolve prediction manifest
-    evaluation_config, prediction_manifest_path = _resolve_prediction_manifest_path(
+    (
+        evaluation_config,
+        prediction_manifest_path,
+    ) = _resolve_prediction_manifest_path(
         evaluation_config=evaluation_config,
-        prediction_manifest_path_override=prediction_manifest_path_override,
+        prediction_manifest_path_override=(
+            prediction_manifest_path_override
+        ),
     )
 
     if prediction_manifest_path is not None:
-        prediction_manifest = _load_prediction_manifest(prediction_manifest_path)
+        prediction_manifest = _load_prediction_manifest(
+            prediction_manifest_path
+        )
         manifest_base_dir = prediction_manifest_path.parent
     else:
         prediction_manifest = None
         manifest_base_dir = None
 
-    # Resolve embedding input: manual path overrides manifest
-    embeddings_path = resolve_embeddings_path(
-        embeddings_path=evaluation_config.source.embeddings_path,
+    anndata_input = resolve_anndata_input(
+        anndata_path=evaluation_config.source.anndata_path,
         prediction_manifest=prediction_manifest,
         manifest_base_dir=manifest_base_dir,
     )
 
-    embeddings_source: EvaluationArtifactSource | None = (
-        None
-        if embeddings_path is None
-        else (
-            "direct_path"
-            if evaluation_config.source.embeddings_path is not None
-            else "prediction_manifest"
-        )
-    )
-
-    # Resolve reconstructions: manual path overrides manifest
-    reconstructions = resolve_reconstructions(
-        reconstructions_path=evaluation_config.source.reconstructions_path,
+    reconstruction_input = resolve_reconstructions(
+        reconstructions_path=(
+            evaluation_config.source.reconstructions_path
+        ),
+        reconstruction_pair_id=(
+            evaluation_config.source.reconstruction_pair_id
+        ),
         prediction_manifest=prediction_manifest,
         manifest_base_dir=manifest_base_dir,
         n_examples=evaluation_config.reconstruction.n_examples,
     )
 
-    reconstructions_source: EvaluationArtifactSource | None = (
-        None
-        if reconstructions is None
-        else (
-            "direct_path"
-            if evaluation_config.source.reconstructions_path is not None
-            else "prediction_manifest"
-        )
-    )
+    if (
+        anndata_input is not None
+        and anndata_input.source == "prediction_manifest"
+    ):
+        inherited_config_fields.add("source.anndata_path")
 
     if (
-        reconstructions_source == "prediction_manifest"
-        and evaluation_config.reconstruction.n_examples is None
-        and reconstructions is not None
-        and reconstructions.n_examples is not None
+        reconstruction_input is not None
+        and reconstruction_input.source == "prediction_manifest"
     ):
-        inherited_config_fields.add("reconstruction.n_examples")
+        inherited_config_fields.add(
+            "source.reconstructions_path"
+        )
 
-    has_embeddings = embeddings_path is not None
-    has_reconstructions = reconstructions is not None
+        if (
+            evaluation_config.reconstruction.n_examples is None
+            and reconstruction_input.n_examples is not None
+        ):
+            inherited_config_fields.add(
+                "reconstruction.n_examples"
+            )
+
+    has_embeddings = anndata_input is not None
+    has_reconstructions = reconstruction_input is not None
 
     if not has_embeddings and not has_reconstructions:
         raise ValueError(
-            "Evaluation could not resolve a usable embeddings artifact or "
+            "Evaluation could not resolve a usable AnnData artifact or "
             "reconstruction bundle from the configured sources."
         )
 
-    # Resolve run identity. RunContext is handled by the entrypoint workflow script
     run_identity = resolve_run_identity(
         run_config=evaluation_config.run,
         prediction_manifest=prediction_manifest,
@@ -325,8 +326,8 @@ def resolve_evaluation_config(
     )
 
     if (
-            evaluation_config.run.output_root is None
-            and prediction_manifest is not None
+        evaluation_config.run.output_root is None
+        and prediction_manifest is not None
     ):
         assert manifest_base_dir is not None
 
@@ -340,31 +341,29 @@ def resolve_evaluation_config(
         if prediction_output_dir is not None:
             inherited_config_fields.add("run.output_root")
 
-    # Resolve step spec (some configs need further downstream resolution)
     step_spec = resolve_step_spec(
         evaluation_config=evaluation_config,
         has_embeddings=has_embeddings,
         has_reconstructions=has_reconstructions,
     )
 
-    # Materialize effective artifact paths and values inherited from prediction.
-    resolved_reconstructions_path = (
-        evaluation_config.source.reconstructions_path
+    resolved_anndata_path = (
+        anndata_input.path
+        if anndata_input is not None
+        else evaluation_config.source.anndata_path
     )
-
-    if (
-            resolved_reconstructions_path is None
-            and reconstructions_source == "prediction_manifest"
-            and reconstructions is not None
-    ):
-        assert reconstructions.input_path is not None
-        resolved_reconstructions_path = reconstructions.input_path.parent.resolve()
+    resolved_reconstructions_path = (
+        reconstruction_input.bundle_dir
+        if reconstruction_input is not None
+        else evaluation_config.source.reconstructions_path
+    )
 
     resolved_source_config = evaluation_config.source.model_copy(
         update={
             "prediction_manifest_path": prediction_manifest_path,
-            "embeddings_path": embeddings_path,
+            "anndata_path": resolved_anndata_path,
             "reconstructions_path": resolved_reconstructions_path,
+            "reconstruction_pair_id": None,
         },
     )
 
@@ -375,15 +374,19 @@ def resolve_evaluation_config(
             update={"output_root": run_identity.output_root},
         )
 
-    resolved_reconstruction_config = evaluation_config.reconstruction
+    resolved_reconstruction_config = (
+        evaluation_config.reconstruction
+    )
 
     if "reconstruction.n_examples" in inherited_config_fields:
-        assert reconstructions is not None
-        assert reconstructions.n_examples is not None
+        assert reconstruction_input is not None
+        assert reconstruction_input.n_examples is not None
 
         resolved_reconstruction_config = (
             evaluation_config.reconstruction.model_copy(
-                update={"n_examples": reconstructions.n_examples},
+                update={
+                    "n_examples": reconstruction_input.n_examples,
+                },
             )
         )
 
@@ -396,10 +399,8 @@ def resolve_evaluation_config(
     )
 
     input_spec = EvaluationInputSpec(
-        embeddings_path=embeddings_path,
-        embeddings_source=embeddings_source,
-        reconstructions=reconstructions,
-        reconstructions_source=reconstructions_source,
+        anndata=anndata_input,
+        reconstructions=reconstruction_input,
         prediction_manifest_path=prediction_manifest_path,
     )
 
@@ -416,239 +417,326 @@ def resolve_evaluation_config(
     )
 
 
-def resolve_embeddings_path(
-    embeddings_path: Path | None = None,
-    prediction_manifest: dict[str, Any] | None = None,
-    manifest_base_dir: Path | None = None,
-) -> Path | None:
-    """Resolve the optional AnnData embeddings input for evaluation.
+def resolve_anndata_input(
+    *,
+    anndata_path: Path | None,
+    prediction_manifest: dict[str, Any] | None,
+    manifest_base_dir: Path | None,
+) -> EvaluationAnnDataInputSpec | None:
+    """Resolve the AnnData artifact whose ``X`` is evaluated.
 
-    A direct `source.embeddings_path` takes precedence over the path recorded
-    in a prediction manifest. If neither source provides an embeddings path,
-    embedding-dependent evaluation is unavailable.
+    A directly configured path takes precedence over the AnnData artifact
+    recorded in the prediction manifest.
     """
-    if embeddings_path is not None:
-        return Path(embeddings_path).expanduser().resolve()
+
+    if anndata_path is not None:
+        return EvaluationAnnDataInputSpec(
+            path=anndata_path.expanduser().resolve(),
+            source="direct_path",
+        )
 
     if prediction_manifest is None:
         return None
 
-    if manifest_base_dir is None:
-        raise ValueError(
-            "manifest_base_dir is required when resolving embeddings "
-            "from a prediction manifest."
-        )
+    assert manifest_base_dir is not None
 
-    return get_optional_nested_path(
+    resolved_path = get_optional_nested_path(
         prediction_manifest,
         "exports",
-        "embeddings",
+        "anndata",
         "path",
         base_dir=manifest_base_dir,
     )
 
+    if resolved_path is None:
+        return None
+
+    return EvaluationAnnDataInputSpec(
+        path=resolved_path,
+        source="prediction_manifest",
+    )
+
 
 def resolve_reconstructions(
-        reconstructions_path: Path | None = None,
-        prediction_manifest: dict[str, Any] | None = None,
-        manifest_base_dir: Path | None = None,
-        n_examples: int | None = None,
+    *,
+    reconstructions_path: Path | None,
+    reconstruction_pair_id: str | None,
+    prediction_manifest: dict[str, Any] | None,
+    manifest_base_dir: Path | None,
+    n_examples: int | None,
 ) -> EvaluationReconstructionInputSpec | None:
-    """Resolve reconstruction artifact inputs for evaluation.
+    """Resolve one complete reconstruction bundle for evaluation.
 
-    Manual ``source.reconstructions_path`` takes precedence over reconstruction
-    paths inferred from a prediction manifest. Manual reconstruction input is treated
-    as an explicit user request and must point to a complete reconstruction artifact
-    bundle containing ``input.pt``, ``reconstruction.pt``, and ``obs.pt``.
+    A directly configured bundle takes precedence over manifest-derived
+    reconstruction artifacts and must contain all required files.
 
-    When reconstruction paths are inferred from a prediction manifest, an absent
-    bundle is treated as unavailable reconstruction input. An incomplete manifest
-    bundle is skipped with a warning, because embeddings-only evaluation can still
-    proceed.
-
-    Returns
-    -------
-    EvaluationReconstructionInputSpec | None
-        Resolved reconstruction artifact paths, or ``None`` if no usable
-        reconstruction bundle is available.
+    For manifest-derived input, an explicit pair identifier selects that pair.
+    Otherwise, the pair is inferred only when exactly one complete pair is
+    available. An ambiguous set of usable pairs leaves reconstruction input
+    unavailable until the user selects one.
     """
-    # Resolve reconstructions: manual path overrides manifest
+
     if reconstructions_path is not None:
-        _recon_root = Path(reconstructions_path).resolve()
-        if not _recon_root.is_dir():
-            raise NotADirectoryError(
-                "source.reconstructions_path must point to a directory containing "
-                "the reconstruction artifact bundle. "
-                f"Got: {_recon_root}"
-            )
+        bundle_dir = reconstructions_path.expanduser().resolve()
 
-        _recon_input_path = _recon_root / "input.pt"
-        _recon_path = _recon_root / "reconstruction.pt"
-        _recon_obs_path = _recon_root / "obs.pt"
-        _recon_metadata_path = _recon_root / "reconstruction_export_metadata.pt"
-
-        missing_required_recon_paths = [
-            path
-            for path in (_recon_input_path, _recon_path, _recon_obs_path)
-            if not path.is_file()
-        ]
-        if missing_required_recon_paths:
-            raise FileNotFoundError(
-                f"Expected reconstruction files do not exist in provided "
-                f"source.reconstructions_path: {missing_required_recon_paths}"
-            )
-
-        reconstructions = EvaluationReconstructionInputSpec(
-            input_path=_recon_input_path,
-            reconstruction_path=_recon_path,
-            obs_path=_recon_obs_path,
-            metadata_path=_recon_metadata_path if _recon_metadata_path.is_file() else None,
-            n_examples=n_examples, # manual branch only respects explicit eval config
+        input_path, reconstruction_path, observations_path, metadata_path = (
+            _validate_reconstruction_bundle_dir(bundle_dir)
         )
 
-    elif prediction_manifest is not None:
-        manifest_n_examples = get_optional_nested_value(
+        return EvaluationReconstructionInputSpec(
+            bundle_dir=bundle_dir,
+            source="direct_path",
+            pair_id=None,
+            input_path=input_path,
+            reconstruction_path=reconstruction_path,
+            observations_path=observations_path,
+            metadata_path=metadata_path,
+            n_examples=n_examples,
+        )
+
+    if prediction_manifest is None:
+        if reconstruction_pair_id is not None:
+            raise ValueError(
+                "source.reconstruction_pair_id requires a prediction manifest."
+            )
+
+        return None
+
+    assert manifest_base_dir is not None
+
+    pair_records = get_optional_nested_value(
+        prediction_manifest,
+        "exports",
+        "reconstructions",
+        "pairs",
+    )
+
+    if pair_records is None:
+        if reconstruction_pair_id is not None:
+            raise ValueError(
+                "source.reconstruction_pair_id was configured, but the "
+                "prediction manifest does not contain reconstruction-pair "
+                "records."
+            )
+
+        return None
+
+    if not isinstance(pair_records, Mapping):
+        raise TypeError(
+            "Prediction manifest field "
+            "`exports.reconstructions.pairs` must be a mapping."
+        )
+
+    usable_pairs: dict[
+        str,
+        tuple[Path, Path, Path, Path, Path | None],
+    ] = {}
+    incomplete_pairs: dict[str, str] = {}
+
+    for candidate_id, pair_record in pair_records.items():
+        if not isinstance(candidate_id, str):
+            raise TypeError(
+                "Prediction manifest reconstruction pair identifiers must "
+                "be strings."
+            )
+
+        if not isinstance(pair_record, Mapping):
+            raise TypeError(
+                "Prediction manifest reconstruction pair "
+                f"{candidate_id!r} must be a mapping."
+            )
+
+        bundle_dir = get_optional_nested_path(
             prediction_manifest,
             "exports",
             "reconstructions",
-            "n_examples_exported",
+            "pairs",
+            candidate_id,
+            "paths",
+            "bundle_dir",
+            base_dir=manifest_base_dir,
         )
 
-        if (
-                manifest_n_examples is not None
-                and (
-                not isinstance(manifest_n_examples, int)
-                or isinstance(manifest_n_examples, bool)
-                or manifest_n_examples < 1
+        if bundle_dir is None:
+            incomplete_pairs[candidate_id] = (
+                "the manifest does not record `paths.bundle_dir`"
+            )
+            continue
+
+        try:
+            (
+                input_path,
+                reconstruction_path,
+                observations_path,
+                metadata_path,
+            ) = _validate_reconstruction_bundle_dir(bundle_dir)
+
+        except (NotADirectoryError, FileNotFoundError) as exc:
+            incomplete_pairs[candidate_id] = str(exc)
+            continue
+
+        usable_pairs[candidate_id] = (
+            bundle_dir,
+            input_path,
+            reconstruction_path,
+            observations_path,
+            metadata_path,
         )
-        ):
+
+    if reconstruction_pair_id is not None:
+        if reconstruction_pair_id not in pair_records:
+            raise ValueError(
+                "Evaluation reconstruction pair "
+                f"{reconstruction_pair_id!r} is not recorded in the "
+                "prediction manifest. Available pairs: "
+                f"{list(pair_records)}."
+            )
+
+        if reconstruction_pair_id not in usable_pairs:
+            raise FileNotFoundError(
+                "Evaluation reconstruction pair "
+                f"{reconstruction_pair_id!r} does not contain a complete "
+                "artifact bundle. "
+                f"{incomplete_pairs.get(reconstruction_pair_id)}"
+            )
+
+        selected_pair_id = reconstruction_pair_id
+
+    elif len(usable_pairs) == 1:
+        selected_pair_id = next(iter(usable_pairs))
+
+    elif len(usable_pairs) > 1:
+        warnings.warn(
+            "Prediction manifest contains multiple usable reconstruction "
+            "pairs, but source.reconstruction_pair_id was not configured. "
+            "Reconstruction-dependent evaluation will remain unavailable. "
+            f"Available pairs: {list(usable_pairs)}.",
+            UserWarning,
+            stacklevel=2,
+        )
+        return None
+
+    else:
+        if incomplete_pairs:
             warnings.warn(
-                "Prediction manifest field "
-                "'exports.reconstructions.n_examples_exported' is not a positive "
-                "integer. Ignoring it for reconstruction artifact count resolution.",
+                "Prediction manifest does not contain a complete "
+                "reconstruction artifact bundle. Reconstruction-dependent "
+                "evaluation will remain unavailable. Incomplete pairs: "
+                f"{incomplete_pairs}.",
+                UserWarning,
                 stacklevel=2,
             )
-            manifest_n_examples = None
 
-        resolved_n_examples = (
-            n_examples
-            if n_examples is not None
-            else manifest_n_examples
+        return None
+
+    (
+        bundle_dir,
+        input_path,
+        reconstruction_path,
+        observations_path,
+        metadata_path,
+    ) = usable_pairs[selected_pair_id]
+
+    pair_record = pair_records[selected_pair_id]
+    manifest_n_examples = pair_record.get("n_examples_exported")
+
+    if (
+        manifest_n_examples is not None
+        and (
+            not isinstance(manifest_n_examples, int)
+            or isinstance(manifest_n_examples, bool)
+            or manifest_n_examples < 1
+        )
+    ):
+        warnings.warn(
+            "Prediction manifest field "
+            f"`exports.reconstructions.pairs.{selected_pair_id}."
+            "n_examples_exported` is not a positive integer. Ignoring it.",
+            UserWarning,
+            stacklevel=2,
+        )
+        manifest_n_examples = None
+
+    resolved_n_examples = (
+        n_examples
+        if n_examples is not None
+        else manifest_n_examples
+    )
+
+    return EvaluationReconstructionInputSpec(
+        bundle_dir=bundle_dir,
+        source="prediction_manifest",
+        pair_id=selected_pair_id,
+        input_path=input_path,
+        reconstruction_path=reconstruction_path,
+        observations_path=observations_path,
+        metadata_path=metadata_path,
+        n_examples=resolved_n_examples,
+    )
+
+
+def _validate_reconstruction_bundle_dir(
+    bundle_dir: Path,
+) -> tuple[Path, Path, Path, Path | None]:
+    """Validate a reconstruction bundle and return its artifact paths."""
+
+    bundle_dir = bundle_dir.expanduser().resolve()
+
+    if not bundle_dir.is_dir():
+        raise NotADirectoryError(
+            "Reconstruction bundle path must point to a directory. "
+            f"Got: {bundle_dir}"
         )
 
-        if manifest_base_dir is None:
-            raise ValueError(
-                "manifest_base_dir is required when resolving reconstructions "
-                "from a prediction manifest."
-            )
+    input_path = bundle_dir / "input.pt"
+    reconstruction_path = bundle_dir / "reconstruction.pt"
+    observations_path = bundle_dir / "obs.pt"
+    metadata_path = (
+        bundle_dir / "reconstruction_export_metadata.pt"
+    )
 
-        _recon_input_path = get_optional_nested_path(
-            prediction_manifest,
-            "exports",
-            "reconstructions",
-            "paths",
-            "input",
-            base_dir=manifest_base_dir,
-        )
-        _recon_path = get_optional_nested_path(
-            prediction_manifest,
-            "exports",
-            "reconstructions",
-            "paths",
-            "reconstruction",
-            base_dir=manifest_base_dir,
-        )
-        _recon_obs_path = get_optional_nested_path(
-            prediction_manifest,
-            "exports",
-            "reconstructions",
-            "paths",
-            "obs",
-            base_dir=manifest_base_dir,
-        )
-        _recon_metadata_path = get_optional_nested_path(
-            prediction_manifest,
-            "exports",
-            "reconstructions",
-            "paths",
-            "metadata",
-            base_dir=manifest_base_dir,
+    required_paths = {
+        "input": input_path,
+        "reconstruction": reconstruction_path,
+        "observations": observations_path,
+    }
+    missing = [
+        name
+        for name, path in required_paths.items()
+        if not path.is_file()
+    ]
+
+    if missing:
+        raise FileNotFoundError(
+            f"Reconstruction bundle '{bundle_dir}' is incomplete. "
+            f"Missing required artifacts: {missing}."
         )
 
-        required_recon_paths = {
-            "input": _recon_input_path,
-            "reconstruction": _recon_path,
-            "obs": _recon_obs_path,
-        }
-
-        # If all required path missing, abort reconstruction evaluation
-        if all(path is None for path in required_recon_paths.values()):
-            reconstructions = None
-        # If only subset missing, abort but warn
-        else:
-            missing_required_recon_paths = [
-                name
-                for name, path in required_recon_paths.items()
-                if path is None or not path.is_file()
-            ]
-
-            if missing_required_recon_paths:
-                warnings.warn(
-                    "Prediction manifest contains an incomplete reconstruction "
-                    "artifact bundle. Reconstruction inputs will be skipped. "
-                    f"Missing required files: {missing_required_recon_paths}",
-                    stacklevel=2,
-                )
-                reconstructions = None
-            else:
-                reconstructions = EvaluationReconstructionInputSpec(
-                    input_path=_recon_input_path,
-                    reconstruction_path=_recon_path,
-                    obs_path=_recon_obs_path,
-                    metadata_path=(
-                        _recon_metadata_path
-                        if _recon_metadata_path is not None
-                           and _recon_metadata_path.is_file()
-                        else None
-                    ),
-                    n_examples=resolved_n_examples,
-                )
-    else:
-        reconstructions = None
-
-    return reconstructions
+    return (
+        input_path,
+        reconstruction_path,
+        observations_path,
+        metadata_path if metadata_path.is_file() else None,
+    )
 
 
 def resolve_run_identity(
-        run_config: EvaluationRunConfig,
-        prediction_manifest: dict[str, Any] | None = None,
-        manifest_base_dir: Path | None = None,
+    run_config: EvaluationRunConfig,
+    prediction_manifest: dict[str, Any] | None = None,
+    manifest_base_dir: Path | None = None,
 ) -> EvaluationRunIdentitySpec:
-    """Resolve output-root and run-name identity hints for an evaluation run.
+    """Resolve output location and identity hints for an evaluation run.
 
-    ``RunContext`` creation is intentionally left to the workflow entrypoint.
-    This helper only resolves the pieces needed to construct a sensible
-    evaluation run identity: output root, optional explicit run-name stem,
-    project name, and model name.
-
-    If a prediction manifest is available, the output root is inferred from the
-    parent workflow output directory when possible. Project/model identity is
-    inferred from manifest summary fields when they are valid strings.
-
-    The derived ``model_name`` follows a dependency rule: decoder is included
-    only if both model and encoder are valid strings. This avoids names such as
-    ``vae_mlp_decoder`` when the encoder identity is missing or invalid.
+    Output-root, project, and model identity are inferred from the linked
+    prediction lineage when not configured directly. ``RunContext`` remains
+    responsible for constructing the final timestamped run name.
     """
-    # Resolve output_root
+
     if run_config.output_root is not None:
         output_root = run_config.output_root.resolve()
 
     elif prediction_manifest is not None:
-        if manifest_base_dir is None:
-            raise ValueError(
-                "manifest_base_dir is required when resolving run identity "
-                "from a prediction manifest."
-            )
+        assert manifest_base_dir is not None
 
         prediction_output_dir = get_optional_nested_path(
             prediction_manifest,
@@ -659,8 +747,10 @@ def resolve_run_identity(
 
         if prediction_output_dir is None:
             warnings.warn(
-                "Could not infer evaluation output root from prediction manifest "
-                "because 'run.output_dir' is missing or null. Falling back to 'outputs/'.",
+                "Could not infer the evaluation output root from the "
+                "prediction manifest because `run.output_dir` is missing. "
+                "Falling back to `outputs/`.",
+                UserWarning,
                 stacklevel=2,
             )
             output_root = Path("outputs").resolve()
@@ -670,16 +760,20 @@ def resolve_run_identity(
     else:
         output_root = Path("outputs").resolve()
 
-    # Resolve run_name
-    if run_config.run_name is not None:
-        run_name_stem = run_config.run_name
-    else:
-        run_name_stem = None
+    run_name_stem = run_config.run_name
 
-    if prediction_manifest is not None:
+    if prediction_manifest is None:
+        project_name = None
+        model_name = None
+
+    else:
         project_name_value = get_optional_nested_value(
             prediction_manifest,
-            "summary",
+            "appendix",
+            "training_manifest",
+            "appendix",
+            "resolved_config",
+            "run",
             "project_name",
         )
         project_name = (
@@ -688,33 +782,23 @@ def resolve_run_identity(
             else None
         )
 
-        model = get_optional_nested_value(
+        model_name_value = get_optional_nested_value(
             prediction_manifest,
             "summary",
-            "model",
+            "model_name",
         )
-        encoder = get_optional_nested_value(
+        model_class_value = get_optional_nested_value(
             prediction_manifest,
             "summary",
-            "encoder",
-        )
-        decoder = get_optional_nested_value(
-            prediction_manifest,
-            "summary",
-            "decoder",
+            "model_class",
         )
 
-        if not isinstance(model, str):
-            model_name = None
-        elif not isinstance(encoder, str):
-            model_name = model
-        elif not isinstance(decoder, str):
-            model_name = f"{model}_{encoder}"
+        if isinstance(model_name_value, str):
+            model_name = model_name_value
+        elif isinstance(model_class_value, str):
+            model_name = model_class_value
         else:
-            model_name = f"{model}_{encoder}_{decoder}"
-    else:
-        project_name = None
-        model_name = None
+            model_name = None
 
     return EvaluationRunIdentitySpec(
         output_root=output_root,
@@ -1582,7 +1666,7 @@ def _load_prediction_manifest(path: Path) -> dict[str, Any]:
     if manifest_status == "partially_completed":
         warnings.warn(
             "Prediction manifest is partially completed. Evaluation will proceed "
-            "using available artifacts. Missing embeddings will still prevent "
+            "using available artifacts. Missing anndata will still prevent "
             "evaluation, while unavailable reconstruction artifacts will disable "
             "reconstruction-dependent steps.",
             UserWarning,

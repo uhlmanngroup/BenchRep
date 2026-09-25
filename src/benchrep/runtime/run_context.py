@@ -43,7 +43,7 @@ class RunContext:
 
     Stage-specific directories are created only for the stages that currently
     use them. Training creates `checkpoints/` and `architecture/`. Prediction
-    creates top-level `embeddings/` and `reconstructions/` directories for
+    creates top-level `anndata/` and `reconstructions/` directories for
     prediction exports. Evaluation creates a centralized `records/metrics/`
     directory for machine-readable metric records, an `artifacts/` tree for
     exported evaluation data products, and a `figures/` tree for generated
@@ -56,7 +56,7 @@ class RunContext:
     is still stored on the context object so downstream code has a single source
     of truth for path names.
 
-    The context does not write model weights, configs, logs, embeddings,
+    The context does not write model weights, configs, logs, anndata,
     reconstructions, metrics, or figures itself. It only owns the directory
     layout and exposes immutable paths for the rest of the pipeline.
 
@@ -83,8 +83,10 @@ class RunContext:
     training_architecture_dir:
         Conventional directory for architecture inspection artifacts, such as
         torchview graphs or model summaries.
-    prediction_embeddings_dir:
-        Conventional directory for prediction embedding exports.
+    prediction_architecture_dir:
+        Directory containing prediction-time architecture records.
+    prediction_anndata_dir:
+        Conventional directory for prediction AnnData exports.
     prediction_reconstructions_dir:
         Conventional directory for selected prediction reconstruction exports.
     evaluation_artifacts_dir:
@@ -93,11 +95,11 @@ class RunContext:
         Parent directory for generated evaluation figures.
     evaluation_metrics_dir:
         Directory for machine-readable evaluation metric records.
-    evaluation_embeddings_dir:
+    evaluation_anndata_dir:
         Directory for embedding-side evaluation artifacts.
     evaluation_reconstructions_dir:
         Directory for reconstruction-side evaluation artifacts.
-    evaluation_embeddings_figures_dir:
+    evaluation_anndata_figures_dir:
         Directory for embedding-side evaluation figures.
     evaluation_reconstructions_figures_dir:
         Directory for reconstruction-side evaluation figures.
@@ -122,14 +124,15 @@ class RunContext:
     # Stage-specific conventional directories
     training_checkpoint_dir: Path
     training_architecture_dir: Path
-    prediction_embeddings_dir: Path
+    prediction_architecture_dir: Path
+    prediction_anndata_dir: Path
     prediction_reconstructions_dir: Path
     evaluation_artifacts_dir: Path
     evaluation_figures_dir: Path
     evaluation_metrics_dir: Path
-    evaluation_embeddings_dir: Path
+    evaluation_anndata_dir: Path
     evaluation_reconstructions_dir: Path
-    evaluation_embeddings_figures_dir: Path
+    evaluation_anndata_figures_dir: Path
     evaluation_reconstructions_figures_dir: Path
     evaluation_reconstruction_inputs_dir: Path
     evaluation_reconstruction_predictions_dir: Path
@@ -195,16 +198,17 @@ class RunContext:
         # Stage-specific dirs
         training_checkpoint_dir = output_dir / "checkpoints"
         training_architecture_dir = output_dir / "architecture"
-        prediction_embeddings_dir = output_dir / "embeddings"
+        prediction_architecture_dir = output_dir / "architecture"
+        prediction_anndata_dir = output_dir / "anndata"
         prediction_reconstructions_dir = output_dir / "reconstructions"
         evaluation_artifacts_dir = output_dir / "artifacts"
         evaluation_figures_dir = output_dir / "figures"
 
         evaluation_metrics_dir = records_dir / "metrics"
 
-        evaluation_embeddings_dir = evaluation_artifacts_dir / "embeddings"
+        evaluation_anndata_dir = evaluation_artifacts_dir / "anndata"
         evaluation_reconstructions_dir = evaluation_artifacts_dir / "reconstructions"
-        evaluation_embeddings_figures_dir = evaluation_figures_dir / "embeddings"
+        evaluation_anndata_figures_dir = evaluation_figures_dir / "anndata"
         evaluation_reconstructions_figures_dir = evaluation_figures_dir / "reconstructions"
         evaluation_reconstruction_inputs_dir = evaluation_reconstructions_dir / "inputs"
         evaluation_reconstruction_predictions_dir = evaluation_reconstructions_dir / "predictions"
@@ -220,15 +224,19 @@ class RunContext:
         if stage == "training":
             dirs_to_create.extend([training_checkpoint_dir, training_architecture_dir])
         elif stage == "prediction":
-            dirs_to_create.extend([prediction_embeddings_dir, prediction_reconstructions_dir])
+            dirs_to_create.extend([
+                prediction_anndata_dir,
+                prediction_reconstructions_dir,
+                prediction_architecture_dir,
+            ])
         elif stage == "evaluation":
             dirs_to_create.extend([
                 evaluation_artifacts_dir,
                 evaluation_figures_dir,
                 evaluation_metrics_dir,
-                evaluation_embeddings_dir,
+                evaluation_anndata_dir,
                 evaluation_reconstructions_dir,
-                evaluation_embeddings_figures_dir,
+                evaluation_anndata_figures_dir,
                 evaluation_reconstructions_figures_dir,
                 evaluation_reconstruction_inputs_dir,
                 evaluation_reconstruction_predictions_dir,
@@ -253,14 +261,15 @@ class RunContext:
             metadata_dir=metadata_dir,
             training_checkpoint_dir=training_checkpoint_dir,
             training_architecture_dir=training_architecture_dir,
-            prediction_embeddings_dir=prediction_embeddings_dir,
+            prediction_architecture_dir=prediction_architecture_dir,
+            prediction_anndata_dir=prediction_anndata_dir,
             prediction_reconstructions_dir=prediction_reconstructions_dir,
             evaluation_artifacts_dir=evaluation_artifacts_dir,
             evaluation_figures_dir=evaluation_figures_dir,
             evaluation_metrics_dir=evaluation_metrics_dir,
-            evaluation_embeddings_dir=evaluation_embeddings_dir,
+            evaluation_anndata_dir=evaluation_anndata_dir,
             evaluation_reconstructions_dir=evaluation_reconstructions_dir,
-            evaluation_embeddings_figures_dir=evaluation_embeddings_figures_dir,
+            evaluation_anndata_figures_dir=evaluation_anndata_figures_dir,
             evaluation_reconstructions_figures_dir=evaluation_reconstructions_figures_dir,
             evaluation_reconstruction_inputs_dir=evaluation_reconstruction_inputs_dir,
             evaluation_reconstruction_predictions_dir=evaluation_reconstruction_predictions_dir,
