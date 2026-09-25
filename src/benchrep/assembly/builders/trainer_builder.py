@@ -187,10 +187,16 @@ def build_trainer(
         callbacks: list[Callback] = [checkpoint_callback]
 
         if (
-            trainer_params.get("enable_model_summary", True)
-            and not has_configured_model_summary
+                trainer_params.get("enable_model_summary", True)
+                and not has_configured_model_summary
         ):
             callbacks.append(RichModelSummary(max_depth=3))
+
+        if any(
+                isinstance(callback, ModelSummary)
+                for callback in [*callbacks, *additional_callbacks]
+        ):
+            trainer_params["enable_model_summary"] = False
 
         if early_stopping_config is not None:
             early_stopping_callback: EarlyStopping = _build_early_stopping_callback(
