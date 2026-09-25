@@ -35,23 +35,23 @@ decoder:
 
 losses:
   reconstruction:
-    mse:
+    - name: mse
       weight: 0.8
       params:
         reduction: mean
 
-    gradient_difference:
+    - name: gradient_difference
       weight: 0.2
       params: {}
 
   regularization:
-    gaussian_kld:
+    - name: gaussian_kld
       weight: 0.0001
       params:
         reduction: mean
 
   custom_objective:
-    auxiliary_latent_classification:
+    - name: auxiliary_latent_classification
       weight: 0.1
       params:
         embedding_dim: 32  # must match model.params.latent_dim

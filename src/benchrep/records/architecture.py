@@ -539,7 +539,7 @@ def build_composite_model_spec_graph(
         _add_graph_node(
             graph,
             node_id=loss_node_id,
-            title=loss_spec.configured_loss_name,
+            title=loss_spec.loss_id,
             details=(
                 (
                     "role",

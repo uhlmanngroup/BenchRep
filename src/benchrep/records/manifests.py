@@ -150,8 +150,12 @@ def write_training_manifest(
             None
             if model_is_external or config.losses is None
             else {
-                role: list(loss_terms)
-                for role, loss_terms in config.losses.items()
+                role: [
+                    loss_spec.loss_id
+                    for loss_spec in run_spec.loss_specs
+                    if loss_spec.loss_role == role
+                ]
+                for role in config.losses
             }
         ),
         "optimizer": (

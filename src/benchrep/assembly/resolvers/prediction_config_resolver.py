@@ -25,6 +25,10 @@ from benchrep.assembly.schemas.composite_model_config_schema import (
     CompositeModelAssemblyStepConfig,
 )
 from benchrep.assembly.registries.core import MODELS
+from benchrep.assembly.resolvers.loss_resolver import (
+    LossSpec,
+    resolve_canonical_loss_configs,
+)
 from benchrep.assembly.resolvers.composite_model_resolver import (
     CompositeModelSpec,
     resolve_composite_model_config,
@@ -157,6 +161,7 @@ class PredictionRunSpec:
     inherited_config_fields: frozenset[PredictionInheritableField]
     prediction_config: PredictionConfig
     training_config: TrainingConfig
+    loss_specs: tuple[LossSpec, ...]
     composite_model_spec: CompositeModelSpec | None
     training_manifest: dict[str, Any]
 
@@ -299,6 +304,21 @@ def resolve_prediction_config(
         model_family=model_family,
         model_is_external=model_is_external,
     )
+
+    loss_specs: tuple[LossSpec, ...] = ()
+
+    if not model_is_external:
+        assert training_config.losses is not None
+
+        if composite_model_spec is not None:
+            # Composite resolution has already resolved and validated its losses,
+            # including declaration-aware wiring.
+            loss_specs = composite_model_spec.loss_specs
+
+        else:
+            loss_specs = resolve_canonical_loss_configs(
+                training_config.losses
+            )
 
     checkpoint_selection = prediction_config.source.checkpoint
 
@@ -610,6 +630,7 @@ def resolve_prediction_config(
         datamodule_source=datamodule_source,
         prediction_config=prediction_config,
         training_config=training_config,
+        loss_specs=loss_specs,
         composite_model_spec=composite_model_spec,
         training_manifest=training_manifest,
         training_manifest_path=training_manifest_path,
@@ -1759,15 +1780,15 @@ def _resolve_prediction_reconstruction_pairs(
     inferred_pairs: list[tuple[str, str]] = []
 
     # Infer input/reconstruction pairs from reconstruction losses.
-    for loss_name, loss_config in reconstruction_losses.items():
+    for loss_index, loss_config in enumerate(reconstruction_losses):
+        loss_config_path = f"losses.reconstruction[{loss_index}]"
         wiring = loss_config.composite_wiring
 
-        # Loss wiring is mandatory with composite models.
+        # Loss wiring is mandatory with Composite models.
         if wiring is None:
             raise ValueError(
                 "Cannot infer a reconstruction pair because "
-                f"`losses.reconstruction.{loss_name}.composite_wiring` is "
-                "missing."
+                f"`{loss_config_path}.composite_wiring` is missing."
             )
 
         input_names: list[str] = []
@@ -1783,8 +1804,8 @@ def _resolve_prediction_reconstruction_pairs(
                 role = declarations.expects.get(declaration_name)
 
                 if (
-                    role is not None
-                    and TENSOR_STRUCTURE_BY_ROLE[role] == "image"
+                        role is not None
+                        and TENSOR_STRUCTURE_BY_ROLE[role] == "image"
                 ):
                     input_names.append(declaration_name)
 
@@ -1801,7 +1822,7 @@ def _resolve_prediction_reconstruction_pairs(
             raise ValueError(
                 "Could not infer exactly one image input and one "
                 "reconstruction-image output from "
-                f"`losses.reconstruction.{loss_name}.composite_wiring`; "
+                f"`{loss_config_path}.composite_wiring`; "
                 f"found inputs={input_names} and "
                 f"reconstructions={reconstruction_names}. Use "
                 "`exports.reconstructions.mode='custom'` to configure the "

@@ -144,22 +144,25 @@ def build_training_config() -> TrainingConfig:
             },
         ),
         losses={
-            "reconstruction": {
-                "mse": TrainingLossTermConfig(
+            "reconstruction": [
+                TrainingLossTermConfig(
+                    name="mse",
                     weight=0.8,
                     params={"reduction": "mean"},
                 ),
-                "mae": TrainingLossTermConfig(
+                TrainingLossTermConfig(
+                    name="mae",
                     weight=0.2,
                     params={"reduction": "mean"},
                 ),
-            },
-            "regularization": {
-                "gaussian_kld": TrainingLossTermConfig(
+            ],
+            "regularization": [
+                TrainingLossTermConfig(
+                    name="gaussian_kld",
                     weight=0.0001,
                     params={"reduction": "mean"},
                 ),
-            },
+            ],
         },
         optimizer=TrainingOptimizerConfig(
             name="adam",

@@ -129,8 +129,9 @@ def _supervised_head_case() -> CompositeArchitectureCase:
             },
         },
         losses={
-            "classification": {
-                "cross_entropy": {
+            "classification": [
+                {
+                    "name": "cross_entropy",
                     "weight": 1.0,
                     "params": {"reduction": "mean"},
                     "composite_wiring": {
@@ -138,7 +139,7 @@ def _supervised_head_case() -> CompositeArchitectureCase:
                         "target": "expects.label",
                     },
                 },
-            },
+            ],
         },
         transform_pipelines=[],
         primary_key="embedding",
@@ -190,8 +191,9 @@ def _shared_encoder_triplet_case() -> CompositeArchitectureCase:
             },
         },
         losses={
-            "contrastive": {
-                "triplet_margin": {
+            "contrastive": [
+                {
+                    "name": "triplet_margin",
                     "weight": 1.0,
                     "params": {
                         "margin": 0.2,
@@ -203,7 +205,7 @@ def _shared_encoder_triplet_case() -> CompositeArchitectureCase:
                         "negative": "produces.negative_embedding",
                     },
                 },
-            },
+            ],
         },
         transform_pipelines=[
             _copy_image_branch("positive_x"),
@@ -272,8 +274,9 @@ def _dual_encoder_decoder_case() -> CompositeArchitectureCase:
             },
         },
         losses={
-            "reconstruction": {
-                "mse": {
+            "reconstruction": [
+                {
+                    "name": "mse",
                     "weight": 1.0,
                     "params": {"reduction": "mean"},
                     "composite_wiring": {
@@ -281,7 +284,8 @@ def _dual_encoder_decoder_case() -> CompositeArchitectureCase:
                         "target": "expects.x",
                     },
                 },
-                "mae": {
+                {
+                    "name": "mae",
                     "weight": 0.5,
                     "params": {"reduction": "mean"},
                     "composite_wiring": {
@@ -289,7 +293,7 @@ def _dual_encoder_decoder_case() -> CompositeArchitectureCase:
                         "target": "expects.second_image",
                     },
                 },
-            },
+            ],
         },
         transform_pipelines=[
             _copy_image_branch("second_image"),
@@ -367,8 +371,9 @@ def _variational_multitask_case() -> CompositeArchitectureCase:
             },
         },
         losses={
-            "reconstruction": {
-                "mse": {
+            "reconstruction": [
+                {
+                    "name": "mse",
                     "weight": 1.0,
                     "params": {"reduction": "mean"},
                     "composite_wiring": {
@@ -376,9 +381,10 @@ def _variational_multitask_case() -> CompositeArchitectureCase:
                         "target": "expects.x",
                     },
                 },
-            },
-            "regularization": {
-                "gaussian_kld": {
+            ],
+            "regularization": [
+                {
+                    "name": "gaussian_kld",
                     "weight": 0.001,
                     "params": {"reduction": "mean"},
                     "composite_wiring": {
@@ -386,9 +392,10 @@ def _variational_multitask_case() -> CompositeArchitectureCase:
                         "z_logvar": "produces.z_logvar",
                     },
                 },
-            },
-            "classification": {
-                "cross_entropy": {
+            ],
+            "classification": [
+                {
+                    "name": "cross_entropy",
                     "weight": 0.25,
                     "params": {"reduction": "mean"},
                     "composite_wiring": {
@@ -396,7 +403,7 @@ def _variational_multitask_case() -> CompositeArchitectureCase:
                         "target": "expects.label",
                     },
                 },
-            },
+            ],
         },
         transform_pipelines=[],
         primary_key="z_mu",
@@ -410,7 +417,7 @@ def _variational_multitask_case() -> CompositeArchitectureCase:
         },
         expected_losses=frozenset({
             ("reconstruction", "mse"),
-            ("regularization", "gaussian_kld"),
+            ("regularization", "gaussian_kl"),
             ("classification", "cross_entropy"),
         }),
     )
@@ -457,9 +464,9 @@ def test_composite_architecture_trains_checkpoints_and_predicts(
     model_spec = training_result.run_spec.composite_model_spec
     assert model_spec is not None
     assert {
-        (loss.loss_role, loss.configured_loss_name)
-        for loss in model_spec.loss_specs
-    } == case.expected_losses
+               (loss.loss_role, loss.loss_id)
+               for loss in model_spec.loss_specs
+           } == case.expected_losses
     assert set(training_result.model.components_by_id) == set(
         case.components
     )

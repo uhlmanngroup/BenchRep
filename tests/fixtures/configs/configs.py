@@ -125,19 +125,21 @@ def make_training_decoder_config() -> TrainingDecoderConfig:
 
 def make_training_losses_config() -> dict[
     str,
-    dict[str, TrainingLossTermConfig],
+    list[TrainingLossTermConfig],
 ]:
     return {
-        "reconstruction": {
-            "mse": TrainingLossTermConfig(
+        "reconstruction": [
+            TrainingLossTermConfig(
+                name="mse",
                 weight=0.75,
                 params={"reduction": "mean"},
             ),
-            "mae": TrainingLossTermConfig(
+            TrainingLossTermConfig(
+                name="mae",
                 weight=0.25,
                 params={"reduction": "mean"},
             ),
-        },
+        ],
     }
 
 

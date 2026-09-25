@@ -46,7 +46,7 @@ decoder:
 
 losses:
   reconstruction:
-    mse:
+    - name: mse
       weight: 1.0
       params:
         reduction: mean

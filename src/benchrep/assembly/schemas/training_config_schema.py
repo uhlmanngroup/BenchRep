@@ -14,6 +14,7 @@ from pydantic import (
     Discriminator,
     Tag,
     field_validator,
+    StringConstraints,
 )
 
 from benchrep.assembly.registries.core import CALLBACKS, MODELS
@@ -47,6 +48,15 @@ SupportedLossRole: TypeAlias = Literal[
     "classification",
     "regression",
     "custom_objective",
+]
+
+LossTermId: TypeAlias = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True,
+        min_length=1,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]*$",
+    ),
 ]
 
 
@@ -237,10 +247,10 @@ class TrainingDecoderConfig(NamedConfig):
 # Optimization/loss configuration
 # -------------------------
 class TrainingLossTermConfig(_TrainingConfigBaseModel):
-    """Configuration for one weighted term in a role-specific loss mapping.
+    """Configuration for one weighted term in a role-specific loss list.
 
-    The surrounding mapping key selects the registered loss, while its parent
-    key selects the loss registry:
+    `name` selects the registered loss, while the parent role selects the loss
+    registry:
 
     - `reconstruction`: compares reconstructed and source images.
     - `regularization`: regularizes representations or model parameters.
@@ -284,6 +294,36 @@ class TrainingLossTermConfig(_TrainingConfigBaseModel):
     output. If it replaces reconstruction or regularization losses, it is
     responsible for implementing the omitted behavior.
     """
+
+    name: str = Field(
+        description="Registered loss name or alias to instantiate for this term.",
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+
+    id: LossTermId | None = Field(
+        default=None,
+        description=(
+            "Optional user-defined identifier used to distinguish multiple "
+            "occurrences of the same registered loss within one loss role."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Uses the canonical registered loss name as the term identity. "
+                "An identifier is required only when needed to keep resolved "
+                "term identities unique within the role."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "The resolved term identity is `<id>_<canonical_loss_name>` when "
+                "an identifier is configured.",
+                "Aliases do not affect the canonical loss name used in the "
+                "resolved identity.",
+            ],
+        },
+    )
 
     weight: float = Field(
         default=1.0,
@@ -344,7 +384,7 @@ class TrainingLossTermConfig(_TrainingConfigBaseModel):
 
 
 LossRoleTerms: TypeAlias = Annotated[
-    dict[str, TrainingLossTermConfig],
+    list[TrainingLossTermConfig],
     Field(min_length=1),
 ]
 
@@ -1682,10 +1722,10 @@ class TrainingConfig(_TrainingConfigBaseModel):
 
     losses: dict[SupportedLossRole, LossRoleTerms] | None = Field(
         default_factory=dict,
-        description="Loss terms grouped by role and registered component name.",
+        description="Loss terms grouped by role.",
         json_schema_extra={
             "omit_behavior": (
-                "Uses an empty loss mapping, which does not satisfy the loss "
+                "Uses an empty loss configuration, which does not satisfy the loss "
                 "requirements of config-built models."
             ),
             "null_behavior": (
@@ -1698,7 +1738,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
                 "BenchRep does not verify that a custom objective reproduces any "
                 "omitted reconstruction or regularization behavior.",
                 "All configured terms across all roles contribute additively to the total loss.",
-                "A nonempty `custom_objective` mapping may be used alone or alongside the "
+                "A nonempty `custom_objective` list may be used alone or alongside the "
                 "standard roles.",
                 "Without a custom objective, built-in autoencoders require `reconstruction`, "
                 "while built-in VAEs require both `reconstruction` and `regularization`.",
@@ -2019,7 +2059,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
             ):
                 raise ValueError(
                     "VAE requires either a nonempty "
-                    "`losses.custom_objective` mapping or at least one loss "
+                    "`losses.custom_objective` list or at least one loss "
                     "under both `losses.reconstruction` and "
                     "`losses.regularization`."
                 )
@@ -2052,9 +2092,9 @@ class TrainingConfig(_TrainingConfigBaseModel):
             return self
 
         configured_wiring = [
-            f"`losses.{loss_role}.{loss_name}.composite_wiring`"
+            f"`losses.{loss_role}[{loss_index}].composite_wiring`"
             for loss_role, loss_terms in self.losses.items()
-            for loss_name, loss_config in loss_terms.items()
+            for loss_index, loss_config in enumerate(loss_terms)
             if loss_config.composite_wiring is not None
         ]
 
@@ -2069,9 +2109,9 @@ class TrainingConfig(_TrainingConfigBaseModel):
             return self
 
         custom_objective_wiring = [
-            f"`losses.custom_objective.{loss_name}.composite_wiring`"
-            for loss_name, loss_config
-            in self.losses.get("custom_objective", {}).items()
+            f"`losses.custom_objective[{loss_index}].composite_wiring`"
+            for loss_index, loss_config
+            in enumerate(self.losses.get("custom_objective", []))
             if loss_config.composite_wiring is not None
         ]
 
@@ -2083,10 +2123,10 @@ class TrainingConfig(_TrainingConfigBaseModel):
             )
 
         missing_wiring = [
-            f"`losses.{loss_role}.{loss_name}.composite_wiring`"
+            f"`losses.{loss_role}[{loss_index}].composite_wiring`"
             for loss_role, loss_terms in self.losses.items()
             if loss_role != "custom_objective"
-            for loss_name, loss_config in loss_terms.items()
+            for loss_index, loss_config in enumerate(loss_terms)
             if loss_config.composite_wiring is None
         ]
 
@@ -2303,7 +2343,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
         assert self.losses is not None
 
         for loss_role, loss_terms in self.losses.items():
-            for loss_name, loss_config in loss_terms.items():
+            for loss_index, loss_config in enumerate(loss_terms):
                 if loss_config.composite_wiring is None:
                     continue
 
@@ -2311,7 +2351,7 @@ class TrainingConfig(_TrainingConfigBaseModel):
                     namespace, separator, name = source.partition(".")
 
                     reference = (
-                        f"losses.{loss_role}.{loss_name}."
+                        f"losses.{loss_role}[{loss_index}]."
                         f"composite_wiring.{parameter_name}"
                     )
 

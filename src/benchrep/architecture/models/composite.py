@@ -14,6 +14,8 @@ from benchrep.architecture.composite_model_roles import (
     TensorStructure,
 )
 from benchrep.interfaces.contracts import CompositePredictionOutput
+from benchrep.architecture.losses.base import LossTerm
+from benchrep.architecture.models.utils import validate_loss_weights
 
 if TYPE_CHECKING:
     from benchrep.assembly.resolvers.composite_model_resolver import (
@@ -38,7 +40,7 @@ class CompositeModel(L.LightningModule):
         *,
         model_spec: CompositeModelSpec,
         components_by_id: dict[str, nn.Module],
-        loss_modules_by_role: dict[str, dict[str, nn.Module]],
+        losses_by_role: dict[str, dict[str, LossTerm]],
         optimizer_factory: Callable[
             [Iterable[nn.Parameter]],
             torch.optim.Optimizer,
@@ -50,10 +52,12 @@ class CompositeModel(L.LightningModule):
             model_spec=model_spec,
             components_by_id=components_by_id,
         )
-        _validate_loss_modules_match_spec(
+        _validate_loss_terms_match_spec(
             model_spec=model_spec,
-            loss_modules_by_role=loss_modules_by_role,
+            losses_by_role=losses_by_role,
         )
+
+        validate_loss_weights(losses_by_role)
 
         self.model_spec = model_spec
         # Use the first declared sample image as the batch-size reference
@@ -66,16 +70,16 @@ class CompositeModel(L.LightningModule):
 
         # Register loss modules by role so any learnable loss parameters
         # participate in optimization, device movement, and checkpointing.
-        loss_module_dicts_by_role: dict[str, nn.ModuleDict] = {}
+        loss_term_dicts_by_role: dict[str, nn.ModuleDict] = {}
 
-        for loss_role, loss_modules in loss_modules_by_role.items():
-            if loss_modules:
-                loss_module_dicts_by_role[loss_role] = nn.ModuleDict(
-                    loss_modules
+        for loss_role, loss_terms in losses_by_role.items():
+            if loss_terms:
+                loss_term_dicts_by_role[loss_role] = nn.ModuleDict(
+                    loss_terms
                 )
 
-        self.loss_modules_by_role = nn.ModuleDict(
-            loss_module_dicts_by_role
+        self.losses_by_role = nn.ModuleDict(
+            loss_term_dicts_by_role
         )
 
     def forward(
@@ -240,20 +244,20 @@ class CompositeModel(L.LightningModule):
         batch_size = sample_image.shape[0]
         total_loss: torch.Tensor | None = None
 
-        # model_spec.loss_specs is a flat tuple containing one
-        # CompositeModelLossSpec for every configured loss across all roles.
-        # Each spec contains the loss role, name, weight, and resolved wiring.
+        # model_spec.loss_specs is a flat tuple containing one LossSpec for
+        # every configured loss across all roles. Each spec contains the loss
+        # role, resolved identity, weight, and resolved wiring.
         #
         # Instantiated loss modules are stored under:
-        # loss_modules_by_role[loss_role][loss_name].
+        # losses_by_role[loss_role][loss_id].
         for loss_spec in self.model_spec.loss_specs:
             loss_role = loss_spec.loss_role
-            loss_name = loss_spec.configured_loss_name
+            loss_id = loss_spec.loss_id
 
-            loss_module = _get_loss_module(
-                loss_modules_by_role=self.loss_modules_by_role,
+            loss_term = _get_loss_term(
+                losses_by_role=self.losses_by_role,
                 loss_role=loss_role,
-                loss_name=loss_name,
+                loss_id=loss_id,
             )
 
             loss_runtime_inputs: dict[str, Any] = {}
@@ -291,21 +295,19 @@ class CompositeModel(L.LightningModule):
                 else:
                     raise RuntimeError(
                         f"Composite loss term "
-                        f"{loss_spec.configured_loss_name!r} declares "
+                        f"{loss_spec.loss_id!r} declares "
                         f"unsupported context source "
                         f"{context_source!r}."
                     )
 
-            raw_loss = loss_module(**loss_runtime_inputs)
+            raw_loss = loss_term.loss(**loss_runtime_inputs)
             raw_loss = _validate_scalar_loss_result(
                 raw_loss,
                 loss_role=loss_spec.loss_role,
-                configured_loss_name=(
-                    loss_spec.configured_loss_name
-                ),
+                loss_id=loss_spec.loss_id,
             )
 
-            weighted_loss = loss_spec.weight * raw_loss
+            weighted_loss = loss_term.weight * raw_loss
 
             if total_loss is None:
                 total_loss = weighted_loss
@@ -314,7 +316,7 @@ class CompositeModel(L.LightningModule):
 
             self.log(
                 f"{stage}/{loss_spec.loss_role}/"
-                f"{loss_spec.configured_loss_name}",
+                f"{loss_spec.loss_id}",
                 raw_loss,
                 on_step=stage == "train",
                 on_epoch=True,
@@ -324,7 +326,7 @@ class CompositeModel(L.LightningModule):
 
             self.log(
                 f"{stage}/{loss_spec.loss_role}/"
-                f"{loss_spec.configured_loss_name}_weighted",
+                f"{loss_spec.loss_id}_weighted",
                 weighted_loss,
                 on_step=stage == "train",
                 on_epoch=True,
@@ -388,33 +390,26 @@ def _validate_components_match_spec(
     )
 
 
-def _validate_loss_modules_match_spec(
+def _validate_loss_terms_match_spec(
     *,
     model_spec: CompositeModelSpec,
-    loss_modules_by_role: dict[str, dict[str, nn.Module]],
+    losses_by_role: dict[str, dict[str, LossTerm]],
 ) -> None:
     """Validate that every resolved loss was instantiated exactly once."""
 
-    # Loss names are scoped by role, so each loss is identified by
-    # (loss_role, configured_loss_name).
     expected_loss_ids = {
         (
             loss_spec.loss_role,
-            loss_spec.configured_loss_name,
+            loss_spec.loss_id,
         )
         for loss_spec in model_spec.loss_specs
     }
 
-    received_loss_ids: set[tuple[str, str]] = set()
-
-    for loss_role, loss_modules in loss_modules_by_role.items():
-        for configured_loss_name in loss_modules:
-            received_loss_ids.add(
-                (
-                    loss_role,
-                    configured_loss_name,
-                )
-            )
+    received_loss_ids = {
+        (loss_role, loss_id)
+        for loss_role, loss_terms in losses_by_role.items()
+        for loss_id in loss_terms
+    }
 
     missing_loss_ids = sorted(
         expected_loss_ids - received_loss_ids
@@ -439,7 +434,7 @@ def _validate_loss_modules_match_spec(
         )
 
     raise ValueError(
-        "CompositeModel loss modules do not match the resolved model "
+        "CompositeModel loss terms do not match the resolved model "
         f"specification: {'; '.join(problems)}."
     )
 
@@ -737,16 +732,16 @@ def _extract_model_inputs_from_batch(
 
 
 def _validate_scalar_loss_result(
-    raw_loss: Any,
-    *,
-    loss_role: str,
-    configured_loss_name: str,
+        raw_loss: Any,
+        *,
+        loss_role: str,
+        loss_id: str,
 ) -> torch.Tensor:
     """Validate the runtime result returned by one loss component."""
 
     loss_description = (
         f"Composite {loss_role.replace('_', ' ')} loss "
-        f"{configured_loss_name!r}"
+        f"{loss_id!r}"
     )
 
     if not isinstance(raw_loss, torch.Tensor):
@@ -821,20 +816,28 @@ def _validate_batched_tensor_structure(
     return batch_size
 
 
-def _get_loss_module(
+def _get_loss_term(
     *,
-    loss_modules_by_role: nn.ModuleDict,
+    losses_by_role: nn.ModuleDict,
     loss_role: str,
-    loss_name: str,
-) -> nn.Module:
-    """Retrieve one instantiated loss module by its role and name."""
+    loss_id: str,
+) -> LossTerm:
+    """Retrieve one instantiated weighted loss term."""
 
-    loss_modules_for_role = loss_modules_by_role[loss_role]
+    loss_terms_for_role = losses_by_role[loss_role]
 
-    if not isinstance(loss_modules_for_role, nn.ModuleDict):
+    if not isinstance(loss_terms_for_role, nn.ModuleDict):
         raise RuntimeError(
             f"CompositeModel loss role {loss_role!r} does not contain "
             "a registered ModuleDict."
         )
 
-    return loss_modules_for_role[loss_name]
+    loss_term = loss_terms_for_role[loss_id]
+
+    if not isinstance(loss_term, LossTerm):
+        raise RuntimeError(
+            f"CompositeModel loss {loss_id!r} under role "
+            f"{loss_role!r} is not a LossTerm."
+        )
+
+    return loss_term

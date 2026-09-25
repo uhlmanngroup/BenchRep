@@ -17,29 +17,28 @@ from benchrep.architecture.models import (
     CompositeModel,
 )
 from benchrep.assembly.builders.loss_builder import build_loss_terms
-from benchrep.architecture.losses.base import LossTerm
 from benchrep.assembly.builders.optimizer_builder import build_optimizer_factory
 from benchrep.assembly.registries.utils import normalize_name
 from benchrep.assembly.schemas import (
     TrainingConfig,
     TrainingDecoderConfig,
     TrainingEncoderConfig,
-    TrainingLossTermConfig,
     TrainingOptimizerConfig,
 )
 from benchrep.assembly.registries.core import (
     MODELS,
     OPTIMIZERS,
     ARCHITECTURE_REGISTRIES_BY_KIND,
-    LOSS_REGISTRIES_BY_ROLE,
 )
 from benchrep.assembly.resolvers.composite_model_resolver import CompositeModelSpec
+from benchrep.assembly.resolvers.loss_resolver import LossSpec
 from benchrep.interfaces.model_families import SupportedModel
 
 
 def build_model(
     config: TrainingConfig,
     *,
+    loss_specs: tuple[LossSpec, ...],
     composite_model_spec: CompositeModelSpec | None = None,
     prediction_reconstruction_latent_source: (
         Literal["mean", "sample"] | None
@@ -101,21 +100,12 @@ def build_model(
                 "`prediction_reconstruction_latent_source` is only supported "
                 "when building a VAE."
             )
-        if config.losses is None:
-            raise ValueError("Autoencoder requires a losses config section.")
 
         model = build_autoencoder(
             encoder=config.encoder,
             decoder=config.decoder,
             optimizer=config.optimizer,
-            reconstruction_losses=config.losses.get(
-                "reconstruction",
-                {},
-            ),
-            custom_objective_losses=config.losses.get(
-                "custom_objective",
-                {},
-            ),
+            loss_specs=loss_specs,
         )
 
         run_log.info("Assembled model: %s", type(model).__name__)
@@ -131,8 +121,6 @@ def build_model(
             raise ValueError("VAE requires an optimizer config section.")
         if config.model.params is None:
             raise ValueError("VAE requires `model.params`.")
-        if config.losses is None:
-            raise ValueError("VAE requires a losses config section.")
 
         latent_dim = config.model.params.get("latent_dim")
         if (
@@ -153,18 +141,7 @@ def build_model(
             decoder=config.decoder,
             optimizer=config.optimizer,
             latent_dim=latent_dim,
-            reconstruction_losses=config.losses.get(
-                "reconstruction",
-                {},
-            ),
-            regularization_losses=config.losses.get(
-                "regularization",
-                {},
-            ),
-            custom_objective_losses=config.losses.get(
-                "custom_objective",
-                {},
-            ),
+            loss_specs=loss_specs,
             prediction_reconstruction_latent_source=(
                 prediction_reconstruction_latent_source
             ),
@@ -194,6 +171,7 @@ def build_model(
 
         model = build_composite(
             model_spec=composite_model_spec,
+            loss_specs=loss_specs,
             optimizer=config.optimizer,
         )
 
@@ -211,17 +189,16 @@ def build_model(
 
 
 def build_autoencoder(
-    encoder: TrainingEncoderConfig | BaseEncoder,
-    decoder: TrainingDecoderConfig | BaseDecoder,
-    optimizer: (
-            TrainingOptimizerConfig |
-            Callable[[Iterable[nn.Parameter]], torch.optim.Optimizer]
-    ),
-    reconstruction_losses: dict[str, TrainingLossTermConfig | LossTerm],
-    custom_objective_losses: dict[
-        str,
-        TrainingLossTermConfig | LossTerm,
-    ],
+        encoder: TrainingEncoderConfig | BaseEncoder,
+        decoder: TrainingDecoderConfig | BaseDecoder,
+        optimizer: (
+                TrainingOptimizerConfig
+                | Callable[
+                    [Iterable[nn.Parameter]],
+                    torch.optim.Optimizer,
+                ]
+        ),
+        loss_specs: tuple[LossSpec, ...],
 ) -> Autoencoder:
     run_log = get_run_logger()
 
@@ -262,18 +239,19 @@ def build_autoencoder(
         run_log.info("Using provided optimizer factory: %s",
                      getattr(optimizer, "__name__", type(optimizer).__name__))
 
-    losses_by_role = build_loss_terms(
-        {
-            "reconstruction": reconstruction_losses,
-            "custom_objective": custom_objective_losses,
-        },
-    )
+    losses_by_role = build_loss_terms(loss_specs)
 
     return Autoencoder(
         encoder=encoder,
         decoder=decoder,
-        reconstruction_losses=losses_by_role["reconstruction"],
-        custom_objective_losses=losses_by_role["custom_objective"],
+        reconstruction_losses=losses_by_role.get(
+            "reconstruction",
+            {},
+        ),
+        custom_objective_losses=losses_by_role.get(
+            "custom_objective",
+            {},
+        ),
         optimizer_factory=optimizer_factory,
     )
 
@@ -282,18 +260,16 @@ def build_vae(
     encoder: TrainingEncoderConfig | BaseEncoder,
     decoder: TrainingDecoderConfig | BaseDecoder,
     optimizer: (
-            TrainingOptimizerConfig |
-            Callable[[Iterable[nn.Parameter]], torch.optim.Optimizer]
+        TrainingOptimizerConfig
+        | Callable[
+            [Iterable[nn.Parameter]],
+            torch.optim.Optimizer,
+        ]
     ),
     latent_dim: int,
-    reconstruction_losses: dict[str, TrainingLossTermConfig | LossTerm],
-    regularization_losses: dict[str, TrainingLossTermConfig | LossTerm],
-    custom_objective_losses: dict[
-        str,
-        TrainingLossTermConfig | LossTerm,
-    ],
+    loss_specs: tuple[LossSpec, ...],
     prediction_reconstruction_latent_source: (
-            Literal["mean", "sample"]
+        Literal["mean", "sample"]
     ) = "mean",
 ) -> VAE:
     run_log = get_run_logger()
@@ -364,21 +340,24 @@ def build_vae(
     run_log.info("Built variational head: %s",
                  type(variational_head).__name__)
 
-    losses_by_role = build_loss_terms(
-        {
-            "reconstruction": reconstruction_losses,
-            "regularization": regularization_losses,
-            "custom_objective": custom_objective_losses,
-        },
-    )
+    losses_by_role = build_loss_terms(loss_specs)
 
     return VAE(
         encoder=encoder,
         decoder=decoder,
         variational_head=variational_head,
-        reconstruction_losses=losses_by_role["reconstruction"],
-        regularization_losses=losses_by_role["regularization"],
-        custom_objective_losses=losses_by_role["custom_objective"],
+        reconstruction_losses=losses_by_role.get(
+            "reconstruction",
+            {},
+        ),
+        regularization_losses=losses_by_role.get(
+            "regularization",
+            {},
+        ),
+        custom_objective_losses=losses_by_role.get(
+            "custom_objective",
+            {},
+        ),
         optimizer_factory=optimizer_factory,
         prediction_reconstruction_latent_source=(
             prediction_reconstruction_latent_source
@@ -389,6 +368,7 @@ def build_vae(
 def build_composite(
     *,
     model_spec: CompositeModelSpec,
+    loss_specs: tuple[LossSpec, ...],
     optimizer: (
         TrainingOptimizerConfig
         | Callable[
@@ -427,52 +407,7 @@ def build_composite(
         )
 
     # Build losses
-    loss_modules_by_role: dict[
-        str,
-        dict[str, nn.Module],
-    ] = {}
-
-    loss_log_entries_by_role: dict[
-        str,
-        list[str],
-    ] = {}
-
-    for loss_spec in model_spec.loss_specs:
-        loss_role = loss_spec.loss_role
-        loss_name = loss_spec.configured_loss_name
-
-        if loss_role not in loss_modules_by_role:
-            loss_modules_by_role[loss_role] = {}
-            loss_log_entries_by_role[loss_role] = []
-
-        loss_registry = LOSS_REGISTRIES_BY_ROLE[loss_role]
-
-        loss_module = loss_registry.create(
-            loss_spec.registry_entry_name,
-            **loss_spec.constructor_params,
-        )
-
-        loss_modules_by_role[loss_role][loss_name] = loss_module
-
-        loss_log_entries_by_role[loss_role].append(
-            f"{loss_name} (config)"
-            f" -> {type(loss_module).__name__}"
-            f" (weight={loss_spec.weight})"
-        )
-
-    loss_role_descriptions: list[str] = []
-
-    for loss_role, loss_log_entries in (
-        loss_log_entries_by_role.items()
-    ):
-        loss_role_descriptions.append(
-            f"{loss_role}=[{', '.join(loss_log_entries)}]"
-        )
-
-    run_log.info(
-        "Resolved losses: %s",
-        "; ".join(loss_role_descriptions),
-    )
+    losses_by_role = build_loss_terms(loss_specs)
 
     # Build optimizer factory
     if isinstance(optimizer, TrainingOptimizerConfig):
@@ -500,6 +435,6 @@ def build_composite(
     return CompositeModel(
         model_spec=model_spec,
         components_by_id=components_by_id,
-        loss_modules_by_role=loss_modules_by_role,
+        losses_by_role=losses_by_role,
         optimizer_factory=optimizer_factory,
     )

@@ -87,7 +87,7 @@ ConfigSource: TypeAlias = Literal[
 
 LossesConfig: TypeAlias = dict[
     SupportedLossRole,
-    dict[str, TrainingLossTermConfig],
+    list[TrainingLossTermConfig],
 ]
 
 CompositeModelComponentsConfig: TypeAlias = dict[

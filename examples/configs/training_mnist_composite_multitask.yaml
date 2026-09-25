@@ -123,7 +123,7 @@ composite_model_assembly:
 
 losses:
   reconstruction:
-    mse:
+    - name: mse
       weight: 1.0
       params:
         reduction: mean
@@ -132,7 +132,7 @@ losses:
         target: expects.x
 
   regularization:
-    gaussian_kld:
+    - name: gaussian_kld
       weight: 0.0001
       params:
         reduction: mean
@@ -141,7 +141,7 @@ losses:
         z_logvar: produces.z_logvar
 
   classification:
-    cross_entropy:
+    - name: cross_entropy
       weight: 0.25
       params:
         reduction: mean

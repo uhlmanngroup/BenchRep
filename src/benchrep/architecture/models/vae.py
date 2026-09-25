@@ -238,18 +238,18 @@ class VAE(BenchRepVAEModel):
 
             role_label = role.replace("_", " ").title()
 
-            for loss_name, loss_term in loss_terms.items():
+            for loss_id, loss_term in loss_terms.items():
                 raw_loss = loss_term.loss(**loss_kwargs)
 
                 if not isinstance(raw_loss, torch.Tensor):
                     raise TypeError(
-                        f"{role_label} loss {loss_name!r} must return a "
+                        f"{role_label} loss {loss_id!r} must return a "
                         f"torch.Tensor, got {type(raw_loss).__name__}."
                     )
 
                 if raw_loss.ndim != 0:
                     raise ValueError(
-                        f"{role_label} loss {loss_name!r} must return a "
+                        f"{role_label} loss {loss_id!r} must return a "
                         f"scalar tensor, got shape {tuple(raw_loss.shape)}."
                     )
 
@@ -257,7 +257,7 @@ class VAE(BenchRepVAEModel):
                 total_loss = total_loss + weighted_loss
 
                 self.log(
-                    f"{stage}/{role}/{loss_name}",
+                    f"{stage}/{role}/{loss_id}",
                     raw_loss,
                     on_step=stage == "train",
                     on_epoch=True,
@@ -266,7 +266,7 @@ class VAE(BenchRepVAEModel):
                 )
 
                 self.log(
-                    f"{stage}/{role}/{loss_name}_weighted",
+                    f"{stage}/{role}/{loss_id}_weighted",
                     weighted_loss,
                     on_step=stage == "train",
                     on_epoch=True,

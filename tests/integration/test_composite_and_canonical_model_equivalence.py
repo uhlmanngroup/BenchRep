@@ -204,7 +204,7 @@ def _make_composite_ae_training_config() -> TrainingConfig:
             "outputs": "produces.reconstruction",
         },
     }
-    raw["losses"]["reconstruction"]["mse"]["composite_wiring"] = {
+    raw["losses"]["reconstruction"][0]["composite_wiring"] = {
         "reconstruction": "produces.reconstruction",
         "target": "expects.x",
     }
@@ -285,13 +285,11 @@ def _make_composite_vae_training_config() -> TrainingConfig:
             "outputs": "produces.reconstruction",
         },
     }
-    raw["losses"]["reconstruction"]["mse"]["composite_wiring"] = {
+    raw["losses"]["reconstruction"][0]["composite_wiring"] = {
         "reconstruction": "produces.reconstruction",
         "target": "expects.x",
     }
-    raw["losses"]["regularization"]["gaussian_kld"][
-        "composite_wiring"
-    ] = {
+    raw["losses"]["regularization"][0]["composite_wiring"] = {
         "z_mu": "produces.z_mu",
         "z_logvar": "produces.z_logvar",
     }

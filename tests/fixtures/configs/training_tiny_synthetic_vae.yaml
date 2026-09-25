@@ -48,13 +48,13 @@ decoder:
 
 losses:
   reconstruction:
-    mse:
+    - name: mse
       weight: 1.0
       params:
         reduction: mean
 
   regularization:
-    gaussian_kld:
+    - name: gaussian_kld
       weight: 0.0001
       params:
         reduction: mean

@@ -18,6 +18,10 @@ from benchrep.interfaces.model_families import (
 )
 from benchrep.assembly.registries.core import MODELS
 from benchrep.assembly.registries.utils import normalize_name
+from benchrep.assembly.resolvers.loss_resolver import (
+    LossSpec,
+    resolve_canonical_loss_configs,
+)
 from benchrep.assembly.resolvers.composite_model_resolver import (
     CompositeModelSpec,
     resolve_composite_model_config,
@@ -41,6 +45,7 @@ class TrainingRunSpec:
     datamodule_source: ComponentSource
     compatibility_policy: Literal["error", "warn"]
     run_identity: RunIdentitySpec
+    loss_specs: tuple[LossSpec, ...] = ()
     composite_model_spec: CompositeModelSpec | None = None
 
 
@@ -142,11 +147,13 @@ def resolve_training_config(
         update=resolved_updates,
     )
 
-    # Composite model config resolution.
+    # Model loss/spec resolution.
+    loss_specs: tuple[LossSpec, ...] = ()
     composite_model_spec: CompositeModelSpec | None = None
 
     if not model_is_external:
         assert resolved_config.model is not None
+        assert resolved_config.losses is not None
 
         configured_model_name = MODELS.resolve_key(
             resolved_config.model.name
@@ -156,7 +163,6 @@ def resolve_training_config(
             assert resolved_config.composite_model_declarations is not None
             assert resolved_config.composite_model_components is not None
             assert resolved_config.composite_model_assembly is not None
-            assert resolved_config.losses is not None
 
             composite_model_spec = resolve_composite_model_config(
                 declarations_config=(
@@ -169,6 +175,13 @@ def resolve_training_config(
                     resolved_config.composite_model_assembly
                 ),
                 losses_config=resolved_config.losses,
+            )
+
+            loss_specs = composite_model_spec.loss_specs
+
+        else:
+            loss_specs = resolve_canonical_loss_configs(
+                resolved_config.losses
             )
 
     model_name = _resolve_training_model_name(
@@ -190,6 +203,7 @@ def resolve_training_config(
             project_name=resolved_config.run.project_name,
             model_name=model_name,
         ),
+        loss_specs=loss_specs,
         composite_model_spec=composite_model_spec,
     )
 
