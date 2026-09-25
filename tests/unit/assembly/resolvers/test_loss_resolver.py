@@ -145,7 +145,7 @@ def test_generated_loss_metric_name_collision_is_rejected(
     with pytest.raises(
         ValueError,
         match=(
-            r"generate the same metric name 'foo_weighted'"
+            r"produce a metric-name collision at 'foo_weighted'"
         ),
     ):
         resolve_loss_configs(
