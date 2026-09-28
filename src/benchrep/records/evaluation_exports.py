@@ -606,9 +606,16 @@ def export_reduction_plots(
             written_paths[uncolored_key].append(output_path)
 
         # Colored
-        for color in color_by:
+        for color_spec in color_by:
+            if not isinstance(color_spec, Mapping):
+                continue
+
+            color = color_spec.get("key")
             if not isinstance(color, str) or color not in adata.obs.columns:
                 continue
+
+            color_kind = color_spec.get("kind", "auto")
+            cmap = color_spec.get("cmap")
 
             color_token = _sanitize_filename_token(color)
             colored_key = f"{basis}:colored_by:{color}"
@@ -618,14 +625,18 @@ def export_reduction_plots(
 
             for fmt in formats:
                 output_path = colored_by_subdir / f"{basis_token}.{fmt}"
+
                 plot_2d_projection(
                     adata,
                     basis=basis,
                     color_by=color,
+                    color_kind=color_kind,
+                    cmap=cmap,
                     output_path=output_path,
                     dpi=dpi,
                     overwrite=overwrite,
                 )
+
                 written_paths[colored_key].append(output_path)
 
     return written_paths

@@ -8,7 +8,7 @@ import numpy as np
 import pytest
 import json
 
-from benchrep.records import evaluation_exports
+import benchrep.records.evaluation_exports as evaluation_exports
 from benchrep.runtime.status.evaluation import EvaluationOutcome
 
 
@@ -50,13 +50,11 @@ def _patch_required_exports(
         return output_path
 
     monkeypatch.setattr(
-        evaluation_exports,
-        "write_h5ad",
+        "benchrep.records.evaluation_exports.write_h5ad",
         write_h5ad,
     )
     monkeypatch.setattr(
-        evaluation_exports,
-        "save_evaluation_metrics_json",
+        "benchrep.records.evaluation_exports.save_evaluation_metrics_json",
         save_metrics,
     )
 
@@ -287,3 +285,84 @@ def test_metrics_json_supports_reconstruction_metrics_without_adata(
             "mse": 1.25,
         },
     }
+
+
+def test_export_reduction_plots_forwards_color_configuration(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adata = ad.AnnData(
+        X=np.ones((4, 2), dtype=np.float32),
+        obs={
+            "digit_label": ["0", "1", "0", "1"],
+            "mean_stroke_width": [1.0, 2.0, 3.0, 4.0],
+        },
+    )
+    adata.obsm["X_pca"] = np.array(
+        [
+            [0.0, 0.0],
+            [1.0, 0.0],
+            [0.0, 1.0],
+            [1.0, 1.0],
+        ],
+        dtype=np.float32,
+    )
+
+    calls: list[dict[str, Any]] = []
+
+    def capture_plot_call(*args: Any, **kwargs: Any) -> None:
+        calls.append(kwargs)
+
+    monkeypatch.setattr(
+        "benchrep.records.evaluation_exports.plot_2d_projection",
+        capture_plot_call,
+    )
+
+    step_spec = SimpleNamespace(
+        plots_enabled=True,
+        pca_enabled=True,
+        pca_params={"key_added": "X_pca"},
+        umap_enabled=False,
+        umap_params={},
+        tsne_enabled=False,
+        tsne_params={},
+        plot_params={
+            "accent_color": "#6A3D9A",
+            "color_by": [
+                {
+                    "key": "digit_label",
+                    "kind": "categorical",
+                    "cmap": "Set3",
+                },
+                {
+                    "key": "mean_stroke_width",
+                    "kind": "continuous",
+                    "cmap": "plasma",
+                },
+            ],
+            "dpi": 300,
+            "formats": ["png"],
+        },
+    )
+
+    evaluation_exports.export_reduction_plots(
+        output_dir=tmp_path,
+        adata=adata,
+        step_spec=step_spec,
+    )
+
+    colored_calls = [
+        call
+        for call in calls
+        if call["color_by"] is not None
+    ]
+
+    assert len(colored_calls) == 2
+
+    assert colored_calls[0]["color_by"] == "digit_label"
+    assert colored_calls[0]["color_kind"] == "categorical"
+    assert colored_calls[0]["cmap"] == "Set3"
+
+    assert colored_calls[1]["color_by"] == "mean_stroke_width"
+    assert colored_calls[1]["color_kind"] == "continuous"
+    assert colored_calls[1]["cmap"] == "plasma"

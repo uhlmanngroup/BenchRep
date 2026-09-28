@@ -2915,6 +2915,20 @@ class EvaluationReconstructionGridConfig(_EvaluationConfigBaseModel):
     )
 
 
+class ColorByConfig(_EvaluationConfigBaseModel):
+    key: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=1),
+    ]
+
+    kind: Literal["auto", "categorical", "continuous"] = "auto"
+
+    cmap: Annotated[
+        str,
+        StringConstraints(strip_whitespace=True, min_length=1),
+    ] | None = None
+
+
 class EvaluationPlotParams(_EvaluationConfigBaseModel):
     """Configures shared evaluation plot styling and file output.
 
@@ -2933,7 +2947,7 @@ class EvaluationPlotParams(_EvaluationConfigBaseModel):
         },
     )
 
-    color_by: list[str] | None = Field(
+    color_by: list[str | ColorByConfig] | None = Field(
         default=None,
         description=(
             "Additional AnnData observation columns used to color reduction plots."
@@ -2942,6 +2956,11 @@ class EvaluationPlotParams(_EvaluationConfigBaseModel):
             "omit_behavior": "Does not request additional coloring fields.",
             "null_behavior": "Equivalent to omission.",
             "notes": [
+                "A string uses automatic categorical/continuous inference and the "
+                "default colormap for the resolved kind.",
+                "An expanded entry may specify `key`, `kind`, and `cmap`.",
+                "Omitting `kind` uses automatic categorical/continuous inference.",
+                "Omitting `cmap` uses the default colormap for the resolved kind.",
                 "Clustering output keys and the external-metric label key are added "
                 "automatically when relevant.",
                 "Duplicate and blank names are removed.",

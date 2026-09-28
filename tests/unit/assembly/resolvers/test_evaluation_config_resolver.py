@@ -7,6 +7,7 @@ from pydantic import ValidationError
 from benchrep.assembly.resolvers.evaluation_config_resolver import (
     _load_prediction_manifest,
     resolve_step_spec,
+    _resolve_plot_params,
 )
 from benchrep.assembly.schemas import EvaluationConfig
 
@@ -303,3 +304,82 @@ def test_resolve_step_spec_rejects_no_enabled_work() -> None:
             has_embeddings=True,
             has_reconstructions=False,
         )
+
+
+def test_plot_color_by_schema_accepts_mixed_shorthand_and_structured_entries() -> None:
+    config = EvaluationConfig.model_validate(
+        {
+            "source": {
+                "anndata_path": "anndata.h5ad",
+            },
+            "plots": {
+                "params": {
+                    "color_by": [
+                        "digit_label",
+                        {
+                            "key": "mean_stroke_width",
+                            "kind": "continuous",
+                            "cmap": "plasma",
+                        },
+                    ],
+                },
+            },
+        }
+    )
+
+    color_by = config.plots.params.color_by
+
+    assert color_by is not None
+    assert color_by[0] == "digit_label"
+
+    structured = color_by[1]
+
+    assert structured.key == "mean_stroke_width"
+    assert structured.kind == "continuous"
+    assert structured.cmap == "plasma"
+
+
+def test_resolve_plot_params_normalizes_and_deduplicates_color_by() -> None:
+    resolved = _resolve_plot_params(
+        plot_params={
+            "color_by": [
+                "digit_label",
+                {
+                    "key": "mean_stroke_width",
+                    "kind": "continuous",
+                    "cmap": "plasma",
+                },
+                {
+                    "key": "digit_label",
+                    "kind": "categorical",
+                    "cmap": "Set3",
+                },
+            ],
+        },
+        kmeans_enabled=True,
+        kmeans_params={"key_added": "kmeans_clusters"},
+        leiden_enabled=False,
+        leiden_params={},
+        hdbscan_enabled=False,
+        hdbscan_params={},
+        external_clustering_metrics_enabled=False,
+        external_clustering_label_key="label",
+    )
+
+    assert resolved["color_by"] == [
+        {
+            "key": "digit_label",
+            "kind": "auto",
+            "cmap": None,
+        },
+        {
+            "key": "mean_stroke_width",
+            "kind": "continuous",
+            "cmap": "plasma",
+        },
+        {
+            "key": "kmeans_clusters",
+            "kind": "categorical",
+            "cmap": None,
+        },
+    ]

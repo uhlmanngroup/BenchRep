@@ -1180,42 +1180,85 @@ def _resolve_plot_params(
     color_by = list(resolved.get("color_by") or [])
 
     if kmeans_enabled:
-        color_by.append(kmeans_params.get("key_added", "kmeans"))
+        color_by.append(
+            {
+                "key": kmeans_params.get("key_added", "kmeans"),
+                "kind": "categorical",
+                "cmap": None,
+            }
+        )
 
     if leiden_enabled:
-        color_by.append(leiden_params.get("key_added", "leiden"))
+        color_by.append(
+            {
+                "key": leiden_params.get("key_added", "leiden"),
+                "kind": "categorical",
+                "cmap": None,
+            }
+        )
 
     if hdbscan_enabled:
         color_by.append(
-            hdbscan_params.get("key_added", "hdbscan")
+            {
+                "key": hdbscan_params.get("key_added", "hdbscan"),
+                "kind": "categorical",
+                "cmap": None,
+            }
         )
 
     if external_clustering_metrics_enabled is not False:
-        color_by.append(external_clustering_label_key)
+        color_by.append(
+            {
+                "key": external_clustering_label_key,
+                "kind": "categorical",
+                "cmap": None,
+            }
+        )
 
-    resolved["color_by"] = _deduplicate_strings(color_by)
+    resolved["color_by"] = _normalize_color_by(color_by)
 
     return resolved
 
 
-def _deduplicate_strings(values: list[Any]) -> list[str]:
-    """Return non-empty strings once, preserving first occurrence order."""
+def _normalize_color_by(values: list[Any]) -> list[dict[str, Any]]:
+    """Normalize color-by entries and remove duplicate keys."""
 
     seen: set[str] = set()
-    deduplicated: list[str] = []
+    normalized: list[dict[str, Any]] = []
 
     for value in values:
-        if not isinstance(value, str):
+        if isinstance(value, str):
+            key = value.strip()
+            if not key:
+                continue
+
+            spec = {
+                "key": key,
+                "kind": "auto",
+                "cmap": None,
+            }
+
+        elif isinstance(value, dict):
+            key = str(value["key"]).strip()
+            if not key:
+                continue
+
+            spec = {
+                "key": key,
+                "kind": value.get("kind", "auto"),
+                "cmap": value.get("cmap"),
+            }
+
+        else:
             continue
 
-        value = value.strip()
-        if value == "" or value in seen:
+        if key in seen:
             continue
 
-        seen.add(value)
-        deduplicated.append(value)
+        seen.add(key)
+        normalized.append(spec)
 
-    return deduplicated
+    return normalized
 
 
 # Logical helpers

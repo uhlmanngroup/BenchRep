@@ -3,9 +3,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 from collections.abc import Sequence
+import warnings
 
 import anndata as ad
 import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
 import numpy as np
 import pandas as pd
 
@@ -17,6 +19,9 @@ ColorKind = Literal["auto", "categorical", "continuous"]
 DEFAULT_PCA_VARIANCE_PLOT_N_COMPONENTS = 20
 PCAVariancePlotKind = Literal["scree", "cumulative"]
 DEFAULT_ACCENT_COLOR = "#6A3D9A"
+DEFAULT_CATEGORICAL_CMAP = "tab20"
+DEFAULT_HIGH_CARDINALITY_CATEGORICAL_CMAP = "nipy_spectral"
+DEFAULT_CONTINUOUS_CMAP = "plasma"
 
 
 def plot_2d_projection(
@@ -26,6 +31,7 @@ def plot_2d_projection(
     accent_color: str = DEFAULT_ACCENT_COLOR,
     color_by: str | None = None,
     color_kind: ColorKind = "auto",
+    cmap: str | None = None,
     max_categorical_levels: int = 30,
     output_path: str | Path,
     title: str | None = None,
@@ -116,10 +122,13 @@ def plot_2d_projection(
                     f"its dtype is {values.dtype!r}."
                 )
 
+            resolved_cmap = cmap or DEFAULT_CONTINUOUS_CMAP
+
             scatter = ax.scatter(
                 coords[:, 0],
                 coords[:, 1],
                 c=values.to_numpy(dtype=float, na_value=np.nan),
+                cmap=resolved_cmap,
                 s=8,
                 alpha=0.8,
             )
@@ -132,18 +141,58 @@ def plot_2d_projection(
                 .cat
                 .remove_unused_categories()
             )
+
             codes = categorical_values.cat.codes.to_numpy(dtype=float)
             codes[codes < 0] = np.nan
+
+            labels = [str(label) for label in categorical_values.cat.categories]
+
+            if cmap is not None:
+                resolved_cmap = cmap
+            else:
+                default_cmap = plt.get_cmap(DEFAULT_CATEGORICAL_CMAP)
+
+                resolved_cmap = (
+                    DEFAULT_HIGH_CARDINALITY_CATEGORICAL_CMAP
+                    if (
+                            isinstance(default_cmap, ListedColormap)
+                            and len(labels) > default_cmap.N
+                    )
+                    else DEFAULT_CATEGORICAL_CMAP
+                )
+
+            base_cmap = plt.get_cmap(resolved_cmap)
+
+            if (
+                    cmap is not None
+                    and isinstance(base_cmap, ListedColormap)
+                    and len(labels) > base_cmap.N
+            ):
+                warnings.warn(
+                    f"Categorical colormap {resolved_cmap!r} provides "
+                    f"{base_cmap.N} native colors for {len(labels)} categories. "
+                    "The colormap will be resampled beyond its native palette size, "
+                    "so some categories may be difficult to distinguish.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+
+            categorical_cmap = plt.get_cmap(
+                resolved_cmap,
+                max(len(labels), 1),
+            )
 
             scatter = ax.scatter(
                 coords[:, 0],
                 coords[:, 1],
                 c=codes,
+                cmap=categorical_cmap,
+                vmin=-0.5,
+                vmax=max(len(labels) - 0.5, 0.5),
                 s=8,
                 alpha=0.8,
             )
 
-            labels = [str(label) for label in categorical_values.cat.categories]
             if len(labels) <= 20:
                 handles, _ = scatter.legend_elements()
                 ax.legend(
