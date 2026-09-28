@@ -1395,6 +1395,27 @@ class TrainingTransformStepConfig(NamedConfig):
     registered constructor signature and documentation.
     """
 
+    random_apply: float = Field(
+        default=1.0,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "Probability of applying this transform each time the step runs. "
+            "When skipped, the input tensor passes through unchanged."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Always applies the transform.",
+            "null_behavior": "Not allowed.",
+            "notes": [
+                "At 1.0, no probability wrapper or additional random draw is used.",
+                "At 0.0, the transform is never applied.",
+                "This probability is independent of any application probability "
+                "configured in the transform's own `params`.",
+                "Validation-targeted training steps retain this setting when "
+                "inherited by prediction.",
+            ],
+        },
+    )
     apply_to: list[Literal["training", "validation"]] = Field(
         min_length=1,
         description=(

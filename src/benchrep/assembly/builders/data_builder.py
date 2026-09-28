@@ -7,6 +7,7 @@ from typing import Any, Literal, TypeAlias
 from pydantic import BaseModel
 
 import torch
+from torchvision.transforms import v2
 
 from benchrep.records import get_run_logger
 from benchrep.architecture.data import (
@@ -23,7 +24,6 @@ from benchrep.assembly.schemas import (
     TrainingTransformStepConfig,
     SupportedDatasetConfig,
 )
-from benchrep.assembly.schemas.training_config_schema import NamedConfig
 from benchrep.assembly.registries.utils import normalize_name
 from benchrep.assembly.registries.core import DATASETS, TRANSFORMS
 
@@ -275,11 +275,10 @@ def build_transform_pipeline(
         steps=steps,
     )
 
-
 def _build_transform_step(
-    transform_step_config: NamedConfig,
-    *,
-    config_path: str,
+        transform_step_config: SupportedTransformStepConfig,
+        *,
+        config_path: str,
 ) -> TransformStep:
     """Resolve and instantiate one registered transform step."""
 
@@ -292,6 +291,12 @@ def _build_transform_step(
         transform_name,
         **transform_step_config.params,
     )
+
+    if transform_step_config.random_apply < 1.0:
+        transform = v2.RandomApply(
+            [transform],
+            p=transform_step_config.random_apply,
+        )
 
     return TransformStep(
         name=transform_name,

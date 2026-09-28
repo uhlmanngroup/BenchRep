@@ -363,3 +363,29 @@ def _load_stochastic_views(*, seed: int) -> dict[str, torch.Tensor]:
     )
 
     return next(iter(loader))
+
+
+def test_builder_respects_transform_random_apply_probability() -> None:
+    pipeline_config = TrainingTransformPipelineConfig(
+        input="x",
+        output="x",
+        steps=[
+            TrainingTransformStepConfig(
+                name="to_dtype",
+                apply_to=["training"],
+                random_apply=0.0,
+                params={
+                    "dtype": "float32",
+                    "scale": False,
+                },
+            ),
+        ],
+    )
+
+    bundle = build_transform_pipelines_bundle([pipeline_config])
+    value = torch.tensor([0, 255], dtype=torch.uint8)
+
+    result = bundle.training[0](value)
+
+    assert result.dtype == torch.uint8
+    assert torch.equal(result, value)

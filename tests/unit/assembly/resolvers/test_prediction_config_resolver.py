@@ -327,6 +327,7 @@ def test_prediction_transforms_inherit_only_validation_steps_and_routes(
                     TrainingTransformStepConfig(
                         name="both_splits",
                         apply_to=["training", "validation"],
+                        random_apply=0.25,
                     ),
                     TrainingTransformStepConfig(
                         name="validation_only",
@@ -375,15 +376,27 @@ def test_prediction_transforms_inherit_only_validation_steps_and_routes(
             "input": "x",
             "output": "x",
             "steps": [
-                {"name": "both_splits", "params": {}},
-                {"name": "validation_only", "params": {}},
+                {
+                    "name": "both_splits",
+                    "params": {},
+                    "random_apply": 0.25,
+                },
+                {
+                    "name": "validation_only",
+                    "params": {},
+                    "random_apply": 1.0,
+                },
             ],
         },
         {
             "input": "x",
             "output": "positive_x",
             "steps": [
-                {"name": "positive_view", "params": {}},
+                {
+                    "name": "positive_view",
+                    "params": {},
+                    "random_apply": 1.0,
+                },
             ],
         },
     ]
