@@ -20,7 +20,6 @@ from benchrep.assembly.builders.loss_builder import build_loss_terms
 from benchrep.assembly.builders.optimizer_builder import build_optimizer_factory
 from benchrep.assembly.registries.utils import normalize_name
 from benchrep.assembly.schemas import (
-    TrainingConfig,
     TrainingDecoderConfig,
     TrainingEncoderConfig,
     TrainingOptimizerConfig,
