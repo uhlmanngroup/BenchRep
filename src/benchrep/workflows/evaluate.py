@@ -217,7 +217,7 @@ def evaluate(
 
         anndata_pipeline = create_anndata_evaluation_pipeline(run_spec)
 
-        run_log.info("Starting AnnData evaluation pipeline...")
+        run_log.info("Running AnnData evaluation pipeline...")
 
         with capture_console_streams(
                 log_out_dir=run_context.log_dir,
@@ -236,7 +236,7 @@ def evaluate(
     reconstruction_outcomes: tuple[EvaluationOutcome, ...] = ()
 
     if reconstruction_input is not None:
-        run_log.info("Starting reconstruction evaluation pipeline...")
+        run_log.info("Running reconstruction evaluation pipeline...")
 
         reconstruction_pipeline = create_reconstruction_evaluation_pipeline(
             run_spec
@@ -263,7 +263,7 @@ def evaluate(
         reconstruction_outcomes = reconstruction_pipeline.outcomes
 
     # Export evaluation artifacts
-    run_log.info("Starting evaluation artifact export...")
+    run_log.info("Running evaluation artifact export...")
 
     export_result = export_evaluation_outputs(
         adata=adata,
