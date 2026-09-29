@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "benchrep"
 version = "0.1.0.dev0"
-description = "Benchmarking representation learning models and learned embeddings."
+description = "Configuration-driven training, prediction, and evaluation for representation learning."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
