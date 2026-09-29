@@ -22,6 +22,7 @@ from sklearn.model_selection import (
     StratifiedGroupKFold,
     StratifiedKFold,
 )
+from sklearn.preprocessing import LabelEncoder
 
 from benchrep.evaluation.utils import (
     PredictabilityTask,
@@ -541,6 +542,17 @@ def compute_predictability_metrics(
         use_groups=cv_spec.use_groups,
     )
 
+    class_labels: list[Any] | None = None
+
+    if task == "classification":
+        label_encoder = LabelEncoder()
+        input_spec = PredictabilityInputSpec(
+            X=input_spec.X,
+            y=label_encoder.fit_transform(input_spec.y),
+            groups=input_spec.groups,
+        )
+        class_labels = label_encoder.classes_.tolist()
+
     probe_results: dict[str, PredictabilityProbeResult] = {}
     probe_failures: dict[str, str] = {}
 
@@ -590,6 +602,10 @@ def compute_predictability_metrics(
             for probe_name, probe_result in probe_results.items()
         },
     }
+
+    if class_labels is not None:
+        # Encoded class i corresponds to class_labels[i].
+        result["class_labels"] = class_labels
 
     _store_predictability_metric_result(
         adata,
