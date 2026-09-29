@@ -48,8 +48,6 @@ class BaseDataset(Dataset[dict[str, Any]], ABC):
 
         return sample
 
-        return sample
-
 
 class TransformedDataset(BaseDataset):
     """Apply ordered, field-routed transform pipelines to dataset samples.
