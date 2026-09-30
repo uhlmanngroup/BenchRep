@@ -32,6 +32,7 @@ from benchrep.assembly.resolvers.utils import (
     RunIdentitySpec,
     resolve_runtime_override_config,
 )
+from benchrep.architecture.data.datamodule import validate_dataloader_kwargs
 from benchrep.architecture.composite_model_roles import (
     TENSOR_STRUCTURE_BY_ROLE,
 )
@@ -223,11 +224,15 @@ def _resolve_datamodule_config(
     *,
     datamodule_overridden: bool,
 ) -> TrainingDataModuleConfig | None:
-    if (
-        config is None
-        or datamodule_overridden
-        or config.pin_memory != "auto"
-    ):
+    if config is None or datamodule_overridden:
+        return config
+
+    validate_dataloader_kwargs(
+        config.dataloader_kwargs,
+        num_workers=config.num_workers,
+    )
+
+    if config.pin_memory != "auto":
         return config
 
     return config.model_copy(

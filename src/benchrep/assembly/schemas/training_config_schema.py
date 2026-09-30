@@ -1331,6 +1331,22 @@ class TrainingDataModuleConfig(_TrainingConfigBaseModel):
         },
     )
 
+    prefetch_factor: PositiveInt | None = Field(
+        default=None,
+        strict=True,
+        description=(
+            "Number of batches loaded in advance by each worker. An explicit "
+            "value requires `num_workers` to be greater than zero."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Uses PyTorch's default: two batches per worker when "
+                "num_workers > 0; otherwise no multiprocessing prefetch."
+            ),
+            "null_behavior": "Same as omission.",
+        },
+    )
+
     pin_memory: bool | Literal["auto"] = Field(
         default="auto",
         description=(
@@ -1367,6 +1383,18 @@ class TrainingDataModuleConfig(_TrainingConfigBaseModel):
         },
     )
 
+    dataloader_kwargs: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Additional keyword arguments passed to each DataLoader. "
+            "BenchRep-controlled arguments cannot be overridden."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Passes no additional DataLoader arguments.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+
     @model_validator(mode="after")
     def validate_worker_configuration(
         self,
@@ -1374,6 +1402,12 @@ class TrainingDataModuleConfig(_TrainingConfigBaseModel):
         if self.persistent_workers and self.num_workers == 0:
             raise ValueError(
                 "`datamodule.persistent_workers=True` requires "
+                "`datamodule.num_workers` to be greater than zero."
+            )
+
+        if self.prefetch_factor is not None and self.num_workers == 0:
+            raise ValueError(
+                "`datamodule.prefetch_factor` requires "
                 "`datamodule.num_workers` to be greater than zero."
             )
 

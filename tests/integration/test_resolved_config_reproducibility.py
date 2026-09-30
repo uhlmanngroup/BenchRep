@@ -77,6 +77,23 @@ def test_resolved_configs_reproduce_end_to_end_metrics(
     evaluation_resolved = load_yaml(first_evaluation_resolved)
 
     assert training_resolved["datamodule"]["pin_memory"] in {True, False}
+    training_manifest = load_yaml(first_training.manifest_path)
+    prediction_manifest = load_yaml(first_prediction.manifest_path)
+
+    recorded_training_datamodule = training_manifest["appendix"][
+        "resolved_config"
+    ]["datamodule"]
+    assert recorded_training_datamodule["prefetch_factor"] is None
+    assert recorded_training_datamodule["dataloader_kwargs"] == {"timeout": 0}
+
+    recorded_prediction_datamodule = prediction_manifest["appendix"][
+        "resolved_datamodule_config"
+    ]
+    assert recorded_prediction_datamodule["num_workers"] == 0
+    assert recorded_prediction_datamodule["prefetch_factor"] is None
+    assert recorded_prediction_datamodule["dataloader_kwargs"] == {"timeout": 0}
+    assert recorded_prediction_datamodule["val_fraction"] == 0.0
+    assert recorded_prediction_datamodule["drop_last"] is False
     assert training_resolved["checkpointing"]["save_top_k"] == 0
 
     assert prediction_resolved["dataset"] is not None
@@ -146,6 +163,7 @@ def _write_resolution_heavy_training_config(tmp_path: Path) -> Path:
 
     # BenchRep-owned dynamic decisions that must be materialized.
     raw["datamodule"]["pin_memory"] = "auto"
+    raw["datamodule"]["dataloader_kwargs"] = {"timeout": 0}
     raw["checkpointing"]["monitor"] = None
     raw["checkpointing"]["save_top_k"] = 1
     raw["checkpointing"]["save_last"] = True

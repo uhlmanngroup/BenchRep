@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import torch
+import pytest
 import yaml
 
 from benchrep.assembly.config import load_yaml
@@ -15,6 +16,7 @@ from benchrep.assembly.schemas import (
     parse_evaluation_config,
     parse_prediction_config,
     parse_training_config,
+    TrainingDataModuleConfig,
 )
 from benchrep.interfaces.model_families import AUTOENCODER_FAMILY, VAE_FAMILY
 from benchrep.records.configs import save_resolved_config
@@ -462,3 +464,94 @@ def _write_yaml(path: Path, payload: dict) -> None:
 
 def _config_dump(config) -> dict:
     return config.model_dump(mode="json")
+
+
+@pytest.mark.parametrize(
+    ("prediction_workers", "expected_workers", "expected_prefetch"),
+    [
+        (None, 2, 3),
+        (1, 1, 3),
+        (0, 0, None),
+    ],
+)
+def test_prediction_inherits_loader_options_and_adjusts_prefetch(
+    tmp_path: Path,
+    prediction_workers: int | None,
+    expected_workers: int,
+    expected_prefetch: int | None,
+) -> None:
+    training_config = _resolved_vae_training_config().model_copy(
+        update={
+            "datamodule": TrainingDataModuleConfig(
+                num_workers=2,
+                persistent_workers=True,
+                prefetch_factor=3,
+                pin_memory=False,
+                dataloader_kwargs={"timeout": 0},
+            ),
+        },
+    )
+    manifest_path = _write_training_manifest(
+        tmp_path,
+        training_config=training_config,
+    )
+
+    raw = load_yaml(CONFIG_DIR / "prediction_tiny_synthetic.yaml")
+    raw["source"]["training_manifest_path"] = str(manifest_path)
+    raw["data"]["num_workers"] = prediction_workers
+
+    run_spec = resolve_prediction_config(
+        parse_prediction_config(raw),
+        model_family=VAE_FAMILY,
+    )
+
+    effective = run_spec.datamodule_config
+    assert effective is not None
+    assert effective.num_workers == expected_workers
+    assert effective.prefetch_factor == expected_prefetch
+    assert effective.persistent_workers == (expected_workers > 0)
+    assert effective.dataloader_kwargs == {"timeout": 0}
+
+    # Prediction adjustments must not rewrite the training configuration.
+    original = run_spec.training_config.datamodule
+    assert original is not None
+    assert original.num_workers == 2
+    assert original.prefetch_factor == 3
+    assert original.persistent_workers is True
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"timeout": 5},
+        {"multiprocessing_context": "spawn"},
+    ],
+)
+def test_prediction_revalidates_inherited_worker_only_kwargs(
+    tmp_path: Path,
+    kwargs: dict,
+) -> None:
+    training_config = _resolved_vae_training_config().model_copy(
+        update={
+            "datamodule": TrainingDataModuleConfig(
+                num_workers=2,
+                prefetch_factor=3,
+                pin_memory=False,
+                dataloader_kwargs=kwargs,
+            ),
+        },
+    )
+    manifest_path = _write_training_manifest(
+        tmp_path,
+        training_config=training_config,
+    )
+
+    raw = load_yaml(CONFIG_DIR / "prediction_tiny_synthetic.yaml")
+    raw["source"]["training_manifest_path"] = str(manifest_path)
+    raw["data"]["num_workers"] = 0
+
+    with pytest.raises(ValueError, match="num_workers"):
+        resolve_prediction_config(
+            parse_prediction_config(raw),
+            model_family=VAE_FAMILY,
+        )

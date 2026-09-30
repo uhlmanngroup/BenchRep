@@ -639,6 +639,11 @@ def write_prediction_manifest(
         "summary": summary,
         "appendix": {
             "resolved_config": config_to_serializable_dict(config),
+            "resolved_datamodule_config": (
+                config_to_serializable_dict(run_spec.datamodule_config)
+                if run_spec.datamodule_config is not None
+                else None
+            ),
             "training_manifest": training_manifest,
         },
     }

@@ -43,6 +43,7 @@ from benchrep.assembly.resolvers.utils import (
     RunIdentitySpec,
     resolve_runtime_override_config,
 )
+from benchrep.architecture.data.datamodule import validate_dataloader_kwargs
 from benchrep.architecture.composite_model_roles import (
     TENSOR_STRUCTURE_BY_ROLE,
 )
@@ -437,8 +438,18 @@ def resolve_prediction_config(
                     if num_workers > 0
                     else False
                 ),
+                "prefetch_factor": (
+                    base_datamodule_config.prefetch_factor
+                    if num_workers > 0
+                    else None
+                ),
                 "drop_last": False,
             }
+        )
+
+        validate_dataloader_kwargs(
+            datamodule_config.dataloader_kwargs,
+            num_workers=datamodule_config.num_workers,
         )
 
     seed = resolve_optional(

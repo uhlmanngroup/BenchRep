@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Sequence, Sized
+from collections.abc import Mapping, Sequence, Sized
+from inspect import Parameter, signature
 from typing import Any
 
 import lightning as L
@@ -9,6 +10,63 @@ from torch.utils.data import DataLoader, Dataset, random_split
 
 from benchrep.architecture.data.datasets import TransformedDataset
 from benchrep.architecture.data.transforms import TransformPipeline
+
+
+_RESERVED_DATALOADER_KWARGS = frozenset({
+    "dataset",
+    "batch_size",
+    "shuffle",
+    "sampler",
+    "batch_sampler",
+    "num_workers",
+    "pin_memory",
+    "persistent_workers",
+    "drop_last",
+    "prefetch_factor",
+})
+
+
+def validate_dataloader_kwargs(
+    dataloader_kwargs: Mapping[str, Any],
+    *,
+    num_workers: int,
+) -> None:
+    """Validate additional kwargs against BenchRep ownership and PyTorch."""
+    if any(not isinstance(key, str) for key in dataloader_kwargs):
+        raise ValueError("dataloader_kwargs keys must be strings.")
+
+    reserved = _RESERVED_DATALOADER_KWARGS.intersection(dataloader_kwargs)
+    if reserved:
+        raise ValueError(
+            "dataloader_kwargs cannot override BenchRep-controlled arguments: "
+            f"{', '.join(sorted(reserved))}."
+        )
+
+    accepted = {
+        name
+        for name, parameter in signature(DataLoader).parameters.items()
+        if parameter.kind in (
+            Parameter.POSITIONAL_OR_KEYWORD,
+            Parameter.KEYWORD_ONLY,
+        )
+    }
+    unknown = set(dataloader_kwargs) - accepted
+    if unknown:
+        raise ValueError(
+            "dataloader_kwargs contains arguments not accepted by the installed "
+            f"DataLoader: {', '.join(sorted(unknown))}."
+        )
+
+    if num_workers == 0:
+        if dataloader_kwargs.get("multiprocessing_context") is not None:
+            raise ValueError(
+                "dataloader_kwargs.multiprocessing_context requires num_workers > 0."
+            )
+
+        if dataloader_kwargs.get("timeout", 0) != 0:
+            raise ValueError(
+                "dataloader_kwargs.timeout must be 0 when num_workers=0."
+            )
 
 
 class BenchRepDataModule(L.LightningDataModule):
@@ -59,6 +117,13 @@ class BenchRepDataModule(L.LightningDataModule):
         Whether to drop the last incomplete training batch.
     seed:
         Random seed used for train/validation splitting.
+    prefetch_factor:
+        Number of batches prefetched per worker. None uses PyTorch's default:
+        two batches per worker when multiprocessing is enabled. An explicit
+        value requires ``num_workers > 0``.
+    dataloader_kwargs:
+        Additional keyword arguments passed to every DataLoader. Cannot
+        override BenchRep-controlled arguments.
     """
 
     def __init__(
@@ -77,6 +142,8 @@ class BenchRepDataModule(L.LightningDataModule):
         persistent_workers: bool = False,
         drop_last: bool = False,
         seed: int | None = None,
+        prefetch_factor: int | None = None,
+        dataloader_kwargs: dict[str, Any] | None = None,
     ) -> None:
         super().__init__()
 
@@ -107,6 +174,27 @@ class BenchRepDataModule(L.LightningDataModule):
         if persistent_workers and num_workers == 0:
             raise ValueError("persistent_workers=True requires num_workers > 0.")
 
+        if prefetch_factor is not None:
+            if (
+                isinstance(prefetch_factor, bool)
+                or not isinstance(prefetch_factor, int)
+                or prefetch_factor <= 0
+            ):
+                raise ValueError(
+                    "prefetch_factor must be a positive integer or None."
+                )
+
+            if num_workers == 0:
+                raise ValueError("prefetch_factor requires num_workers > 0.")
+
+        loader_kwargs = (
+            {} if dataloader_kwargs is None else dict(dataloader_kwargs)
+        )
+        validate_dataloader_kwargs(
+            loader_kwargs,
+            num_workers=num_workers,
+        )
+
         self._original_train_dataset = train_dataset
         self._provided_val_dataset = val_dataset
 
@@ -135,6 +223,8 @@ class BenchRepDataModule(L.LightningDataModule):
         self.persistent_workers = persistent_workers
         self.drop_last = drop_last
         self.seed = seed
+        self.prefetch_factor = prefetch_factor
+        self.dataloader_kwargs = loader_kwargs
 
         self.train_dataset: Dataset[dict[str, Any]] | None = None
         self.val_dataset: Dataset[dict[str, Any]] | None = None
@@ -209,6 +299,8 @@ class BenchRepDataModule(L.LightningDataModule):
             pin_memory=self.pin_memory,
             persistent_workers=self.persistent_workers,
             drop_last=self.drop_last,
+            prefetch_factor=self.prefetch_factor,
+            **self.dataloader_kwargs,
         )
 
     def val_dataloader(self) -> DataLoader | None:
@@ -223,6 +315,8 @@ class BenchRepDataModule(L.LightningDataModule):
             pin_memory=self.pin_memory,
             persistent_workers=self.persistent_workers,
             drop_last=False,
+            prefetch_factor=self.prefetch_factor,
+            **self.dataloader_kwargs,
         )
 
     def test_dataloader(self) -> DataLoader | None:
@@ -237,6 +331,8 @@ class BenchRepDataModule(L.LightningDataModule):
             pin_memory=self.pin_memory,
             persistent_workers=self.persistent_workers,
             drop_last=False,
+            prefetch_factor=self.prefetch_factor,
+            **self.dataloader_kwargs,
         )
 
     def predict_dataloader(self) -> DataLoader | None:
@@ -251,6 +347,8 @@ class BenchRepDataModule(L.LightningDataModule):
             pin_memory=self.pin_memory,
             persistent_workers=self.persistent_workers,
             drop_last=False,
+            prefetch_factor=self.prefetch_factor,
+            **self.dataloader_kwargs,
         )
 
 

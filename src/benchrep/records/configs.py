@@ -15,6 +15,7 @@ from typing import Any
 
 import yaml
 from pydantic import BaseModel
+from pydantic_core import to_jsonable_python
 
 from benchrep.records.logs import get_run_logger
 from benchrep.runtime import RunContext
@@ -109,16 +110,34 @@ def save_resolved_config(
     return output_path
 
 
-def config_to_serializable_dict(config: BaseModel | dict[str, Any]) -> dict[str, Any]:
-    """Convert a Pydantic config object or plain dictionary into a YAML-safe dict."""
+def _unserializable_config_value(value: Any) -> dict[str, Any]:
+    """Describe an unsupported object without attempting to reconstruct it."""
+    value_type = type(value)
+    description = {
+        "type": f"{value_type.__module__}.{value_type.__qualname__}",
+    }
 
-    if isinstance(config, BaseModel):
-        return config.model_dump(mode="json")
+    module = getattr(value, "__module__", None)
+    name = getattr(value, "__qualname__", None)
 
-    if isinstance(config, dict):
-        return config
+    if isinstance(module, str) and isinstance(name, str):
+        description["name"] = f"{module}.{name}"
 
-    raise TypeError(
-        "`resolved_config` must be a Pydantic model or a plain dictionary, "
-        f"got {type(config).__name__}."
+    return {"__benchrep_unserializable__": description}
+
+
+def config_to_serializable_dict(
+    config: BaseModel | dict[str, Any],
+) -> dict[str, Any]:
+    """Create a YAML-safe record, marking unsupported runtime objects."""
+    if not isinstance(config, (BaseModel, dict)):
+        raise TypeError(
+            "`resolved_config` must be a Pydantic model or a plain dictionary, "
+            f"got {type(config).__name__}."
+        )
+
+    return to_jsonable_python(
+        config,
+        by_alias=False,
+        fallback=_unserializable_config_value,
     )
