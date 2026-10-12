@@ -19,6 +19,7 @@ EXPECTED_CUSTOM_REGISTRATION_POLICY = {
     "classification_loss": True,
     "regression_loss": True,
     "custom_objective_loss": True,
+    "loss_weight_schedule": True,
     "optimizer": True,
     "logger": True,
     "callback": True,

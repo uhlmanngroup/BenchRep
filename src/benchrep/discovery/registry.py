@@ -18,6 +18,7 @@ from benchrep.assembly.registries.core import (
     CLASSIFICATION_LOSSES,
     REGRESSION_LOSSES,
     CUSTOM_OBJECTIVE_LOSSES,
+    LOSS_WEIGHT_SCHEDULES,
     OPTIMIZERS,
     LOGGERS,
     CALLBACKS,
@@ -208,6 +209,26 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
             "`model_output` mappings automatically under canonical and "
             "Composite models. The component's forward() method must accept "
             "both as keyword arguments and return a scalar tensor."
+        ),
+    ),
+    "loss_weight_schedule": ComponentRegistryInfo(
+        symbol="LOSS_WEIGHT_SCHEDULES",
+        registry=LOSS_WEIGHT_SCHEDULES,
+        runtime_instance_override_supported=False,
+        config_locations=(
+            "TrainingConfig.losses.<role>[*].weight_schedule",
+        ),
+        contract=(
+            "The registered constructor accepts the configured `params` "
+            "as keyword arguments and returns an object satisfying the "
+            "`LossWeightSchedule` Protocol; explicit inheritance is not "
+            "required. Its `factor` method must accept a position as one "
+            "positional argument, regardless of parameter name, and return "
+            "a finite, nonnegative scalar multiplier for the loss's base "
+            "weight. Position is a nonnegative epoch index or completed "
+            "optimizer-step count. Results must be deterministic and "
+            "independent of call history. Optional cycling is applied "
+            "by BenchRep."
         ),
     ),
     "optimizer": ComponentRegistryInfo(
