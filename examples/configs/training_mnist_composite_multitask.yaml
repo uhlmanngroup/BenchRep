@@ -125,6 +125,14 @@ losses:
   reconstruction:
     - name: mse
       weight: 1.0
+      weight_schedule:
+        name: linear
+        interval: epoch
+        params:
+          start: 0
+          end: 10
+          start_factor: 1.0
+          end_factor: 0.5
       params:
         reduction: mean
       composite_wiring:
@@ -134,6 +142,14 @@ losses:
   regularization:
     - name: gaussian_kld
       weight: 0.0001
+      weight_schedule:
+        name: cosine
+        interval: epoch
+        params:
+          start: 0
+          end: 10
+          start_factor: 0.0
+          end_factor: 1.0
       params:
         reduction: mean
       composite_wiring:
@@ -143,6 +159,15 @@ losses:
   classification:
     - name: cross_entropy
       weight: 0.25
+      weight_schedule:
+        name: sigmoid
+        interval: epoch
+        params:
+          start: 0
+          end: 10
+          start_factor: 0.0
+          end_factor: 1.0
+          steepness: 10.0
       params:
         reduction: mean
         label_smoothing: 0.0
@@ -156,7 +181,7 @@ optimizer:
     lr: 0.001
 
 trainer:
-  max_epochs: 2
+  max_epochs: 10
   accelerator: auto
   devices: auto
   log_every_n_steps: 20
