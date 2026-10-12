@@ -22,8 +22,11 @@ mlflow.db
 mlflow.db-*
 *.ckpt
 
-# Data
+# Data and demos
 examples/data/
+examples/configs/DEMO/
+examples/usage/DEMO.py
+temp_demo/
 
 # Scratch
 scratch/
