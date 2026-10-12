@@ -8,13 +8,20 @@ import re
 from dataclasses import dataclass, field, replace
 from typing import Any, Literal, TypeAlias
 
+from pydantic import BaseModel
+
+
 from benchrep.architecture.losses.composite_model_contracts import (
     LossComponent,
 )
-from benchrep.assembly.registries.core import LOSS_REGISTRIES_BY_ROLE
+from benchrep.assembly.registries.core import (
+    LOSS_REGISTRIES_BY_ROLE,
+    LOSS_WEIGHT_SCHEDULES,
+)
 from benchrep.assembly.schemas.training_config_schema import (
     SupportedLossRole,
     TrainingLossTermConfig,
+    SupportedLossWeightScheduleConfig,
 )
 from benchrep.architecture.composite_model_roles import (
     CompositeModelInputRole,
@@ -29,6 +36,16 @@ LossContextSource: TypeAlias = Literal[
 ]
 
 _LOSS_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+
+
+@dataclass(frozen=True)
+class LossWeightScheduleSpec:
+    """Construction details and timing for one loss-weight schedule."""
+
+    registry_entry_name: str
+    constructor_params: dict[str, Any]
+    interval: Literal["epoch", "step"]
+    cycle_length: int | None
 
 
 @dataclass(frozen=True)
@@ -47,6 +64,8 @@ class LossSpec:
 
     # Used by custom objectives: forward parameter -> complete context.
     context_inputs: dict[str, LossContextSource] = field(default_factory=dict)
+
+    weight_schedule: LossWeightScheduleSpec | None = None
 
 
 def resolve_loss_configs(
@@ -360,6 +379,10 @@ def _resolve_loss_term(
         registry_entry_name=registry_entry_name,
         weight=config.weight,
         constructor_params=constructor_params,
+        weight_schedule=resolve_loss_weight_schedule(
+            config.weight_schedule,
+            config_path=f"{config_path}.weight_schedule",
+        ),
     )
 
 
@@ -415,3 +438,42 @@ def _validate_unique_loss_identities(
                 )
 
             metric_owners[metric_name] = loss_id
+
+
+def resolve_loss_weight_schedule(
+    config: SupportedLossWeightScheduleConfig | None,
+    *,
+    config_path: str,
+) -> LossWeightScheduleSpec | None:
+    if config is None:
+        return None
+
+    try:
+        registry_entry_name = LOSS_WEIGHT_SCHEDULES.resolve_key(config.name)
+    except KeyError as exc:
+        raise ValueError(
+            f"Invalid schedule at `{config_path}.name`: {exc}"
+        ) from exc
+
+    constructor = LOSS_WEIGHT_SCHEDULES.get(registry_entry_name)
+    constructor_params = (
+        config.params.model_dump()
+        if isinstance(config.params, BaseModel)
+        else config.params.copy()
+    )
+
+    try:
+        inspect.signature(constructor).bind(**constructor_params)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"Invalid constructor signature or parameters at "
+            f"`{config_path}.params` for schedule "
+            f"{registry_entry_name!r}: {exc}"
+        ) from exc
+
+    return LossWeightScheduleSpec(
+        registry_entry_name=registry_entry_name,
+        constructor_params=constructor_params,
+        interval=config.interval,
+        cycle_length=config.cycle.length if config.cycle is not None else None,
+    )

@@ -1,10 +1,20 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated, Any, Generic, Literal, TypeVar, TypeAlias
+from typing import (
+    Annotated,
+    Any,
+    Final,
+    Generic,
+    get_args,
+    Literal,
+    TypeVar,
+    TypeAlias,
+)
 
 from pydantic import (
     BaseModel,
+    BeforeValidator,
     ConfigDict,
     Field,
     PositiveInt,
@@ -17,7 +27,11 @@ from pydantic import (
     StringConstraints,
 )
 
-from benchrep.assembly.registries.core import CALLBACKS, MODELS
+from benchrep.assembly.registries.core import (
+    CALLBACKS,
+    MODELS,
+    LOSS_WEIGHT_SCHEDULES,
+)
 from benchrep.assembly.registries.utils import normalize_name
 from benchrep.architecture.models import (
     Autoencoder,
@@ -244,8 +258,315 @@ class TrainingDecoderConfig(NamedConfig):
 
 
 # -------------------------
-# Optimization/loss configuration
+# Loss configuration
 # -------------------------
+class RampScheduleParams(_TrainingConfigBaseModel):
+    """Parameters shared by linear and cosine ramps."""
+
+    start: int = Field(
+        default=0,
+        strict=True,
+        ge=0,
+        description="Position at which the ramp starts.",
+    )
+    end: int = Field(
+        strict=True,
+        gt=0,
+        description="Position at which the ramp reaches its final factor.",
+    )
+    start_factor: float = Field(
+        default=0.0,
+        ge=0.0,
+        allow_inf_nan=False,
+        description="Multiplier held before and at the start position.",
+    )
+    end_factor: float = Field(
+        default=1.0,
+        ge=0.0,
+        allow_inf_nan=False,
+        description="Multiplier held at and after the end position.",
+    )
+
+    @model_validator(mode="after")
+    def _validate_positions(self) -> RampScheduleParams:
+        if self.end <= self.start:
+            raise ValueError("`end` must be greater than `start`.")
+        return self
+
+
+class SigmoidScheduleParams(RampScheduleParams):
+    """Endpoint-normalized sigmoid ramp."""
+
+    steepness: float = Field(
+        default=10.0,
+        gt=0.0,
+        allow_inf_nan=False,
+        description=(
+            "Steepness over the normalized ramp interval. Larger values "
+            "concentrate the transition around its midpoint."
+        ),
+    )
+
+
+class ExponentialScheduleParams(RampScheduleParams):
+    """Geometric interpolation between strictly positive endpoint factors."""
+
+    start_factor: float = Field(
+        gt=0.0,
+        allow_inf_nan=False,
+        description="Strictly positive multiplier at the start position.",
+    )
+    end_factor: float = Field(
+        default=1.0,
+        gt=0.0,
+        allow_inf_nan=False,
+        description="Strictly positive multiplier at the end position.",
+    )
+
+
+SchedulePosition: TypeAlias = Annotated[
+    int, Field(strict=True, ge=0)
+]
+ScheduleFactor: TypeAlias = Annotated[
+    float, Field(ge=0.0, allow_inf_nan=False)
+]
+
+
+class PiecewiseScheduleParams(_TrainingConfigBaseModel):
+    """Ordered position/factor pairs defining a trajectory."""
+
+    milestones: list[tuple[SchedulePosition, ScheduleFactor]] = Field(
+        min_length=2,
+        description=(
+            "Strictly increasing [position, factor] pairs. Outside the "
+            "milestone range, hold the nearest endpoint factor."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def _validate_milestones(self) -> PiecewiseScheduleParams:
+        positions = [position for position, _ in self.milestones]
+        if any(right <= left for left, right in zip(positions, positions[1:])):
+            raise ValueError(
+                "Milestone positions must be strictly increasing."
+            )
+        return self
+
+
+class LossWeightScheduleCycleConfig(_TrainingConfigBaseModel):
+    """Repeat the schedule using a position local to each cycle."""
+
+    length: int = Field(
+        strict=True,
+        gt=0,
+        description=(
+            "Cycle length in the schedule's interval units. The schedule "
+            "receives position % length, resetting to zero each cycle."
+        ),
+    )
+
+
+ScheduleParamsT = TypeVar("ScheduleParamsT")
+
+
+class TrainingLossWeightScheduleConfig(
+    _TrainingConfigBaseModel, Generic[ScheduleParamsT]
+):
+    """Common configuration for a registered loss-weight schedule."""
+
+    name: str = Field(
+        description="Registered schedule name.",
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+    params: ScheduleParamsT = Field(
+        description="Constructor parameters for the selected schedule.",
+    )
+    interval: Literal["epoch", "step"] = Field(
+        default="epoch",
+        description=(
+            "Schedule position: zero-based epoch index or number of completed "
+            "optimizer steps. Gradient accumulation does not advance the "
+            "step position until an optimizer step completes."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses epoch-based scheduling.",
+            "null_behavior": "Not allowed.",
+        },
+    )
+    cycle: LossWeightScheduleCycleConfig | None = Field(
+        default=None,
+        description=(
+            "Optional repetition of the configured schedule. Cycles start "
+            "at training position zero and repeat indefinitely."
+        ),
+        json_schema_extra={
+            "omit_behavior": "The schedule does not repeat.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+
+    @model_validator(mode="after")
+    def _validate_cycle(self) -> TrainingLossWeightScheduleConfig:
+        if self.cycle is None:
+            return self
+
+        if isinstance(self.params, RampScheduleParams):
+            last_position = self.params.end
+        elif isinstance(self.params, PiecewiseScheduleParams):
+            last_position = self.params.milestones[-1][0]
+        else:
+            # Custom constructors own their parameter semantics.
+            return self
+
+        if last_position >= self.cycle.length:
+            raise ValueError(
+                "The schedule's final position must be less than "
+                "`cycle.length` so its endpoint is reached before resetting."
+            )
+        return self
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def _normalize_name(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            return normalize_name(value, field_name="weight_schedule.name")
+        return value
+
+
+class LinearScheduleConfig(
+    TrainingLossWeightScheduleConfig[RampScheduleParams]
+):
+    """Linear interpolation between the endpoint factors."""
+
+    name: Literal["linear"]
+
+
+class CosineScheduleConfig(
+    TrainingLossWeightScheduleConfig[RampScheduleParams]
+):
+    """Half-cosine interpolation between the endpoint factors."""
+
+    name: Literal["cosine"]
+
+
+class SigmoidScheduleConfig(
+    TrainingLossWeightScheduleConfig[SigmoidScheduleParams]
+):
+    """Sigmoid interpolation normalized to reach both endpoint factors."""
+
+    name: Literal["sigmoid"]
+
+
+class ExponentialScheduleConfig(
+    TrainingLossWeightScheduleConfig[ExponentialScheduleParams]
+):
+    """Geometric interpolation between endpoint factors."""
+
+    name: Literal["exponential"]
+
+
+class PiecewiseLinearScheduleConfig(
+    TrainingLossWeightScheduleConfig[PiecewiseScheduleParams]
+):
+    """Linear interpolation between consecutive milestones."""
+
+    name: Literal["piecewise_linear"]
+
+
+class PiecewiseConstantScheduleConfig(
+    TrainingLossWeightScheduleConfig[PiecewiseScheduleParams]
+):
+    """Hold each milestone's factor until the next milestone."""
+
+    name: Literal["piecewise_constant"]
+
+
+class CustomScheduleConfig(
+    TrainingLossWeightScheduleConfig[dict[str, Any]]
+):
+    """Constructor-validated parameters for a user-registered schedule."""
+
+    params: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Keyword arguments passed to the registered constructor.",
+        json_schema_extra={
+            "omit_behavior": "Uses an empty parameter mapping.",
+            "null_behavior": "Not allowed; use an empty mapping instead.",
+        },
+    )
+
+
+def _normalize_loss_weight_schedule_config(value: Any) -> Any:
+    # Revalidate supplied config objects through the same dispatch path.
+    if isinstance(value, TrainingLossWeightScheduleConfig):
+        value = value.model_dump()
+
+    if not isinstance(value, dict):
+        return value
+
+    name = value.get("name")
+    if not isinstance(name, str):
+        return value
+
+    name = normalize_name(name, field_name="weight_schedule.name")
+    try:
+        name = LOSS_WEIGHT_SCHEDULES.resolve_key(name)
+    except KeyError:
+        # Unknown names use the custom schema; the resolver later checks
+        # that the requested implementation is registered.
+        pass
+
+    return {**value, "name": name}
+
+
+def _loss_weight_schedule_discriminator(value: Any) -> str:
+    name = (
+        value.get("name")
+        if isinstance(value, dict)
+        else getattr(value, "name", None)
+    )
+    if isinstance(name, str) and name in BUILTIN_LOSS_WEIGHT_SCHEDULE_NAMES:
+        return name
+    return "custom"
+
+
+SupportedLossWeightScheduleConfig: TypeAlias = Annotated[
+    Annotated[LinearScheduleConfig, Tag("linear")]
+    | Annotated[CosineScheduleConfig, Tag("cosine")]
+    | Annotated[SigmoidScheduleConfig, Tag("sigmoid")]
+    | Annotated[ExponentialScheduleConfig, Tag("exponential")]
+    | Annotated[PiecewiseLinearScheduleConfig, Tag("piecewise_linear")]
+    | Annotated[PiecewiseConstantScheduleConfig, Tag("piecewise_constant")]
+    | Annotated[CustomScheduleConfig, Tag("custom")],
+    Discriminator(_loss_weight_schedule_discriminator),
+    BeforeValidator(_normalize_loss_weight_schedule_config),
+]
+
+
+def _get_builtin_loss_weight_schedule_names() -> frozenset[str]:
+    """Extract literal names from the typed schedule union."""
+    schedule_union = get_args(SupportedLossWeightScheduleConfig)[0]
+    names: set[str] = set()
+
+    for tagged_config in get_args(schedule_union):
+        config_class = get_args(tagged_config)[0]
+        name_annotation = config_class.model_fields["name"].annotation
+
+        # Literal["linear"] contributes "linear"; custom's str contributes
+        # nothing because get_args(str) is empty.
+        names.update(get_args(name_annotation))
+
+    return frozenset(names)
+
+
+BUILTIN_LOSS_WEIGHT_SCHEDULE_NAMES: Final[frozenset[str]] = (
+    _get_builtin_loss_weight_schedule_names()
+)
+
+
 class TrainingLossTermConfig(_TrainingConfigBaseModel):
     """Configuration for one weighted term in a role-specific loss list.
 
@@ -280,8 +601,9 @@ class TrainingLossTermConfig(_TrainingConfigBaseModel):
     the complete `batch` and `model_output` mappings automatically.
 
     Every configured term must return a scalar tensor. BenchRep multiplies that
-    value by the configured `weight` before adding it to the other configured
-    terms.
+    value by its effective weight before adding it to the other configured
+    terms. The effective weight is `weight`, optionally multiplied by the
+    factor supplied by `weight_schedule`.
 
     Use `benchrep.inspect_registry("<loss-role>_loss")` to list registered
     losses. Pass a registered loss name as the second argument to inspect its
@@ -344,6 +666,19 @@ class TrainingLossTermConfig(_TrainingConfigBaseModel):
         },
     )
 
+    weight_schedule: SupportedLossWeightScheduleConfig | None = Field(
+        default=None,
+        description=(
+            "Optional schedule multiplying the configured base weight. "
+            "Effective weight equals `weight * schedule_factor`; factors "
+            "must be finite and nonnegative and may exceed 1."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses the configured weight unchanged.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
+
     params: dict[str, Any] = Field(
         default_factory=dict,
         description=(
@@ -389,6 +724,10 @@ LossRoleTerms: TypeAlias = Annotated[
 ]
 
 
+
+# -------------------------
+# Optimizer configuration
+# -------------------------
 class TrainingOptimizerConfig(NamedConfig):
     """Selects and configures an optimizer from the optimizer registry.
 
