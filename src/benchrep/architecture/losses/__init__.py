@@ -12,6 +12,16 @@ from benchrep.architecture.losses.composite_model_contracts import (
     LossComponent,
     LossTensorPort,
 )
+from benchrep.architecture.losses.weight_schedules import (
+    LossWeightSchedule,
+    LinearSchedule,
+    CosineSchedule,
+    SigmoidSchedule,
+    ExponentialSchedule,
+    PiecewiseLinearSchedule,
+    PiecewiseConstantSchedule,
+    CyclicSchedule,
+)
 
 __all__ = [
     "LossTerm",
@@ -24,4 +34,12 @@ __all__ = [
     "BaseCustomObjectiveLoss",
     "LossComponent",
     "LossTensorPort",
+    "LossWeightSchedule",
+    "LinearSchedule",
+    "CosineSchedule",
+    "SigmoidSchedule",
+    "ExponentialSchedule",
+    "PiecewiseLinearSchedule",
+    "PiecewiseConstantSchedule",
+    "CyclicSchedule",
 ]

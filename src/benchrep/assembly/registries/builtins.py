@@ -83,6 +83,7 @@ def register_builtins() -> None:
             CLASSIFICATION_LOSSES,
             CONTRASTIVE_LOSSES,
             REGRESSION_LOSSES,
+            LOSS_WEIGHT_SCHEDULES,
             OPTIMIZERS,
             LOGGERS,
             CALLBACKS,
@@ -132,6 +133,14 @@ def register_builtins() -> None:
             TripletMarginContrastiveLoss,
             CrossEntropyClassificationLoss,
             MSERegressionLoss,
+        )
+        from benchrep.architecture.losses.weight_schedules import (
+            LinearSchedule,
+            CosineSchedule,
+            SigmoidSchedule,
+            ExponentialSchedule,
+            PiecewiseLinearSchedule,
+            PiecewiseConstantSchedule,
         )
         from benchrep.architecture.models import (
             Autoencoder,
@@ -530,6 +539,25 @@ def register_builtins() -> None:
             ),
             "l2",
             "mean_squared_error",
+        )
+
+        LOSS_WEIGHT_SCHEDULES._register_builtin(
+            "linear", LinearSchedule,
+        )
+        LOSS_WEIGHT_SCHEDULES._register_builtin(
+            "cosine", CosineSchedule,
+        )
+        LOSS_WEIGHT_SCHEDULES._register_builtin(
+            "sigmoid", SigmoidSchedule,
+        )
+        LOSS_WEIGHT_SCHEDULES._register_builtin(
+            "exponential", ExponentialSchedule,
+        )
+        LOSS_WEIGHT_SCHEDULES._register_builtin(
+            "piecewise_linear", PiecewiseLinearSchedule,
+        )
+        LOSS_WEIGHT_SCHEDULES._register_builtin(
+            "piecewise_constant", PiecewiseConstantSchedule,
         )
 
         OPTIMIZERS._register_builtin("adam", torch.optim.Adam)

@@ -441,6 +441,7 @@ ARCHITECTURE_REGISTRIES_BY_KIND: Final[dict[str, Registry]] = {
 }
 
 # Training
+LOSS_WEIGHT_SCHEDULES = Registry("loss weight schedule")
 OPTIMIZERS = Registry("optimizer")
 LOGGERS = Registry("logger")
 CALLBACKS = Registry("callback")
