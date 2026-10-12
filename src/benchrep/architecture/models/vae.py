@@ -253,7 +253,11 @@ class VAE(BenchRepVAEModel):
                         f"scalar tensor, got shape {tuple(raw_loss.shape)}."
                     )
 
-                weighted_loss = loss_term.weight * raw_loss
+                effective_weight = loss_term.effective_weight(
+                    epoch=self.current_epoch,
+                    step=self.global_step,
+                )
+                weighted_loss = effective_weight * raw_loss
                 total_loss = total_loss + weighted_loss
 
                 self.log(
@@ -270,6 +274,15 @@ class VAE(BenchRepVAEModel):
                     weighted_loss,
                     on_step=stage == "train",
                     on_epoch=True,
+                    prog_bar=False,
+                    batch_size=batch_size,
+                )
+
+                self.log(
+                    f"{stage}/loss_weights/{role}/{loss_id}",
+                    effective_weight,
+                    on_step=stage == "train",
+                    on_epoch=stage != "train",
                     prog_bar=False,
                     batch_size=batch_size,
                 )

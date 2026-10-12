@@ -311,7 +311,11 @@ class CompositeModel(L.LightningModule):
                 loss_id=loss_spec.loss_id,
             )
 
-            weighted_loss = loss_term.weight * raw_loss
+            effective_weight = loss_term.effective_weight(
+                epoch=self.current_epoch,
+                step=self.global_step,
+            )
+            weighted_loss = effective_weight * raw_loss
 
             if total_loss is None:
                 total_loss = weighted_loss
@@ -334,6 +338,16 @@ class CompositeModel(L.LightningModule):
                 weighted_loss,
                 on_step=stage == "train",
                 on_epoch=True,
+                prog_bar=False,
+                batch_size=batch_size,
+            )
+
+            self.log(
+                f"{stage}/loss_weights/{loss_spec.loss_role}/"
+                f"{loss_spec.loss_id}",
+                effective_weight,
+                on_step=stage == "train",
+                on_epoch=stage != "train",
                 prog_bar=False,
                 batch_size=batch_size,
             )
