@@ -179,12 +179,18 @@ optimizer:
   name: adam
   params:
     lr: 0.001
+  lr_scheduler:
+    name: step
+    params:
+      step_size: 1
+      gamma: 0.5
+    interval: epoch
 
 trainer:
   max_epochs: 10
   accelerator: auto
   devices: auto
-  log_every_n_steps: 20
+  log_every_n_steps: 1
   deterministic: false
   benchmark: false
   precision: 32-true
