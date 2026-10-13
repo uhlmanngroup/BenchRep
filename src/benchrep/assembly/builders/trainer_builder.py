@@ -16,6 +16,8 @@ from lightning.pytorch.callbacks import (
 from lightning.pytorch.loggers import Logger, WandbLogger
 from lightning.pytorch.utilities.exceptions import SIGTERMException
 
+import torch
+
 from benchrep.records import get_run_logger
 from benchrep.assembly.registries.core import CALLBACKS, LOGGERS
 from benchrep.assembly.schemas import (
@@ -184,7 +186,10 @@ def build_trainer(
             for callback in additional_callbacks
         )
 
-        callbacks: list[Callback] = [checkpoint_callback]
+        callbacks: list[Callback] = [
+            checkpoint_callback,
+            _LearningRateLogger(),
+        ]
 
         if (
                 trainer_params.get("enable_model_summary", True)
@@ -406,6 +411,30 @@ def _build_checkpoint_callback(
         save_last=checkpoint_config.save_last,
         save_on_exception=True,
     )
+
+
+class _LearningRateLogger(Callback):
+    """Record each parameter group's LR before optimizer updates."""
+
+    def on_before_optimizer_step(
+        self,
+        trainer: L.Trainer,
+        pl_module: L.LightningModule,
+        optimizer: torch.optim.Optimizer,
+    ) -> None:
+        if not trainer.loggers:
+            return
+
+        for group_index, parameter_group in enumerate(optimizer.param_groups):
+            pl_module.log(
+                f"lr/group_{group_index}",
+                float(parameter_group["lr"]),
+                on_step=True,
+                on_epoch=False,
+                prog_bar=False,
+                logger=True,
+                sync_dist=False,
+            )
 
 
 class _BenchRepModelCheckpoint(ModelCheckpoint):
