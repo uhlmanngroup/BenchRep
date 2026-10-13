@@ -123,18 +123,7 @@ class VAE(BenchRepVAEModel):
             else None
         )
 
-        self.save_hyperparameters(
-            ignore=[
-                "encoder",
-                "decoder",
-                "variational_head",
-                "reconstruction_losses",
-                "regularization_losses",
-                "custom_objective_losses",
-                "optimizer_factory",
-                "prediction_reconstruction_latent_source",
-            ]
-        )
+        self.save_hyperparameters("prediction_reconstruction_latent_source")
 
     def forward(
             self,

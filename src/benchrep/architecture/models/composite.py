@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping
+from dataclasses import asdict
+import pickle
 from typing import Any, TYPE_CHECKING
+import warnings
 
 import lightning as L
 import torch
@@ -85,6 +88,23 @@ class CompositeModel(L.LightningModule):
         self.losses_by_role = nn.ModuleDict(
             loss_term_dicts_by_role
         )
+
+        # Capture architecture provenance only if conversion and
+        # serialization succeed.
+        try:
+            model_spec_metadata = asdict(model_spec)
+            pickle.dumps(model_spec_metadata)
+        except Exception as exc:
+            warnings.warn(
+                "Skipping composite model-spec hyperparameters: "
+                f"{type(exc).__name__}: {exc}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        else:
+            self.save_hyperparameters({
+                "model_spec": model_spec_metadata,
+            })
 
     def forward(
         self,

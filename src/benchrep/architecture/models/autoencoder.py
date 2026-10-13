@@ -78,16 +78,6 @@ class Autoencoder(BenchRepAutoencoderModel):
             else None
         )
 
-        self.save_hyperparameters(
-            ignore=[
-                "encoder",
-                "decoder",
-                "reconstruction_losses",
-                "custom_objective_losses",
-                "optimizer_factory",
-            ]
-        )
-
     def forward(self, x: torch.Tensor) -> AutoencoderForwardOutput:
         z = self.encode(x)
         reconstruction = self.decode(z)
