@@ -85,6 +85,7 @@ def register_builtins() -> None:
             REGRESSION_LOSSES,
             LOSS_WEIGHT_SCHEDULES,
             OPTIMIZERS,
+            LR_SCHEDULERS,
             LOGGERS,
             CALLBACKS,
             EVAL_REDUCTIONS,
@@ -563,6 +564,30 @@ def register_builtins() -> None:
         OPTIMIZERS._register_builtin("adam", torch.optim.Adam)
         OPTIMIZERS._register_builtin("adamw", torch.optim.AdamW)
         OPTIMIZERS._register_builtin("sgd", torch.optim.SGD)
+
+        lr_scheduler_builtins = (
+            ("constant", torch.optim.lr_scheduler.ConstantLR),
+            ("linear", torch.optim.lr_scheduler.LinearLR),
+            ("step", torch.optim.lr_scheduler.StepLR),
+            ("multi_step", torch.optim.lr_scheduler.MultiStepLR),
+            ("exponential", torch.optim.lr_scheduler.ExponentialLR),
+            ("polynomial", torch.optim.lr_scheduler.PolynomialLR),
+            ("cosine_annealing", torch.optim.lr_scheduler.CosineAnnealingLR),
+            (
+                "cosine_annealing_warm_restarts",
+                torch.optim.lr_scheduler.CosineAnnealingWarmRestarts,
+            ),
+            ("cyclic", torch.optim.lr_scheduler.CyclicLR),
+            ("one_cycle", torch.optim.lr_scheduler.OneCycleLR),
+            ("reduce_on_plateau", torch.optim.lr_scheduler.ReduceLROnPlateau),
+        )
+
+        for name, scheduler_class in lr_scheduler_builtins:
+            LR_SCHEDULERS._register_builtin(
+                name,
+                scheduler_class,
+                scheduler_class.__name__,
+            )
 
         LOGGERS._register_builtin("csv", CSVLogger, "csvlogger")
         LOGGERS._register_builtin("wandb", WandbLogger, "wandblogger")

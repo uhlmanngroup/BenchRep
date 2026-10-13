@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from typing import Literal
+from typing import Any, Literal
 
 import torch
 from torch import nn
@@ -52,6 +52,9 @@ class VAE(BenchRepVAEModel):
         regularization_losses: dict[str, LossTerm],
         custom_objective_losses: dict[str, LossTerm],
         optimizer_factory: Callable[[Iterable[nn.Parameter]], torch.optim.Optimizer],
+        lr_scheduler_factory: (
+                Callable[[torch.optim.Optimizer], dict[str, Any]] | None
+        ) = None,
         prediction_reconstruction_latent_source: Literal["mean", "sample"] = "mean",
     ) -> None:
         super().__init__()
@@ -82,6 +85,7 @@ class VAE(BenchRepVAEModel):
         self.encoder = encoder
         self.decoder = decoder
         self.optimizer_factory = optimizer_factory
+        self.lr_scheduler_factory = lr_scheduler_factory
 
         self.variational_head = variational_head
 
@@ -185,8 +189,18 @@ class VAE(BenchRepVAEModel):
             metadata=batch.get("metadata"),
         )
 
-    def configure_optimizers(self) -> torch.optim.Optimizer:
-        return self.optimizer_factory(self.parameters())
+    def configure_optimizers(
+            self,
+    ) -> torch.optim.Optimizer | dict[str, Any]:
+        optimizer = self.optimizer_factory(self.parameters())
+
+        if self.lr_scheduler_factory is None:
+            return optimizer
+
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": self.lr_scheduler_factory(optimizer),
+        }
 
     def _compute_loss_step(self, batch: AutoencoderBatch, stage: str) -> torch.Tensor:
         x = self._get_input_from_batch(batch)

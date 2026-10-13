@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import inspect
+from typing import Any
 from collections.abc import Callable, Iterable
 
 import torch
 from torch import nn
 
 from benchrep.assembly.registries.utils import normalize_name
-from benchrep.assembly.schemas import TrainingOptimizerConfig
-from benchrep.assembly.registries.core import OPTIMIZERS
+from benchrep.assembly.schemas import (
+    TrainingOptimizerConfig,
+    TrainingLRSchedulerConfig,
+)
+from benchrep.assembly.registries.core import OPTIMIZERS, LR_SCHEDULERS
 
 
 def build_optimizer_factory(
@@ -57,3 +62,76 @@ def build_optimizer_factory(
         return optimizer_class(parameters, **optimizer_params)
 
     return optimizer_factory
+
+
+def build_lr_scheduler_factory(
+    scheduler_config: TrainingLRSchedulerConfig,
+) -> Callable[[torch.optim.Optimizer], dict[str, Any]]:
+    """Resolve a scheduler now and construct it once its optimizer exists.
+
+    The returned factory produces Lightning's scheduler configuration,
+    including the execution interval and optional monitored metric.
+    """
+    config_path = "config.optimizer.lr_scheduler"
+    scheduler_name = normalize_name(
+        scheduler_config.name,
+        field_name=f"{config_path}.name",
+    )
+    scheduler_constructor = LR_SCHEDULERS.get(scheduler_name)
+    scheduler_params = dict(scheduler_config.params)
+
+    # Validate the call shape without constructing a scheduler or optimizer.
+    try:
+        inspect.signature(scheduler_constructor).bind(
+            None, **scheduler_params
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"{config_path}: invalid constructor arguments for "
+            f"{scheduler_name!r}: {exc}"
+        ) from exc
+
+    interval = scheduler_config.interval
+    frequency = scheduler_config.frequency
+    monitor = scheduler_config.monitor
+
+    def scheduler_factory(
+        optimizer: torch.optim.Optimizer,
+    ) -> dict[str, Any]:
+        scheduler = scheduler_constructor(optimizer, **scheduler_params)
+
+        is_plateau = isinstance(
+            scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau
+        )
+        if not isinstance(
+            scheduler, torch.optim.lr_scheduler.LRScheduler
+        ) and not is_plateau:
+            raise TypeError(
+                f"{config_path}: {scheduler_name!r} must return a "
+                "PyTorch LR scheduler."
+            )
+
+        if scheduler.optimizer is not optimizer:
+            raise ValueError(
+                f"{config_path}: the scheduler must use the optimizer "
+                "supplied by BenchRep."
+            )
+
+        if is_plateau and (monitor is None or not monitor.strip()):
+            raise ValueError(
+                f"{config_path}.monitor is required for "
+                "ReduceLROnPlateau."
+            )
+
+        scheduler_settings: dict[str, Any] = {
+            "scheduler": scheduler,
+            "interval": interval,
+            "frequency": frequency,
+            "reduce_on_plateau": is_plateau,
+        }
+        if monitor is not None:
+            scheduler_settings["monitor"] = monitor
+
+        return scheduler_settings
+
+    return scheduler_factory

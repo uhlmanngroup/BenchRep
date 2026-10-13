@@ -728,6 +728,47 @@ LossRoleTerms: TypeAlias = Annotated[
 # -------------------------
 # Optimizer configuration
 # -------------------------
+class TrainingLRSchedulerConfig(NamedConfig):
+    """Configure a registered LR scheduler attached to the run's optimizer.
+
+    `params` are scheduler constructor kwargs, excluding `optimizer`, which
+    BenchRep supplies. Built-ins and custom factories use the same contract.
+
+    `interval` and `frequency` control when Lightning advances the scheduler.
+    `monitor` names the logged metric required by ReduceLROnPlateau.
+    """
+
+    interval: Literal["epoch", "step"] = Field(
+        default="epoch",
+        description="Whether to advance by epoch or optimizer step.",
+    )
+
+    frequency: int = Field(
+        default=1,
+        strict=True,
+        gt=0,
+        description="Number of intervals between scheduler updates.",
+    )
+
+    monitor: str | None = Field(
+        default=None,
+        min_length=1,
+        description="Logged metric passed to a metric-driven scheduler.",
+    )
+
+    @field_validator("params")
+    @classmethod
+    def reject_optimizer_override(
+        cls, value: dict[str, Any]
+    ) -> dict[str, Any]:
+        if "optimizer" in value:
+            raise ValueError(
+                "`optimizer` is supplied by BenchRep and cannot appear "
+                "in scheduler params."
+            )
+        return value
+
+
 class TrainingOptimizerConfig(NamedConfig):
     """Selects and configures an optimizer from the optimizer registry.
 
@@ -746,6 +787,15 @@ class TrainingOptimizerConfig(NamedConfig):
     `MyOptimizer(model.parameters(), **params)`. They must be registered again
     when reconstructing the model in a linked prediction process.
     """
+
+    lr_scheduler: TrainingLRSchedulerConfig | None = Field(
+        default=None,
+        description="Optional LR scheduler attached to this optimizer.",
+        json_schema_extra={
+            "omit_behavior": "No LR scheduler is constructed.",
+            "null_behavior": "Equivalent to omission.",
+        },
+    )
 
 
 # -------------------------

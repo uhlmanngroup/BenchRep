@@ -17,7 +17,10 @@ from benchrep.architecture.models import (
     CompositeModel,
 )
 from benchrep.assembly.builders.loss_builder import build_loss_terms
-from benchrep.assembly.builders.optimizer_builder import build_optimizer_factory
+from benchrep.assembly.builders.optimizer_builder import (
+    build_optimizer_factory,
+    build_lr_scheduler_factory,
+)
 from benchrep.assembly.registries.utils import normalize_name
 from benchrep.assembly.schemas import (
     TrainingDecoderConfig,
@@ -225,10 +228,23 @@ def build_autoencoder(
         run_log.info("Using provided decoder: %s",
                      type(decoder).__name__)
 
+    lr_scheduler_factory = None
     if isinstance(optimizer, TrainingOptimizerConfig):
         optimizer_name = optimizer.name
         optimizer_cls = OPTIMIZERS.get(optimizer_name) # Use registry as optimizer is built as a factory
         optimizer_factory = build_optimizer_factory(optimizer)
+        if optimizer.lr_scheduler is not None:
+            lr_scheduler_factory = build_lr_scheduler_factory(
+                optimizer.lr_scheduler
+            )
+            run_log.info(
+                "Built LR scheduler factory from config: %s "
+                "(interval=%s, frequency=%s)",
+                optimizer.lr_scheduler.name,
+                optimizer.lr_scheduler.interval,
+                optimizer.lr_scheduler.frequency,
+            )
+
         run_log.info("Built optimizer factory from config: %s -> %s",
                      optimizer_name,
                      optimizer_cls.__name__)
@@ -251,6 +267,7 @@ def build_autoencoder(
             {},
         ),
         optimizer_factory=optimizer_factory,
+        lr_scheduler_factory=lr_scheduler_factory,
     )
 
 
@@ -297,10 +314,23 @@ def build_vae(
         run_log.info("Using provided decoder: %s",
                      type(decoder).__name__)
 
+    lr_scheduler_factory = None
     if isinstance(optimizer, TrainingOptimizerConfig):
         optimizer_name = optimizer.name
         optimizer_cls = OPTIMIZERS.get(optimizer_name) # Use registry as optimizer is built as a factory
         optimizer_factory = build_optimizer_factory(optimizer)
+        if optimizer.lr_scheduler is not None:
+            lr_scheduler_factory = build_lr_scheduler_factory(
+                optimizer.lr_scheduler
+            )
+            run_log.info(
+                "Built LR scheduler factory from config: %s "
+                "(interval=%s, frequency=%s)",
+                optimizer.lr_scheduler.name,
+                optimizer.lr_scheduler.interval,
+                optimizer.lr_scheduler.frequency,
+            )
+
         run_log.info("Built optimizer factory from config: %s -> %s",
                      optimizer_name,
                      optimizer_cls.__name__)
@@ -357,6 +387,7 @@ def build_vae(
             {},
         ),
         optimizer_factory=optimizer_factory,
+        lr_scheduler_factory=lr_scheduler_factory,
         prediction_reconstruction_latent_source=(
             prediction_reconstruction_latent_source
         ),
@@ -408,10 +439,22 @@ def build_composite(
     losses_by_role = build_loss_terms(loss_specs)
 
     # Build optimizer factory
+    lr_scheduler_factory = None
     if isinstance(optimizer, TrainingOptimizerConfig):
         optimizer_name = optimizer.name
         optimizer_class = OPTIMIZERS.get(optimizer_name)
         optimizer_factory = build_optimizer_factory(optimizer)
+        if optimizer.lr_scheduler is not None:
+            lr_scheduler_factory = build_lr_scheduler_factory(
+                optimizer.lr_scheduler
+            )
+            run_log.info(
+                "Built LR scheduler factory from config: %s "
+                "(interval=%s, frequency=%s)",
+                optimizer.lr_scheduler.name,
+                optimizer.lr_scheduler.interval,
+                optimizer.lr_scheduler.frequency,
+            )
 
         run_log.info(
             "Built optimizer factory from config: %s -> %s",
@@ -436,4 +479,5 @@ def build_composite(
         components_by_id=components_by_id,
         losses_by_role=losses_by_role,
         optimizer_factory=optimizer_factory,
+        lr_scheduler_factory=lr_scheduler_factory,
     )

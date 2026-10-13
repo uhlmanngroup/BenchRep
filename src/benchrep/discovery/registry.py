@@ -20,6 +20,7 @@ from benchrep.assembly.registries.core import (
     CUSTOM_OBJECTIVE_LOSSES,
     LOSS_WEIGHT_SCHEDULES,
     OPTIMIZERS,
+    LR_SCHEDULERS,
     LOGGERS,
     CALLBACKS,
     EVAL_REDUCTIONS,
@@ -240,6 +241,28 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
             "The registered callable must accept model parameters as its first argument "
             "and the configured `params` as keyword arguments, and return a "
             "`torch.optim.Optimizer`."
+        ),
+    ),
+    "lr_scheduler": ComponentRegistryInfo(
+        symbol="LR_SCHEDULERS",
+        registry=LR_SCHEDULERS,
+        runtime_instance_override_supported=False,
+        config_locations=("TrainingConfig.optimizer.lr_scheduler",),
+        contract=(
+            "The registered class or factory is called as "
+            "`factory(optimizer, **params)`, where `optimizer` is the "
+            "optimizer BenchRep created for training. It must return a "
+            "`torch.optim.lr_scheduler.LRScheduler` or "
+            "`ReduceLROnPlateau` instance constructed with that same "
+            "optimizer. The scheduler stores a reference to it; it does "
+            "not create or replace the optimizer. "
+            "Lightning uses the optimizer to update model parameters "
+            "and calls the scheduler to update that optimizer's learning "
+            "rate. Lightning also saves and restores scheduler state. "
+            "`interval`, `frequency`, and `monitor` control scheduler "
+            "execution and are not passed to the constructor. "
+            "If the returned scheduler is a `ReduceLROnPlateau` instance, "
+            "`monitor` must name the logged metric it should track."
         ),
     ),
     "logger": ComponentRegistryInfo(

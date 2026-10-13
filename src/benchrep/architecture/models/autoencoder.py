@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
+from typing import Any
 
 import torch
 from torch import nn
@@ -32,6 +33,9 @@ class Autoencoder(BenchRepAutoencoderModel):
         reconstruction_losses: dict[str, LossTerm],
         custom_objective_losses: dict[str, LossTerm],
         optimizer_factory: Callable[[Iterable[nn.Parameter]], torch.optim.Optimizer],
+        lr_scheduler_factory: (
+                Callable[[torch.optim.Optimizer], dict[str, Any]] | None
+        ) = None,
     ) -> None:
         super().__init__()
 
@@ -53,6 +57,7 @@ class Autoencoder(BenchRepAutoencoderModel):
         self.encoder = encoder
         self.decoder = decoder
         self.optimizer_factory = optimizer_factory
+        self.lr_scheduler_factory = lr_scheduler_factory
 
         if not reconstruction_losses and not custom_objective_losses:
             raise ValueError(
@@ -114,8 +119,18 @@ class Autoencoder(BenchRepAutoencoderModel):
             metadata=batch.get("metadata"),
         )
 
-    def configure_optimizers(self) -> torch.optim.Optimizer:
-        return self.optimizer_factory(self.parameters())
+    def configure_optimizers(
+            self,
+    ) -> torch.optim.Optimizer | dict[str, Any]:
+        optimizer = self.optimizer_factory(self.parameters())
+
+        if self.lr_scheduler_factory is None:
+            return optimizer
+
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": self.lr_scheduler_factory(optimizer),
+        }
 
     def _compute_loss_step(self, batch: AutoencoderBatch, stage: str) -> torch.Tensor:
         x = self._get_input_from_batch(batch)

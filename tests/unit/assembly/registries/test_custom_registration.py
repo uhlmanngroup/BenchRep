@@ -21,6 +21,7 @@ EXPECTED_CUSTOM_REGISTRATION_POLICY = {
     "custom_objective_loss": True,
     "loss_weight_schedule": True,
     "optimizer": True,
+    "lr_scheduler": True,
     "logger": True,
     "callback": True,
     "reduction": False,

@@ -51,6 +51,9 @@ class CompositeModel(L.LightningModule):
             [Iterable[nn.Parameter]],
             torch.optim.Optimizer,
         ],
+        lr_scheduler_factory: (
+                Callable[[torch.optim.Optimizer], dict[str, Any]] | None
+        ) = None,
     ) -> None:
         super().__init__()
 
@@ -74,6 +77,7 @@ class CompositeModel(L.LightningModule):
         )
         self.components_by_id = nn.ModuleDict(components_by_id)
         self.optimizer_factory = optimizer_factory
+        self.lr_scheduler_factory = lr_scheduler_factory
 
         # Register loss modules by role so any learnable loss parameters
         # participate in optimization, device movement, and checkpointing.
@@ -244,8 +248,18 @@ class CompositeModel(L.LightningModule):
             batch_metadata=batch_metadata,
         )
 
-    def configure_optimizers(self) -> torch.optim.Optimizer:
-        return self.optimizer_factory(self.parameters())
+    def configure_optimizers(
+            self,
+    ) -> torch.optim.Optimizer | dict[str, Any]:
+        optimizer = self.optimizer_factory(self.parameters())
+
+        if self.lr_scheduler_factory is None:
+            return optimizer
+
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": self.lr_scheduler_factory(optimizer),
+        }
 
     def _compute_loss_step(
         self,
