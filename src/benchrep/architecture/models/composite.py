@@ -343,7 +343,7 @@ class CompositeModel(L.LightningModule):
                 total_loss = total_loss + weighted_loss
 
             self.log(
-                f"{stage}/{loss_spec.loss_role}/"
+                f"losses/{stage}/{loss_spec.loss_role}/"
                 f"{loss_spec.loss_id}",
                 raw_loss,
                 on_step=stage == "train",
@@ -353,7 +353,7 @@ class CompositeModel(L.LightningModule):
             )
 
             self.log(
-                f"{stage}/{loss_spec.loss_role}/"
+                f"losses/{stage}/{loss_spec.loss_role}/"
                 f"{loss_spec.loss_id}_weighted",
                 weighted_loss,
                 on_step=stage == "train",
@@ -363,7 +363,7 @@ class CompositeModel(L.LightningModule):
             )
 
             self.log(
-                f"{stage}/loss_weights/{loss_spec.loss_role}/"
+                f"loss_weights/{stage}/{loss_spec.loss_role}/"
                 f"{loss_spec.loss_id}",
                 effective_weight,
                 on_step=stage == "train",
@@ -379,7 +379,7 @@ class CompositeModel(L.LightningModule):
             )
 
         self.log(
-            f"{stage}/loss",
+            f"losses/{stage}/total_weighted_loss",
             total_loss,
             on_step=stage == "train",
             on_epoch=True,

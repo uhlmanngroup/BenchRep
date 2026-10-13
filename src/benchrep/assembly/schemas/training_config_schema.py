@@ -1013,11 +1013,11 @@ class TrainingCheckpointConfig(_TrainingConfigBaseModel):
     """
 
     monitor: str | None = Field(
-        default="val/loss",
+        default="losses/val/total_weighted_loss",
         min_length=1,
         description="Metric key used to rank checkpoints.",
         json_schema_extra={
-            "omit_behavior": "Monitors `val/loss`.",
+            "omit_behavior": "Monitors `losses/val/total_weighted_loss`.",
             "null_behavior": (
                 "Disables metric-based ranking. BenchRep forces `save_top_k=0`, "
                 "ignores `mode` and `filename`, and requires `save_last=True`."
@@ -1120,11 +1120,11 @@ class TrainingEarlyStoppingConfig(_TrainingConfigBaseModel):
     """
 
     monitor: str = Field(
-        default="val/loss",
+        default="losses/val/total_weighted_loss",
         min_length=1,
         description="Metric key monitored for early stopping.",
         json_schema_extra={
-            "omit_behavior": "Monitors `val/loss`.",
+            "omit_behavior": "Monitors `losses/val/total_weighted_loss`.",
             "null_behavior": "Not allowed.",
             "notes": [
                 "The model must log a metric with this exact key.",

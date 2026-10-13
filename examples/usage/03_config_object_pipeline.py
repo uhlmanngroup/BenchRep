@@ -178,7 +178,7 @@ def build_training_config() -> TrainingConfig:
             precision="32-true",
         ),
         checkpointing=TrainingCheckpointConfig(
-            monitor="val/loss",
+            monitor="losses/val/total_weighted_loss",
             mode="min",
             save_top_k=1,
             save_last=True,

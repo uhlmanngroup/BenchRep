@@ -589,7 +589,7 @@ def _make_training_config(
     raw["logger"] = None
     raw["checkpointing"].update(
         {
-            "monitor": "val/loss",
+            "monitor": "losses/val/total_weighted_loss",
             "mode": "min",
             "save_top_k": 1,
             "save_last": True,

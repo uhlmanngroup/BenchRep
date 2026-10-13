@@ -91,7 +91,7 @@ logger:
     log_model: False
 
 checkpointing: # optional
-  monitor: val/loss
+  monitor: losses/val/total_weighted_loss
   mode: min
   save_top_k: 1
   save_last: True

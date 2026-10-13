@@ -410,7 +410,7 @@ def test_training_callbacks_are_not_inherited_by_prediction(
                 },
             ),
             "early_stopping": TrainingEarlyStoppingConfig(
-                monitor="val/loss",
+                monitor="losses/val/total_weighted_loss",
                 mode="min",
                 patience=3,
             ),
@@ -437,7 +437,7 @@ def test_training_callbacks_are_not_inherited_by_prediction(
     ]
 
     assert len(early_stopping_callbacks) == 1
-    assert early_stopping_callbacks[0].monitor == "val/loss"
+    assert early_stopping_callbacks[0].monitor == "losses/val/total_weighted_loss"
     assert early_stopping_callbacks[0].mode == "min"
     assert early_stopping_callbacks[0].patience == 3
 

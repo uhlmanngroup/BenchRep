@@ -64,7 +64,7 @@ class CompatibleExternalAutoencoder(BenchRepAutoencoderModel):
         loss = torch.mean((restored_images - images) ** 2)
 
         self.log(
-            "train/loss",
+            "losses/train/total_weighted_loss",
             loss,
             batch_size=images.shape[0],
         )
@@ -81,7 +81,7 @@ class CompatibleExternalAutoencoder(BenchRepAutoencoderModel):
         loss = torch.mean((restored_images - images) ** 2)
 
         self.log(
-            "val/loss",
+            "losses/val/total_weighted_loss",
             loss,
             batch_size=images.shape[0],
         )
@@ -165,7 +165,7 @@ class PrivateBatchExternalAutoencoder(BenchRepAutoencoderModel):
         loss = torch.mean(torch.abs(result["restored"] - image))
 
         self.log(
-            "train/loss",
+            "losses/train/total_weighted_loss",
             loss,
             batch_size=image.shape[0],
         )
@@ -182,7 +182,7 @@ class PrivateBatchExternalAutoencoder(BenchRepAutoencoderModel):
         loss = torch.mean(torch.abs(result["restored"] - image))
 
         self.log(
-            "val/loss",
+            "losses/val/total_weighted_loss",
             loss,
             batch_size=image.shape[0],
         )

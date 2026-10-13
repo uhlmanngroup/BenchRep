@@ -238,7 +238,7 @@ def make_training_logger_config() -> TrainingLoggerConfig:
 
 def make_training_checkpoint_config() -> TrainingCheckpointConfig:
     return TrainingCheckpointConfig(
-        monitor="val/loss",
+        monitor="losses/val/total_weighted_loss",
         mode="min",
         save_top_k=2,
         save_last=True,

@@ -250,7 +250,7 @@ class VAE(BenchRepVAEModel):
                 total_loss = total_loss + weighted_loss
 
                 self.log(
-                    f"{stage}/{role}/{loss_id}",
+                    f"losses/{stage}/{role}/{loss_id}",
                     raw_loss,
                     on_step=stage == "train",
                     on_epoch=True,
@@ -259,7 +259,7 @@ class VAE(BenchRepVAEModel):
                 )
 
                 self.log(
-                    f"{stage}/{role}/{loss_id}_weighted",
+                    f"losses/{stage}/{role}/{loss_id}_weighted",
                     weighted_loss,
                     on_step=stage == "train",
                     on_epoch=True,
@@ -268,7 +268,7 @@ class VAE(BenchRepVAEModel):
                 )
 
                 self.log(
-                    f"{stage}/loss_weights/{role}/{loss_id}",
+                    f"loss_weights/{stage}/{role}/{loss_id}",
                     effective_weight,
                     on_step=stage == "train",
                     on_epoch=stage != "train",
@@ -277,7 +277,7 @@ class VAE(BenchRepVAEModel):
                 )
 
         self.log(
-            f"{stage}/loss",
+            f"losses/{stage}/total_weighted_loss",
             total_loss,
             on_step=stage == "train",
             on_epoch=True,

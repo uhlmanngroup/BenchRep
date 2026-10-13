@@ -92,13 +92,13 @@ trainer:
 logger: null
 
 checkpointing:
-  monitor: val/loss
+  monitor: losses/val/total_weighted_loss
   mode: min
   save_top_k: 1
   save_last: true
 
 early_stopping:
-  monitor: val/loss
+  monitor: losses/val/total_weighted_loss
   mode: min
   patience: 5
   min_delta: 0.0001

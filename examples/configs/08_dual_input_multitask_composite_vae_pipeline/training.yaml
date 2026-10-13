@@ -287,7 +287,7 @@ trainer:
 logger: null
 
 checkpointing:
-  monitor: val/loss
+  monitor: losses/val/total_weighted_loss
   mode: min
   save_top_k: 1
   save_last: true
