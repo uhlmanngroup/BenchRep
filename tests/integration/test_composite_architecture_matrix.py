@@ -880,3 +880,133 @@ def _assert_reconstruction_exports(
             "status": "completed",
             "issues": [],
         }
+
+
+def test_gradient_inspection_composite_workflow(tmp_path, monkeypatch):
+    from benchrep.inspection.gradient_norms import (
+        GradientNormInspectionCallback,
+    )
+
+    if "tiny_synthetic" not in DATASETS.keys():
+        DATASETS.register("tiny_synthetic", TinySyntheticDataset)
+
+    monkeypatch.chdir(tmp_path)
+
+    raw = _make_training_config(
+        _dual_encoder_decoder_case()
+    ).model_dump(mode="python")
+
+    # Eight samples, half reserved for validation -> four training batches.
+    raw["datamodule"]["batch_size"] = 1
+    raw["inspection"]["gradient_norms"] = [
+        {
+            "kind": "per_loss",
+            "target": "encoder_a",
+            "losses": ["reconstruction.mse"],
+            "norm_type": "l2",
+            "every_n_batches": 1,
+        },
+        {
+            "kind": "per_loss",
+            "target": "encoder_b",
+            "losses": ["reconstruction.mse"],
+            "norm_type": "l2",
+            "every_n_batches": 1,
+        },
+        {
+            "kind": "optimizer_gradients",
+            "target": "encoder_a",
+            "norm_type": "l2",
+            "every_n_optimizer_steps": 1,
+        },
+    ]
+
+    measurements = {}
+    training_norms = []
+
+    original_log = CompositeModel.log
+    original_optimizer_hook = CompositeModel.on_before_optimizer_step
+
+    def record_log(self, name, value, *args, **kwargs):
+        if name.startswith("grad_norms_wrt_"):
+            measurements.setdefault(name, []).append(
+                (self.training, float(value.detach()))
+            )
+        return original_log(self, name, value, *args, **kwargs)
+
+    def record_training_gradient(self, optimizer):
+        # Independent reference from normal backward, not inspector helpers.
+        gradients = [
+            parameter.grad.detach().reshape(-1)
+            for parameter in self.components_by_id["encoder_a"].parameters()
+            if parameter.grad is not None
+        ]
+        assert gradients
+        training_norms.append(torch.cat(gradients).norm().item())
+        return original_optimizer_hook(self, optimizer)
+
+    monkeypatch.setattr(CompositeModel, "log", record_log)
+    monkeypatch.setattr(
+        CompositeModel,
+        "on_before_optimizer_step",
+        record_training_gradient,
+    )
+
+    with pytest.warns(RuntimeWarning, match="disconnected") as recorded:
+        result = train_composite(
+            full_config_object=TrainingConfig.model_validate(raw),
+        )
+
+    disconnected_warnings = [
+        warning
+        for warning in recorded
+        if "disconnected" in str(warning.message).lower()
+    ]
+    assert len(disconnected_warnings) == 1
+
+    loss_prefix = (
+        "grad_norms_wrt_encoder_a/per_loss/reconstruction/mse/l2"
+    )
+    optimizer_key = "grad_norms_wrt_encoder_a/optimizer/l2"
+
+    assert set(measurements) == {
+        f"{loss_prefix}/raw",
+        f"{loss_prefix}/weighted",
+        optimizer_key,
+    }
+    assert len(training_norms) == 4
+    assert all(value > 0 for value in training_norms)
+
+    # MSE has weight 1, and the other loss only affects branch B.
+    # Thus raw, weighted, and optimizer norms for encoder A must agree.
+    for observations in measurements.values():
+        assert len(observations) == 4
+        assert all(is_training for is_training, _ in observations)
+        assert [value for _, value in observations] == pytest.approx(
+            training_norms, rel=1e-5, abs=1e-7,
+        )
+
+    callbacks = [
+        callback
+        for callback in result.trainer.callbacks
+        if isinstance(callback, GradientNormInspectionCallback)
+    ]
+    assert len(callbacks) == 1
+    assert len(callbacks[0].issues) == 1
+
+    issue = callbacks[0].issues[0]
+    assert "encoder_b" in issue
+    assert "reconstruction.mse" in issue
+    assert "disconnected" in issue.lower()
+
+    reported_issue = f"Warning: {issue}"
+    assert result.status_report.status == "completed_with_warnings"
+    assert result.status_report.issues.count(reported_issue) == 1
+
+    manifest = load_yaml(result.manifest_path)
+    assert (
+        manifest["status_report"]["training"]["issues"].count(reported_issue)
+        == 1
+    )
+
+    assert result.model.gradient_norm_inspector is None
