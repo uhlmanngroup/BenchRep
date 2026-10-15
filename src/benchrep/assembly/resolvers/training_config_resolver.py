@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -11,6 +12,9 @@ from benchrep.assembly.schemas import (
     TrainingDataModuleConfig,
     CompositeModelDeclarationsConfig,
     TrainingTransformPipelineConfig,
+    GradientNormConfig,
+    PerLossGradientNormConfig,
+    OptimizerGradientNormConfig,
 )
 from benchrep.interfaces.model_families import (
     CanonicalModelFamilySpec,
@@ -39,6 +43,19 @@ from benchrep.architecture.composite_model_roles import (
 
 
 @dataclass(frozen=True)
+class GradientNormSpec:
+    """Resolved instructions for one gradient inspection request."""
+
+    kind: Literal["per_loss", "optimizer_gradients"]
+    target: str
+    norm_type: Literal["l1", "l2", "inf"]
+    every_n: int
+
+    # Separate role and identifier rather than reparsing references at runtime.
+    loss_keys: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass(frozen=True)
 class TrainingRunSpec:
     stage: Literal["training"]
     training_config: TrainingConfig
@@ -49,6 +66,7 @@ class TrainingRunSpec:
     run_identity: RunIdentitySpec
     loss_specs: tuple[LossSpec, ...] = ()
     composite_model_spec: CompositeModelSpec | None = None
+    gradient_norm_specs: tuple[GradientNormSpec, ...] = ()
 
 
 def resolve_training_config(
@@ -195,6 +213,47 @@ def resolve_training_config(
                 resolved_config.losses
             )
 
+    gradient_norm_configs = resolved_config.inspection.gradient_norms
+    available_gradient_targets = {"whole_model"}
+
+    if gradient_norm_configs:
+        if model_is_external:
+            # External models do not expose BenchRep's resolved losses
+            # or guarantee canonical component attributes.
+            if any(
+                request.kind == "per_loss"
+                for request in gradient_norm_configs
+            ):
+                raise ValueError(
+                    "Per-loss gradient inspection requires a "
+                    "BenchRep-built model. External models support "
+                    "optimizer-gradient inspection of `whole_model`."
+                )
+
+        elif composite_model_spec is not None:
+            component_ids = set(composite_model_spec.components_by_id)
+
+            if "whole_model" in component_ids:
+                raise ValueError(
+                    "Gradient inspection reserves `whole_model` as a "
+                    "target name, but a composite component has that ID. "
+                    "Rename the component to enable gradient inspection."
+                )
+
+            available_gradient_targets.update(component_ids)
+
+        else:
+            available_gradient_targets.update({"encoder", "decoder"})
+
+            if model_family.name == "vae":
+                available_gradient_targets.add("variational_head")
+
+    gradient_norm_specs = resolve_gradient_norm_configs(
+        gradient_norm_configs,
+        loss_specs=loss_specs,
+        available_targets=available_gradient_targets,
+    )
+
     model_name = _resolve_training_model_name(
         training_config=resolved_config,
         model_family=model_family,
@@ -216,6 +275,7 @@ def resolve_training_config(
         ),
         loss_specs=loss_specs,
         composite_model_spec=composite_model_spec,
+        gradient_norm_specs=gradient_norm_specs,
     )
 
 
@@ -397,3 +457,105 @@ def _resolve_transform_pipelines(
         )
 
     return resolved
+
+
+def resolve_gradient_norm_configs(
+    configs: Sequence[GradientNormConfig],
+    *,
+    loss_specs: Sequence[LossSpec],
+    available_targets: set[str],
+) -> tuple[GradientNormSpec, ...]:
+    """Validate requests and expand loss selections into resolved identities."""
+
+    losses_by_reference = {
+        f"{loss.loss_role}.{loss.loss_id}": (
+            loss.loss_role,
+            loss.loss_id,
+        )
+        for loss in loss_specs
+    }
+
+    resolved: list[GradientNormSpec] = []
+    measurement_sources: dict[tuple[str, ...], str] = {}
+
+    for index, config in enumerate(configs):
+        config_path = f"inspection.gradient_norms[{index}]"
+
+        if not isinstance(
+                config,
+                (PerLossGradientNormConfig, OptimizerGradientNormConfig),
+        ):
+            raise TypeError(
+                f"{config_path}: unsupported config type "
+                f"{type(config).__name__!r}. Expected "
+                "PerLossGradientNormConfig or OptimizerGradientNormConfig."
+            )
+
+        if config.target not in available_targets:
+            raise ValueError(
+                f"{config_path}.target: unknown target {config.target!r}. "
+                f"Available targets: {sorted(available_targets)}."
+            )
+
+        if isinstance(config, PerLossGradientNormConfig):
+            references = (
+                list(losses_by_reference)
+                if config.losses == "all"
+                else config.losses
+            )
+
+            if not references:
+                raise ValueError(
+                    f"{config_path}: no configured losses are available "
+                    "for per-loss inspection."
+                )
+
+            loss_keys = []
+            for reference in references:
+                if reference not in losses_by_reference:
+                    raise ValueError(
+                        f"{config_path}.losses: unknown loss {reference!r}. "
+                        "Available losses: "
+                        f"{sorted(losses_by_reference)}."
+                    )
+                loss_keys.append(losses_by_reference[reference])
+
+            every_n = config.every_n_batches
+            measurement_keys = [
+                (
+                    config.kind,
+                    config.target,
+                    config.norm_type,
+                    role,
+                    loss_id,
+                )
+                for role, loss_id in loss_keys
+            ]
+        else:
+            loss_keys = []
+            every_n = config.every_n_optimizer_steps
+            measurement_keys = [
+                (config.kind, config.target, config.norm_type)
+            ]
+
+        # Reject requests that would write to the same plot,
+        # even if they use different logging frequencies.
+        for key in measurement_keys:
+            if key in measurement_sources:
+                raise ValueError(
+                    f"{config_path}: duplicate gradient measurement {key!r}; "
+                    f"already requested by {measurement_sources[key]}."
+                )
+            measurement_sources[key] = config_path
+
+        resolved.append(
+            GradientNormSpec(
+                kind=config.kind,
+                target=config.target,
+                norm_type=config.norm_type,
+                every_n=every_n,
+                loss_keys=tuple(loss_keys),
+            )
+        )
+
+    return tuple(resolved)

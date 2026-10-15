@@ -1383,8 +1383,87 @@ class TrainingTorchviewConfig(_TrainingConfigBaseModel):
     )
 
 
+class _GradientNormConfig(_TrainingConfigBaseModel):
+    """Shared settings for one gradient-norm inspection request."""
+
+    target: str = Field(
+        min_length=1,
+        description=(
+            "Canonical component role, composite component ID, "
+            "or `whole_model`."
+        ),
+    )
+
+    norm_type: Literal["l1", "l2", "inf"] = Field(
+        default="l2",
+        description=(
+            "l1: sum of absolute gradients; l2: Euclidean norm; "
+            "inf: maximum absolute gradient."
+        ),
+    )
+
+
+class PerLossGradientNormConfig(_GradientNormConfig):
+    """Inspect individual training-batch losses before normal backward.
+
+    Each selected loss produces raw and weighted gradient norms.
+    """
+
+    kind: Literal["per_loss"] = "per_loss"
+
+    losses: Literal["all"] | Annotated[
+        list[
+            Annotated[
+                str,
+                Field(pattern=r"^[^.\s]+\.[^.\s]+$")
+            ]
+        ],
+        Field(min_length=1),
+    ] = Field(
+        default="all",
+        description=(
+            "`all` or selected losses expressed as "
+            "`<role>.<resolved_loss_identifier>`."
+        ),
+    )
+
+    every_n_batches: int = Field(
+        default=1,
+        strict=True,
+        gt=0,
+        description=(
+            "Inspect every N training batches, starting with batch 0 "
+            "of each epoch."
+        ),
+    )
+
+
+class OptimizerGradientNormConfig(_GradientNormConfig):
+    """Inspect stored parameter gradients before the optimizer update,
+     after accumulation and unscaling, before clipping.
+     """
+
+    kind: Literal["optimizer_gradients"] = "optimizer_gradients"
+
+    every_n_optimizer_steps: int = Field(
+        default=1,
+        strict=True,
+        gt=0,
+        description=(
+            "Inspect before every N optimizer updates, starting before "
+            "the first update, using the completed optimizer-step count."
+        ),
+    )
+
+
+GradientNormConfig: TypeAlias = Annotated[
+    PerLossGradientNormConfig | OptimizerGradientNormConfig,
+    Field(discriminator="kind"),
+]
+
+
 class TrainingInspectionConfig(_TrainingConfigBaseModel):
-    """Groups optional, best-effort inspection outputs for a training run."""
+    """Configure optional model-graph export and training diagnostics."""
 
     torchview: TrainingTorchviewConfig = Field(
         default_factory=TrainingTorchviewConfig,
@@ -1396,6 +1475,15 @@ class TrainingInspectionConfig(_TrainingConfigBaseModel):
             "null_behavior": (
                 "Not allowed; set `torchview.enabled=False` to disable export."
             ),
+        },
+    )
+
+    gradient_norms: list[GradientNormConfig] = Field(
+        default_factory=list,
+        description="Gradient-norm inspection requests for training.",
+        json_schema_extra={
+            "omit_behavior": "Gradient-norm inspection is disabled.",
+            "null_behavior": "Not allowed; use an empty list to disable.",
         },
     )
 
