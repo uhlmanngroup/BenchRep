@@ -57,6 +57,8 @@ class CompositeModel(L.LightningModule):
     ) -> None:
         super().__init__()
 
+        self.gradient_norm_inspector = None
+
         _validate_components_match_spec(
             model_spec=model_spec,
             components_by_id=components_by_id,
@@ -197,6 +199,7 @@ class CompositeModel(L.LightningModule):
         return self._compute_loss_step(
             batch,
             stage="train",
+            batch_index=batch_idx,
         )
 
     def validation_step(
@@ -266,6 +269,7 @@ class CompositeModel(L.LightningModule):
         batch: Mapping[str, Any],
         *,
         stage: str,
+        batch_index: int | None = None,
     ) -> torch.Tensor:
         """Execute the model and calculate every configured loss term."""
 
@@ -349,6 +353,18 @@ class CompositeModel(L.LightningModule):
                 epoch=self.current_epoch,
                 step=self.global_step,
             )
+
+            if stage == "train" and self.gradient_norm_inspector is not None:
+                assert batch_index is not None
+                self.gradient_norm_inspector.inspect_loss(
+                    self,
+                    loss_role=loss_spec.loss_role,
+                    loss_id=loss_spec.loss_id,
+                    raw_loss=raw_loss,
+                    effective_weight=effective_weight,
+                    batch_index=batch_index,
+                )
+
             weighted_loss = effective_weight * raw_loss
 
             if total_loss is None:

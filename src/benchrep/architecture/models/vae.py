@@ -59,6 +59,8 @@ class VAE(BenchRepVAEModel):
     ) -> None:
         super().__init__()
 
+        self.gradient_norm_inspector = None
+
         if prediction_reconstruction_latent_source not in {"mean", "sample"}:
             raise ValueError(
                 "prediction_reconstruction_latent_source must be 'mean' or 'sample', "
@@ -162,7 +164,11 @@ class VAE(BenchRepVAEModel):
         return self.decoder(latent)
 
     def training_step(self, batch: AutoencoderBatch, batch_idx: int) -> torch.Tensor:
-        return self._compute_loss_step(batch, stage="train")
+        return self._compute_loss_step(
+            batch,
+            stage="train",
+            batch_index=batch_idx,
+        )
 
     def validation_step(self, batch: AutoencoderBatch, batch_idx: int) -> torch.Tensor:
         return self._compute_loss_step(batch, stage="val")
@@ -202,7 +208,13 @@ class VAE(BenchRepVAEModel):
             "lr_scheduler": self.lr_scheduler_factory(optimizer),
         }
 
-    def _compute_loss_step(self, batch: AutoencoderBatch, stage: str) -> torch.Tensor:
+    def _compute_loss_step(
+            self,
+            batch: AutoencoderBatch,
+            stage: str,
+            *,
+            batch_index: int | None = None,
+    ) -> torch.Tensor:
         x = self._get_input_from_batch(batch)
         output = self(x)
         reconstruction = output["reconstruction"]
@@ -260,6 +272,18 @@ class VAE(BenchRepVAEModel):
                     epoch=self.current_epoch,
                     step=self.global_step,
                 )
+
+                if stage == "train" and self.gradient_norm_inspector is not None:
+                    assert batch_index is not None
+                    self.gradient_norm_inspector.inspect_loss(
+                        self,
+                        loss_role=role,
+                        loss_id=loss_id,
+                        raw_loss=raw_loss,
+                        effective_weight=effective_weight,
+                        batch_index=batch_index,
+                    )
+
                 weighted_loss = effective_weight * raw_loss
                 total_loss = total_loss + weighted_loss
 

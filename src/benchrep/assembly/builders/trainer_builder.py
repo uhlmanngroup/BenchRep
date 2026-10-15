@@ -28,6 +28,7 @@ from benchrep.assembly.schemas import (
     TrainingTrainerConfig,
 )
 from benchrep.runtime import RunContext
+from benchrep.inspection.gradient_norms import GradientNormInspectionCallback
 
 
 _LOGGER_BACKEND_MODULES: dict[str, tuple[str, ...]] = {
@@ -52,6 +53,7 @@ def build_trainer(
         checkpoint_config: TrainingCheckpointConfig | None = None,
         early_stopping_config: TrainingEarlyStoppingConfig | None = None,
         additional_callback_configs: list[TrainingAdditionalCallbackConfig] | None = None,
+        gradient_norm_callback: GradientNormInspectionCallback | None = None,
         max_batches: int | None = None,
 ) -> tuple[
     L.Trainer,
@@ -190,6 +192,9 @@ def build_trainer(
             checkpoint_callback,
             _LearningRateLogger(),
         ]
+
+        if gradient_norm_callback is not None:
+            callbacks.append(gradient_norm_callback)
 
         if (
                 trainer_params.get("enable_model_summary", True)

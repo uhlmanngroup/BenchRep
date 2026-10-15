@@ -39,6 +39,8 @@ class Autoencoder(BenchRepAutoencoderModel):
     ) -> None:
         super().__init__()
 
+        self.gradient_norm_inspector = None
+
         if encoder.output_dim != decoder.input_dim:
             raise ValueError(
                 f"encoder.output_dim must match decoder.input_dim, got "
@@ -98,7 +100,11 @@ class Autoencoder(BenchRepAutoencoderModel):
         return self.decoder(z)
 
     def training_step(self, batch: AutoencoderBatch, batch_idx: int) -> torch.Tensor:
-        return self._compute_loss_step(batch, stage="train")
+        return self._compute_loss_step(
+            batch,
+            stage="train",
+            batch_index=batch_idx,
+        )
 
     def validation_step(self, batch: AutoencoderBatch, batch_idx: int) -> torch.Tensor:
         return self._compute_loss_step(batch, stage="val")
@@ -132,7 +138,13 @@ class Autoencoder(BenchRepAutoencoderModel):
             "lr_scheduler": self.lr_scheduler_factory(optimizer),
         }
 
-    def _compute_loss_step(self, batch: AutoencoderBatch, stage: str) -> torch.Tensor:
+    def _compute_loss_step(
+            self,
+            batch: AutoencoderBatch,
+            stage: str,
+            *,
+            batch_index: int | None = None,
+    ) -> torch.Tensor:
         x = self._get_input_from_batch(batch)
         output = self(x)
         reconstruction = output["reconstruction"]
@@ -181,6 +193,18 @@ class Autoencoder(BenchRepAutoencoderModel):
                     epoch=self.current_epoch,
                     step=self.global_step,
                 )
+
+                if stage == "train" and self.gradient_norm_inspector is not None:
+                    assert batch_index is not None
+                    self.gradient_norm_inspector.inspect_loss(
+                        self,
+                        loss_role=role,
+                        loss_id=loss_id,
+                        raw_loss=raw_loss,
+                        effective_weight=effective_weight,
+                        batch_index=batch_index,
+                    )
+
                 weighted_loss = effective_weight * raw_loss
                 total_loss = total_loss + weighted_loss
 

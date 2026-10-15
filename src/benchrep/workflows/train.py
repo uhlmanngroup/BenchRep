@@ -78,6 +78,7 @@ from benchrep.assembly.resolvers.utils import (
     get_component_override_name,
     resolve_component_source,
 )
+from benchrep.inspection.gradient_norms import GradientNormInspectionCallback
 
 
 @dataclass
@@ -373,6 +374,13 @@ def _train(
         model=model,
     )
 
+    gradient_norm_callback = None
+    if run_spec.gradient_norm_specs:
+        gradient_norm_callback = GradientNormInspectionCallback(
+            model_family=run_spec.model_family.name,
+            gradient_norm_specs=run_spec.gradient_norm_specs,
+        )
+
     trainer, checkpoint_callback, early_stopping_callback = build_trainer(
         trainer_config=resolved_training_config.trainer,
         stage=run_spec.stage,
@@ -381,6 +389,7 @@ def _train(
         checkpoint_config=resolved_training_config.checkpointing,
         early_stopping_config=resolved_training_config.early_stopping,
         additional_callback_configs=resolved_training_config.additional_callbacks,
+        gradient_norm_callback=gradient_norm_callback,
     )
 
     if checkpoint_callback is None:
@@ -500,6 +509,11 @@ def _train(
         *precondition_result.warnings,
         *checkpoint_warnings,
     ]
+    if gradient_norm_callback is not None:
+        training_warnings.extend(gradient_norm_callback.issues)
+
+        for warning in gradient_norm_callback.issues:
+            run_log.warning(warning)
 
     # Automatically export the resolved Composite model specification graph.
     composite_model_spec_graph_path = None
