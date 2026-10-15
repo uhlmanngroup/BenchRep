@@ -189,7 +189,7 @@ optimizer:
 trainer:
   max_epochs: 10
   accelerator: auto
-  devices: auto
+  devices: 1 #auto
   log_every_n_steps: 1
   deterministic: false
   benchmark: false
@@ -216,3 +216,46 @@ inspection:
     enabled: true
     expand_nested: true
     depth: 10
+
+  gradient_norms:
+    # Compare all three losses against their shared encoder.
+    - kind: per_loss
+      losses: all
+      target: image_encoder
+      norm_type: l2
+      every_n_batches: 20
+
+    # Measure reconstruction gradients in the decoder.
+    - kind: per_loss
+      losses:
+        - reconstruction.mse
+      target: image_decoder
+      norm_type: l2
+      every_n_batches: 20
+
+    # Measure classification gradients in its head.
+    - kind: per_loss
+      losses:
+        - classification.cross_entropy
+      target: digit_classifier
+      norm_type: l2
+      every_n_batches: 20
+
+    # Inspect accumulated training gradients before clipping.
+    - kind: optimizer_gradients
+      target: image_encoder
+      norm_type: l2
+      every_n_optimizer_steps: 20
+
+    - kind: optimizer_gradients
+      target: whole_model
+      norm_type: l2
+      every_n_optimizer_steps: 20
+
+    # Intentionally disconnected: KL does not depend on decoder parameters.
+    - kind: per_loss
+      losses:
+        - regularization.gaussian_kl
+      target: image_decoder
+      norm_type: l2
+      every_n_batches: 20
