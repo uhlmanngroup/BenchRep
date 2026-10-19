@@ -8,7 +8,7 @@ from typing import Any
 import lightning as L
 import torch
 
-from benchrep.utils.workflow_utils import PredictionConfigInput, route_config_input
+from benchrep.utils.workflow_utils import PredictionConfigInput
 from benchrep.assembly.config import (
     compose_effective_config,
     SupportedPredictionConfigComponent,
@@ -230,13 +230,9 @@ def _predict(
         training_manifest_path_overridden = False
 
     # Compose, parse, and resolve config
-    config_path, full_config_object = route_config_input(
-        config, PredictionConfig
-    )
     config_composition_result = compose_effective_config(
         schema=PredictionConfig,
-        config_path=config_path,
-        full_config_object=full_config_object,
+        config=config,
         config_components=config_components,
         external_model=model_is_external,
         external_datamodule=datamodule_is_external,
@@ -387,7 +383,7 @@ def _predict(
 
     # Bookkeeping --- config
     save_config_records(
-        original_config_path=config_composition_result.original_config_path,
+        original_config=config,
         resolved_config=resolved_prediction_config,
         config_out_dir=run_context.config_dir,
     )

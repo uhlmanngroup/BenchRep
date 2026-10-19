@@ -19,7 +19,7 @@ from benchrep.assembly.schemas import (
     TrainingDataModuleConfig,
 )
 from benchrep.interfaces.model_families import AUTOENCODER_FAMILY, VAE_FAMILY
-from benchrep.records.configs import save_resolved_config
+from benchrep.records.configs import save_config_yaml
 
 
 CONFIG_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "configs"
@@ -450,9 +450,10 @@ def _write_prediction_manifest(tmp_path: Path) -> Path:
 
 def _save_resolved_config(out_dir: Path, config) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
-    return save_resolved_config(
-        resolved_config=config,
+    return save_config_yaml(
+        config=config,
         out_dir=out_dir,
+        filename="resolved_config.yaml",
     )
 
 

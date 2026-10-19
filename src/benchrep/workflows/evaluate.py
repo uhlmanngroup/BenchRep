@@ -7,7 +7,7 @@ import logging
 
 import anndata as ad
 
-from benchrep.utils.workflow_utils import EvaluationConfigInput, route_config_input
+from benchrep.utils.workflow_utils import EvaluationConfigInput
 from benchrep.assembly.config import (
     compose_effective_config,
     SupportedEvaluationConfigComponent,
@@ -80,13 +80,9 @@ def evaluate(
             )
 
     # Compose, parse, and resolve config
-    config_path, full_config_object = route_config_input(
-        config, EvaluationConfig
-    )
     config_composition_result = compose_effective_config(
         schema=EvaluationConfig,
-        config_path=config_path,
-        full_config_object=full_config_object,
+        config=config,
         config_components=config_components,
         prediction_manifest_path_overridden=prediction_manifest_path is not None,
     )
@@ -150,7 +146,7 @@ def evaluate(
 
     # Bookkeeping --- config
     save_config_records(
-        original_config_path=config_composition_result.original_config_path,
+        original_config=config,
         resolved_config=run_spec.evaluation_config,
         config_out_dir=run_context.config_dir,
     )

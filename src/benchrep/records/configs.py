@@ -2,7 +2,7 @@
 
 This module writes the config-related records for a run:
 
-- the original user-provided config file, if one exists
+- the original YAML file or config object, when supplied
 - the resolved/validated config object actually used by BenchRep
 
 Config records are written to `RunContext.config_dir` by default, but an
@@ -26,7 +26,9 @@ def save_config_records(
     *,
     config_out_dir: RunContext | Path | str,
     resolved_config: TrainingConfig | PredictionConfig | EvaluationConfig | dict[str, Any],
-    original_config_path: Path | str | None = None,
+    original_config: (
+            TrainingConfig | PredictionConfig | EvaluationConfig | Path | str | None
+    ) = None,
 ) -> None:
     """Save config records for a run.
 
@@ -36,9 +38,9 @@ def save_config_records(
         RunContext or explicit config output directory.
     resolved_config:
         Validated config object, or a plain config dictionary.
-    original_config_path:
-        Optional path to the original user-provided YAML config file.
-        This may be absent when BenchRep is used without a config file.
+    original_config:
+        Original YAML path or typed config object supplied to the workflow.
+        None means no original config was supplied.
     """
     run_log = get_run_logger()
 
@@ -48,19 +50,32 @@ def save_config_records(
         config_out_dir = Path(config_out_dir).expanduser().resolve()
 
     saved_original = False
-    if original_config_path is not None:
-        original_config_path = Path(original_config_path).expanduser().resolve()
-
+    if isinstance(original_config, (str, Path)):
         save_original_config(
-            original_config_path=original_config_path,
+            original_config_path=Path(original_config).expanduser().resolve(),
             out_dir=config_out_dir,
         )
-
         saved_original = True
+    elif isinstance(
+        original_config,
+        (TrainingConfig, PredictionConfig, EvaluationConfig),
+    ):
+        save_config_yaml(
+            config=original_config,
+            out_dir=config_out_dir,
+            filename="original_config.yaml",
+        )
+        saved_original = True
+    elif original_config is not None:
+        raise TypeError(
+            "original_config must be a YAML path, workflow config object, "
+            f"or None; got {type(original_config).__name__}."
+        )
 
-    save_resolved_config(
-        resolved_config=resolved_config,
+    save_config_yaml(
+        config=resolved_config,
         out_dir=config_out_dir,
+        filename="resolved_config.yaml",
     )
 
     if saved_original:
@@ -93,16 +108,16 @@ def save_original_config(
     return output_path
 
 
-def save_resolved_config(
+def save_config_yaml(
     *,
-    resolved_config: BaseModel | dict[str, Any],
+    config: BaseModel | dict[str, Any],
     out_dir: Path,
-    filename: str = "resolved_config.yaml",
+    filename: str,
 ) -> Path:
-    """Save the resolved config object into the run config directory."""
+    """Save a config object as a YAML."""
 
     output_path = out_dir / filename
-    config_dict = config_to_serializable_dict(resolved_config)
+    config_dict = config_to_serializable_dict(config)
 
     with output_path.open("w", encoding="utf-8") as file:
         yaml.safe_dump(config_dict, file, sort_keys=False)

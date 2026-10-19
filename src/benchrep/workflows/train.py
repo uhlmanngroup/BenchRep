@@ -11,7 +11,7 @@ from lightning.pytorch.utilities.exceptions import SIGTERMException
 
 import torch
 
-from benchrep.utils.workflow_utils import TrainingConfigInput, route_config_input
+from benchrep.utils.workflow_utils import TrainingConfigInput
 from benchrep.runtime.run_context import RunContext
 from benchrep.runtime.train_run_validation import (
     validate_train_contract_compatibility,
@@ -218,13 +218,9 @@ def _train(
     datamodule_is_external = datamodule_source != "config"
 
     # Compose and parse config
-    config_path, full_config_object = route_config_input(
-        config, TrainingConfig
-    )
     config_composition_result = compose_effective_config(
         schema=TrainingConfig,
-        config_path=config_path,
-        full_config_object=full_config_object,
+        config=config,
         config_components=config_components,
         external_model=model_is_external,
         external_datamodule=datamodule_is_external,
@@ -269,7 +265,7 @@ def _train(
 
     # Bookkeeping --- config
     save_config_records(
-        original_config_path=config_composition_result.original_config_path,
+        original_config=config,
         resolved_config=resolved_training_config,
         config_out_dir=run_context.config_dir,
     )

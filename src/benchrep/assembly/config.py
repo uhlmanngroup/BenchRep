@@ -21,6 +21,12 @@ import yaml
 
 from pydantic import BaseModel
 
+from benchrep.utils.workflow_utils import (
+    TrainingConfigInput,
+    PredictionConfigInput,
+    EvaluationConfigInput,
+    route_config_input,
+)
 from benchrep.assembly.schemas.training_config_schema import (
     TrainingConfig,
     TrainingRunConfig,
@@ -83,6 +89,7 @@ ConfigSource: TypeAlias = Literal[
     "config_object",
     "components",
     "yaml_with_components",
+    "config_object_with_components",
 ]
 
 LossesConfig: TypeAlias = dict[
@@ -174,8 +181,7 @@ class ConfigCompositionResult(Generic[ConfigT]):
 def compose_effective_config(
     *,
     schema: type[TrainingConfig],
-    config_path: Path | str | None = None,
-    full_config_object: TrainingConfig | None = None,
+    config: TrainingConfigInput = None,
     config_components: Mapping[str, SupportedTrainingConfigComponent] | None = None,
     external_model: bool = False,
     external_datamodule: bool = False,
@@ -188,8 +194,7 @@ def compose_effective_config(
 def compose_effective_config(
     *,
     schema: type[PredictionConfig],
-    config_path: Path | str | None = None,
-    full_config_object: PredictionConfig | None = None,
+    config: PredictionConfigInput = None,
     config_components: Mapping[str, SupportedPredictionConfigComponent] | None = None,
     external_model: bool = False,
     external_datamodule: bool = False,
@@ -202,8 +207,7 @@ def compose_effective_config(
 def compose_effective_config(
     *,
     schema: type[EvaluationConfig],
-    config_path: Path | str | None = None,
-    full_config_object: EvaluationConfig | None = None,
+    config: EvaluationConfigInput = None,
     config_components: Mapping[str, SupportedEvaluationConfigComponent] | None = None,
     external_model: bool = False,
     external_datamodule: bool = False,
@@ -215,118 +219,65 @@ def compose_effective_config(
 def compose_effective_config(
     *,
     schema: type[ConfigT],
-    config_path: Path | str | None = None,
-    full_config_object: ConfigT | None = None,
+    config: ConfigT | Path | str | None = None,
     config_components: Mapping[str, Any] | None = None,
     external_model: bool = False,
     external_datamodule: bool = False,
     training_manifest_path_overridden: bool = False,
     prediction_manifest_path_overridden: bool = False,
 ) -> ConfigCompositionResult[ConfigT]:
-    """Compose the effective typed config object for a BenchRep workflow.
+    """Compose a typed workflow config from a base and section overrides.
 
-    This helper centralizes the early entrypoint logic that decides which config
-    input should be used before workflow-specific resolution. It accepts an
-    optional YAML config path, an optional complete typed config object, and/or
-    optional keyed top-level config components. It returns the final effective
-    config object that should be passed to the stage resolver, together with the
-    original YAML payload if one was supplied.
+    ``config`` may be a YAML path or a complete typed config object.
+    ``config_components`` replaces matching top-level sections of either
+    base. Each component replaces its whole section, not individual fields.
+    The combined config is validated before workflow-specific resolution.
 
-    Precedence
-    ----------
-    A complete ``full_config_object`` takes absolute precedence. If it is
-    provided, it becomes the effective config. Any YAML file is still loaded and
-    returned as ``original_config_raw`` for provenance, but it is not used as the
-    effective config. Any ``config_components`` are ignored.
+    If no ``config`` is supplied, the components must provide enough sections
+    to construct a valid config. A typed config object without components is
+    returned directly. For YAML input, the original path and payload are
+    retained for provenance.
 
-    If no ``full_config_object`` is provided and ``config_path`` is provided, the
-    YAML file is used as the base config. If ``config_components`` are also
-    provided, they replace matching top-level YAML sections before validation.
-
-        NOTE: downstream logic in entrypoint runners will override any configs
-        related to model (config.model/encoder/decoder/losses/optimizer) and
-        datamodule (config.dataset and config.datamodule) if they were provided
-        as instantiated objects in the top level _train() or _predict() functions.
-
-    If neither ``full_config_object`` nor ``config_path`` is provided,
-    ``config_components`` must provide enough top-level sections to construct a
-    valid config for the selected ``schema``.
-
-    In short::
-
-        full_config_object
-            > YAML base with top-level config_components overrides
-            > YAML only
-            > config_components only
-
-    When both ``config_path`` and ``config_components`` are provided, the YAML
-    config is used only as the base. Each supplied component replaces the
-    matching top-level YAML section. Therefore, for overlapping sections,
-    ``config_components`` take precedence over YAML.
-
-    Component behavior
-    ------------------
-    ``config_components`` is a mapping from top-level config field name to the
-    corresponding typed config section, for example ``{"run": TrainingRunConfig(...)}``
-    or ``{"metrics": EvaluationMetricsConfig(...)}``. Component merging is
-    shallow by design: a provided component replaces the entire matching
-    top-level section rather than recursively patching nested fields.
-
-    Validation context
-    ------------------
-    The ``external_model`` and ``external_datamodule`` flags are forwarded to
-    training config parsing so externally supplied runtime objects can relax the
-    corresponding required config sections. ``training_manifest_path_overridden``
-    is forwarded to prediction config parsing so a manifest path supplied outside
-    the config can satisfy prediction source validation.
+    Runtime model, datamodule, and manifest override flags provide validation
+    context for the relevant workflow schema.
 
     Parameters
     ----------
     schema
-        The target workflow config schema: ``TrainingConfig``,
-        ``PredictionConfig``, or ``EvaluationConfig``.
-    config_path
-        Optional path to a YAML config file. When provided, it is always loaded
-        and returned as the original config for provenance.
-    full_config_object
-        Optional complete typed config object. If provided, it becomes the
-        effective config and all other effective config inputs are ignored.
+        TrainingConfig, PredictionConfig, or EvaluationConfig.
+    config
+        Optional YAML path or complete typed config object used as the base.
     config_components
-        Optional mapping of top-level config section names to typed config
-        section objects. Used either as the full config source or as top-level
-        overrides on top of YAML.
+        Optional mapping from top-level section names to typed section objects.
     external_model
-        Whether a runtime model object was supplied to the training entrypoint.
+        Whether a runtime model object was supplied.
     external_datamodule
-        Whether a runtime datamodule object was supplied to the training
-        entrypoint.
+        Whether a runtime datamodule object was supplied.
     training_manifest_path_overridden
-        Whether a training manifest path was supplied to the prediction
-        entrypoint outside the config object.
+        Whether a training manifest path was supplied outside prediction config.
     prediction_manifest_path_overridden
-        Whether a prediction manifest path was supplied to the evaluation
-        entrypoint outside the config object.
+        Whether a prediction manifest path was supplied outside evaluation config.
 
     Returns
     -------
     ConfigCompositionResult[ConfigT]
-        The original YAML path/raw mapping, the effective typed config object,
-        and provenance flags describing how the effective config was composed.
+        The effective config, composition metadata, and original YAML details
+        when the input was a path.
 
     Raises
     ------
     ValueError
-        If no usable config input is provided, if component keys are unsupported,
-        or if the composed config fails schema validation.
+        If no config source is supplied or a component key is unsupported.
     TypeError
-        If ``schema`` is unsupported, ``full_config_object`` has the wrong type,
-        or a component value does not match the expected top-level section type.
+        If the schema, config input, or a component type is unsupported.
     """
     composition_messages: list[str] = []
     composition_warnings: list[str] = []
 
     if schema not in SUPPORTED_CONFIG_SCHEMAS:
         raise TypeError(f"Unsupported config schema: {schema.__name__}")
+
+    config_path, full_config_object = route_config_input(config, schema)
 
     # Load original YAML, if supplied and keep for records regardless.
     if config_path is not None:
@@ -340,34 +291,36 @@ def compose_effective_config(
 
     if full_config_object is None and not config_components and not yaml_supplied:
         raise ValueError(
-            "At least one of config_path, full_config_object, or config_components "
-            "is required."
+            "At least one of config or config_components is required."
         )
 
-    if full_config_object is not None and not isinstance(full_config_object, schema):
-        raise TypeError(
-            f"Expected full_config_object to be an instance of {schema.__name__}; "
-            f"got {type(full_config_object).__name__}."
-        )
+    component_raw = _normalize_config_components(
+        schema=schema,
+        config_components=config_components,
+    )
 
-    # Full typed config object takes highest precedence
     if full_config_object is not None:
-        config_source: ConfigSource = "config_object"
         yaml_used_as_base = False
-        effective_config = full_config_object
 
-        if yaml_supplied:
-            composition_warnings.append(
-                "full_config_object provided; config YAML will be ignored as "
-                f"effective config: {original_config_path}"
+        if component_raw:
+            config_source: ConfigSource = "config_object_with_components"
+            raw_config = full_config_object.model_dump(mode="python")
+            raw_config.update(component_raw)
+            effective_config = _parse_effective_config(
+                schema=schema,
+                raw_config=raw_config,
+                external_model=external_model,
+                external_datamodule=external_datamodule,
+                training_manifest_path_overridden=training_manifest_path_overridden,
+                prediction_manifest_path_overridden=prediction_manifest_path_overridden,
             )
-
-        if config_components:
-            component_names = ", ".join(config_components.keys())
-            composition_warnings.append(
-                "full_config_object provided; config_components will be ignored: "
-                f"{component_names}"
+            composition_messages.append(
+                "config_components replace matching top-level sections "
+                "of the config object."
             )
+        else:
+            config_source = "config_object"
+            effective_config = full_config_object
 
         return ConfigCompositionResult(
             original_config_path=original_config_path,
@@ -379,12 +332,6 @@ def compose_effective_config(
             composition_messages=tuple(composition_messages),
             composition_warnings=tuple(composition_warnings),
         )
-
-    # Convert keyed config components into raw top-level config sections.
-    component_raw = _normalize_config_components(
-        schema=schema,
-        config_components=config_components,
-    )
 
     if yaml_supplied and component_raw:
         assert original_config_raw is not None

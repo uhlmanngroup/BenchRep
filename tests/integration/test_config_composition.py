@@ -303,13 +303,13 @@ def test_yaml_component_replaces_top_level_section(
 
     baseline_result = compose_effective_config(
         schema=schema,
-        config_path=config_path,
+        config=config_path,
         **composition_kwargs,
     )
 
     composition_result = compose_effective_config(
         schema=schema,
-        config_path=config_path,
+        config=config_path,
         config_components={
             section_name: replacement_component,
         },
@@ -343,27 +343,19 @@ def test_yaml_component_replaces_top_level_section(
 
 
 @pytest.mark.parametrize(
-    (
-        "schema",
-        "config_name",
-        "full_config_factory",
-        "ignored_component_name",
-        "ignored_component_factory",
-    ),
+    ("schema", "full_config_factory", "section_name", "component_factory"),
     [
         pytest.param(
             TrainingConfig,
-            "training_tiny_synthetic_ae.yaml",
             make_training_config,
             "run",
             lambda: make_training_run_config().model_copy(
-                update={"project_name": "ignored_component"}
+                update={"project_name": "replacement_component"}
             ),
             id="training",
         ),
         pytest.param(
             PredictionConfig,
-            "prediction_tiny_synthetic.yaml",
             make_prediction_config,
             "data",
             lambda: make_prediction_data_config().model_copy(
@@ -373,57 +365,47 @@ def test_yaml_component_replaces_top_level_section(
         ),
         pytest.param(
             EvaluationConfig,
-            "evaluation_tiny_synthetic.yaml",
             make_evaluation_config,
             "run",
             lambda: make_evaluation_run_config().model_copy(
-                update={"run_name": "ignored_component"}
+                update={"run_name": "replacement_component"}
             ),
             id="evaluation",
         ),
     ],
 )
-def test_full_config_object_takes_precedence(
+def test_config_object_component_replaces_top_level_section(
     schema: Any,
-    config_name: str,
     full_config_factory: Callable[[], Any],
-    ignored_component_name: str,
-    ignored_component_factory: Callable[[], Any],
+    section_name: str,
+    component_factory: Callable[[], Any],
 ) -> None:
-    """A full config object takes precedence over YAML and components."""
-    config_path = CONFIG_DIR / config_name
+    """A component replaces its section of a supplied config object."""
     full_config = full_config_factory()
-    ignored_component = ignored_component_factory()
+    replacement_component = component_factory()
 
-    assert (
-            getattr(full_config, ignored_component_name)
-            != ignored_component
-    )
+    assert getattr(full_config, section_name) != replacement_component
 
-    composition_result = compose_effective_config(
+    result = compose_effective_config(
         schema=schema,
-        config_path=config_path,
-        full_config_object=full_config,
-        config_components={
-            ignored_component_name: ignored_component,
-        },
+        config=full_config,
+        config_components={section_name: replacement_component},
     )
 
-    assert composition_result.effective_config is full_config
-    assert composition_result.effective_source == "config_object"
-    assert composition_result.yaml_supplied is True
-    assert composition_result.yaml_used_as_base is False
-    assert composition_result.original_config_path == config_path.resolve()
-    assert composition_result.original_config_raw is not None
+    assert result.effective_config is not full_config
+    assert getattr(result.effective_config, section_name) == replacement_component
 
-    assert len(composition_result.composition_warnings) == 2
-    assert any(
-        "config YAML will be ignored"
-        in warning
-        for warning in composition_result.composition_warnings
-    )
-    assert any(
-        "config_components will be ignored"
-        in warning
-        for warning in composition_result.composition_warnings
-    )
+    for field_name in schema.model_fields:
+        if field_name != section_name:
+            assert (
+                getattr(result.effective_config, field_name)
+                == getattr(full_config, field_name)
+            )
+
+    assert getattr(full_config, section_name) != replacement_component
+    assert result.effective_source == "config_object_with_components"
+    assert result.yaml_supplied is False
+    assert result.yaml_used_as_base is False
+    assert result.original_config_path is None
+    assert result.original_config_raw is None
+    assert result.composition_warnings == ()

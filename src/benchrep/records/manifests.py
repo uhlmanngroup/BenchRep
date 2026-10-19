@@ -1240,9 +1240,7 @@ def _build_common_records(
     *,
     capture_stdout: bool = False,
 ) -> dict[str, Any]:
-    has_original_config = (
-        config_composition_result.original_config_path is not None
-    )
+    has_original_config = config_composition_result.effective_source != "components"
 
     return {
         "input_config_path": paths_to_strings(
