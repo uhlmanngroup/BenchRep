@@ -11,6 +11,7 @@ from lightning.pytorch.utilities.exceptions import SIGTERMException
 
 import torch
 
+from benchrep.utils.workflow_utils import TrainingConfigInput, route_config_input
 from benchrep.runtime.run_context import RunContext
 from benchrep.runtime.train_run_validation import (
     validate_train_contract_compatibility,
@@ -99,8 +100,7 @@ class TrainingWorkflowResult:
 
 # Model-specific wrappers
 def train_ae(
-        config_path: Path | str | None = None,
-        full_config_object: TrainingConfig | None = None,
+        config: TrainingConfigInput = None,
         config_components: Mapping[str, SupportedTrainingConfigComponent] | None = None,
         model: (
                 BenchRepAutoencoderModel
@@ -117,8 +117,7 @@ def train_ae(
 ) -> TrainingWorkflowResult:
     return _train(
         model_family=AUTOENCODER_FAMILY,
-        config_path=config_path,
-        full_config_object=full_config_object,
+        config=config,
         config_components=config_components,
         model=model,
         datamodule=datamodule,
@@ -128,8 +127,7 @@ def train_ae(
 
 
 def train_vae(
-        config_path: Path | str | None = None,
-        full_config_object: TrainingConfig | None = None,
+        config: TrainingConfigInput = None,
         config_components: Mapping[str, SupportedTrainingConfigComponent] | None = None,
         model: (
                 BenchRepVAEModel
@@ -146,8 +144,7 @@ def train_vae(
 ) -> TrainingWorkflowResult:
     return _train(
         model_family=VAE_FAMILY,
-        config_path=config_path,
-        full_config_object=full_config_object,
+        config=config,
         config_components=config_components,
         model=model,
         datamodule=datamodule,
@@ -157,8 +154,7 @@ def train_vae(
 
 
 def train_composite(
-    config_path: Path | str | None = None,
-    full_config_object: TrainingConfig | None = None,
+    config: TrainingConfigInput = None,
     config_components: (
         Mapping[str, SupportedTrainingConfigComponent] | None
     ) = None,
@@ -171,8 +167,7 @@ def train_composite(
 ) -> TrainingWorkflowResult:
     return _train(
         model_family=COMPOSITE_FAMILY,
-        config_path=config_path,
-        full_config_object=full_config_object,
+        config=config,
         config_components=config_components,
         datamodule=datamodule,
         capture_stdout=capture_stdout,
@@ -181,8 +176,7 @@ def train_composite(
 
 def _train(
         model_family: ModelFamilySpec,
-        config_path: Path | str | None = None,
-        full_config_object: TrainingConfig | None = None,
+        config: TrainingConfigInput = None,
         config_components: Mapping[str, SupportedTrainingConfigComponent] | None = None,
         model: (
                 SupportedModel
@@ -224,6 +218,9 @@ def _train(
     datamodule_is_external = datamodule_source != "config"
 
     # Compose and parse config
+    config_path, full_config_object = route_config_input(
+        config, TrainingConfig
+    )
     config_composition_result = compose_effective_config(
         schema=TrainingConfig,
         config_path=config_path,

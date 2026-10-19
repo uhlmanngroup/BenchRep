@@ -93,7 +93,7 @@ def test_custom_registered_components_work_end_to_end(
 
     print("\n=== Training with custom registered components ===")
     training_result = train_vae(
-        config_path=(
+        config=(
             CONFIG_DIR
             / "training_tiny_synthetic_vae.yaml"
         ),
@@ -178,7 +178,7 @@ def test_custom_registered_components_work_end_to_end(
 
     print("\n=== Prediction with custom registered components ===")
     prediction_result = predict_vae(
-        config_path=(
+        config=(
             CONFIG_DIR
             / "prediction_tiny_synthetic.yaml"
         ),
@@ -192,7 +192,7 @@ def test_custom_registered_components_work_end_to_end(
 
     print("\n=== Evaluation with custom registered components ===")
     evaluation_result = evaluate(
-        config_path=(
+        config=(
             CONFIG_DIR
             / "evaluation_tiny_synthetic.yaml"
         ),

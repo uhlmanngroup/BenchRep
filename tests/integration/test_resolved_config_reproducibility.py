@@ -50,13 +50,13 @@ def test_resolved_configs_reproduce_end_to_end_metrics(
         tmp_path
     )
 
-    first_training = train_vae(config_path=original_training_config)
+    first_training = train_vae(config=original_training_config)
     first_prediction = predict_vae(
-        config_path=original_prediction_config,
+        config=original_prediction_config,
         training_manifest_path=first_training.manifest_path,
     )
     first_evaluation = evaluate(
-        config_path=original_evaluation_config,
+        config=original_evaluation_config,
         prediction_manifest_path=first_prediction.manifest_path,
     )
 
@@ -115,13 +115,13 @@ def test_resolved_configs_reproduce_end_to_end_metrics(
     assert evaluation_resolved["reconstruction"]["n_examples"] == 8
 
     # Replay training from its exact resolved config.
-    second_training = train_vae(config_path=first_training_resolved)
+    second_training = train_vae(config=first_training_resolved)
 
     # The resolved prediction config pins run 1's exact checkpoint path. Rebind
     # the source section so this replay consumes the freshly reproduced training
     # run while retaining all other resolved prediction settings.
     second_prediction = predict_vae(
-        config_path=first_prediction_resolved,
+        config=first_prediction_resolved,
         config_components={
             "source": PredictionSourceConfig(
                 training_manifest_path=second_training.manifest_path,
@@ -134,7 +134,7 @@ def test_resolved_configs_reproduce_end_to_end_metrics(
     # paths. Rebind only its source section so evaluation discovers the freshly
     # reproduced prediction artifacts from the second prediction manifest.
     second_evaluation = evaluate(
-        config_path=first_evaluation_resolved,
+        config=first_evaluation_resolved,
         config_components={
             "source": EvaluationSourceConfig(
                 prediction_manifest_path=second_prediction.manifest_path,

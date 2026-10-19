@@ -49,7 +49,7 @@ def test_evaluate_rejects_nonfinite_embeddings(
             r"3 observations"
         ),
     ):
-        evaluate(full_config_object=config)
+        evaluate(config=config)
 
 
 def test_evaluate_supports_reconstruction_only_input(
@@ -87,7 +87,7 @@ def test_evaluate_supports_reconstruction_only_input(
         }
     )
 
-    result = evaluate(full_config_object=config)
+    result = evaluate(config=config)
 
     assert result.status_report.status == "completed"
     assert result.status_report.anndata.status == "disabled"

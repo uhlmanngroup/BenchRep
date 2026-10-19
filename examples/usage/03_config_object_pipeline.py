@@ -378,7 +378,7 @@ def main() -> None:
     print("\n=== Training ===")
     training_config = build_training_config()
     training_result = train_vae(
-        full_config_object=training_config,
+        config=training_config,
     )
     print(f"Training manifest: {training_result.manifest_path}")
 
@@ -390,7 +390,7 @@ def main() -> None:
         training_manifest_path=training_result.manifest_path,
     )
     prediction_result = predict_vae(
-        full_config_object=prediction_config,
+        config=prediction_config,
     )
     print(f"Prediction manifest: {prediction_result.manifest_path}")
 
@@ -401,7 +401,7 @@ def main() -> None:
         prediction_manifest_path=prediction_result.manifest_path,
     )
     evaluation_result = evaluate(
-        full_config_object=evaluation_config,
+        config=evaluation_config,
     )
     print(f"Evaluation manifest: {evaluation_result.manifest_path}")
 

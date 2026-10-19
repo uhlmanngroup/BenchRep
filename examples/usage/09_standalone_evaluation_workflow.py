@@ -107,7 +107,7 @@ def main() -> None:
     # The YAML leaves its source paths unset so this example can demonstrate
     # supplying standalone evaluation artifacts through a config override.
     evaluation_result = evaluate(
-        config_path=CONFIG_PATH,
+        config=CONFIG_PATH,
         config_components={
             "source": EvaluationSourceConfig(
                 anndata_path=ANNDATA_PATH,

@@ -44,10 +44,10 @@ def test_canonical_and_composite_autoencoders_are_end_to_end_equivalent(
     monkeypatch.chdir(tmp_path)
 
     canonical_training = train_ae(
-        full_config_object=_make_canonical_ae_training_config(),
+        config=_make_canonical_ae_training_config(),
     )
     composite_training = train_composite(
-        full_config_object=_make_composite_ae_training_config(),
+        config=_make_composite_ae_training_config(),
     )
 
     _assert_completed(canonical_training, composite_training)
@@ -57,11 +57,11 @@ def test_canonical_and_composite_autoencoders_are_end_to_end_equivalent(
     )
 
     canonical_prediction = predict_ae(
-        full_config_object=_make_ae_prediction_config(),
+        config=_make_ae_prediction_config(),
         training_manifest_path=canonical_training.manifest_path,
     )
     composite_prediction = predict_composite(
-        full_config_object=_make_ae_prediction_config(),
+        config=_make_ae_prediction_config(),
         training_manifest_path=composite_training.manifest_path,
     )
 
@@ -76,11 +76,11 @@ def test_canonical_and_composite_autoencoders_are_end_to_end_equivalent(
     )
 
     canonical_evaluation = evaluate(
-        full_config_object=_make_evaluation_config(),
+        config=_make_evaluation_config(),
         prediction_manifest_path=canonical_prediction.manifest_path,
     )
     composite_evaluation = evaluate(
-        full_config_object=_make_evaluation_config(),
+        config=_make_evaluation_config(),
         prediction_manifest_path=composite_prediction.manifest_path,
     )
 
@@ -104,10 +104,10 @@ def test_canonical_and_composite_vaes_are_end_to_end_equivalent(
     monkeypatch.chdir(tmp_path)
 
     canonical_training = train_vae(
-        full_config_object=_make_canonical_vae_training_config(),
+        config=_make_canonical_vae_training_config(),
     )
     composite_training = train_composite(
-        full_config_object=_make_composite_vae_training_config(),
+        config=_make_composite_vae_training_config(),
     )
 
     _assert_completed(canonical_training, composite_training)
@@ -117,11 +117,11 @@ def test_canonical_and_composite_vaes_are_end_to_end_equivalent(
     )
 
     canonical_prediction = predict_vae(
-        full_config_object=_make_vae_prediction_config(composite=False),
+        config=_make_vae_prediction_config(composite=False),
         training_manifest_path=canonical_training.manifest_path,
     )
     composite_prediction = predict_composite(
-        full_config_object=_make_vae_prediction_config(composite=True),
+        config=_make_vae_prediction_config(composite=True),
         training_manifest_path=composite_training.manifest_path,
     )
 
@@ -137,11 +137,11 @@ def test_canonical_and_composite_vaes_are_end_to_end_equivalent(
     )
 
     canonical_evaluation = evaluate(
-        full_config_object=_make_evaluation_config(),
+        config=_make_evaluation_config(),
         prediction_manifest_path=canonical_prediction.manifest_path,
     )
     composite_evaluation = evaluate(
-        full_config_object=_make_evaluation_config(),
+        config=_make_evaluation_config(),
         prediction_manifest_path=composite_prediction.manifest_path,
     )
 

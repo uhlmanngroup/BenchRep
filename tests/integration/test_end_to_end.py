@@ -74,7 +74,7 @@ def test_internal_end_to_end(
     monkeypatch.chdir(tmp_path)
 
     training_result = train_fn(
-        config_path=CONFIG_DIR / training_config_name,
+        config=CONFIG_DIR / training_config_name,
     )
 
     assert training_result.manifest_path.is_file()
@@ -85,7 +85,7 @@ def test_internal_end_to_end(
     _assert_completed_manifest(training_result.manifest_path, "training")
 
     prediction_result = predict_fn(
-        config_path=CONFIG_DIR / "prediction_tiny_synthetic.yaml",
+        config=CONFIG_DIR / "prediction_tiny_synthetic.yaml",
         training_manifest_path=training_result.manifest_path,
     )
 
@@ -183,7 +183,7 @@ def test_internal_end_to_end(
     )
 
     evaluation_result = evaluate(
-        config_path=CONFIG_DIR / "evaluation_tiny_synthetic.yaml",
+        config=CONFIG_DIR / "evaluation_tiny_synthetic.yaml",
         prediction_manifest_path=prediction_result.manifest_path,
     )
 
@@ -240,11 +240,11 @@ def test_internal_vae_prediction_can_reconstruct_from_sample(
     monkeypatch.chdir(tmp_path)
 
     training_result = train_vae(
-        config_path=CONFIG_DIR / "training_tiny_synthetic_vae.yaml",
+        config=CONFIG_DIR / "training_tiny_synthetic_vae.yaml",
     )
 
     prediction_result = predict_vae(
-        config_path=CONFIG_DIR / "prediction_tiny_synthetic.yaml",
+        config=CONFIG_DIR / "prediction_tiny_synthetic.yaml",
         config_components={
             "inference": PredictionInferenceConfig(
                 canonical_vae_reconstruction_latent_source="sample",
@@ -398,7 +398,7 @@ def test_training_callbacks_are_not_inherited_by_prediction(
     monkeypatch.chdir(tmp_path)
 
     training_result = train_ae(
-        config_path=(
+        config=(
             CONFIG_DIR
             / "training_tiny_synthetic_ae.yaml"
         ),
@@ -445,7 +445,7 @@ def test_training_callbacks_are_not_inherited_by_prediction(
     assert learning_rate_callbacks[0].logging_interval == "epoch"
 
     prediction_result = predict_ae(
-        config_path=(
+        config=(
             CONFIG_DIR
             / "prediction_tiny_synthetic.yaml"
         ),

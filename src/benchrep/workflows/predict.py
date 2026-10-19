@@ -8,6 +8,7 @@ from typing import Any
 import lightning as L
 import torch
 
+from benchrep.utils.workflow_utils import PredictionConfigInput, route_config_input
 from benchrep.assembly.config import (
     compose_effective_config,
     SupportedPredictionConfigComponent,
@@ -92,8 +93,7 @@ class PredictionWorkflowResult:
 
 # Model-specific wrappers
 def predict_ae(
-        config_path: Path | str | None = None,
-        full_config_object: PredictionConfig | None = None,
+        config: PredictionConfigInput = None,
         config_components: Mapping[str, SupportedPredictionConfigComponent] | None = None,
         training_manifest_path: Path | str | None = None,
         model: (
@@ -111,8 +111,7 @@ def predict_ae(
 ) -> PredictionWorkflowResult:
     return _predict(
         model_family=AUTOENCODER_FAMILY,
-        config_path=config_path,
-        full_config_object=full_config_object,
+        config=config,
         config_components=config_components,
         training_manifest_path=training_manifest_path,
         model=model,
@@ -123,8 +122,7 @@ def predict_ae(
 
 
 def predict_vae(
-        config_path: Path | str | None = None,
-        full_config_object: PredictionConfig | None = None,
+        config: PredictionConfigInput = None,
         config_components: Mapping[str, SupportedPredictionConfigComponent] | None = None,
         training_manifest_path: Path | str | None = None,
         model: (
@@ -142,8 +140,7 @@ def predict_vae(
 ) -> PredictionWorkflowResult:
     return _predict(
         model_family=VAE_FAMILY,
-        config_path=config_path,
-        full_config_object=full_config_object,
+        config=config,
         config_components=config_components,
         training_manifest_path=training_manifest_path,
         model=model,
@@ -154,8 +151,7 @@ def predict_vae(
 
 
 def predict_composite(
-    config_path: Path | str | None = None,
-    full_config_object: PredictionConfig | None = None,
+    config: PredictionConfigInput = None,
     config_components: (
         Mapping[str, SupportedPredictionConfigComponent] | None
     ) = None,
@@ -169,8 +165,7 @@ def predict_composite(
 ) -> PredictionWorkflowResult:
     return _predict(
         model_family=COMPOSITE_FAMILY,
-        config_path=config_path,
-        full_config_object=full_config_object,
+        config=config,
         config_components=config_components,
         training_manifest_path=training_manifest_path,
         datamodule=datamodule,
@@ -180,8 +175,7 @@ def predict_composite(
 
 def _predict(
         model_family: ModelFamilySpec,
-        config_path: Path | str | None,
-        full_config_object: PredictionConfig | None = None,
+        config: PredictionConfigInput = None,
         config_components: Mapping[str, SupportedPredictionConfigComponent] | None = None,
         training_manifest_path: Path | str | None = None,
         model: (
@@ -236,6 +230,9 @@ def _predict(
         training_manifest_path_overridden = False
 
     # Compose, parse, and resolve config
+    config_path, full_config_object = route_config_input(
+        config, PredictionConfig
+    )
     config_composition_result = compose_effective_config(
         schema=PredictionConfig,
         config_path=config_path,

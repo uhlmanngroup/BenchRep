@@ -82,7 +82,7 @@ def main() -> None:
     )
 
     result = train_ae(
-        full_config_object=parse_training_config(raw_config),
+        config=parse_training_config(raw_config),
     )
 
     # Written only after the workflow returns through all current finalization.

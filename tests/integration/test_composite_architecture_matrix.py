@@ -446,7 +446,7 @@ def test_composite_architecture_trains_checkpoints_and_predicts(
     monkeypatch.chdir(tmp_path)
 
     training_result = train_composite(
-        full_config_object=_make_training_config(case),
+        config=_make_training_config(case),
     )
 
     assert training_result.status_report.status == "completed"
@@ -475,7 +475,7 @@ def test_composite_architecture_trains_checkpoints_and_predicts(
     )
 
     prediction_result = predict_composite(
-        full_config_object=_make_prediction_config(case),
+        config=_make_prediction_config(case),
         training_manifest_path=training_result.manifest_path,
     )
 
@@ -954,7 +954,7 @@ def test_gradient_inspection_composite_workflow(tmp_path, monkeypatch):
 
     with pytest.warns(RuntimeWarning, match="disconnected") as recorded:
         result = train_composite(
-            full_config_object=TrainingConfig.model_validate(raw),
+            config=TrainingConfig.model_validate(raw),
         )
 
     disconnected_warnings = [

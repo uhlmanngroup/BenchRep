@@ -24,13 +24,13 @@ CONFIG_DIR = (
 def main() -> None:
     print("\n=== Training ===")
     training_result = train_vae(
-        config_path=CONFIG_DIR / "training.yaml",
+        config=CONFIG_DIR / "training.yaml",
     )
     print(f"Training manifest: {training_result.manifest_path}")
 
     print("\n=== Prediction ===")
     prediction_result = predict_vae(
-        config_path=CONFIG_DIR / "prediction.yaml",
+        config=CONFIG_DIR / "prediction.yaml",
         # Use the manifest generated above instead of hard-coding an output path
         # in prediction.yaml.
         training_manifest_path=training_result.manifest_path,
@@ -39,7 +39,7 @@ def main() -> None:
 
     print("\n=== Evaluation ===")
     evaluation_result = evaluate(
-        config_path=CONFIG_DIR / "evaluation.yaml",
+        config=CONFIG_DIR / "evaluation.yaml",
         # The prediction manifest supplies the exported AnnData,
         # reconstructions, provenance, and inherited run identity.
         prediction_manifest_path=prediction_result.manifest_path,
