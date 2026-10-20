@@ -465,6 +465,16 @@ class EvaluationRunConfig(_EvaluationConfigBaseModel):
 
         return value.expanduser().resolve()
 
+    @field_validator("output_root", mode="before")
+    @classmethod
+    def reject_blank_output_root(cls, value: Any) -> Any:
+        if isinstance(value, str) and not value.strip():
+            raise ValueError(
+                "output_root must not be blank. "
+                "Use '.' explicitly for the working directory."
+            )
+        return value
+
 
 # -------------------------
 # Reductions config
