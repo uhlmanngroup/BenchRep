@@ -8,6 +8,7 @@ import torch
 
 from enriched_mnist import CHANNEL_NAMES, EnrichedMNISTDataset
 
+from benchrep import PredictionOverrides
 from benchrep import predict_vae, train_vae
 from benchrep.assembly.registries import DATASETS
 from benchrep.workflows import PredictionWorkflowResult
@@ -99,7 +100,9 @@ def main() -> None:
     print("\n=== Prediction ===")
     prediction_result = predict_vae(
         config=CONFIG_DIR / "prediction.yaml",
-        training_manifest_path=training_result.manifest_path,
+        overrides=PredictionOverrides(
+            training_manifest_path=training_result.manifest_path,
+        ),
     )
     print(f"Prediction manifest: {prediction_result.manifest_path}")
 

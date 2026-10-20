@@ -10,6 +10,7 @@ import pytest
 import torch
 from torch import nn
 
+from benchrep import EvaluationOverrides, PredictionOverrides
 from benchrep.architecture.models import Autoencoder, CompositeModel, VAE
 from benchrep.assembly.config import load_yaml
 from benchrep.assembly.registries.core import DATASETS
@@ -58,11 +59,15 @@ def test_canonical_and_composite_autoencoders_are_end_to_end_equivalent(
 
     canonical_prediction = predict_ae(
         config=_make_ae_prediction_config(),
-        training_manifest_path=canonical_training.manifest_path,
+        overrides=PredictionOverrides(
+            training_manifest_path=canonical_training.manifest_path,
+        ),
     )
     composite_prediction = predict_composite(
         config=_make_ae_prediction_config(),
-        training_manifest_path=composite_training.manifest_path,
+        overrides=PredictionOverrides(
+            training_manifest_path=composite_training.manifest_path,
+        ),
     )
 
     _assert_completed(canonical_prediction, composite_prediction)
@@ -77,11 +82,15 @@ def test_canonical_and_composite_autoencoders_are_end_to_end_equivalent(
 
     canonical_evaluation = evaluate(
         config=_make_evaluation_config(),
-        prediction_manifest_path=canonical_prediction.manifest_path,
+        overrides=EvaluationOverrides(
+            prediction_manifest_path=canonical_prediction.manifest_path,
+        ),
     )
     composite_evaluation = evaluate(
         config=_make_evaluation_config(),
-        prediction_manifest_path=composite_prediction.manifest_path,
+        overrides=EvaluationOverrides(
+            prediction_manifest_path=composite_prediction.manifest_path,
+        ),
     )
 
     _assert_completed(canonical_evaluation, composite_evaluation)
@@ -118,11 +127,15 @@ def test_canonical_and_composite_vaes_are_end_to_end_equivalent(
 
     canonical_prediction = predict_vae(
         config=_make_vae_prediction_config(composite=False),
-        training_manifest_path=canonical_training.manifest_path,
+        overrides=PredictionOverrides(
+            training_manifest_path=canonical_training.manifest_path,
+        ),
     )
     composite_prediction = predict_composite(
         config=_make_vae_prediction_config(composite=True),
-        training_manifest_path=composite_training.manifest_path,
+        overrides=PredictionOverrides(
+            training_manifest_path=composite_training.manifest_path,
+        ),
     )
 
     _assert_completed(canonical_prediction, composite_prediction)
@@ -138,11 +151,15 @@ def test_canonical_and_composite_vaes_are_end_to_end_equivalent(
 
     canonical_evaluation = evaluate(
         config=_make_evaluation_config(),
-        prediction_manifest_path=canonical_prediction.manifest_path,
+        overrides=EvaluationOverrides(
+            prediction_manifest_path=canonical_prediction.manifest_path,
+        ),
     )
     composite_evaluation = evaluate(
         config=_make_evaluation_config(),
-        prediction_manifest_path=composite_prediction.manifest_path,
+        overrides=EvaluationOverrides(
+            prediction_manifest_path=composite_prediction.manifest_path,
+        ),
     )
 
     _assert_completed(canonical_evaluation, composite_evaluation)

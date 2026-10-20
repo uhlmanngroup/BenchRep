@@ -243,13 +243,14 @@ class EvaluationSourceConfig(_EvaluationConfigBaseModel):
         ),
         json_schema_extra={
             "omit_behavior": (
-                "No configured manifest is loaded. At least one direct artifact path "
-                "must be provided unless a manifest is supplied through the evaluation "
-                "entrypoint."
+                "No configured manifest is loaded. At least one direct artifact "
+                "path must be provided unless "
+                "`EvaluationOverrides.prediction_manifest_path` is supplied "
+                "through the evaluation entrypoint's `overrides` argument."
             ),
             "null_behavior": "Equivalent to omission.",
             "notes": [
-                "The `prediction_manifest_path` entrypoint argument takes "
+                "`EvaluationOverrides.prediction_manifest_path` takes "
                 "precedence over this field.",
                 "Accepted prediction statuses are `completed`, "
                 "`completed_with_warnings`, and `partially_completed`.",
@@ -3078,8 +3079,9 @@ class EvaluationConfig(_EvaluationConfigBaseModel):
         description="Input artifact and prediction-manifest configuration.",
         json_schema_extra={
             "omit_behavior": (
-                "Requires a prediction manifest supplied through the evaluation "
-                "entrypoint; otherwise no evaluation source is available."
+                "Requires `EvaluationOverrides.prediction_manifest_path` "
+                "supplied through the evaluation entrypoint's `overrides` "
+                "argument; otherwise no evaluation source is available."
             ),
             "null_behavior": "Not allowed.",
         },

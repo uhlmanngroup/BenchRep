@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 import yaml
 
+from benchrep import EvaluationOverrides, PredictionOverrides
 from benchrep.assembly.config import load_yaml
 from benchrep.assembly.registries.core import DATASETS
 from benchrep.assembly.schemas import (
@@ -53,11 +54,15 @@ def test_resolved_configs_reproduce_end_to_end_metrics(
     first_training = train_vae(config=original_training_config)
     first_prediction = predict_vae(
         config=original_prediction_config,
-        training_manifest_path=first_training.manifest_path,
+        overrides=PredictionOverrides(
+            training_manifest_path=first_training.manifest_path,
+        ),
     )
     first_evaluation = evaluate(
         config=original_evaluation_config,
-        prediction_manifest_path=first_prediction.manifest_path,
+        overrides=EvaluationOverrides(
+            prediction_manifest_path=first_prediction.manifest_path,
+        ),
     )
 
     _assert_chain_completed(
@@ -122,12 +127,14 @@ def test_resolved_configs_reproduce_end_to_end_metrics(
     # run while retaining all other resolved prediction settings.
     second_prediction = predict_vae(
         config=first_prediction_resolved,
-        config_components={
-            "source": PredictionSourceConfig(
-                training_manifest_path=second_training.manifest_path,
-                checkpoint="last",
-            ),
-        },
+        overrides=PredictionOverrides(
+            config_components={
+                "source": PredictionSourceConfig(
+                    training_manifest_path=second_training.manifest_path,
+                    checkpoint="last",
+                ),
+            },
+        ),
     )
 
     # Likewise, the resolved evaluation config pins run 1's concrete artifact
@@ -135,11 +142,13 @@ def test_resolved_configs_reproduce_end_to_end_metrics(
     # reproduced prediction artifacts from the second prediction manifest.
     second_evaluation = evaluate(
         config=first_evaluation_resolved,
-        config_components={
-            "source": EvaluationSourceConfig(
-                prediction_manifest_path=second_prediction.manifest_path,
-            ),
-        },
+        overrides=EvaluationOverrides(
+            config_components={
+                "source": EvaluationSourceConfig(
+                    prediction_manifest_path=second_prediction.manifest_path,
+                ),
+            },
+        ),
     )
 
     _assert_chain_completed(

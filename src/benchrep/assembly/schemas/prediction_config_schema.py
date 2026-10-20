@@ -52,9 +52,10 @@ class PredictionSourceConfig(_PredictionConfigBaseModel):
     provenance, and recorded checkpoint locations needed to reconstruct and
     validate the prediction workflow.
 
-    The manifest path may be configured here or passed to the prediction
-    entrypoint through its `training_manifest_path` argument. The entrypoint
-    argument takes precedence when both are provided.
+    The manifest path may be configured here or supplied through
+    `PredictionOverrides.training_manifest_path`, passed as `overrides` to
+    the prediction entrypoint. The override takes precedence when both
+    are provided.
 
     The checkpoint may be selected through the training manifest, by filename
     within the recorded training checkpoint directory, or through an absolute
@@ -73,8 +74,8 @@ class PredictionSourceConfig(_PredictionConfigBaseModel):
         ),
         json_schema_extra={
             "omit_behavior": (
-                "Must be supplied through the `training_manifest_path` argument "
-                "of entrypoint functions like `predict_ae()` or `predict_vae()`."
+                "Must be supplied through `PredictionOverrides.training_manifest_path`, "
+                "passed as `overrides` to the prediction entrypoint."
             ),
             "null_behavior": "Equivalent to omission.",
             "notes": [
@@ -1030,7 +1031,8 @@ class PredictionConfig(_PredictionConfigBaseModel):
         ):
             raise ValueError(
                 "`source.training_manifest_path` is required unless "
-                "`training_manifest_path` is passed to the prediction entrypoint."
+                "`PredictionOverrides.training_manifest_path` is supplied "
+                "through the prediction entrypoint's `overrides` argument."
             )
 
         return self

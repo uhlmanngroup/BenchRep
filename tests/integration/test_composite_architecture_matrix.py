@@ -11,6 +11,7 @@ import torch
 import anndata as ad
 import numpy as np
 
+from benchrep import PredictionOverrides
 from benchrep.architecture.models import CompositeModel
 from benchrep.assembly.config import load_yaml
 from benchrep.assembly.registries.core import DATASETS
@@ -476,7 +477,9 @@ def test_composite_architecture_trains_checkpoints_and_predicts(
 
     prediction_result = predict_composite(
         config=_make_prediction_config(case),
-        training_manifest_path=training_result.manifest_path,
+        overrides=PredictionOverrides(
+            training_manifest_path=training_result.manifest_path,
+        ),
     )
 
     assert prediction_result.status_report.status == "completed"

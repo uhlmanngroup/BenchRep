@@ -7,6 +7,7 @@ import pytest
 from pydantic import ValidationError
 import yaml
 
+from benchrep import EvaluationOverrides, PredictionOverrides, TrainingOverrides
 from benchrep.assembly.registries.core import DATASETS
 from benchrep.assembly.resolvers.utils import ComponentSource
 from benchrep.assembly.schemas import (
@@ -81,7 +82,9 @@ def test_prediction_training_manifest_override_takes_precedence(
 
     prediction_result = predict_ae(
         config=mutated_config_path,
-        training_manifest_path=actual_manifest_path,
+        overrides=PredictionOverrides(
+            training_manifest_path=actual_manifest_path,
+        ),
     )
 
     assert prediction_result.manifest_path.is_file()
@@ -119,7 +122,9 @@ def test_evaluation_prediction_manifest_override_takes_precedence(
 
     prediction_result = predict_ae(
         config=PREDICTION_CONFIG_PATH,
-        training_manifest_path=training_result.manifest_path,
+        overrides=PredictionOverrides(
+            training_manifest_path=training_result.manifest_path,
+        ),
     )
 
     actual_manifest_path = prediction_result.manifest_path.resolve()
@@ -150,7 +155,9 @@ def test_evaluation_prediction_manifest_override_takes_precedence(
 
     evaluation_result = evaluate(
         config=mutated_config_path,
-        prediction_manifest_path=actual_manifest_path,
+        overrides=EvaluationOverrides(
+            prediction_manifest_path=actual_manifest_path,
+        ),
     )
 
     assert evaluation_result.manifest_path.is_file()
@@ -186,14 +193,18 @@ def test_internal_model_with_standard_external_datamodule(
 
     training_result = train_ae(
         config=TRAINING_CONFIG_PATH,
-        datamodule=datamodule,
+        overrides=TrainingOverrides(
+            datamodule=datamodule,
+        ),
         compatibility_policy="error",
     )
 
     prediction_result = predict_ae(
         config=PREDICTION_CONFIG_PATH,
-        training_manifest_path=training_result.manifest_path,
-        datamodule=datamodule,
+        overrides=PredictionOverrides(
+            training_manifest_path=training_result.manifest_path,
+            datamodule=datamodule,
+        ),
         compatibility_policy="error",
     )
 
@@ -222,7 +233,9 @@ def test_internal_model_with_private_external_datamodule(
     ) as exc_info:
         train_ae(
             config=TRAINING_CONFIG_PATH,
-            datamodule=datamodule,
+            overrides=TrainingOverrides(
+                datamodule=datamodule,
+            ),
             compatibility_policy="error",
         )
 
@@ -242,16 +255,20 @@ def test_standard_external_model_with_standard_external_datamodule(
 
     training_result = train_ae(
         config=TRAINING_CONFIG_PATH,
-        model=CompatibleExternalAutoencoder(),
-        datamodule=datamodule,
+        overrides=TrainingOverrides(
+            model=CompatibleExternalAutoencoder(),
+            datamodule=datamodule,
+        ),
         compatibility_policy="error",
     )
 
     prediction_result = predict_ae(
         config=PREDICTION_CONFIG_PATH,
-        training_manifest_path=training_result.manifest_path,
-        model=CompatibleExternalAutoencoder(),
-        datamodule=datamodule,
+        overrides=PredictionOverrides(
+            training_manifest_path=training_result.manifest_path,
+            model=CompatibleExternalAutoencoder(),
+            datamodule=datamodule,
+        ),
         compatibility_policy="error",
     )
 
@@ -272,14 +289,18 @@ def test_standard_external_model_with_internal_datamodule(
 
     training_result = train_ae(
         config=TRAINING_CONFIG_PATH,
-        model=CompatibleExternalAutoencoder(),
+        overrides=TrainingOverrides(
+            model=CompatibleExternalAutoencoder(),
+        ),
         compatibility_policy="error",
     )
 
     prediction_result = predict_ae(
         config=PREDICTION_CONFIG_PATH,
-        training_manifest_path=training_result.manifest_path,
-        model=CompatibleExternalAutoencoder(),
+        overrides=PredictionOverrides(
+            training_manifest_path=training_result.manifest_path,
+            model=CompatibleExternalAutoencoder(),
+        ),
         compatibility_policy="error",
     )
 
@@ -308,16 +329,20 @@ def test_external_model_class_is_built_from_configured_params(
 
     training_result = train_ae(
         config=TRAINING_CONFIG_PATH,
-        config_components={"overrides": overrides},
-        model=CompatibleExternalAutoencoder,
+        overrides=TrainingOverrides(
+            config_components={"overrides": overrides},
+            model=CompatibleExternalAutoencoder,
+        ),
         compatibility_policy="error",
     )
 
     prediction_result = predict_ae(
         config=PREDICTION_CONFIG_PATH,
-        config_components={"overrides": overrides},
-        training_manifest_path=training_result.manifest_path,
-        model=CompatibleExternalAutoencoder,
+        overrides=PredictionOverrides(
+            config_components={"overrides": overrides},
+            training_manifest_path=training_result.manifest_path,
+            model=CompatibleExternalAutoencoder,
+        ),
         compatibility_policy="error",
     )
 
@@ -362,16 +387,20 @@ def test_external_datamodule_class_is_built_from_configured_params(
 
     training_result = train_ae(
         config=TRAINING_CONFIG_PATH,
-        config_components={"overrides": overrides},
-        datamodule=ParameterizedExternalDataModule,
+        overrides=TrainingOverrides(
+            config_components={"overrides": overrides},
+            datamodule=ParameterizedExternalDataModule,
+        ),
         compatibility_policy="error",
     )
 
     prediction_result = predict_ae(
         config=PREDICTION_CONFIG_PATH,
-        config_components={"overrides": overrides},
-        training_manifest_path=training_result.manifest_path,
-        datamodule=ParameterizedExternalDataModule,
+        overrides=PredictionOverrides(
+            config_components={"overrides": overrides},
+            training_manifest_path=training_result.manifest_path,
+            datamodule=ParameterizedExternalDataModule,
+        ),
         compatibility_policy="error",
     )
 
@@ -432,8 +461,10 @@ def test_external_instance_rejects_constructor_params(
     ):
         train_ae(
             config=TRAINING_CONFIG_PATH,
-            config_components={"overrides": overrides},
-            model=CompatibleExternalAutoencoder(),
+            overrides=TrainingOverrides(
+                config_components={"overrides": overrides},
+                model=CompatibleExternalAutoencoder(),
+            ),
         )
 
 
@@ -448,8 +479,10 @@ def test_standard_external_model_with_private_external_datamodule(
     with pytest.raises(KeyError, match="x"):
         train_ae(
             config=TRAINING_CONFIG_PATH,
-            model=CompatibleExternalAutoencoder(),
-            datamodule=datamodule,
+            overrides=TrainingOverrides(
+                model=CompatibleExternalAutoencoder(),
+                datamodule=datamodule,
+            ),
             compatibility_policy="error",
         )
 
@@ -467,7 +500,9 @@ def test_private_external_model_with_internal_datamodule(
     ):
         train_ae(
             config=TRAINING_CONFIG_PATH,
-            model=PrivateBatchExternalAutoencoder(),
+            overrides=TrainingOverrides(
+                model=PrivateBatchExternalAutoencoder(),
+            ),
             compatibility_policy="error",
         )
 
@@ -483,8 +518,10 @@ def test_private_external_model_with_standard_external_datamodule(
     with pytest.raises(KeyError, match="image"):
         train_ae(
             config=TRAINING_CONFIG_PATH,
-            model=PrivateBatchExternalAutoencoder(),
-            datamodule=datamodule,
+            overrides=TrainingOverrides(
+                model=PrivateBatchExternalAutoencoder(),
+                datamodule=datamodule,
+            ),
             compatibility_policy="error",
         )
 
@@ -499,16 +536,20 @@ def test_private_external_model_with_private_external_datamodule(
 
     training_result = train_ae(
         config=TRAINING_CONFIG_PATH,
-        model=PrivateBatchExternalAutoencoder(),
-        datamodule=datamodule,
+        overrides=TrainingOverrides(
+            model=PrivateBatchExternalAutoencoder(),
+            datamodule=datamodule,
+        ),
         compatibility_policy="error",
     )
 
     prediction_result = predict_ae(
         config=PREDICTION_CONFIG_PATH,
-        training_manifest_path=training_result.manifest_path,
-        model=PrivateBatchExternalAutoencoder(),
-        datamodule=datamodule,
+        overrides=PredictionOverrides(
+            training_manifest_path=training_result.manifest_path,
+            model=PrivateBatchExternalAutoencoder(),
+            datamodule=datamodule,
+        ),
         compatibility_policy="error",
     )
 
@@ -541,14 +582,18 @@ def test_external_model_allows_missing_model_config_sections(
 
     training_result = train_ae(
         config=training_config_path,
-        model=CompatibleExternalAutoencoder(),
+        overrides=TrainingOverrides(
+            model=CompatibleExternalAutoencoder(),
+        ),
         compatibility_policy="error",
     )
 
     prediction_result = predict_ae(
         config=PREDICTION_CONFIG_PATH,
-        training_manifest_path=training_result.manifest_path,
-        model=CompatibleExternalAutoencoder(),
+        overrides=PredictionOverrides(
+            training_manifest_path=training_result.manifest_path,
+            model=CompatibleExternalAutoencoder(),
+        ),
         compatibility_policy="error",
     )
 
@@ -592,14 +637,18 @@ def test_external_datamodule_allows_missing_data_config_sections(
 
     training_result = train_ae(
         config=training_config_path,
-        datamodule=datamodule,
+        overrides=TrainingOverrides(
+            datamodule=datamodule,
+        ),
         compatibility_policy="error",
     )
 
     prediction_result = predict_ae(
         config=prediction_config_path,
-        training_manifest_path=training_result.manifest_path,
-        datamodule=datamodule,
+        overrides=PredictionOverrides(
+            training_manifest_path=training_result.manifest_path,
+            datamodule=datamodule,
+        ),
         compatibility_policy="error",
     )
 
@@ -644,16 +693,20 @@ def test_external_model_and_datamodule_allow_all_related_sections_missing(
 
     training_result = train_ae(
         config=training_config_path,
-        model=CompatibleExternalAutoencoder(),
-        datamodule=datamodule,
+        overrides=TrainingOverrides(
+            model=CompatibleExternalAutoencoder(),
+            datamodule=datamodule,
+        ),
         compatibility_policy="error",
     )
 
     prediction_result = predict_ae(
         config=prediction_config_path,
-        training_manifest_path=training_result.manifest_path,
-        model=CompatibleExternalAutoencoder(),
-        datamodule=datamodule,
+        overrides=PredictionOverrides(
+            training_manifest_path=training_result.manifest_path,
+            model=CompatibleExternalAutoencoder(),
+            datamodule=datamodule,
+        ),
         compatibility_policy="error",
     )
 

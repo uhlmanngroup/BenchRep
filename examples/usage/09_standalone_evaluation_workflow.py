@@ -37,7 +37,7 @@ from pathlib import Path
 import anndata as ad
 import torch
 
-from benchrep import evaluate
+from benchrep import evaluate, EvaluationOverrides
 from benchrep.assembly.schemas import EvaluationSourceConfig
 
 
@@ -108,12 +108,14 @@ def main() -> None:
     # supplying standalone evaluation artifacts through a config override.
     evaluation_result = evaluate(
         config=CONFIG_PATH,
-        config_components={
-            "source": EvaluationSourceConfig(
-                anndata_path=ANNDATA_PATH,
-                reconstructions_path=RECONSTRUCTION_BUNDLE_DIR,
-            ),
-        },
+        overrides=EvaluationOverrides(
+            config_components={
+                "source": EvaluationSourceConfig(
+                    anndata_path=ANNDATA_PATH,
+                    reconstructions_path=RECONSTRUCTION_BUNDLE_DIR,
+                ),
+            },
+        ),
     )
 
     print(f"Evaluation status:   {evaluation_result.status_report.status}")

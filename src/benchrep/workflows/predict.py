@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -9,9 +8,9 @@ import lightning as L
 import torch
 
 from benchrep.utils.workflow_utils import PredictionConfigInput
+from benchrep.utils.workflow_overrides import PredictionOverrides
 from benchrep.assembly.config import (
     compose_effective_config,
-    SupportedPredictionConfigComponent,
 )
 from benchrep.assembly.builders import (
     build_dataset,
@@ -21,18 +20,16 @@ from benchrep.assembly.builders import (
     build_trainer,
     build_runtime_component,
 )
-from benchrep.interfaces.models import BenchRepAutoencoderModel, BenchRepVAEModel
 from benchrep.interfaces.model_families import (
     SupportedModel,
-    SupportedModelBaseClass,
     ModelFamilySpec,
-    CanonicalModelFamilySpec,
     AUTOENCODER_FAMILY,
     VAE_FAMILY,
     COMPOSITE_FAMILY,
 )
 from benchrep.assembly.resolvers import resolve_prediction_config, PredictionRunSpec
 from benchrep.assembly.resolvers.utils import (
+    ComponentSource,
     get_component_override_name,
     resolve_component_source,
 )
@@ -94,28 +91,17 @@ class PredictionWorkflowResult:
 # Model-specific wrappers
 def predict_ae(
         config: PredictionConfigInput = None,
-        config_components: Mapping[str, SupportedPredictionConfigComponent] | None = None,
-        training_manifest_path: Path | str | None = None,
-        model: (
-                BenchRepAutoencoderModel
-                | type[BenchRepAutoencoderModel]
-                | None
-        ) = None,
-        datamodule: (
-                L.LightningDataModule
-                | type[L.LightningDataModule]
-                | None
-        ) = None,
+        overrides: PredictionOverrides | None = None,
         compatibility_policy: CompatibilityPolicy = "error",
         capture_stdout: bool = False,
 ) -> PredictionWorkflowResult:
+    overrides = overrides if overrides is not None else PredictionOverrides()
+    overrides.validate_for(AUTOENCODER_FAMILY)
+
     return _predict(
         model_family=AUTOENCODER_FAMILY,
+        overrides=overrides,
         config=config,
-        config_components=config_components,
-        training_manifest_path=training_manifest_path,
-        model=model,
-        datamodule=datamodule,
         compatibility_policy=compatibility_policy,
         capture_stdout=capture_stdout,
     )
@@ -123,28 +109,17 @@ def predict_ae(
 
 def predict_vae(
         config: PredictionConfigInput = None,
-        config_components: Mapping[str, SupportedPredictionConfigComponent] | None = None,
-        training_manifest_path: Path | str | None = None,
-        model: (
-                BenchRepVAEModel
-                | type[BenchRepVAEModel]
-                | None
-        ) = None,
-        datamodule: (
-                L.LightningDataModule
-                | type[L.LightningDataModule]
-                | None
-        ) = None,
+        overrides: PredictionOverrides | None = None,
         compatibility_policy: CompatibilityPolicy = "error",
         capture_stdout: bool = False,
 ) -> PredictionWorkflowResult:
+    overrides = overrides if overrides is not None else PredictionOverrides()
+    overrides.validate_for(VAE_FAMILY)
+
     return _predict(
         model_family=VAE_FAMILY,
+        overrides=overrides,
         config=config,
-        config_components=config_components,
-        training_manifest_path=training_manifest_path,
-        model=model,
-        datamodule=datamodule,
         compatibility_policy=compatibility_policy,
         capture_stdout=capture_stdout,
     )
@@ -152,62 +127,42 @@ def predict_vae(
 
 def predict_composite(
     config: PredictionConfigInput = None,
-    config_components: (
-        Mapping[str, SupportedPredictionConfigComponent] | None
-    ) = None,
-    training_manifest_path: Path | str | None = None,
-    datamodule: (
-        L.LightningDataModule
-        | type[L.LightningDataModule]
-        | None
-    ) = None,
+    overrides: PredictionOverrides | None = None,
     capture_stdout: bool = False,
 ) -> PredictionWorkflowResult:
+    overrides = overrides if overrides is not None else PredictionOverrides()
+    overrides.validate_for(COMPOSITE_FAMILY)
+
     return _predict(
         model_family=COMPOSITE_FAMILY,
+        overrides=overrides,
         config=config,
-        config_components=config_components,
-        training_manifest_path=training_manifest_path,
-        datamodule=datamodule,
         capture_stdout=capture_stdout,
     )
 
 
 def _predict(
-        model_family: ModelFamilySpec,
-        config: PredictionConfigInput = None,
-        config_components: Mapping[str, SupportedPredictionConfigComponent] | None = None,
-        training_manifest_path: Path | str | None = None,
-        model: (
-                SupportedModel
-                | SupportedModelBaseClass
-                | None
-        ) = None,
-        datamodule: (
-                L.LightningDataModule
-                | type[L.LightningDataModule]
-                | None
-        ) = None,
-        compatibility_policy: CompatibilityPolicy = "error",
-        capture_stdout: bool = False,
+    model_family: ModelFamilySpec,
+    overrides: PredictionOverrides,
+    config: PredictionConfigInput = None,
+    compatibility_policy: CompatibilityPolicy = "error",
+    capture_stdout: bool = False,
 ) -> PredictionWorkflowResult:
+
+    config_components = overrides.config_components
+    model = overrides.model
+    datamodule = overrides.datamodule
+    training_manifest_path = overrides.training_manifest_path
+
     register_builtins()
 
-    if isinstance(model_family, CanonicalModelFamilySpec):
-        model_source = resolve_component_source(
-            model,
-            expected_base_class=model_family.model_base_class,
-            component_name="model",
-        )
-    else:
-        if model is not None:
-            raise TypeError(
-                "Whole-model overrides are supported only for the canonical "
-                "`autoencoder` and `vae` model families; they are not supported "
-                "for `composite`."
-            )
-
+    model_source: ComponentSource
+    if model is None:
         model_source = "config"
+    elif isinstance(model, type):
+        model_source = "external_class"
+    else:
+        model_source = "external_instance"
 
     datamodule_source = resolve_component_source(
         datamodule,

@@ -15,6 +15,11 @@ from benchrep.discovery.registry import (
     inspect_registry,
 )
 from benchrep.discovery.config import inspect_config
+from benchrep.utils.workflow_overrides import (
+    TrainingOverrides,
+    PredictionOverrides,
+    EvaluationOverrides,
+)
 
 
 __all__ = [
@@ -30,4 +35,7 @@ __all__ = [
     "list_registered_components",
     "inspect_registry",
     "inspect_config",
+    "TrainingOverrides",
+    "PredictionOverrides",
+    "EvaluationOverrides",
 ]

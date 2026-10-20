@@ -23,6 +23,8 @@ from benchrep import (
     train_vae,
     predict_vae,
     evaluate,
+    PredictionOverrides,
+    EvaluationOverrides,
 )
 from benchrep.architecture.losses import (
     BaseCustomObjectiveLoss,
@@ -189,14 +191,18 @@ def main() -> None:
     print("\n=== Prediction ===")
     prediction_result = predict_vae(
         config=CONFIG_DIR / "prediction.yaml",
-        training_manifest_path=training_result.manifest_path,
+        overrides=PredictionOverrides(
+            training_manifest_path=training_result.manifest_path,
+        ),
     )
     print(f"Prediction manifest: {prediction_result.manifest_path}")
 
     print("\n=== Evaluation ===")
     evaluation_result = evaluate(
         config=CONFIG_DIR / "evaluation.yaml",
-        prediction_manifest_path=prediction_result.manifest_path,
+        overrides=EvaluationOverrides(
+            prediction_manifest_path=prediction_result.manifest_path,
+        )
     )
     print(f"Evaluation manifest: {evaluation_result.manifest_path}")
 

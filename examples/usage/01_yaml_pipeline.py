@@ -10,7 +10,14 @@ The generated manifests connect the three stages.
 
 from pathlib import Path
 
-from benchrep import evaluate, predict_vae, train_vae
+from benchrep import (
+    train_vae,
+    predict_vae,
+    evaluate,
+    PredictionOverrides,
+    EvaluationOverrides,
+)
+
 
 
 # Resolve config paths relative to this script
@@ -33,7 +40,9 @@ def main() -> None:
         config=CONFIG_DIR / "prediction.yaml",
         # Use the manifest generated above instead of hard-coding an output path
         # in prediction.yaml.
-        training_manifest_path=training_result.manifest_path,
+        overrides=PredictionOverrides(
+            training_manifest_path=training_result.manifest_path
+        ),
     )
     print(f"Prediction manifest: {prediction_result.manifest_path}")
 
@@ -42,7 +51,9 @@ def main() -> None:
         config=CONFIG_DIR / "evaluation.yaml",
         # The prediction manifest supplies the exported AnnData,
         # reconstructions, provenance, and inherited run identity.
-        prediction_manifest_path=prediction_result.manifest_path,
+        overrides=EvaluationOverrides(
+            prediction_manifest_path=prediction_result.manifest_path
+        ),
     )
     print(f"Evaluation manifest: {evaluation_result.manifest_path}")
 

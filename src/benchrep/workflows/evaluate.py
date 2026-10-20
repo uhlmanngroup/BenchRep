@@ -2,16 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Mapping
+from typing import TYPE_CHECKING, Any
 import logging
 
 import anndata as ad
 
 from benchrep.utils.workflow_utils import EvaluationConfigInput
-from benchrep.assembly.config import (
-    compose_effective_config,
-    SupportedEvaluationConfigComponent,
-)
+from benchrep.utils.workflow_overrides import EvaluationOverrides
+from benchrep.assembly.config import compose_effective_config
 from benchrep.assembly.resolvers import resolve_evaluation_config
 from benchrep.assembly.schemas import EvaluationConfig
 from benchrep.evaluation.pipelines import (
@@ -61,14 +59,14 @@ class EvaluationWorkflowResult:
     manifest_path: Path
 
 def evaluate(
-        config: EvaluationConfigInput = None,
-        config_components: Mapping[
-                               str,
-                               SupportedEvaluationConfigComponent,
-                           ] | None = None,
-        prediction_manifest_path: Path | str | None = None,
-        capture_stdout: bool = False,
+    config: EvaluationConfigInput = None,
+    overrides: EvaluationOverrides | None = None,
+    capture_stdout: bool = False,
 ) -> EvaluationWorkflowResult:
+    overrides = overrides if overrides is not None else EvaluationOverrides()
+    config_components = overrides.config_components
+    prediction_manifest_path = overrides.prediction_manifest_path
+
     register_builtins()
 
     # Prediction manifest override

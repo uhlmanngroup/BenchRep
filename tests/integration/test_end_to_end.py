@@ -14,6 +14,7 @@ from lightning.pytorch.callbacks import (
     LearningRateMonitor,
 )
 
+from benchrep import EvaluationOverrides, PredictionOverrides, TrainingOverrides
 from benchrep.workflows import (
     train_ae,
     predict_ae,
@@ -86,7 +87,9 @@ def test_internal_end_to_end(
 
     prediction_result = predict_fn(
         config=CONFIG_DIR / "prediction_tiny_synthetic.yaml",
-        training_manifest_path=training_result.manifest_path,
+        overrides=PredictionOverrides(
+            training_manifest_path=training_result.manifest_path,
+        ),
     )
 
     assert prediction_result.manifest_path.is_file()
@@ -184,7 +187,9 @@ def test_internal_end_to_end(
 
     evaluation_result = evaluate(
         config=CONFIG_DIR / "evaluation_tiny_synthetic.yaml",
-        prediction_manifest_path=prediction_result.manifest_path,
+        overrides=EvaluationOverrides(
+            prediction_manifest_path=prediction_result.manifest_path,
+        ),
     )
 
     assert evaluation_result.manifest_path.is_file()
@@ -245,12 +250,14 @@ def test_internal_vae_prediction_can_reconstruct_from_sample(
 
     prediction_result = predict_vae(
         config=CONFIG_DIR / "prediction_tiny_synthetic.yaml",
-        config_components={
-            "inference": PredictionInferenceConfig(
-                canonical_vae_reconstruction_latent_source="sample",
-            ),
-        },
-        training_manifest_path=training_result.manifest_path,
+        overrides=PredictionOverrides(
+            config_components={
+                "inference": PredictionInferenceConfig(
+                    canonical_vae_reconstruction_latent_source="sample",
+                ),
+            },
+            training_manifest_path=training_result.manifest_path,
+        ),
     )
 
     model = prediction_result.model
@@ -402,27 +409,29 @@ def test_training_callbacks_are_not_inherited_by_prediction(
             CONFIG_DIR
             / "training_tiny_synthetic_ae.yaml"
         ),
-        config_components={
-            "logger": TrainingLoggerConfig(
-                name="csv",
-                params={
-                    "save_dir": str(tmp_path / "lightning_logs"),
-                },
-            ),
-            "early_stopping": TrainingEarlyStoppingConfig(
-                monitor="losses/val/total_weighted_loss",
-                mode="min",
-                patience=3,
-            ),
-            "additional_callbacks": [
-                TrainingAdditionalCallbackConfig(
-                    name="learning_rate_monitor",
+        overrides=TrainingOverrides(
+            config_components={
+                "logger": TrainingLoggerConfig(
+                    name="csv",
                     params={
-                        "logging_interval": "epoch",
+                        "save_dir": str(tmp_path / "lightning_logs"),
                     },
                 ),
-            ],
-        },
+                "early_stopping": TrainingEarlyStoppingConfig(
+                    monitor="losses/val/total_weighted_loss",
+                    mode="min",
+                    patience=3,
+                ),
+                "additional_callbacks": [
+                    TrainingAdditionalCallbackConfig(
+                        name="learning_rate_monitor",
+                        params={
+                            "logging_interval": "epoch",
+                        },
+                    ),
+                ],
+            },
+        ),
     )
 
     early_stopping_callbacks = [
@@ -449,7 +458,9 @@ def test_training_callbacks_are_not_inherited_by_prediction(
             CONFIG_DIR
             / "prediction_tiny_synthetic.yaml"
         ),
-        training_manifest_path=training_result.manifest_path,
+        overrides=PredictionOverrides(
+            training_manifest_path=training_result.manifest_path,
+        ),
     )
 
     assert not any(

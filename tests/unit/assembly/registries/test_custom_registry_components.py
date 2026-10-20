@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from benchrep import EvaluationOverrides, PredictionOverrides, TrainingOverrides
 from benchrep import evaluate, predict_vae, train_vae
 from benchrep.assembly.schemas import (
     CustomDatasetConfig,
@@ -97,72 +98,74 @@ def test_custom_registered_components_work_end_to_end(
             CONFIG_DIR
             / "training_tiny_synthetic_vae.yaml"
         ),
-        config_components={
-            "dataset": dataset_config,
-            "transform_pipelines": [
-                TrainingTransformPipelineConfig(
-                    steps=[
-                        TrainingTransformStepConfig(
-                            name="custom_test_transform",
-                            apply_to=["validation"],
-                            params={"scale": 1.0},
+        overrides=TrainingOverrides(
+            config_components={
+                "dataset": dataset_config,
+                "transform_pipelines": [
+                    TrainingTransformPipelineConfig(
+                        steps=[
+                            TrainingTransformStepConfig(
+                                name="custom_test_transform",
+                                apply_to=["validation"],
+                                params={"scale": 1.0},
+                            ),
+                        ],
+                    ),
+                ],
+                "encoder": TrainingEncoderConfig(
+                    name="custom_test_encoder",
+                    params={
+                        "input_shape": [1, 28, 28],
+                        "output_dim": 8,
+                    },
+                ),
+                "decoder": TrainingDecoderConfig(
+                    name="custom_test_decoder",
+                    params={
+                        "output_shape": [1, 28, 28],
+                    },
+                ),
+                "losses": {
+                    "reconstruction": [
+                        TrainingLossTermConfig(
+                            name="custom_test_reconstruction_loss",
+                            weight=1.0,
                         ),
                     ],
+                    "regularization": [
+                        TrainingLossTermConfig(
+                            name="custom_test_regularization_loss",
+                            weight=0.0001,
+                        ),
+                    ],
+                    "custom_objective": [
+                        TrainingLossTermConfig(
+                            name="custom_test_objective_loss",
+                            weight=0.1,
+                            params={
+                                "regularization_weight": 0.0001,
+                            },
+                        ),
+                    ],
+                },
+                "optimizer": TrainingOptimizerConfig(
+                    name="custom_test_optimizer",
+                    params={"lr": 0.001},
                 ),
-            ],
-            "encoder": TrainingEncoderConfig(
-                name="custom_test_encoder",
-                params={
-                    "input_shape": [1, 28, 28],
-                    "output_dim": 8,
-                },
-            ),
-            "decoder": TrainingDecoderConfig(
-                name="custom_test_decoder",
-                params={
-                    "output_shape": [1, 28, 28],
-                },
-            ),
-            "losses": {
-                "reconstruction": [
-                    TrainingLossTermConfig(
-                        name="custom_test_reconstruction_loss",
-                        weight=1.0,
-                    ),
-                ],
-                "regularization": [
-                    TrainingLossTermConfig(
-                        name="custom_test_regularization_loss",
-                        weight=0.0001,
-                    ),
-                ],
-                "custom_objective": [
-                    TrainingLossTermConfig(
-                        name="custom_test_objective_loss",
-                        weight=0.1,
+                "logger": TrainingLoggerConfig(
+                    name="custom_test_logger",
+                    params={},
+                ),
+                "additional_callbacks": [
+                    TrainingAdditionalCallbackConfig(
+                        name="custom_test_callback",
                         params={
-                            "regularization_weight": 0.0001,
+                            "marker": "configured_from_test",
                         },
                     ),
                 ],
             },
-            "optimizer": TrainingOptimizerConfig(
-                name="custom_test_optimizer",
-                params={"lr": 0.001},
-            ),
-            "logger": TrainingLoggerConfig(
-                name="custom_test_logger",
-                params={},
-            ),
-            "additional_callbacks": [
-                TrainingAdditionalCallbackConfig(
-                    name="custom_test_callback",
-                    params={
-                        "marker": "configured_from_test",
-                    },
-                ),
-            ],
-        },
+        ),
     )
 
     custom_callbacks = [
@@ -182,10 +185,12 @@ def test_custom_registered_components_work_end_to_end(
             CONFIG_DIR
             / "prediction_tiny_synthetic.yaml"
         ),
-        training_manifest_path=training_result.manifest_path,
-        config_components={
-            "dataset": dataset_config,
-        },
+        overrides=PredictionOverrides(
+            training_manifest_path=training_result.manifest_path,
+            config_components={
+                "dataset": dataset_config,
+            },
+        ),
     )
 
     assert prediction_result.manifest_path.is_file()
@@ -196,59 +201,61 @@ def test_custom_registered_components_work_end_to_end(
             CONFIG_DIR
             / "evaluation_tiny_synthetic.yaml"
         ),
-        prediction_manifest_path=prediction_result.manifest_path,
-        config_components={
-            "metrics": EvaluationMetricsConfig(
-                clustering=EvaluationClusteringMetricsConfig(
-                    internal=EvaluationInternalClusteringMetricConfig(
+        overrides=EvaluationOverrides(
+            prediction_manifest_path=prediction_result.manifest_path,
+            config_components={
+                "metrics": EvaluationMetricsConfig(
+                    clustering=EvaluationClusteringMetricsConfig(
+                        internal=EvaluationInternalClusteringMetricConfig(
+                            enabled=True,
+                            selected=["custom_test_internal_metric"],
+                            params={
+                                "custom_test_internal_metric": {
+                                    "offset": 0.0,
+                                },
+                            },
+                        ),
+                        external=EvaluationExternalClusteringMetricConfig(
+                            enabled=True,
+                            label_key="label",
+                            selected=["custom_test_external_metric"],
+                            params={
+                                "custom_test_external_metric": {
+                                    "offset": 0.0,
+                                },
+                            },
+                        ),
+                    ),
+                    embedding=EvaluationEmbeddingMetricConfig(
                         enabled=True,
-                        selected=["custom_test_internal_metric"],
+                        selected=["custom_test_embedding_metric"],
                         params={
-                            "custom_test_internal_metric": {
-                                "offset": 0.0,
+                            "custom_test_embedding_metric": {
+                                "scale": 1.0,
                             },
                         },
                     ),
-                    external=EvaluationExternalClusteringMetricConfig(
+                    predictability=EvaluationPredictabilityConfig(
+                        enabled=False,
+                    ),
+                    reconstruction=EvaluationReconstructionMetricConfig(
                         enabled=True,
-                        label_key="label",
-                        selected=["custom_test_external_metric"],
+                        selected=[
+                            "custom_test_reconstruction_metric",
+                        ],
                         params={
-                            "custom_test_external_metric": {
+                            "custom_test_reconstruction_metric": {
                                 "offset": 0.0,
                             },
                         },
+                        reduction="global",
                     ),
                 ),
-                embedding=EvaluationEmbeddingMetricConfig(
-                    enabled=True,
-                    selected=["custom_test_embedding_metric"],
-                    params={
-                        "custom_test_embedding_metric": {
-                            "scale": 1.0,
-                        },
-                    },
-                ),
-                predictability=EvaluationPredictabilityConfig(
+                "plots": EvaluationPlotsConfig(
                     enabled=False,
                 ),
-                reconstruction=EvaluationReconstructionMetricConfig(
-                    enabled=True,
-                    selected=[
-                        "custom_test_reconstruction_metric",
-                    ],
-                    params={
-                        "custom_test_reconstruction_metric": {
-                            "offset": 0.0,
-                        },
-                    },
-                    reduction="global",
-                ),
-            ),
-            "plots": EvaluationPlotsConfig(
-                enabled=False,
-            ),
-        },
+            },
+        ),
     )
 
     assert evaluation_result.manifest_path.is_file()

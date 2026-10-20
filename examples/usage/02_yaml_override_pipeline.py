@@ -17,6 +17,9 @@ from benchrep import (
     train_vae,
     predict_vae,
     evaluate,
+    TrainingOverrides,
+    PredictionOverrides,
+    EvaluationOverrides,
 )
 from benchrep.assembly.schemas import (
     # Training schema
@@ -115,15 +118,17 @@ def main() -> None:
     training_result = train_vae(
         config=CONFIG_DIR / "training.yaml",
         # Mapping keys match the top-level field names in `TrainingConfig`.
-        config_components={
-            "run": run_config,
-            "encoder": encoder_config,
-            "decoder": decoder_config,
-            "dataset": cifar_10_training_config,
-        },
+        overrides=TrainingOverrides(
+            config_components={
+                "run": run_config,
+                "encoder": encoder_config,
+                "decoder": decoder_config,
+                "dataset": cifar_10_training_config,
+            },
+        ),
     )
     # BenchRep writes the harmonized effective configuration as resolved_config.yaml.
-    # It can be supplied directly as config_path in a future run when the manifest
+    # It can be supplied directly as `config` in a future run when the manifest
     # records `construction.config.run_reconstructable_from_resolved_config: true`.
     resolved_training_config_path = (
         training_result.run_context.config_dir
@@ -135,14 +140,16 @@ def main() -> None:
     print("\n=== Prediction ===")
     prediction_result = predict_vae(
         config=CONFIG_DIR / "prediction.yaml",
-        # Use the manifest generated above instead of hard-coding an output path
-        # in prediction.yaml.
-        training_manifest_path=training_result.manifest_path,
-        # prediction.yaml selects the MNIST test split, so replace its complete
-        # dataset section with the corresponding CIFAR-10 test configuration.
-        config_components={
-            "dataset": cifar_10_prediction_config,
-        },
+        overrides=PredictionOverrides(
+            # Use the manifest generated above instead of hard-coding an output path
+            # in prediction.yaml.
+            training_manifest_path=training_result.manifest_path,
+            # prediction.yaml selects the MNIST test split, so replace its complete
+            # dataset section with the corresponding CIFAR-10 test configuration.
+            config_components={
+                "dataset": cifar_10_prediction_config,
+            },
+        ),
     )
     print(f"Prediction manifest: {prediction_result.manifest_path}")
 
@@ -151,7 +158,9 @@ def main() -> None:
         config=CONFIG_DIR / "evaluation.yaml",
         # The prediction manifest supplies the exported AnnData,
         # reconstructions, provenance, and inherited run identity.
-        prediction_manifest_path=prediction_result.manifest_path,
+        overrides=EvaluationOverrides(
+            prediction_manifest_path=prediction_result.manifest_path,
+        ),
     )
     print(f"Evaluation manifest: {evaluation_result.manifest_path}")
 

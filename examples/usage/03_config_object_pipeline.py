@@ -385,7 +385,7 @@ def main() -> None:
     print("\n=== Prediction ===")
     # Here the generated training manifest is stored directly in the prediction
     # config. A manifest path can also be passed to predict_vae() through its
-    # training_manifest_path argument to override the path stored in the config.
+    # overrides=PredictionOverrides(training_manifest_path=...) argument.
     prediction_config = build_prediction_config(
         training_manifest_path=training_result.manifest_path,
     )
@@ -396,7 +396,8 @@ def main() -> None:
 
     print("\n=== Evaluation ===")
     # Likewise, this stores the generated prediction manifest directly in the
-    # evaluation config. evaluate(prediction_manifest_path=...) can override it.
+    # evaluation config. EvaluationOverrides(prediction_manifest_path=...)
+    # passed as `overrides` can override it.
     evaluation_config = build_evaluation_config(
         prediction_manifest_path=prediction_result.manifest_path,
     )

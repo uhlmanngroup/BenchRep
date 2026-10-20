@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from collections.abc import Mapping
 from typing import Any
 
 import lightning as L
@@ -12,6 +11,7 @@ from lightning.pytorch.utilities.exceptions import SIGTERMException
 import torch
 
 from benchrep.utils.workflow_utils import TrainingConfigInput
+from benchrep.utils.workflow_overrides import TrainingOverrides
 from benchrep.runtime.run_context import RunContext
 from benchrep.runtime.train_run_validation import (
     validate_train_contract_compatibility,
@@ -50,20 +50,13 @@ from benchrep.records import (
 from benchrep.records.utils import now_isoformat
 from benchrep.interfaces.model_families import (
     SupportedModel,
-    SupportedModelBaseClass,
     ModelFamilySpec,
-    CanonicalModelFamilySpec,
     AUTOENCODER_FAMILY,
     VAE_FAMILY,
     COMPOSITE_FAMILY,
 )
-from benchrep.interfaces.models import (
-    BenchRepAutoencoderModel,
-    BenchRepVAEModel,
-)
 from benchrep.assembly.config import (
     compose_effective_config,
-    SupportedTrainingConfigComponent,
 )
 from benchrep.assembly.schemas import TrainingConfig
 from benchrep.assembly.builders import (
@@ -76,6 +69,7 @@ from benchrep.assembly.builders import (
 )
 from benchrep.assembly.registries.builtins import register_builtins
 from benchrep.assembly.resolvers.utils import (
+    ComponentSource,
     get_component_override_name,
     resolve_component_source,
 )
@@ -101,26 +95,17 @@ class TrainingWorkflowResult:
 # Model-specific wrappers
 def train_ae(
         config: TrainingConfigInput = None,
-        config_components: Mapping[str, SupportedTrainingConfigComponent] | None = None,
-        model: (
-                BenchRepAutoencoderModel
-                | type[BenchRepAutoencoderModel]
-                | None
-        ) = None,
-        datamodule: (
-                L.LightningDataModule
-                | type[L.LightningDataModule]
-                | None
-        ) = None,
+        overrides: TrainingOverrides | None = None,
         compatibility_policy: CompatibilityPolicy = "error",
         capture_stdout: bool = False,
 ) -> TrainingWorkflowResult:
+    overrides = overrides if overrides is not None else TrainingOverrides()
+    overrides.validate_for(AUTOENCODER_FAMILY)
+
     return _train(
         model_family=AUTOENCODER_FAMILY,
+        overrides=overrides,
         config=config,
-        config_components=config_components,
-        model=model,
-        datamodule=datamodule,
         compatibility_policy=compatibility_policy,
         capture_stdout=capture_stdout,
     )
@@ -128,26 +113,17 @@ def train_ae(
 
 def train_vae(
         config: TrainingConfigInput = None,
-        config_components: Mapping[str, SupportedTrainingConfigComponent] | None = None,
-        model: (
-                BenchRepVAEModel
-                | type[BenchRepVAEModel]
-                | None
-        ) = None,
-        datamodule: (
-                L.LightningDataModule
-                | type[L.LightningDataModule]
-                | None
-        ) = None,
+        overrides: TrainingOverrides | None = None,
         compatibility_policy: CompatibilityPolicy = "error",
         capture_stdout: bool = False,
 ) -> TrainingWorkflowResult:
+    overrides = overrides if overrides is not None else TrainingOverrides()
+    overrides.validate_for(VAE_FAMILY)
+
     return _train(
         model_family=VAE_FAMILY,
+        overrides=overrides,
         config=config,
-        config_components=config_components,
-        model=model,
-        datamodule=datamodule,
         compatibility_policy=compatibility_policy,
         capture_stdout=capture_stdout,
     )
@@ -155,59 +131,42 @@ def train_vae(
 
 def train_composite(
     config: TrainingConfigInput = None,
-    config_components: (
-        Mapping[str, SupportedTrainingConfigComponent] | None
-    ) = None,
-    datamodule: (
-        L.LightningDataModule
-        | type[L.LightningDataModule]
-        | None
-    ) = None,
+    overrides: TrainingOverrides | None = None,
     capture_stdout: bool = False,
 ) -> TrainingWorkflowResult:
+    overrides = overrides if overrides is not None else TrainingOverrides()
+    overrides.validate_for(COMPOSITE_FAMILY)
+
     return _train(
         model_family=COMPOSITE_FAMILY,
+        overrides=overrides,
         config=config,
-        config_components=config_components,
-        datamodule=datamodule,
         capture_stdout=capture_stdout,
     )
 
 
 def _train(
-        model_family: ModelFamilySpec,
-        config: TrainingConfigInput = None,
-        config_components: Mapping[str, SupportedTrainingConfigComponent] | None = None,
-        model: (
-                SupportedModel
-                | SupportedModelBaseClass
-                | None
-        ) = None,
-        datamodule: (
-                L.LightningDataModule
-                | type[L.LightningDataModule]
-                | None
-        ) = None,
-        compatibility_policy: CompatibilityPolicy = "error",
-        capture_stdout: bool = False,
+    model_family: ModelFamilySpec,
+    overrides: TrainingOverrides,
+    config: TrainingConfigInput = None,
+    compatibility_policy: CompatibilityPolicy = "error",
+    capture_stdout: bool = False,
 ) -> TrainingWorkflowResult:
+
+    config_components = overrides.config_components
+    model = overrides.model
+    datamodule = overrides.datamodule
+
     register_builtins()
 
-    if isinstance(model_family, CanonicalModelFamilySpec):
-        model_source = resolve_component_source(
-            model,
-            expected_base_class=model_family.model_base_class,
-            component_name="model",
-        )
-    else:
-        if model is not None:
-            raise TypeError(
-                "Whole-model overrides are supported only for the canonical "
-                "`autoencoder` and `vae` model families; they are not supported "
-                "for `composite`."
-            )
-
+    model_source: ComponentSource
+    if model is None:
         model_source = "config"
+    elif isinstance(model, type):
+        model_source = "external_class"
+    else:
+        model_source = "external_instance"
+
     datamodule_source = resolve_component_source(
         datamodule,
         expected_base_class=L.LightningDataModule,
