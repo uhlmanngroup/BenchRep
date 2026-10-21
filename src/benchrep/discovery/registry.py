@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import inspect
 from dataclasses import dataclass
+from functools import partial
 from textwrap import fill, indent
-from typing import Any, Final
+from typing import Any, Final, TextIO
 
 from benchrep.assembly.registries.core import (
     DATASETS,
@@ -362,6 +363,8 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
 def inspect_registry(
     registry: str | None = None,
     component: str | None = None,
+    *,
+    file: TextIO | None = None,
 ) -> None:
     """Print human-readable information about BenchRep registries.
 
@@ -371,13 +374,15 @@ def inspect_registry(
 
     Component names may be canonical names or registered aliases.
     """
+    emit = partial(print, file=file)
+
     if registry is None:
         if component is not None:
             raise ValueError(
                 "component cannot be provided without a registry."
             )
 
-        print("BenchRep registries")
+        emit("BenchRep registries")
 
         for registry_name, registry_info in _COMPONENT_REGISTRIES.items():
             selected_registry = registry_info.registry
@@ -386,11 +391,11 @@ def inspect_registry(
                 "component" if n_components == 1 else "components"
             )
 
-            print(
+            emit(
                 f"- {registry_name}: {n_components} {component_label} "
                 f"({_registry_object_path(registry_info)})"
             )
-            print(
+            emit(
                 "  custom registration: "
                 f"{_support_label(registry_info.custom_registration_supported)}; "
                 "registration entry: "
@@ -406,31 +411,32 @@ def inspect_registry(
     aliases_by_canonical = selected_registry.aliases_by_canonical()
 
     if component is None:
-        print(f"Registry: {registry_name}")
-        print(
+        emit(f"Registry: {registry_name}")
+        emit(
             "Registry object: "
             f"{_registry_object_path(registry_info)}"
         )
 
-        _print_registry_customization(registry_info)
+        _print_registry_customization(registry_info, file=file)
 
-        print("\nComponents:")
+        emit("\nComponents:")
 
         for canonical_name, aliases in aliases_by_canonical.items():
             entry = selected_registry.get(canonical_name)
             target = _registry_entry_target(entry)
 
-            print(f"\n  {canonical_name}")
-            print(
+            emit(f"\n  {canonical_name}")
+            emit(
                 "    aliases: "
                 + (", ".join(aliases) if aliases else "none")
             )
-            print(f"    target: {_qualified_name(target)}")
+            emit(f"    target: {_qualified_name(target)}")
 
             if isinstance(entry, ArchitectureComponent):
                 _print_architecture_component_contract(
                     entry,
                     indentation="    ",
+                    file=file,
                 )
 
             elif isinstance(entry, LossComponent):
@@ -438,13 +444,14 @@ def inspect_registry(
                     entry,
                     registry=selected_registry,
                     indentation="    ",
+                    file=file,
                 )
 
             if isinstance(entry, EvaluationMetric):
-                print(f"    result kind: {entry.result_kind}")
+                emit(f"    result kind: {entry.result_kind}")
 
                 if entry.vector_axis is not None:
-                    print(f"    vector axis: {entry.vector_axis}")
+                    emit(f"    vector axis: {entry.vector_axis}")
 
         return
 
@@ -460,44 +467,45 @@ def inspect_registry(
     )
     docstring = inspect.getdoc(target)
 
-    print(f"Registry: {registry_name}")
-    print(f"Component: {canonical_name}")
+    emit(f"Registry: {registry_name}")
+    emit(f"Component: {canonical_name}")
 
-    _print_registry_customization(registry_info)
+    _print_registry_customization(registry_info, file=file)
 
-    print(
+    emit(
         "Aliases: "
         + (", ".join(aliases) if aliases else "none")
     )
-    print(f"Target: {_qualified_name(target)}")
+    emit(f"Target: {_qualified_name(target)}")
 
     if isinstance(entry, ArchitectureComponent):
-        _print_architecture_component_contract(entry)
+        _print_architecture_component_contract(entry, file=file)
 
     elif isinstance(entry, LossComponent):
         _print_loss_component_contract(
             entry,
             registry=selected_registry,
+            file=file,
         )
 
     elif isinstance(entry, EvaluationMetric):
-        print(f"Result kind: {entry.result_kind}")
+        emit(f"Result kind: {entry.result_kind}")
 
         if entry.vector_axis is not None:
-            print(f"Vector axis: {entry.vector_axis}")
+            emit(f"Vector axis: {entry.vector_axis}")
 
-    print(
+    emit(
         f"{signature_label}: "
         + (signature if signature is not None else "unavailable")
     )
 
-    print("\nDescription:")
+    emit("\nDescription:")
     if docstring is None:
-        print("  No docstring available.")
+        emit("  No docstring available.")
     else:
-        print(indent(docstring, "  "))
+        emit(indent(docstring, "  "))
 
-    print(
+    emit(
         "\nNote: the callable signature describes the registered "
         "implementation. BenchRep may supply some arguments internally, so "
         "it does not always map directly to the component's config `params`."
@@ -528,28 +536,32 @@ def _resolve_registry(
 
 def _print_registry_customization(
     registry_info: ComponentRegistryInfo,
+    *,
+    file: TextIO | None = None,
 ) -> None:
-    print(
+    emit = partial(print, file=file)
+
+    emit(
         "Custom registration: "
         f"{_support_label(registry_info.custom_registration_supported)}"
     )
-    print(
+    emit(
         "Registration entry: "
         f"{_registration_entry_label(registry_info)}"
     )
-    print(
+    emit(
         "Runtime instance override: "
         f"{_support_label(registry_info.runtime_instance_override_supported)}"
     )
 
     if registry_info.config_locations:
-        print("Config locations:")
+        emit("Config locations:")
         for location in registry_info.config_locations:
-            print(f"  - {location}")
+            emit(f"  - {location}")
 
     if registry_info.contract is not None:
-        print("Contract:")
-        print(
+        emit("Contract:")
+        emit(
             indent(
                 fill(
                     registry_info.contract,
@@ -560,8 +572,8 @@ def _print_registry_customization(
         )
 
     if registry_info.runtime_override is not None:
-        print("Runtime override:")
-        print(
+        emit("Runtime override:")
+        emit(
             indent(
                 fill(
                     registry_info.runtime_override,
@@ -606,18 +618,21 @@ def _print_architecture_component_contract(
     entry: ArchitectureComponent,
     *,
     indentation: str = "",
+    file: TextIO | None = None,
 ) -> None:
     """Print one architecture component's Composite runtime contract."""
 
-    print(f"{indentation}Composite runtime contract:")
-    print(f"{indentation}  Inputs:")
+    emit = partial(print, file=file)
+
+    emit(f"{indentation}Composite runtime contract:")
+    emit(f"{indentation}  Inputs:")
 
     for runtime_input in entry.runtime_inputs:
         supported_structures = " | ".join(
             runtime_input.supported_structures
         )
 
-        print(
+        emit(
             f"{indentation}    {runtime_input.name}: "
             f"{supported_structures}"
         )
@@ -629,7 +644,7 @@ def _print_architecture_component_contract(
             runtime_result.supported_structures
         )
 
-        print(
+        emit(
             f"{indentation}  Result: tensor "
             f"({supported_structures})"
         )
@@ -637,14 +652,14 @@ def _print_architecture_component_contract(
         return
 
     if isinstance(runtime_result, ComponentMappingResult):
-        print(f"{indentation}  Result: mapping")
+        emit(f"{indentation}  Result: mapping")
 
         for output in runtime_result.outputs:
             supported_structures = " | ".join(
                 output.supported_structures
             )
 
-            print(
+            emit(
                 f"{indentation}    {output.name}: "
                 f"{supported_structures}"
             )
@@ -662,8 +677,11 @@ def _print_loss_component_contract(
     *,
     registry: Registry,
     indentation: str = "",
+    file: TextIO | None = None,
 ) -> None:
     """Print one loss component's Composite runtime contract."""
+
+    emit = partial(print, file=file)
 
     if entry.runtime_inputs is None:
         if (
@@ -674,26 +692,26 @@ def _print_loss_component_contract(
         else:
             contract_status = "not declared"
 
-        print(
+        emit(
             f"{indentation}Composite runtime contract: "
             f"{contract_status}"
         )
         return
 
-    print(f"{indentation}Composite runtime contract:")
-    print(f"{indentation}  Inputs:")
+    emit(f"{indentation}Composite runtime contract:")
+    emit(f"{indentation}  Inputs:")
 
     for runtime_input in entry.runtime_inputs:
         supported_roles = " | ".join(
             runtime_input.supported_roles
         )
 
-        print(
+        emit(
             f"{indentation}    {runtime_input.name}: "
             f"{supported_roles}"
         )
 
-    print(f"{indentation}  Result: scalar tensor")
+    emit(f"{indentation}  Result: scalar tensor")
 
 
 def _registry_entry_target(entry: Any) -> Any:

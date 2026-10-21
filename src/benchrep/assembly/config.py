@@ -294,7 +294,7 @@ def compose_effective_config(
             "At least one of config or config_components is required."
         )
 
-    component_raw = _normalize_config_components(
+    component_raw = normalize_config_components(
         schema=schema,
         config_components=config_components,
     )
@@ -470,7 +470,7 @@ def get_expected_component_types(
     }
 
 
-def _normalize_config_components(
+def normalize_config_components(
     *,
     schema: type[SupportedConfigType],
     config_components: Mapping[str, SupportedConfigComponent] | None,

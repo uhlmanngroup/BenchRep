@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+from functools import partial
 from textwrap import indent
 from types import UnionType
 from typing import (
@@ -11,6 +12,7 @@ from typing import (
     Union,
     get_args,
     get_origin,
+    TextIO,
 )
 
 from pydantic import BaseModel
@@ -68,10 +70,14 @@ _CONFIG_REGISTRY_ROUTES: Final[dict[str, tuple[str, ...]]] = {
 
 def inspect_config(
     config: type[BaseModel] | None = None,
+    *,
+    file: TextIO | None = None,
 ) -> None:
     """Print guidance or inspect a Pydantic configuration class."""
+    emit = partial(print, file=file)
+
     if config is None:
-        print(
+        emit(
             "Pass any BenchRep configuration class to inspect its fields.\n\n"
             "Suggested starting points:\n"
             "- TrainingConfig\n"
@@ -91,36 +97,36 @@ def inspect_config(
             "`TrainingConfig`, not a config instance."
         )
 
-    print(f"Config: {config.__name__}")
+    emit(f"Config: {config.__name__}")
 
     docstring = inspect.getdoc(config)
     if docstring is not None:
-        print("\nDescription:")
-        print(indent(docstring, "  "))
+        emit("\nDescription:")
+        emit(indent(docstring, "  "))
 
-    _print_config_customization(config)
-    _print_extra_field_behavior(config)
+    _print_config_customization(config, file=file)
+    _print_extra_field_behavior(config, file=file)
 
-    print("\nFields:")
+    emit("\nFields:")
 
     for field_name, field in config.model_fields.items():
-        print(f"\n  {field_name}")
-        print(f"    type: {_format_annotation(field.annotation)}")
-        print(
+        emit(f"\n  {field_name}")
+        emit(f"    type: {_format_annotation(field.annotation)}")
+        emit(
             "    required: "
             + ("yes" if field.is_required() else "no")
         )
 
         if not field.is_required():
-            print(f"    default: {_format_default(field)}")
+            emit(f"    default: {_format_default(field)}")
 
         if field.description is not None:
-            print("    description:")
-            print(indent(field.description, "      "))
+            emit("    description:")
+            emit(indent(field.description, "      "))
 
         constraints = _format_constraints(field.metadata)
         if constraints:
-            print(f"    constraints: {', '.join(constraints)}")
+            emit(f"    constraints: {', '.join(constraints)}")
 
         extra = field.json_schema_extra
         if isinstance(extra, dict):
@@ -129,30 +135,34 @@ def inspect_config(
             notes = extra.get("notes")
 
             if omit_behavior is not None:
-                print("    omitted:")
-                print(indent(str(omit_behavior), "      "))
+                emit("    omitted:")
+                emit(indent(str(omit_behavior), "      "))
 
             if null_behavior is not None:
-                print("    null:")
-                print(indent(str(null_behavior), "      "))
+                emit("    null:")
+                emit(indent(str(null_behavior), "      "))
 
             if notes:
-                print("    notes:")
+                emit("    notes:")
 
                 if isinstance(notes, str):
                     notes = [notes]
 
                 for note in notes:
-                    print(f"      - {note}")
+                    emit(f"      - {note}")
 
 
 def _print_config_customization(
     config: type[BaseModel],
+    *,
+    file: TextIO | None = None,
 ) -> None:
-    registry_names = _find_config_registries(config)
+    emit = partial(print, file=file)
+
+    registry_names = config_registries(config)
 
     if registry_names:
-        print("\nCustomization:")
+        emit("\nCustomization:")
 
         for index, requested_registry_name in enumerate(registry_names):
             registry_name, registry_info = _resolve_registry(
@@ -160,23 +170,23 @@ def _print_config_customization(
             )
 
             if index > 0:
-                print()
+                emit()
 
-            print(f"  registry: {registry_name}")
-            print(
+            emit(f"  registry: {registry_name}")
+            emit(
                 "  custom registration: "
                 f"{_support_label(registry_info.custom_registration_supported)}"
             )
-            print(
+            emit(
                 "  runtime instance override: "
                 f"{_support_label(registry_info.runtime_instance_override_supported)}"
             )
 
             if registry_info.runtime_override is not None:
-                print("  runtime override:")
-                print(indent(registry_info.runtime_override, "    "))
+                emit("  runtime override:")
+                emit(indent(registry_info.runtime_override, "    "))
 
-            print(
+            emit(
                 "  details: "
                 f'benchrep.inspect_registry("{registry_name}")'
             )
@@ -184,12 +194,12 @@ def _print_config_customization(
         return
 
     if _is_benchrep_schema_type(config, "TrainingDataModuleConfig"):
-        print("\nCustomization:")
-        print("  registry: none")
-        print("  custom registration: not supported")
-        print("  runtime instance override: supported")
-        print("  runtime override:")
-        print(
+        emit("\nCustomization:")
+        emit("  registry: none")
+        emit("  custom registration: not supported")
+        emit("  runtime instance override: supported")
+        emit("  runtime override:")
+        emit(
             indent(
                 "Pass a compatible LightningDataModule instance through the "
                 "`datamodule` argument of a training or prediction workflow.",
@@ -200,7 +210,11 @@ def _print_config_customization(
 
 def _print_extra_field_behavior(
     config: type[BaseModel],
+    *,
+    file: TextIO | None = None,
 ) -> None:
+    emit = partial(print, file=file)
+
     schema_extra = config.model_config.get("json_schema_extra")
 
     if not isinstance(schema_extra, dict):
@@ -211,11 +225,11 @@ def _print_extra_field_behavior(
     if behavior is None:
         return
 
-    print("\nExtra fields:")
-    print(indent(str(behavior), "  "))
+    emit("\nExtra fields:")
+    emit(indent(str(behavior), "  "))
 
 
-def _find_config_registries(
+def config_registries(
     config: type[BaseModel],
 ) -> tuple[str, ...]:
     for base in config.__mro__:

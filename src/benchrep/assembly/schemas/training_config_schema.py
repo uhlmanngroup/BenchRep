@@ -135,6 +135,13 @@ class NamedConfig(_TrainingConfigBaseModel):
         },
     )
 
+    @field_validator("name", mode="before")
+    @classmethod
+    def reject_blank_name(cls, value: Any) -> Any:
+        if isinstance(value, str) and not value.strip():
+            raise ValueError("Component name must not be blank.")
+        return value
+
 
 # -------------------------
 # Run/output configuration
