@@ -86,13 +86,13 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
         registry=TRANSFORMS,
         runtime_instance_override_supported=False,
         config_locations=(
-            "TrainingConfig.transforms",
-            "PredictionConfig.transforms",
+            "TrainingConfig.transform_pipelines[*].steps[*]",
+            "PredictionConfig.transform_pipelines[*].steps[*]",
         ),
         contract=(
             "The registered factory must accept the configured `params` and return a "
-            "callable that maps one sample's `x` tensor to a `torch.Tensor` before "
-            "batching."
+            "callable that transforms a routed sample tensor before batching. "
+            "Pipeline routes determine the input and output sample fields."
         ),
     ),
     "encoder": ComponentRegistryInfo(
@@ -144,8 +144,11 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
         runtime_instance_override_supported=True,
         config_locations=("TrainingConfig.model",),
         runtime_override=(
-            "Pass a compatible model instance through the `model` argument of "
-            "`train_ae()`, `train_vae()`, `predict_ae()`, or `predict_vae()`."
+            "Pass a compatible model instance or class through "
+            "`TrainingOverrides(model=...)` or `PredictionOverrides(model=...)`, "
+            "supplied as the workflow entrypoint's `overrides` argument. "
+            "Whole-model overrides are supported only for the canonical "
+            "autoencoder and VAE workflows."
         ),
     ),
     "reconstruction_loss": ComponentRegistryInfo(
@@ -406,110 +409,160 @@ def inspect_registry(
 
         return
 
-    registry_name, registry_info = _resolve_registry(registry)
-    selected_registry = registry_info.registry
-    aliases_by_canonical = selected_registry.aliases_by_canonical()
-
-    if component is None:
-        emit(f"Registry: {registry_name}")
-        emit(
-            "Registry object: "
-            f"{_registry_object_path(registry_info)}"
-        )
-
-        _print_registry_customization(registry_info, file=file)
-
-        emit("\nComponents:")
-
-        for canonical_name, aliases in aliases_by_canonical.items():
-            entry = selected_registry.get(canonical_name)
-            target = _registry_entry_target(entry)
-
-            emit(f"\n  {canonical_name}")
-            emit(
-                "    aliases: "
-                + (", ".join(aliases) if aliases else "none")
-            )
-            emit(f"    target: {_qualified_name(target)}")
-
-            if isinstance(entry, ArchitectureComponent):
-                _print_architecture_component_contract(
-                    entry,
-                    indentation="    ",
-                    file=file,
-                )
-
-            elif isinstance(entry, LossComponent):
-                _print_loss_component_contract(
-                    entry,
-                    registry=selected_registry,
-                    indentation="    ",
-                    file=file,
-                )
-
-            if isinstance(entry, EvaluationMetric):
-                emit(f"    result kind: {entry.result_kind}")
-
-                if entry.vector_axis is not None:
-                    emit(f"    vector axis: {entry.vector_axis}")
-
-        return
-
-    canonical_name = selected_registry.resolve_key(component)
-    entry = selected_registry.get(canonical_name)
-    target = _registry_entry_target(entry)
-    aliases = aliases_by_canonical[canonical_name]
-    signature = _callable_signature(target)
-    signature_label = (
-        "Constructor signature"
-        if inspect.isclass(target)
-        else "Callable signature"
+    data = registry_documentation(
+        registry,
+        component,
+        include_component_details=component is None,
     )
-    docstring = inspect.getdoc(target)
+    _, registry_info = _resolve_registry(registry)
 
-    emit(f"Registry: {registry_name}")
-    emit(f"Component: {canonical_name}")
-
+    emit(f"Registry: {data['name']}")
+    emit(f"Registry object: {data['object_path']}")
     _print_registry_customization(registry_info, file=file)
 
-    emit(
-        "Aliases: "
-        + (", ".join(aliases) if aliases else "none")
-    )
-    emit(f"Target: {_qualified_name(target)}")
-
-    if isinstance(entry, ArchitectureComponent):
-        _print_architecture_component_contract(entry, file=file)
-
-    elif isinstance(entry, LossComponent):
-        _print_loss_component_contract(
-            entry,
-            registry=selected_registry,
+    if component is None:
+        emit("\nComponents:")
+        for details in data["components"]:
+            _print_component_documentation(
+                details,
+                detailed=False,
+                file=file,
+            )
+    else:
+        _print_component_documentation(
+            data["selected_component"],
+            detailed=True,
             file=file,
         )
 
-    elif isinstance(entry, EvaluationMetric):
-        emit(f"Result kind: {entry.result_kind}")
 
-        if entry.vector_axis is not None:
-            emit(f"Vector axis: {entry.vector_axis}")
+def registry_documentation(
+    registry: str,
+    component: str | None = None,
+    *,
+    include_component_details: bool = False,
+) -> dict[str, Any]:
+    """Return registry documentation without console formatting.
 
-    emit(
-        f"{signature_label}: "
-        + (signature if signature is not None else "unavailable")
-    )
+    Component listings contain names and aliases by default. Detailed listings
+    also include targets and runtime contracts, without inspecting docstrings
+    or signatures. A selected component includes its full documentation.
+    """
+    registry_name, info = _resolve_registry(registry)
+    selected_registry = info.registry
+    aliases = selected_registry.aliases_by_canonical()
 
-    emit("\nDescription:")
-    if docstring is None:
-        emit("  No docstring available.")
-    else:
-        emit(indent(docstring, "  "))
+    def describe_component(
+            name: str,
+            *,
+            include_description: bool = True,
+    ) -> dict[str, Any]:
+        entry = selected_registry.get(name)
+        target = _registry_entry_target(entry)
 
-    emit(
-        "\nNote: the callable signature describes the registered "
-        "implementation. BenchRep may supply some arguments internally, so "
-        "it does not always map directly to the component's config `params`."
-    )
+        details: dict[str, Any] = {
+            "name": name,
+            "aliases": aliases[name],
+            "target": _qualified_name(target),
+            "signature": (
+                _callable_signature(target) if include_description else None
+            ),
+            "signature_label": (
+                "Constructor signature"
+                if inspect.isclass(target)
+                else "Callable signature"
+            ),
+            "description": inspect.getdoc(target) if include_description else None,
+        }
+
+        if isinstance(entry, ArchitectureComponent):
+            result = entry.runtime_result
+
+            if isinstance(result, ComponentTensorResult):
+                outputs = [{
+                    "name": "Result",
+                    "structures": result.supported_structures,
+                }]
+                result_kind = "tensor"
+            elif isinstance(result, ComponentMappingResult):
+                outputs = [
+                    {
+                        "name": output.name,
+                        "structures": output.supported_structures,
+                    }
+                    for output in result.outputs
+                ]
+                result_kind = "mapping"
+            else:
+                raise RuntimeError(
+                    "Unsupported architecture result type: "
+                    f"{type(result).__name__}."
+                )
+
+            details["runtime_contract"] = {
+                "inputs": [
+                    {
+                        "name": port.name,
+                        "structures": port.supported_structures,
+                    }
+                    for port in entry.runtime_inputs
+                ],
+                "result_kind": result_kind,
+                "outputs": outputs,
+            }
+
+        elif isinstance(entry, LossComponent):
+            if entry.runtime_inputs is None:
+                input_policy = (
+                    "fixed by registry"
+                    if isinstance(selected_registry, LossRegistry)
+                    and not selected_registry.explicit_composite_runtime_inputs_supported
+                    else "not declared"
+                )
+                inputs = None
+            else:
+                input_policy = "declared"
+                inputs = [
+                    {
+                        "name": port.name,
+                        "roles": port.supported_roles,
+                    }
+                    for port in entry.runtime_inputs
+                ]
+
+            details["runtime_contract"] = {
+                "input_policy": input_policy,
+                "inputs": inputs,
+                "result_kind": "scalar tensor",
+            }
+
+        elif isinstance(entry, EvaluationMetric):
+            details["result_kind"] = entry.result_kind
+            details["vector_axis"] = entry.vector_axis
+
+        return details
+
+    return {
+        "name": registry_name,
+        "object_path": _registry_object_path(info),
+        "custom_registration": info.custom_registration_supported,
+        "registration_entry": _registration_entry_label(info),
+        "runtime_instance_override": info.runtime_instance_override_supported,
+        "config_locations": info.config_locations,
+        "contract": info.contract,
+        "runtime_override": info.runtime_override,
+        "components": [
+            describe_component(name, include_description=False)
+            if include_component_details
+            else {"name": name, "aliases": component_aliases}
+            for name, component_aliases in aliases.items()
+        ],
+        "selected_component": (
+            describe_component(selected_registry.resolve_key(component))
+            if component is not None
+            else None
+        ),
+    }
 
 
 def _resolve_registry(
@@ -614,104 +667,67 @@ def _registry_object_path(
     )
 
 
-def _print_architecture_component_contract(
-    entry: ArchitectureComponent,
+def _print_component_documentation(
+    details: dict[str, Any],
     *,
-    indentation: str = "",
+    detailed: bool,
     file: TextIO | None = None,
 ) -> None:
-    """Print one architecture component's Composite runtime contract."""
-
+    """Print component data shared with graphical discovery."""
     emit = partial(print, file=file)
+    prefix = "" if detailed else "    "
 
-    emit(f"{indentation}Composite runtime contract:")
-    emit(f"{indentation}  Inputs:")
+    if detailed:
+        emit(f"Component: {details['name']}")
+    else:
+        emit(f"\n  {details['name']}")
 
-    for runtime_input in entry.runtime_inputs:
-        supported_structures = " | ".join(
-            runtime_input.supported_structures
-        )
+    aliases = ", ".join(details["aliases"]) or "none"
+    emit(f"{prefix}Aliases: {aliases}")
+    emit(f"{prefix}Target: {details['target']}")
 
+    contract = details.get("runtime_contract")
+    if contract is not None:
+        emit(f"{prefix}Composite runtime contract:")
+
+        if contract.get("input_policy"):
+            emit(f"{prefix}  Input policy: {contract['input_policy']}")
+
+        if contract.get("inputs") is not None:
+            emit(f"{prefix}  Inputs:")
+            for port in contract["inputs"]:
+                supported = " | ".join(
+                    port.get("structures", port.get("roles", ()))
+                )
+                emit(f"{prefix}    {port['name']}: {supported}")
+
+        emit(f"{prefix}  Result: {contract['result_kind']}")
+        for output in contract.get("outputs", ()):
+            supported = " | ".join(output["structures"])
+            emit(f"{prefix}    {output['name']}: {supported}")
+
+    if details.get("result_kind") is not None:
+        emit(f"{prefix}Result kind: {details['result_kind']}")
+        if details.get("vector_axis") is not None:
+            emit(f"{prefix}Vector axis: {details['vector_axis']}")
+
+    if detailed:
         emit(
-            f"{indentation}    {runtime_input.name}: "
-            f"{supported_structures}"
+            f"{details['signature_label']}: "
+            f"{details['signature'] or 'unavailable'}"
         )
-
-    runtime_result = entry.runtime_result
-
-    if isinstance(runtime_result, ComponentTensorResult):
-        supported_structures = " | ".join(
-            runtime_result.supported_structures
-        )
-
+        emit("\nDescription:")
         emit(
-            f"{indentation}  Result: tensor "
-            f"({supported_structures})"
-        )
-
-        return
-
-    if isinstance(runtime_result, ComponentMappingResult):
-        emit(f"{indentation}  Result: mapping")
-
-        for output in runtime_result.outputs:
-            supported_structures = " | ".join(
-                output.supported_structures
+            indent(
+                details["description"] or "No docstring available.",
+                "  ",
             )
-
-            emit(
-                f"{indentation}    {output.name}: "
-                f"{supported_structures}"
-            )
-
-        return
-
-    raise RuntimeError(
-        "ArchitectureComponent contains an unsupported runtime result "
-        f"type: {type(runtime_result).__name__}."
-    )
-
-
-def _print_loss_component_contract(
-    entry: LossComponent,
-    *,
-    registry: Registry,
-    indentation: str = "",
-    file: TextIO | None = None,
-) -> None:
-    """Print one loss component's Composite runtime contract."""
-
-    emit = partial(print, file=file)
-
-    if entry.runtime_inputs is None:
-        if (
-            isinstance(registry, LossRegistry)
-            and not registry.explicit_composite_runtime_inputs_supported
-        ):
-            contract_status = "fixed by registry"
-        else:
-            contract_status = "not declared"
-
+        )
         emit(
-            f"{indentation}Composite runtime contract: "
-            f"{contract_status}"
+            "\nNote: the callable signature describes the registered "
+            "implementation. BenchRep may supply some arguments internally, "
+            "so it does not always map directly to the component's config `params`."
         )
-        return
-
-    emit(f"{indentation}Composite runtime contract:")
-    emit(f"{indentation}  Inputs:")
-
-    for runtime_input in entry.runtime_inputs:
-        supported_roles = " | ".join(
-            runtime_input.supported_roles
-        )
-
-        emit(
-            f"{indentation}    {runtime_input.name}: "
-            f"{supported_roles}"
-        )
-
-    emit(f"{indentation}  Result: scalar tensor")
 
 
 def _registry_entry_target(entry: Any) -> Any:

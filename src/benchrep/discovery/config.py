@@ -24,18 +24,24 @@ from benchrep.discovery.registry import _resolve_registry, _support_label
 _CONFIG_REGISTRY_ROUTES: Final[dict[str, tuple[str, ...]]] = {
     # Training and prediction
     "DatasetConfig": ("dataset",),
-    "TrainingTransformConfig": ("transform",),
-    "PredictionTransformConfig": ("transform",),
+    "TrainingTransformStepConfig": ("transform",),
+    "PredictionTransformStepConfig": ("transform",),
     "TrainingEncoderConfig": ("encoder",),
     "TrainingDecoderConfig": ("decoder",),
     "TrainingModelConfig": ("model",),
     "TrainingLossTermConfig": (
         "reconstruction_loss",
         "regularization_loss",
+        "contrastive_loss",
+        "classification_loss",
+        "regression_loss",
         "custom_objective_loss",
     ),
     "TrainingOptimizerConfig": ("optimizer",),
     "TrainingLoggerConfig": ("logger",),
+    "TrainingLossWeightScheduleConfig": ("loss_weight_schedule",),
+    "TrainingLRSchedulerConfig": ("lr_scheduler",),
+    "TrainingAdditionalCallbackConfig": ("callback",),
 
     # Evaluation reductions
     "EvaluationReductionsConfig": ("reduction",),
@@ -111,20 +117,20 @@ def inspect_config(
 
     for field_name, field in config.model_fields.items():
         emit(f"\n  {field_name}")
-        emit(f"    type: {_format_annotation(field.annotation)}")
+        emit(f"    type: {format_annotation(field.annotation)}")
         emit(
             "    required: "
             + ("yes" if field.is_required() else "no")
         )
 
         if not field.is_required():
-            emit(f"    default: {_format_default(field)}")
+            emit(f"    default: {format_default(field)}")
 
         if field.description is not None:
             emit("    description:")
             emit(indent(field.description, "      "))
 
-        constraints = _format_constraints(field.metadata)
+        constraints = format_constraints(field.metadata)
         if constraints:
             emit(f"    constraints: {', '.join(constraints)}")
 
@@ -152,60 +158,61 @@ def inspect_config(
                     emit(f"      - {note}")
 
 
+def config_customization(config: type[BaseModel]) -> list[dict[str, Any]]:
+    """Return customization guidance shared by console and GUI discovery."""
+    result = []
+    for requested_name in config_registries(config):
+        name, info = _resolve_registry(requested_name)
+        result.append({
+            "registry": name,
+            "custom_registration": info.custom_registration_supported,
+            "runtime_instance_override": info.runtime_instance_override_supported,
+            "runtime_override": info.runtime_override,
+        })
+
+    if not result and _is_benchrep_schema_type(config, "TrainingDataModuleConfig"):
+        result.append({
+            "registry": None,
+            "custom_registration": False,
+            "runtime_instance_override": True,
+            "runtime_override": (
+                "Pass a compatible LightningDataModule instance or class through "
+                "`TrainingOverrides(datamodule=...)` or "
+                "`PredictionOverrides(datamodule=...)`, supplied as the workflow "
+                "entrypoint's `overrides` argument."
+            ),
+        })
+    return result
+
+
 def _print_config_customization(
     config: type[BaseModel],
     *,
     file: TextIO | None = None,
 ) -> None:
     emit = partial(print, file=file)
-
-    registry_names = config_registries(config)
-
-    if registry_names:
-        emit("\nCustomization:")
-
-        for index, requested_registry_name in enumerate(registry_names):
-            registry_name, registry_info = _resolve_registry(
-                requested_registry_name
-            )
-
-            if index > 0:
-                emit()
-
-            emit(f"  registry: {registry_name}")
-            emit(
-                "  custom registration: "
-                f"{_support_label(registry_info.custom_registration_supported)}"
-            )
-            emit(
-                "  runtime instance override: "
-                f"{_support_label(registry_info.runtime_instance_override_supported)}"
-            )
-
-            if registry_info.runtime_override is not None:
-                emit("  runtime override:")
-                emit(indent(registry_info.runtime_override, "    "))
-
-            emit(
-                "  details: "
-                f'benchrep.inspect_registry("{registry_name}")'
-            )
-
+    entries = config_customization(config)
+    if not entries:
         return
 
-    if _is_benchrep_schema_type(config, "TrainingDataModuleConfig"):
-        emit("\nCustomization:")
-        emit("  registry: none")
-        emit("  custom registration: not supported")
-        emit("  runtime instance override: supported")
-        emit("  runtime override:")
+    emit("\nCustomization:")
+    for index, entry in enumerate(entries):
+        if index:
+            emit()
+        emit(f"  registry: {entry['registry'] or 'none'}")
         emit(
-            indent(
-                "Pass a compatible LightningDataModule instance through the "
-                "`datamodule` argument of a training or prediction workflow.",
-                "    ",
-            )
+            "  custom registration: "
+            f"{_support_label(entry['custom_registration'])}"
         )
+        emit(
+            "  runtime instance override: "
+            f"{_support_label(entry['runtime_instance_override'])}"
+        )
+        if entry["runtime_override"]:
+            emit("  runtime override:")
+            emit(indent(entry["runtime_override"], "    "))
+        if entry["registry"]:
+            emit(f"  details: benchrep.inspect_registry({entry['registry']!r})")
 
 
 def _print_extra_field_behavior(
@@ -257,7 +264,7 @@ def _is_benchrep_schema_type(
     )
 
 
-def _format_annotation(annotation: Any) -> str:
+def format_annotation(annotation: Any) -> str:
     if annotation is Any:
         return "Any"
 
@@ -269,8 +276,8 @@ def _format_annotation(annotation: Any) -> str:
 
     if origin is Annotated:
         base_annotation, *metadata = arguments
-        rendered = _format_annotation(base_annotation)
-        constraints = _format_constraints(metadata)
+        rendered = format_annotation(base_annotation)
+        constraints = format_constraints(metadata)
 
         if constraints:
             return f"{rendered} ({', '.join(constraints)})"
@@ -279,7 +286,7 @@ def _format_annotation(annotation: Any) -> str:
 
     if origin in {Union, UnionType}:
         return " | ".join(
-            _format_annotation(argument)
+            format_annotation(argument)
             for argument in arguments
         )
 
@@ -290,7 +297,7 @@ def _format_annotation(annotation: Any) -> str:
     if origin is not None:
         origin_name = getattr(origin, "__name__", str(origin))
         rendered_arguments = ", ".join(
-            _format_annotation(argument)
+            format_annotation(argument)
             for argument in arguments
         )
 
@@ -306,7 +313,7 @@ def _format_annotation(annotation: Any) -> str:
     return str(annotation).replace("typing.", "")
 
 
-def _format_default(field: FieldInfo) -> str:
+def format_default(field: FieldInfo) -> str:
     if field.default_factory is not None:
         factory_name = getattr(
             field.default_factory,
@@ -318,7 +325,7 @@ def _format_default(field: FieldInfo) -> str:
     return repr(field.default)
 
 
-def _format_constraints(metadata: Any) -> list[str]:
+def format_constraints(metadata: Any) -> list[str]:
     constraints: list[str] = []
 
     attribute_labels = {

@@ -25,6 +25,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+gui = [
+    "dash==3.4.0",
+    "dash-pydantic-form==0.18.3",
+    "dash-mantine-components==2.8.0",
+    "pydantic>=2.13.4,<2.14",
+]
 scverse = [
     "scanpy>=1.10,<2",
     "leidenalg>=0.10,<1",
@@ -71,3 +77,6 @@ filterwarnings = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"benchrep.gui" = ["assets/*.css"]
