@@ -1947,6 +1947,7 @@ class TrainingTransformStepConfig(NamedConfig):
     )
     apply_to: list[Literal["training", "validation"]] = Field(
         min_length=1,
+        max_length=2,
         description=(
             "Split pipelines that include this transform. The transform's "
             "position in the surrounding sequence determines its order within "
