@@ -30,6 +30,7 @@ class FieldPresentation:
     disabled_reason: str | None = None
     order: tuple[str, ...] = ()
     hidden: bool = False
+    excluded_fields: tuple[str, ...] = ()
     reorderable: bool = True
     item_label: str = "Item"
     named_variants: tuple[tuple[str, int], ...] | None = None
@@ -327,7 +328,7 @@ def render_editor(
                         presentation=presentation,
                     )
                     for key in dict.fromkeys((*guide.order, *spec.fields))
-                    if key in spec.fields
+                    if key in spec.fields and key not in guide.excluded_fields
                     for child in (spec.fields[key],)
                 ],
                 className="br-object-fields",

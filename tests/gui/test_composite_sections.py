@@ -36,9 +36,16 @@ def test_composite_section_order():
         "composite_model_components",
         "composite_model_assembly",
         "losses",
+        "optimizer",
         "dataset",
         "transform_pipelines",
         "datamodule",
+        "trainer",
+        "logger",
+        "checkpointing",
+        "early_stopping",
+        "additional_callbacks",
+        "inspection",
     ]
 
 
@@ -51,9 +58,16 @@ def test_canonical_sections_unchanged():
         "encoder",
         "decoder",
         "losses",
+        "optimizer",
         "dataset",
         "transform_pipelines",
         "datamodule",
+        "trainer",
+        "logger",
+        "checkpointing",
+        "early_stopping",
+        "additional_callbacks",
+        "inspection",
     ]
 
 

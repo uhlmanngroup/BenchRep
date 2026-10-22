@@ -12,6 +12,7 @@ from benchrep.assembly.config import (
 )
 from benchrep.assembly.registries.builtins import register_builtins
 from benchrep.assembly.registries.core import (
+    CALLBACKS,
     CLASSIFICATION_LOSSES,
     CONTRASTIVE_LOSSES,
     CUSTOM_OBJECTIVE_LOSSES,
@@ -19,8 +20,11 @@ from benchrep.assembly.registries.core import (
     DECODERS,
     ENCODERS,
     HEADS,
+    LOGGERS,
     LOSS_WEIGHT_SCHEDULES,
+    LR_SCHEDULERS,
     MODELS,
+    OPTIMIZERS,
     RECONSTRUCTION_LOSSES,
     REGRESSION_LOSSES,
     REGULARIZATION_LOSSES,
@@ -40,17 +44,27 @@ from benchrep.assembly.schemas.composite_model_config_schema import (
     CompositeModelDeclarationsConfig,
 )
 from benchrep.assembly.schemas.parsing import parse_training_config
+from benchrep.assembly.schemas.runtime_override_config_schema import (
+    RuntimeOverridesConfig,
+)
 from benchrep.assembly.schemas.training_config_schema import (
     DatasetConfig,
     StrictPositiveInt,
+    TrainingAdditionalCallbackConfig,
+    TrainingCheckpointConfig,
     TrainingConfig,
     TrainingDataModuleConfig,
     TrainingDecoderConfig,
+    TrainingEarlyStoppingConfig,
     TrainingEncoderConfig,
+    TrainingInspectionConfig,
+    TrainingLoggerConfig,
     TrainingLossTermConfig,
     TrainingModelConfig,
+    TrainingOptimizerConfig,
     TrainingReproducibilityConfig,
     TrainingRunConfig,
+    TrainingTrainerConfig,
     TrainingTransformPipelineConfig,
     _dataset_config_discriminator,
     _loss_weight_schedule_discriminator,
@@ -299,6 +313,9 @@ def training_sections(
             presentation=presentation,
             validate_local=validate_local,
             default_registry={
+                "optimizer": "optimizer",
+                "logger": "logger",
+                "additional_callbacks": "callback",
                 "encoder": "encoder",
                 "decoder": "decoder",
                 "composite_model_components": "encoder",
@@ -307,6 +324,14 @@ def training_sections(
                 "transform_pipelines": "transform",
             }.get(key),
             documentation_schema={
+                "optimizer": TrainingOptimizerConfig,
+                "trainer": TrainingTrainerConfig,
+                "logger": TrainingLoggerConfig,
+                "checkpointing": TrainingCheckpointConfig,
+                "early_stopping": TrainingEarlyStoppingConfig,
+                "additional_callbacks": TrainingAdditionalCallbackConfig,
+                "inspection": TrainingInspectionConfig,
+                "overrides": RuntimeOverridesConfig,
                 "run": TrainingRunConfig,
                 "reproducibility": TrainingReproducibilityConfig,
                 "datamodule": TrainingDataModuleConfig,
@@ -455,6 +480,21 @@ def training_sections(
                 ),
             )
         )
+    if overrides.model is None:
+        sections.append(
+            standard(
+                "optimizer",
+                "Optimizer",
+                "Choose a registered optimizer and optional learning-rate scheduler. "
+                "BenchRep supplies the model parameters and optimizer. Scheduler params "
+                "are constructor arguments; interval and frequency control updates. "
+                "ReduceLROnPlateau requires a monitored metric.",
+                options=training_registered_options,
+                validate_local=lambda data: validate_registered_section(
+                    "optimizer", data
+                ),
+            )
+        )
     if overrides.datamodule is None:
         sections.extend(
             [
@@ -487,6 +527,100 @@ def training_sections(
                 "Configure batching, validation splitting, and data loading.",
             )
         )
+    sections.extend(
+        [
+            standard(
+                "trainer",
+                "Trainer",
+                "Configure Lightning training. Additional non-null arguments can be "
+                "entered below the declared fields. BenchRep manages the output directory, "
+                "logger, callbacks and checkpointing through their own sections.",
+            ),
+            standard(
+                "logger",
+                "Logger",
+                "Select an optional registered logger and its constructor parameters. "
+                "Omit or null disables logging. External logging backends may need an "
+                "installation extra. The API-key file setting applies only to W&B; "
+                "the wizard does not read credentials or connect to logging services.",
+                options=training_registered_options,
+                validate_local=lambda data: validate_registered_section("logger", data),
+            ),
+            standard(
+                "checkpointing",
+                "Checkpointing",
+                "Configure metric-ranked checkpoints and last.ckpt. A null monitor "
+                "disables ranking; resolution sets save_top_k to zero. At least one "
+                "checkpoint must be saved. Metric availability is checked during execution.",
+            ),
+            standard(
+                "early_stopping",
+                "Early stopping",
+                "Optionally stop when a monitored metric stops improving. Patience counts "
+                "metric checks, not necessarily epochs. Omit or null disables early stopping. "
+                "Additional non-null callback arguments can be entered below the declared fields.",
+            ),
+            standard(
+                "additional_callbacks",
+                "Additional callbacks",
+                "Add registered callbacks and their constructor parameters. These supplement "
+                "managed checkpointing and early stopping and are not inherited by prediction. "
+                "Requirements involving other sections, such as a logger, are checked during "
+                "final validation.",
+                options=training_registered_options,
+                presentation=lambda path, value, draft: FieldPresentation(
+                    item_label="Callback"
+                ),
+                validate_local=lambda data: validate_registered_section(
+                    "additional_callbacks", data
+                ),
+            ),
+            standard(
+                "inspection",
+                "Inspection",
+                "Configure optional Torchview export after training and gradient-norm "
+                "measurements during training. Target and loss suggestions come from the draft; "
+                "compatibility is checked during final validation. "
+                + (
+                    "External models support optimizer-gradient inspection of whole_model only."
+                    if overrides.model is not None
+                    else "Torchview is a best-effort export requiring its optional dependencies."
+                ),
+                presentation=lambda path, value, draft: inspection_presentation(
+                    path,
+                    value,
+                    draft,
+                    model_family=model_family,
+                    external_model=overrides.model is not None,
+                ),
+            ),
+        ]
+    )
+    class_overrides = tuple(
+        name
+        for name in ("model", "datamodule")
+        if isinstance(getattr(overrides, name), type)
+    )
+
+    if class_overrides:
+        excluded = tuple(
+            name
+            for name in ("model", "datamodule")
+            if name not in class_overrides
+        )
+        sections.append(
+            standard(
+                "overrides",
+                "Override parameters",
+                "Constructor arguments for the component classes supplied "
+                "through Python. BenchRep passes these parameters when "
+                "instantiating those classes.",
+                presentation=lambda path, value, draft: FieldPresentation(
+                    excluded_fields=excluded if path == ("overrides",) else (),
+                ),
+            )
+        )
+
     return sections
 
 
@@ -810,3 +944,116 @@ def validate_transform_names(data: Any) -> dict[tuple, str]:
                 if error:
                     errors[(index, "steps", step_index, "name")] = error
     return errors
+
+
+_REGISTERED_TRAINING_FIELDS = {
+    ("optimizer", "name"): (OPTIMIZERS, "optimizer"),
+    ("optimizer", "lr_scheduler", "name"): (LR_SCHEDULERS, "LR scheduler"),
+    ("logger", "name"): (LOGGERS, "logger"),
+    ("additional_callbacks", "*", "name"): (CALLBACKS, "callback"),
+}
+
+
+def training_registered_options(
+    path: tuple, value: Any, section_data: Any
+) -> list[str] | None:
+    """Offer canonical names, retaining a loaded alias or unknown spelling."""
+    route = tuple("*" if isinstance(part, int) else part for part in path)
+    entry = _REGISTERED_TRAINING_FIELDS.get(route)
+    if entry is None:
+        return None
+    names = set(entry[0].canonical_keys())
+    if isinstance(value, str):
+        names.add(value)
+    return sorted(names)
+
+
+def validate_registered_section(section: str, data: Any) -> dict[tuple, str]:
+    """Check names within a section without constructing registered objects."""
+    errors = {}
+    for route, (registry, label) in _REGISTERED_TRAINING_FIELDS.items():
+        if route[0] != section:
+            continue
+
+        def visit(value, remaining, path=(), registry=registry, label=label):
+            if not remaining:
+                if isinstance(value, str):
+                    error = _registry_name_error(registry, value, label)
+                    if error:
+                        errors[path] = error
+                return
+            key, *rest = remaining
+            if key == "*" and isinstance(value, list):
+                for index, child in enumerate(value):
+                    visit(child, rest, (*path, index))
+            elif isinstance(value, dict) and key in value:
+                visit(value[key], rest, (*path, key))
+
+        visit(data, route[1:])
+    return errors
+
+
+def inspection_presentation(
+    path: tuple,
+    value: Any,
+    draft: dict,
+    *,
+    model_family: ModelFamilySpec,
+    external_model: bool,
+) -> FieldPresentation:
+    if path == ("inspection", "gradient_norms"):
+        return FieldPresentation(item_label="Inspection request", reorderable=False)
+    if (
+        len(path) == 4
+        and path[:2] == ("inspection", "gradient_norms")
+        and path[-1] == "target"
+    ):
+        targets = {"whole_model"}
+        if not external_model:
+            if model_family == COMPOSITE_FAMILY:
+                components = draft.get("composite_model_components")
+                if isinstance(components, dict):
+                    targets.update(key for key in components if isinstance(key, str))
+            else:
+                targets.update(("encoder", "decoder"))
+                if model_family.name == "vae":
+                    targets.add("variational_head")
+        return FieldPresentation(suggestions=tuple(sorted(targets)))
+    if (
+        len(path) >= 4
+        and path[:2] == ("inspection", "gradient_norms")
+        and path[3] == "losses"
+    ):
+        return FieldPresentation(
+            item_label="Loss reference",
+            reorderable=False,
+            suggestions=inspection_loss_references(draft),
+        )
+    return FieldPresentation()
+
+
+def inspection_loss_references(draft: dict) -> tuple[str, ...]:
+    """Suggest documented loss identities; the resolver remains authoritative."""
+    references = set()
+    losses = draft.get("losses")
+    if not isinstance(losses, dict):
+        return ()
+    for role, terms in losses.items():
+        registry = _LOSS_REGISTRIES.get(role)
+        if registry is None or not isinstance(terms, list):
+            continue
+        for term in terms:
+            if not isinstance(term, dict) or not isinstance(term.get("name"), str):
+                continue
+            try:
+                name = registry.resolve_key(
+                    normalize_name(term["name"], field_name="loss.name")
+                )
+            except (KeyError, ValueError, TypeError):
+                continue
+            identity = term.get("id")
+            if identity is not None and not isinstance(identity, str):
+                continue
+            identifier = f"{identity}_{name}" if identity else name
+            references.add(f"{role}.{identifier}")
+    return tuple(sorted(references))
