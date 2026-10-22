@@ -31,6 +31,7 @@ class FieldPresentation:
     order: tuple[str, ...] = ()
     hidden: bool = False
     reorderable: bool = True
+    item_label: str = "Item"
     named_variants: tuple[tuple[str, int], ...] | None = None
 
 
@@ -86,9 +87,7 @@ def nesting_attributes(depth: int) -> dict[str, str]:
     return {
         "data-container-depth": str(depth),
         "data-container-tone": (
-            "plain"
-            if depth < 2
-            else "white" if depth % 2 else "lavender"
+            "plain" if depth < 2 else "white" if depth % 2 else "lavender"
         ),
     }
 
@@ -104,9 +103,9 @@ def render_editor(
     locked_paths: frozenset[tuple] = frozenset(),
     options: Callable[[tuple, Any], list[str] | None] | None = None,
     show_mode: bool = True,
-    presentation: Callable[[tuple, Any], FieldPresentation] | None = None,
     container_depth: int = 0,
     collection_item: bool = False,
+    presentation: Callable[[tuple, Any], FieldPresentation] | None = None,
 ) -> Component:
     is_section = len(path) == 1 and show_mode
     title = title or str(path[-1]).replace("_", " ").title()
@@ -152,15 +151,39 @@ def render_editor(
     body: list[Component] = []
     mode = node["mode"] if show_mode else "value"
     is_config_group = (
+        show_mode and not is_section and mode == "value" and effective.kind == "object"
+    )
+    owns_container = is_section or (is_config_group and not collection_item)
+    visible_depth = container_depth + int(owns_container)
+    collapsible = (
         show_mode
         and not is_section
         and mode == "value"
-        and effective.kind == "object"
+        and effective.kind in {"object", "list", "mapping"}
     )
-    owns_container = is_section or (
-        is_config_group and not collection_item
-    )
-    visible_depth = container_depth + int(owns_container)
+    collapsed = collapsible and node.get("collapsed", False)
+    if collapsible:
+        header.children.insert(
+            0,
+            html.Button(
+                "▸" if collapsed else "▾",
+                id=button_id("collapse"),
+                type="button",
+                className="br-collapse-toggle",
+                **{
+                    "aria-label": f"{'Expand' if collapsed else 'Collapse'} {title}",
+                    "aria-expanded": not collapsed,
+                },
+            ),
+        )
+        header.children.insert(
+            2,
+            html.Span(
+                id={"type": "br-group-error", "section": section, "node": node["id"]},
+                className="br-group-error",
+                title="This group contains validation errors.",
+            ),
+        )
     if mode != "value":
         note = {
             "omit": "Omitted; key not included",
@@ -297,11 +320,11 @@ def render_editor(
                         node["fields"][key],
                         section=section,
                         path=(*path, key),
+                        container_depth=visible_depth,
                         locked=locked,
                         locked_paths=locked_paths,
                         options=options,
                         presentation=presentation,
-                        container_depth=visible_depth,
                     )
                     for key in dict.fromkeys((*guide.order, *spec.fields))
                     if key in spec.fields
@@ -383,15 +406,15 @@ def render_editor(
                             child,
                             section=section,
                             path=child_path,
-                            title=f"Item {index + 1}"
+                            container_depth=visible_depth + 1,
+                            collection_item=True,
+                            title=f"{guide.item_label} {index + 1}"
                             if spec.kind == "list"
                             else "Value",
                             locked=locked,
                             locked_paths=locked_paths,
                             options=options,
                             presentation=presentation,
-                            container_depth=visible_depth + 1,
-                            collection_item=True,
                         ),
                     ],
                     className="br-collection-entry",
@@ -400,7 +423,9 @@ def render_editor(
             )
         body.append(
             html.Button(
-                "Add item" if spec.kind == "list" else "Add entry",
+                f"Add {guide.item_label.lower()}"
+                if spec.kind == "list"
+                else "Add entry",
                 id=button_id("add"),
                 disabled=locked,
                 type="button",
@@ -500,7 +525,7 @@ def render_editor(
         [
             header if show_mode else None,
             reset if is_section else None,
-            html.Div(body, className="br-field-body"),
+            html.Div(body, className="br-field-body", hidden=collapsed),
             html.Div(
                 id={"type": "br-error", "section": section, "node": node["id"]},
                 className="br-field-mode-error",
@@ -517,13 +542,9 @@ def render_editor(
             else ""
         ),
         **{
+            **(nesting_attributes(visible_depth) if owns_container else {}),
             "data-config-path": json.dumps(list(path)),
             "data-editor-node": node["id"],
             "data-editor-mode": mode,
-            **(
-                nesting_attributes(visible_depth)
-                if owns_container
-                else {}
-            ),
         },
     )

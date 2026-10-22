@@ -35,6 +35,7 @@ class WizardSection:
     content: Component
     documentation: str | None = None
     schema: type[BaseModel] | None = None
+    default_registry: str | None = None
 
 
 def section_status(
@@ -355,11 +356,15 @@ def register_documentation_callbacks(
         Output("wizard-docs-registry", "value"),
         Input("wizard-docs-config", "value"),
         Input("wizard-docs-follow", "checked"),
+        Input("wizard-sections", "value"),
     )
-    def follow_config_registry(schema_name, follow):
+    def follow_config_registry(schema_name, follow, active_key):
         if not follow:
             return no_update
 
+        section = sections_by_key.get(active_key)
+        if section and section.default_registry:
+            return section.default_registry
         schema = catalog.get(schema_name)
         routes = config_registries(schema) if schema else ()
         return routes[0] if routes else None

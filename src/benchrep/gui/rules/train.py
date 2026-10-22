@@ -298,6 +298,14 @@ def training_sections(
             refresh_on_change=refresh_on_change,
             presentation=presentation,
             validate_local=validate_local,
+            default_registry={
+                "encoder": "encoder",
+                "decoder": "decoder",
+                "composite_model_components": "encoder",
+                "losses": "reconstruction_loss",
+                "dataset": "dataset",
+                "transform_pipelines": "transform",
+            }.get(key),
             documentation_schema={
                 "run": TrainingRunConfig,
                 "reproducibility": TrainingReproducibilityConfig,
@@ -663,7 +671,7 @@ def loss_presentation(
         )
     # Loss terms within a role have no user-defined execution order.
     if len(path) == 2 and path[0] == "losses":
-        return FieldPresentation(reorderable=False)
+        return FieldPresentation(reorderable=False, item_label="Loss term")
 
     if len(path) == 4 and path[-1] == "name" and path[1] not in _LOSS_REGISTRIES:
         return FieldPresentation(
@@ -762,8 +770,12 @@ def transform_name_options(
 def transform_presentation(
     path: tuple, value: Any, draft: dict, *, composite: bool
 ) -> FieldPresentation:
+    if path == ("transform_pipelines",):
+        return FieldPresentation(item_label="Pipeline")
+    if len(path) == 3 and path[-1] == "steps":
+        return FieldPresentation(item_label="Step")
     if len(path) == 5 and path[2] == "steps" and path[-1] == "apply_to":
-        return FieldPresentation(reorderable=False)
+        return FieldPresentation(reorderable=False, item_label="Split")
     if len(path) == 3 and path[-1] in {"input", "output"}:
         suggestions = ("x",)
         if composite:

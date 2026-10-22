@@ -640,12 +640,23 @@ body {
     border-radius: 0;
     padding: 4px 0 4px 10px;
 }
+[data-container-tone="lavender"] { background-color: #faf7fc; }
+[data-container-tone="white"] { background-color: #ffffff; }
 
-/* Deeper visible containers alternate softly; inputs retain their styling. */
-[data-container-tone="lavender"] {
-    background-color: #faf7fc;
+.br-collapse-toggle {
+    flex: 0 0 auto;
+    border: 0;
+    background: transparent;
+    color: #6b21a8;
+    padding: 2px 5px;
+    font-size: 16px;
+    cursor: pointer;
 }
-
-[data-container-tone="white"] {
-    background-color: #ffffff;
+.br-collapse-toggle:focus-visible {
+    outline: 2px solid #7e22ce;
+    outline-offset: 2px;
 }
+.br-group-error { color: #c92a2a; font-weight: 700; }
+.br-group-error:empty { display: none; }
+.br-field-header > .br-field-label { flex: 1; }
+.br-field-body[hidden] { display: none; }

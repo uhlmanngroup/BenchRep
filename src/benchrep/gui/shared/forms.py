@@ -46,6 +46,7 @@ class SectionSpec:
     annotation: Any
     description: str = ""
     field_info: FieldInfo | None = None
+    default_registry: str | None = None
     documentation_schema: type[BaseModel] | None = None
     options: Callable[[tuple, Any, Any], list[str] | None] | None = None
     presentation: Callable[[tuple, Any, dict], FieldPresentation] | None = None
@@ -227,6 +228,9 @@ def build_workflow_app(
             ]
             for identity, path in _node_paths(specs[key], current[key]):
                 inline[identity] = issues.get(path, "")
+                inline[identity + ":group"] = any(
+                    p[: len(path)] == path for p in issues
+                )
         return draft, errors, inline
 
     initial_draft, initial_errors, initial_inline = result(state)
@@ -247,6 +251,7 @@ def build_workflow_app(
                 description=section.description,
                 content=html.Div(),
                 schema=schema,
+                default_registry=section.default_registry,
                 documentation=f"**Python schema:** `{schema.__name__}`\n\n{cleandoc(doc)}"
                 if doc
                 else None,
@@ -387,7 +392,12 @@ def build_workflow_app(
                 (),
             )
             locked = any((key, *path)[: len(p)] == p for p in by_key[key].locked_paths)
-            if key not in initial.supplied_sections and not locked:
+            if trigger["action"] == "collapse":
+                found = find_node(specs[key], current[key], trigger["node"])
+                if found:
+                    found[1]["collapsed"] = not found[1].get("collapsed", False)
+                    structural = True
+            elif key not in initial.supplied_sections and not locked:
                 try:
                     action = trigger["action"]
                     if action == "activate":
@@ -453,6 +463,9 @@ def build_workflow_app(
             errors[key] = [{"path": list(p), "message": m} for p, m in issues.items()]
             for identity, path in _node_paths(specs[key], current[key]):
                 inline[identity] = issues.get(path, "")
+                inline[identity + ":group"] = any(
+                    p[: len(path)] == path for p in issues
+                )
         if action_error:
             key, message = action_error
             errors[key].append({"path": [], "message": message})
@@ -520,6 +533,12 @@ def build_workflow_app(
     def preview(draft):
         return yaml.safe_dump(draft, sort_keys=False, allow_unicode=True)
 
+    app.clientside_callback(
+        "function(errors, ids) { return ids.map(id => (errors || {})[id.node + ':group'] ? '!' : ''); }",
+        Output({"type": "br-group-error", "section": ALL, "node": ALL}, "children"),
+        Input("wizard-inline-errors", "data"),
+        Input({"type": "br-group-error", "section": ALL, "node": ALL}, "id"),
+    )
     app.clientside_callback(
         "function(errors, ids) { return ids.map(id => (errors || {})[id.node] || ''); }",
         Output({"type": "br-error", "section": ALL, "node": ALL}, "children"),
