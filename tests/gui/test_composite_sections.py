@@ -36,6 +36,8 @@ def test_composite_section_order():
         "composite_model_components",
         "composite_model_assembly",
         "losses",
+        "dataset",
+        "transform_pipelines",
         "datamodule",
     ]
 
@@ -49,6 +51,8 @@ def test_canonical_sections_unchanged():
         "encoder",
         "decoder",
         "losses",
+        "dataset",
+        "transform_pipelines",
         "datamodule",
     ]
 

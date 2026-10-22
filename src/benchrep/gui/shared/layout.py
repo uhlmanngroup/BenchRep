@@ -408,7 +408,7 @@ def register_documentation_callbacks(
                     for name in (canonical, *alternatives)
                 }
                 values = form_values.get(active_key) or {}
-                name = values.get("name")
+                name = values.get("name") if isinstance(values, dict) else None
                 canonical = (
                     canonical_by_name.get(name.lower().strip().replace("-", "_"))
                     if isinstance(name, str)

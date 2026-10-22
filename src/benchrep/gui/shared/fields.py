@@ -82,6 +82,17 @@ def field_help(spec: EditorSpec, title: str, path: tuple) -> Component:
     )
 
 
+def nesting_attributes(depth: int) -> dict[str, str]:
+    return {
+        "data-container-depth": str(depth),
+        "data-container-tone": (
+            "plain"
+            if depth < 2
+            else "white" if depth % 2 else "lavender"
+        ),
+    }
+
+
 def render_editor(
     spec: EditorSpec,
     node: dict,
@@ -94,6 +105,8 @@ def render_editor(
     options: Callable[[tuple, Any], list[str] | None] | None = None,
     show_mode: bool = True,
     presentation: Callable[[tuple, Any], FieldPresentation] | None = None,
+    container_depth: int = 0,
+    collection_item: bool = False,
 ) -> Component:
     is_section = len(path) == 1 and show_mode
     title = title or str(path[-1]).replace("_", " ").title()
@@ -138,6 +151,16 @@ def render_editor(
     )
     body: list[Component] = []
     mode = node["mode"] if show_mode else "value"
+    is_config_group = (
+        show_mode
+        and not is_section
+        and mode == "value"
+        and effective.kind == "object"
+    )
+    owns_container = is_section or (
+        is_config_group and not collection_item
+    )
+    visible_depth = container_depth + int(owns_container)
     if mode != "value":
         note = {
             "omit": "Omitted; key not included",
@@ -205,6 +228,8 @@ def render_editor(
                     options=options,
                     presentation=presentation,
                     show_mode=False,
+                    container_depth=visible_depth,
+                    collection_item=collection_item,
                 )
             )
     elif spec.kind == "union":
@@ -259,6 +284,8 @@ def render_editor(
                 options=options,
                 presentation=presentation,
                 show_mode=False,
+                container_depth=visible_depth,
+                collection_item=collection_item,
             )
         )
     elif spec.kind == "object":
@@ -274,6 +301,7 @@ def render_editor(
                         locked_paths=locked_paths,
                         options=options,
                         presentation=presentation,
+                        container_depth=visible_depth,
                     )
                     for key in dict.fromkeys((*guide.order, *spec.fields))
                     if key in spec.fields
@@ -362,9 +390,12 @@ def render_editor(
                             locked_paths=locked_paths,
                             options=options,
                             presentation=presentation,
+                            container_depth=visible_depth + 1,
+                            collection_item=True,
                         ),
                     ],
                     className="br-collection-entry",
+                    **nesting_attributes(visible_depth + 1),
                 )
             )
         body.append(
@@ -489,5 +520,10 @@ def render_editor(
             "data-config-path": json.dumps(list(path)),
             "data-editor-node": node["id"],
             "data-editor-mode": mode,
+            **(
+                nesting_attributes(visible_depth)
+                if owns_container
+                else {}
+            ),
         },
     )

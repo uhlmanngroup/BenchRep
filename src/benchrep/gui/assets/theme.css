@@ -640,3 +640,12 @@ body {
     border-radius: 0;
     padding: 4px 0 4px 10px;
 }
+
+/* Deeper visible containers alternate softly; inputs retain their styling. */
+[data-container-tone="lavender"] {
+    background-color: #faf7fc;
+}
+
+[data-container-tone="white"] {
+    background-color: #ffffff;
+}

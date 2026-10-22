@@ -5,6 +5,7 @@ from typing import Any
 import lightning as L
 from pydantic import BaseModel, Field, TypeAdapter
 
+from benchrep.architecture.composite_model_roles import TENSOR_STRUCTURE_BY_ROLE
 from benchrep.assembly.config import (
     compose_effective_config,
     normalize_config_components,
@@ -14,6 +15,7 @@ from benchrep.assembly.registries.core import (
     CLASSIFICATION_LOSSES,
     CONTRASTIVE_LOSSES,
     CUSTOM_OBJECTIVE_LOSSES,
+    DATASETS,
     DECODERS,
     ENCODERS,
     HEADS,
@@ -22,6 +24,7 @@ from benchrep.assembly.registries.core import (
     RECONSTRUCTION_LOSSES,
     REGRESSION_LOSSES,
     REGULARIZATION_LOSSES,
+    TRANSFORMS,
 )
 from benchrep.assembly.registries.utils import normalize_name
 from benchrep.assembly.resolvers.training_config_resolver import (
@@ -38,6 +41,7 @@ from benchrep.assembly.schemas.composite_model_config_schema import (
 )
 from benchrep.assembly.schemas.parsing import parse_training_config
 from benchrep.assembly.schemas.training_config_schema import (
+    DatasetConfig,
     StrictPositiveInt,
     TrainingConfig,
     TrainingDataModuleConfig,
@@ -47,6 +51,8 @@ from benchrep.assembly.schemas.training_config_schema import (
     TrainingModelConfig,
     TrainingReproducibilityConfig,
     TrainingRunConfig,
+    TrainingTransformPipelineConfig,
+    _dataset_config_discriminator,
     _loss_weight_schedule_discriminator,
     _normalize_loss_weight_schedule_config,
 )
@@ -296,6 +302,8 @@ def training_sections(
                 "run": TrainingRunConfig,
                 "reproducibility": TrainingReproducibilityConfig,
                 "datamodule": TrainingDataModuleConfig,
+                "dataset": DatasetConfig,
+                "transform_pipelines": TrainingTransformPipelineConfig,
                 "encoder": TrainingEncoderConfig,
                 "decoder": TrainingDecoderConfig,
                 "losses": TrainingLossTermConfig,
@@ -440,6 +448,30 @@ def training_sections(
             )
         )
     if overrides.datamodule is None:
+        sections.extend(
+            [
+                standard(
+                    "dataset",
+                    "Dataset",
+                    "Choose a registered dataset. Built-ins expose their typed parameters; "
+                    "custom datasets accept constructor parameters as a JSON object.",
+                    presentation=dataset_presentation,
+                    validate_local=validate_dataset_name,
+                ),
+                standard(
+                    "transform_pipelines",
+                    "Transform pipelines",
+                    "Pipelines run in list order, and steps run in order within each pipeline. "
+                    "Choose which splits each step applies to. Routes use sample field names; "
+                    "route compatibility is checked during final validation.",
+                    options=transform_name_options,
+                    presentation=lambda path, value, draft: transform_presentation(
+                        path, value, draft, composite=model_family == COMPOSITE_FAMILY
+                    ),
+                    validate_local=validate_transform_names,
+                ),
+            ]
+        )
         sections.append(
             standard(
                 "datamodule",
@@ -678,4 +710,91 @@ def validate_loss_names(data: Any) -> dict[tuple, str]:
                 error = _registry_name_error(registry, name, f"{role} loss")
                 if error:
                     errors[(role, index, "name")] = error
+    return errors
+
+
+def dataset_presentation(path: tuple, value: Any, draft: dict) -> FieldPresentation:
+    if path != ("dataset",):
+        return FieldPresentation()
+    field = TrainingConfig.model_fields["dataset"]
+    spec = editor_spec(field.rebuild_annotation(), field)
+    branches = {
+        union_variant_details(spec, index)[0]: index
+        for index in range(len(spec.variants))
+    }
+    names = set(DATASETS.canonical_keys())
+    current_name = _at(draft, ("dataset", "name"))
+    if isinstance(current_name, str):
+        names.add(current_name)
+    return FieldPresentation(
+        named_variants=tuple(
+            (name, branches[_dataset_config_discriminator({"name": name})])
+            for name in sorted(names)
+        ),
+    )
+
+
+def validate_dataset_name(data: Any) -> dict[tuple, str]:
+    name = data.get("name") if isinstance(data, dict) else None
+    if isinstance(name, str):
+        error = _registry_name_error(DATASETS, name, "dataset")
+        if error:
+            return {("name",): error}
+    return {}
+
+
+def transform_name_options(
+    path: tuple, current_name: Any, section_data: Any
+) -> list[str] | None:
+    if not (
+        len(path) == 5
+        and path[0] == "transform_pipelines"
+        and path[2] == "steps"
+        and path[-1] == "name"
+    ):
+        return None
+    names = set(TRANSFORMS.canonical_keys())
+    if isinstance(current_name, str):
+        names.add(current_name)
+    return sorted(names)
+
+
+def transform_presentation(
+    path: tuple, value: Any, draft: dict, *, composite: bool
+) -> FieldPresentation:
+    if len(path) == 5 and path[2] == "steps" and path[-1] == "apply_to":
+        return FieldPresentation(reorderable=False)
+    if len(path) == 3 and path[-1] in {"input", "output"}:
+        suggestions = ("x",)
+        if composite:
+            declarations = _at(draft, ("composite_model_declarations", "expects"), {})
+            suggestions = (
+                tuple(
+                    name
+                    for name, role in declarations.items()
+                    if isinstance(name, str)
+                    and isinstance(role, str)
+                    and TENSOR_STRUCTURE_BY_ROLE.get(role) == "image"
+                )
+                if isinstance(declarations, dict)
+                else ()
+            )
+        return FieldPresentation(suggestions=suggestions)
+    return FieldPresentation()
+
+
+def validate_transform_names(data: Any) -> dict[tuple, str]:
+    errors = {}
+    if not isinstance(data, list):
+        return errors
+    for index, pipeline in enumerate(data):
+        steps = pipeline.get("steps") if isinstance(pipeline, dict) else None
+        if not isinstance(steps, list):
+            continue
+        for step_index, step in enumerate(steps):
+            name = step.get("name") if isinstance(step, dict) else None
+            if isinstance(name, str):
+                error = _registry_name_error(TRANSFORMS, name, "transform")
+                if error:
+                    errors[(index, "steps", step_index, "name")] = error
     return errors
