@@ -270,6 +270,7 @@ def build_documentation_panel() -> Component:
         [
             html.Summary("Documentation"),
             dcc.Store(id="wizard-docs-component-source", storage_type="memory"),
+            dcc.Store(id="wizard-scroll-section", storage_type="memory"),
             html.Div(
                 [
                     dmc.Switch(
@@ -331,6 +332,25 @@ def register_documentation_callbacks(
     """Connect inspection tools to the current section and form values."""
     catalog = config_schema_catalog()
     sections_by_key = {section.key: section for section in sections}
+    app.clientside_callback(
+        """
+        function(heading, section, previousSection) {
+            if (section === previousSection) {
+                return window.dash_clientside.no_update;
+            }
+
+            requestAnimationFrame(() => {
+                window.scrollTo({top: 0, left: 0, behavior: "instant"});
+            });
+
+            return section;
+        }
+        """,
+        Output("wizard-scroll-section", "data"),
+        Input("wizard-active-heading", "children"),
+        State("wizard-sections", "value"),
+        State("wizard-scroll-section", "data"),
+    )
 
     @app.callback(
         Output("wizard-active-heading", "children"),
@@ -540,6 +560,10 @@ def render_registry_documentation(
             )
 
     component = data["selected_component"]
+    registry_overview = children
+
+    if component is not None:
+        children = []
 
     if component is None:
         children.extend(
@@ -674,6 +698,16 @@ def render_registry_documentation(
                     _documentation_metadata(rows),
                 ]
             )
+
+    if component is not None:
+        children.append(
+            html.Details(
+                [
+                    html.Summary("About this registry"),
+                    *registry_overview,
+                ],
+            )
+        )
 
     return html.Div(
         children,
