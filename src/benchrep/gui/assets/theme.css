@@ -1,0 +1,642 @@
+body {
+    margin: 0;
+    background: #f7f5fa;
+}
+
+.br-wizard {
+    min-height: 100vh;
+    color: #272033;
+}
+
+.br-header {
+    padding: 32px max(24px, calc((100vw - 1200px) / 2));
+    background: linear-gradient(120deg, #3b1758, #6b21a8);
+    color: white;
+}
+
+.br-brand {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    color: #e9d5ff;
+}
+
+.br-header h1 {
+    margin: 10px 0 8px;
+    font-size: 1.8rem;
+    font-weight: 650;
+}
+
+.br-header p {
+    margin: 0;
+    max-width: 75ch;
+    color: #f3e8ff;
+}
+
+.br-main {
+    max-width: 1640px;
+    margin: 28px auto;
+    padding: 0 24px 32px;
+}
+
+.br-section-navigation {
+    gap: 24px;
+    align-items: flex-start;
+}
+
+.br-section-tabs {
+    flex: 0 0 210px;
+    position: sticky;
+    top: 20px;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+    gap: 4px;
+}
+
+.br-section-tabs .mantine-Tabs-tab {
+    justify-content: flex-start;
+    text-align: left;
+    white-space: normal;
+    padding: 12px 16px;
+}
+
+.br-section-panel {
+    flex: 1;
+    min-width: 0;
+}
+
+.br-section-panel .br-section {
+    margin-top: 0;
+}
+
+@media (max-width: 640px) {
+    .br-section-navigation {
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .br-section-tabs {
+        position: static;
+        flex: none;
+        width: 100%;
+        max-height: 180px;
+    }
+
+    .br-section-panel {
+        width: 100%;
+    }
+}
+
+.br-section {
+    margin-top: 20px;
+    padding: 28px;
+    background: white;
+    border: 1px solid #e8e1ee;
+    border-radius: 14px;
+    box-shadow: 0 4px 20px rgb(59 23 88 / 4%);
+}
+
+.br-section h2 {
+    margin: 0 0 8px;
+    font-size: 1.2rem;
+}
+
+.br-section-description {
+    margin: 0 0 24px;
+    max-width: 85ch;
+    color: #655b70;
+    line-height: 1.6;
+}
+
+.br-actions {
+    display: flex;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 20px;
+}
+
+.br-actions:empty,
+#wizard-feedback:empty {
+    display: none;
+}
+
+#wizard-feedback:not(:empty) {
+    margin-top: 20px;
+}
+
+@media (max-width: 640px) {
+    .br-main {
+        padding-inline: 12px;
+    }
+
+    .br-section {
+        padding: 18px;
+    }
+}
+
+.br-field {
+    min-width: 0;
+}
+
+.br-field-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 28px;
+}
+
+.br-field-label {
+    margin: 0;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 22px;
+    overflow-wrap: anywhere;
+}
+
+.br-field-help {
+    position: static;
+    flex: none;
+    display: flex;
+    align-items: center;
+    height: 22px;
+    line-height: 0;
+}
+
+.br-field-control {
+    align-self: start;
+    min-width: 0;
+    min-height: 36px;
+}
+
+.br-field-control-toggle {
+    display: flex;
+    align-items: center;
+}
+
+.br-field-control-toggle > * {
+    width: 100%;
+}
+
+.br-required {
+    color: #c92a2a;
+}
+
+.br-help-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    padding: 0;
+    border: 1px solid #d8b4fe;
+    border-radius: 50%;
+    background: #faf5ff;
+    color: #6b21a8;
+    font: inherit;
+    font-size: 0.65rem;
+    font-weight: 700;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.br-help-button:hover {
+    background: #f3e8ff;
+}
+
+.br-help-button:focus-visible {
+    outline: 2px solid #7e22ce;
+    outline-offset: 3px;
+}
+
+.br-field-docs {
+    max-height: min(440px, 65vh);
+    overflow-y: auto;
+    overflow-wrap: anywhere;
+    font-size: 0.875rem;
+    line-height: 1.6;
+}
+
+.br-field-docs p:first-child {
+    margin-top: 0;
+}
+
+.br-field-docs p:last-child {
+    margin-bottom: 0;
+}
+
+.br-draft-preview {
+    margin-top: 16px;
+    border: 1px solid #e8e1ee;
+    border-radius: 10px;
+    background: white;
+    overflow: hidden;
+}
+
+.br-draft-preview summary {
+    padding: 14px 18px;
+    color: #6b21a8;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.br-draft-preview summary:focus-visible {
+    outline: 2px solid #7e22ce;
+    outline-offset: -3px;
+}
+
+.br-draft-note {
+    margin: 0;
+    padding: 0 18px 12px;
+    color: #655b70;
+    font-size: 0.875rem;
+}
+
+.br-yaml-preview {
+    margin: 0;
+    padding: 18px;
+    overflow-x: auto;
+    background: #faf8fc;
+    font-size: 0.875rem;
+    line-height: 1.6;
+}
+
+.br-component-notice {
+    margin-bottom: 20px;
+}
+
+.br-section-tabs .mantine-Tabs-tabLabel {
+    width: 100%;
+}
+
+.br-section-tab-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+}
+
+.br-section-tab-title {
+    min-width: 0;
+}
+
+.br-section-status {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.br-section-status-pending {
+    color: #766c80;
+    background: #f1edf5;
+}
+
+.br-section-status-invalid {
+    color: #b42318;
+    background: #fee4e2;
+}
+
+.br-section-status-valid {
+    color: #187443;
+    background: #dcfce7;
+}
+
+.br-field-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.br-field-mode {
+    width: 100px;
+}
+
+.br-field-body {
+    min-width: 0;
+    align-self: start;
+}
+
+.br-field-mode-note {
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+    min-height: 36px;
+    padding: 6px 12px;
+    border: 1px dashed #d5c5e2;
+    border-radius: 4px;
+    background: #faf7fc;
+    color: #766080;
+    font-size: 14px;
+}
+
+.br-omit-activate {
+    width: 100%;
+    text-align: left;
+    font-family: inherit;
+    cursor: pointer;
+    justify-content: flex-start;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.br-field-mode-error {
+    margin-top: 5px;
+    color: #fa5252;
+    font-size: 12px;
+}
+
+.br-field-reset {
+    display: block;
+    margin-top: 6px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: #7e22ce;
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.br-field-reset:hover:not(:disabled) {
+    text-decoration: underline;
+}
+
+.br-field-reset:disabled {
+    color: #a69bad;
+    cursor: default;
+}
+
+.br-field-reset:focus-visible {
+    outline: 2px solid #7e22ce;
+    outline-offset: 3px;
+}
+
+.br-section-heading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.br-section-heading h2 {
+    margin: 0;
+}
+
+.br-section-heading .br-help-button {
+    flex-shrink: 0;
+}
+
+.br-workspace {
+    display: flex;
+    align-items: flex-start;
+    gap: 24px;
+}
+
+.br-editor {
+    flex: 1;
+    min-width: 0;
+}
+
+.br-documentation {
+    flex: 0 0 380px;
+    min-width: 0;
+    position: sticky;
+    top: 20px;
+    max-height: calc(100vh - 40px);
+    overflow-y: auto;
+    background: white;
+    border: 1px solid #e8e1ee;
+    border-radius: 12px;
+}
+
+.br-documentation:not([open]) {
+    flex: 0 0 auto;
+}
+
+.br-documentation > summary {
+    padding: 14px 18px;
+    color: #6b21a8;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.br-documentation > summary:focus-visible {
+    outline: 2px solid #7e22ce;
+    outline-offset: -3px;
+}
+
+.br-docs-content {
+    padding: 0 18px 18px;
+}
+
+.br-docs-content h3 {
+    margin: 22px 0 10px;
+    font-size: 14px;
+}
+
+.br-docs-output {
+    max-height: 320px;
+    overflow: auto;
+    margin: 12px 0 0;
+    padding: 12px;
+    background: #faf8fc;
+    border-radius: 8px;
+    white-space: normal;
+    font-family: inherit;
+    overflow-wrap: anywhere;
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+@media (max-width: 1200px) {
+    .br-workspace {
+        flex-direction: column;
+    }
+
+    .br-editor,
+    .br-documentation {
+        width: 100%;
+    }
+
+    .br-documentation {
+        position: static;
+        flex: none;
+        max-height: none;
+    }
+}
+
+.br-inspection-markdown {
+    font-size: 0.8125rem;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+}
+
+.br-inspection-markdown p {
+    margin: 0 0 10px;
+}
+
+.br-inspection-markdown code {
+    font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+    font-size: 0.9em;
+}
+
+.br-inspection-markdown :not(pre) > code {
+    padding: 2px 5px;
+    border-radius: 4px;
+    background: #f3e8ff;
+    color: #6b21a8;
+}
+
+.br-inspection-markdown pre {
+    padding: 12px;
+    overflow-x: auto;
+    white-space: pre;
+    border-radius: 8px;
+    background: #f7f5fa;
+}
+
+.br-inspection-markdown ul,
+.br-inspection-markdown ol {
+    padding-left: 22px;
+}
+
+.br-config-documentation h3,
+.br-registry-documentation h3 {
+    margin: 0 0 14px;
+    font-size: 1rem;
+    overflow-wrap: anywhere;
+}
+
+.br-config-documentation h4,
+.br-registry-documentation h4 {
+    margin: 22px 0 12px;
+    font-size: 0.9rem;
+}
+
+.br-docs-field {
+    margin-bottom: 14px;
+    padding: 14px;
+    border: 1px solid #e8e1ee;
+    border-left: 3px solid #c084fc;
+    border-radius: 8px;
+    background: white;
+}
+
+.br-docs-field h5,
+.br-registry-documentation h5 {
+    margin: 0 0 12px;
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+
+.br-docs-field-metadata {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 6px 12px;
+    margin: 0 0 14px;
+}
+
+.br-docs-field-metadata dt {
+    font-weight: 600;
+    color: #655b70;
+}
+
+.br-docs-field-metadata dd {
+    min-width: 0;
+    margin: 0;
+}
+
+.br-docs-field-metadata code {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.br-docs-field-subheading {
+    margin: 12px 0 4px;
+    font-weight: 600;
+}
+
+.br-docs-field > :last-child {
+    margin-bottom: 0;
+}
+
+.br-registry-documentation dd ul {
+    margin: 0;
+    padding-left: 18px;
+}
+
+.br-registry-documentation pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+/* Schema-driven editors; only the active section is mounted. */
+.br-object-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.br-object-fields > .br-recursive-field:has(.br-object-fields),
+.br-object-fields > .br-recursive-field:has(.br-collection-entry),
+.br-object-fields > .br-recursive-field:has(textarea) { grid-column: 1 / -1; }
+.br-recursive-field { display: flex; flex-direction: column; align-self: start; gap: 4px; margin-block: 10px; }
+.br-field-mode-error:empty { display: none; }
+.br-recursive-field .br-field-body { display: block; }
+.br-collection-entry { border: 1px solid #e8e1ee; border-radius: 8px; padding: 12px; margin-block: 12px; }
+.br-entry-actions { display: flex; align-items: end; flex-wrap: wrap; gap: 8px; }
+.br-entry-actions button,
+.br-field-body > button:not(.br-field-reset):not(.br-omit-activate) { border: 1px solid #d8b4fe; background: #faf5ff; border-radius: 6px; padding: 5px 9px; cursor: pointer; }
+.br-field-body button:disabled { opacity: .5; cursor: default; }
+@media (max-width: 800px) { .br-object-fields { grid-template-columns: 1fr; } }
+
+/* Section controls own the indented field group below them. */
+.br-section-status-neutral {
+    color: #766c80;
+    background: #f1edf5;
+}
+
+.br-recursive-field > .br-field-body {
+    align-self: stretch;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.br-section-editor > .br-field-reset {
+    align-self: flex-start;
+    margin: 0 0 14px;
+}
+
+.br-section-editor > .br-field-body {
+    padding-left: 16px;
+    border-left: 2px solid #e8e1ee;
+}
+
+/* Expanded nested configs have a clear beginning and end. */
+.br-config-group {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    border: 1px solid #e8e1ee;
+    border-radius: 8px;
+    padding: 10px 12px;
+}
+
+/* Collection entries already provide their own enclosing box. */
+.br-collection-entry > .br-config-group {
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+}
+
+/* At deeper levels, use a simple guide instead of more enclosing boxes. */
+.br-config-group .br-config-group .br-config-group {
+    border: 0;
+    border-left: 2px solid #e8e1ee;
+    border-radius: 0;
+    padding: 4px 0 4px 10px;
+}
