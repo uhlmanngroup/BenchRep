@@ -20,6 +20,7 @@ from benchrep.utils.workflow_overrides import (
     PredictionOverrides,
     EvaluationOverrides,
 )
+from benchrep.gui import configure_workflow
 
 
 __all__ = [
@@ -38,4 +39,5 @@ __all__ = [
     "TrainingOverrides",
     "PredictionOverrides",
     "EvaluationOverrides",
+    "configure_workflow",
 ]

@@ -24,6 +24,7 @@ from benchrep.gui.shared.layout import (
     register_documentation_callbacks,
     section_status,
 )
+from benchrep.gui.shared.review import build_review_panel, register_review_callbacks
 from benchrep.gui.shared.state import (
     MISSING,
     EditorSpec,
@@ -152,6 +153,9 @@ def build_workflow_app(
     initial: WizardDraft,
     title: str,
     subtitle: str,
+    review=None,
+    export_directory: str = "configs",
+    export_filename: str = "training.yaml",
 ) -> Dash:
     """Mount one section; retain all draft state outside the editor subtree."""
     specs = {
@@ -174,6 +178,8 @@ def build_workflow_app(
         state[section.key] = node
 
     def section_view(key, current, draft):
+        if key == "__review__":
+            return html.Div()
         section = by_key[key]
         content = []
         if key in initial.supplied_sections:
@@ -257,9 +263,20 @@ def build_workflow_app(
                 else None,
             )
         )
+    if review is not None:
+        layout_sections.append(
+            WizardSection(
+                key="__review__",
+                title="Review & finish",
+                description="Check the configuration, review the results and save your YAML.",
+                content=html.Div(),
+            )
+        )
     # The shell contains one live panel, not copies of all forms hidden in tabs.
     app.layout = html.Div(
         [
+            dcc.Store(id="wizard-review-receipt"),
+            dcc.Store(id="wizard-finished", data=False),
             dcc.Store(id="wizard-editor-state", data=state),
             dcc.Store(id="wizard-focus-request"),
             dcc.Store(id="wizard-focus-result"),
@@ -271,6 +288,9 @@ def build_workflow_app(
                 subtitle=subtitle,
                 sections=layout_sections,
                 active_content=section_view(sections[0].key, state, initial_draft),
+                review_panel=build_review_panel(export_directory, export_filename)
+                if review is not None
+                else None,
             ),
         ]
     )
@@ -486,6 +506,21 @@ def build_workflow_app(
         Input("wizard-draft", "data"),
     )
     def feedback(errors, active, draft):
+        if active == "__review__":
+            return (
+                None,
+                *[
+                    section_status(
+                        {"issues": "present"} if errors.get(s.key) else {},
+                        mode="omit"
+                        if s.key not in draft
+                        else "null"
+                        if draft[s.key] is None
+                        else "value",
+                    )
+                    for s in sections
+                ],
+            )
         problems = errors.get(active, [])
 
         def section_mode(key):
@@ -569,5 +604,12 @@ def build_workflow_app(
         Input("wizard-focus-request", "data"),
         prevent_initial_call=True,
     )
+    if review is not None:
+        register_review_callbacks(app, review)
+        app.clientside_callback(
+            "function(active) { return active === '__review__' ? {} : {display: 'none'}; }",
+            Output("wizard-review-panel", "style"),
+            Input("wizard-sections", "value"),
+        )
     register_documentation_callbacks(app=app, stage=stage, sections=layout_sections)
     return app

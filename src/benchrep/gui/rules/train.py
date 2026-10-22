@@ -604,9 +604,7 @@ def training_sections(
 
     if class_overrides:
         excluded = tuple(
-            name
-            for name in ("model", "datamodule")
-            if name not in class_overrides
+            name for name in ("model", "datamodule") if name not in class_overrides
         )
         sections.append(
             standard(
@@ -1057,3 +1055,100 @@ def inspection_loss_references(draft: dict) -> tuple[str, ...]:
             identifier = f"{identity}_{name}" if identity else name
             references.add(f"{role}.{identifier}")
     return tuple(sorted(references))
+
+
+def training_review_session(
+    *, model_family: ModelFamilySpec, overrides: TrainingOverrides
+):
+    """Adapt existing backend checks to the shared review lifecycle."""
+    from dataclasses import replace
+
+    from benchrep.gui.shared.review import ReviewSession
+
+    def parse(raw):
+        overrides.validate_for(model_family)
+        return parse_training_config(
+            raw,
+            model_overridden=overrides.model is not None,
+            datamodule_overridden=overrides.datamodule is not None,
+        )
+
+    def resolve(config):
+        return resolve_training_config(
+            config,
+            model_family=model_family,
+            model_source=resolve_component_source(
+                overrides.model,
+                expected_base_class=model_family.model_base_class,
+                component_name="model",
+            )
+            if isinstance(model_family, CanonicalModelFamilySpec)
+            else "config",
+            datamodule_source=resolve_component_source(
+                overrides.datamodule,
+                expected_base_class=L.LightningDataModule,
+                component_name="datamodule",
+            ),
+            model_override_name=get_component_override_name(overrides.model)
+            if overrides.model is not None
+            else None,
+        )
+
+    return ReviewSession(
+        parse=parse,
+        resolve=resolve,
+        dependencies=training_dependency_check,
+        graph=training_spec_graph,
+        resolved_config=lambda spec: spec.training_config,
+        execution_overrides=replace(overrides, config_components=None),
+    )
+
+
+def training_dependency_check(config):
+    """Check known optional features without constructing runtime components."""
+    from importlib.util import find_spec
+    from shutil import which
+
+    from benchrep.assembly.builders.trainer_builder import _require_logger_backend
+
+    if config.logger is not None:
+        _require_logger_backend(LOGGERS.resolve_key(config.logger.name))
+    missing = []
+    if config.inspection.torchview.enabled:
+        for module in ("torchview", "graphviz"):
+            if find_spec(module) is None:
+                missing.append(module)
+        if which("dot") is None:
+            missing.append("Graphviz dot executable")
+    if missing:
+        return "warning", "Optional Torchview export unavailable: " + ", ".join(
+            missing
+        ) + ". Install benchrep[model_graph] and the Graphviz system package."
+    return (
+        "passed",
+        "Known optional dependencies for enabled features are available. Custom component dependencies and runtime initialization are not checked.",
+    )
+
+
+def training_spec_graph(spec):
+    """Render the existing Composite spec graph without constructing a model."""
+    if spec.composite_model_spec is None:
+        return None
+    import subprocess
+    from shutil import which
+
+    from benchrep.records.architecture import build_composite_model_spec_graph
+
+    executable = which("dot")
+    if executable is None:
+        raise RuntimeError("Install the Graphviz system package to enable the preview.")
+    graph = build_composite_model_spec_graph(spec.composite_model_spec, spec.loss_specs)
+    rendered = subprocess.run(
+        [executable, "-Tsvg"],
+        input=graph.source,
+        text=True,
+        capture_output=True,
+        timeout=20,
+        check=True,
+    )
+    return rendered.stdout

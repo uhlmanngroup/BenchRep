@@ -6,7 +6,11 @@ from pathlib import Path
 
 from dash import Dash
 
-from benchrep.gui.rules.train import prepare_training_draft, training_sections
+from benchrep.gui.rules.train import (
+    prepare_training_draft,
+    training_review_session,
+    training_sections,
+)
 from benchrep.gui.shared.forms import build_workflow_app
 from benchrep.interfaces.model_families import (
     COMPOSITE_FAMILY,
@@ -21,6 +25,7 @@ def create_training_app(
     model_family: ModelFamilySpec = COMPOSITE_FAMILY,
     config: TrainingConfigInput = None,
     overrides: TrainingOverrides | None = None,
+    export_directory: Path | str = "configs",
 ) -> Dash:
     """Build the training wizard from a base config and optional overrides."""
     overrides = overrides if overrides is not None else TrainingOverrides()
@@ -34,6 +39,8 @@ def create_training_app(
         update_title=None,
         suppress_callback_exceptions=True,
     )
+    review = training_review_session(model_family=model_family, overrides=overrides)
+    app.wizard_session = review
     return build_workflow_app(
         app=app,
         stage="training",
@@ -43,6 +50,8 @@ def create_training_app(
         ),
         title="Training workflow configuration",
         subtitle="Configure a training run using BenchRep's schemas.",
+        review=review,
+        export_directory=str(export_directory),
     )
 
 

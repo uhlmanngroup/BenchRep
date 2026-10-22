@@ -104,6 +104,7 @@ def build_wizard_layout(
     sections: Sequence[WizardSection],
     actions: Sequence[Component] = (),
     active_content: Component | None = None,
+    review_panel: Component | None = None,
 ) -> Component:
     """Build the shared shell; the workflow supplies sections and actions."""
     if not sections:
@@ -137,6 +138,9 @@ def build_wizard_layout(
                             className="br-section-tab-label",
                         ),
                         value=section.key,
+                        className="br-review-tab"
+                        if section.key == "__review__"
+                        else "",
                     )
                     for section in sections
                 ],
@@ -151,6 +155,7 @@ def build_wizard_layout(
                         className="br-section-description",
                     ),
                     html.Div(active_content, id="wizard-active-content"),
+                    review_panel,
                 ],
                 className="br-section br-section-panel",
             ),
