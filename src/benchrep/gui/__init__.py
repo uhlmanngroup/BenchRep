@@ -19,7 +19,7 @@ def configure_workflow(
     model_family: ModelFamilySpec | None = None,
     config: TrainingConfigInput = None,
     overrides: TrainingOverrides | None = None,
-    export_directory: Path | str = "configs",
+    export_directory: Path | str = "wizard_configs",
     port: int = 8050,
     open_browser: bool = True,
 ) -> ConfiguredWorkflow[TrainingConfig, TrainingOverrides] | None:

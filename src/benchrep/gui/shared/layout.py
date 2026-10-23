@@ -265,6 +265,7 @@ def build_wizard_layout(
                                                 className="br-yaml-preview",
                                             ),
                                         ],
+                                        id="wizard-draft-preview",
                                         className="br-draft-preview",
                                     ),
                                     html.Footer(

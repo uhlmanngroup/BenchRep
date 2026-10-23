@@ -154,7 +154,7 @@ def build_workflow_app(
     title: str,
     subtitle: str,
     review=None,
-    export_directory: str = "configs",
+    export_directory: str = "wizard_configs",
     export_filename: str = "training.yaml",
 ) -> Dash:
     """Mount one section; retain all draft state outside the editor subtree."""

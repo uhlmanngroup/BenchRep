@@ -854,3 +854,18 @@ body {
         padding-inline: 12px;
     }
 }
+
+.br-union-row {
+    display: grid;
+    grid-template-columns: minmax(90px, 0.4fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 10px;
+}
+
+.br-union-row > * {
+    min-width: 0;
+}
+
+.br-union-row > .br-recursive-field {
+    margin-block: 0;
+}

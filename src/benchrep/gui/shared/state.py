@@ -72,6 +72,16 @@ def editor_spec(annotation: Any, info: FieldInfo | None = None) -> EditorSpec:
     common = {"annotation": annotation, "info": info}
     if origin in (Union, UnionType):
         variants = tuple(editor_spec(a) for a in args if a is not type(None))
+        if variants and all(variant.kind == "choice" for variant in variants):
+            choices = []
+            seen = set()
+            for variant in variants:
+                for value in variant.choices:
+                    identity = (type(value), value)
+                    if identity not in seen:
+                        seen.add(identity)
+                        choices.append(value)
+            return EditorSpec(**common, kind="choice", choices=tuple(choices))
         if len(variants) == 1:
             child = variants[0]
             return EditorSpec(

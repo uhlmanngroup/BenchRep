@@ -25,7 +25,7 @@ def create_training_app(
     model_family: ModelFamilySpec = COMPOSITE_FAMILY,
     config: TrainingConfigInput = None,
     overrides: TrainingOverrides | None = None,
-    export_directory: Path | str = "configs",
+    export_directory: Path | str = "wizard_configs",
 ) -> Dash:
     """Build the training wizard from a base config and optional overrides."""
     overrides = overrides if overrides is not None else TrainingOverrides()

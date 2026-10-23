@@ -286,7 +286,7 @@ def render_editor(
         body.append(
             dmc.Select(
                 id=identifier("branch"),
-                label="Type",
+                **{"aria-label": f"{title} type"},
                 placeholder="Select a type",
                 value=selection,
                 data=[
@@ -316,6 +316,13 @@ def render_editor(
                 collection_item=collection_item,
             )
         )
+        body = [
+            html.Div(
+                body,
+                className="br-union-row",
+            )
+        ]
+
     elif spec.kind == "object":
         body.append(
             html.Div(

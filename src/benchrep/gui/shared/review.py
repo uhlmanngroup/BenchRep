@@ -450,3 +450,22 @@ def register_review_callbacks(app: Dash, session: ReviewSession):
             ],
             color="green",
         ), True
+
+    app.clientside_callback(
+        """
+        function(receipt, draft, directory, filename, errors) {
+            const current = receipt
+                && JSON.stringify(receipt.draft) === JSON.stringify(draft)
+                && receipt.directory === directory
+                && receipt.filename === filename;
+
+            return current ? {display: "none"} : {};
+        }
+        """,
+        Output("wizard-draft-preview", "style"),
+        Input("wizard-review-receipt", "data"),
+        Input("wizard-draft", "data"),
+        Input("wizard-export-directory", "value"),
+        Input("wizard-export-filename", "data"),
+        Input("wizard-section-errors", "data"),
+    )
