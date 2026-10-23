@@ -109,7 +109,11 @@ def render_editor(
     presentation: Callable[[tuple, Any], FieldPresentation] | None = None,
 ) -> Component:
     is_section = len(path) == 1 and show_mode
-    title = title or str(path[-1]).replace("_", " ").title()
+    title = (
+            title
+            or spec.info.title
+            or str(path[-1]).replace("_", " ").title()
+    )
     locked = locked or path in locked_paths
     identifier = lambda action: field_id(section, node, action)
     button_id = lambda action: field_id(section, node, action, button=True)

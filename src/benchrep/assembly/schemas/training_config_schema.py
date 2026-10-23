@@ -808,6 +808,7 @@ class TrainingOptimizerConfig(NamedConfig):
 
     lr_scheduler: TrainingLRSchedulerConfig | None = Field(
         default=None,
+        title="LR scheduler",
         description="Optional LR scheduler attached to this optimizer.",
         json_schema_extra={
             "omit_behavior": "No LR scheduler is constructed.",
