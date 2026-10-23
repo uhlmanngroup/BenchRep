@@ -300,28 +300,36 @@ def render_editor(
                 disabled=locked,
             )
         )
-        body.append(
-            render_editor(
-                visible_spec,
-                branch_node,
-                section=section,
-                path=path,
-                title=title,
-                locked=locked,
-                locked_paths=locked_paths,
-                options=options,
-                presentation=presentation,
-                show_mode=False,
-                container_depth=visible_depth,
-                collection_item=collection_item,
-            )
+        singleton_choice = (
+                effective.kind == "choice"
+                and len(effective.choices) == 1
+                and type(branch_node.get("value")) is type(effective.choices[0])
+                and branch_node.get("value") == effective.choices[0]
         )
-        body = [
-            html.Div(
-                body,
-                className="br-union-row",
+
+        if not singleton_choice:
+            body.append(
+                render_editor(
+                    visible_spec,
+                    branch_node,
+                    section=section,
+                    path=path,
+                    title=title,
+                    locked=locked,
+                    locked_paths=locked_paths,
+                    options=options,
+                    presentation=presentation,
+                    show_mode=False,
+                    container_depth=visible_depth,
+                    collection_item=collection_item,
+                )
             )
-        ]
+            body = [
+                html.Div(
+                    body,
+                    className="br-union-row",
+                )
+            ]
 
     elif spec.kind == "object":
         body.append(

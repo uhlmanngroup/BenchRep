@@ -242,7 +242,15 @@ def new_node(spec: EditorSpec, value: Any = MISSING) -> dict:
             branches={str(branch): new_node(spec.variants[branch], value)},
         )
         # The outer mode owns omission/null/empty, the child owns its value editor.
-        node["branches"][str(branch)]["mode"] = "value"
+        child = node["branches"][str(branch)]
+        child["mode"] = "value"
+        variant = spec.variants[branch]
+        if (
+                variant.kind == "choice"
+                and len(variant.choices) == 1
+                and (value is MISSING or value is None)
+        ):
+            child["value"] = deepcopy(variant.choices[0])
     elif spec.kind == "object":
         values = value if isinstance(value, dict) else {}
         node["fields"] = {
@@ -425,6 +433,12 @@ def edit_node(
             child["mode"] = "value"
             node["branches"][str(branch)] = child
 
+        variant = current_spec.variants[branch]
+        if variant.kind == "choice" and len(variant.choices) == 1:
+            child = node["branches"][str(branch)]
+            fixed_value = variant.choices[0]
+            changed |= child.get("value") != fixed_value
+            child.update(mode="value", value=deepcopy(fixed_value))
         _, fixed = union_variant_details(current_spec, branch)
         if fixed is not None:
             name, tag = fixed
