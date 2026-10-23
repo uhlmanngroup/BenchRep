@@ -59,7 +59,7 @@ body {
 }
 
 .br-header {
-    padding: 32px max(24px, calc((100vw - 1200px) / 2));
+    padding-block: 32px;
     background: var(--br-header-bg);
     border-bottom: 1px solid var(--br-border);
     color: var(--br-text);
@@ -73,7 +73,7 @@ body {
 }
 
 .br-brand-name {
-    font-size: 1.8rem;
+    font-size: 3rem;
     font-weight: 650;
     letter-spacing: -0.025em;
     transform: translateY(5px);
@@ -734,7 +734,7 @@ body {
 .br-logo {
     display: block;
     width: auto;
-    height: 64px;
+    height: 50px;
     max-width: 100%;
     object-fit: contain;
 }
@@ -840,4 +840,17 @@ body {
 [data-mantine-color-scheme="dark"] .br-section-status-invalid {
     color: #3b1010;
     background: #fca5a5;
+}
+
+.br-header {
+    --workspace-edge: max(24px, calc((100% - 1640px) / 2 + 24px));
+
+    padding-left: var(--workspace-edge);
+    padding-right: var(--workspace-edge);
+}
+
+@media (max-width: 640px) {
+    .br-header {
+        padding-inline: 12px;
+    }
 }
