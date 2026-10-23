@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import cast
 
 import dash_mantine_components as dmc
-from dash import Dash, Input, Output, State, dcc, html, no_update
+from dash import Dash, Input, Output, State, dcc, html, no_update, get_asset_url
 from dash.development.base_component import Component
 from pydantic import BaseModel
 
@@ -143,6 +143,19 @@ def build_wizard_layout(
                         else "",
                     )
                     for section in sections
+                ] + [
+                    html.Div(
+                        dmc.Switch(
+                            id="wizard-dark-mode",
+                            label="Dark mode",
+                            checked=False,
+                            persistence=True,
+                            persistence_type="local",
+                            className="br-theme-toggle",
+                        ),
+                        className="br-navigation-theme",
+                        role="presentation",
+                    ),
                 ],
                 className="br-section-tabs",
             ),
@@ -163,6 +176,7 @@ def build_wizard_layout(
     )
 
     return dmc.MantineProvider(
+        id="wizard-theme",
         forceColorScheme="light",
         theme=cast(
             dmc.MantineProvider.Theme,
@@ -194,9 +208,37 @@ def build_wizard_layout(
             [
                 html.Header(
                     [
-                        html.Div("BENCHREP", className="br-brand"),
-                        html.H1(title),
-                        html.P(subtitle),
+                        html.Div(
+                            [
+                                html.H1(title),
+                                html.P(subtitle),
+                            ],
+                            className="br-header-copy",
+                        ),
+                        html.Div(
+                            [
+                                html.Div(
+                                    [
+                                        html.Img(
+                                            src=get_asset_url("logo-light.svg"),
+                                            alt="",
+                                            className="br-logo br-logo-light",
+                                        ),
+                                        html.Img(
+                                            src=get_asset_url("logo-dark.svg"),
+                                            alt="",
+                                            className="br-logo br-logo-dark",
+                                        ),
+                                        html.Span(
+                                            "BenchRep",
+                                            className="br-brand-name",
+                                        ),
+                                    ],
+                                    className="br-brand",
+                                ),
+                            ],
+                            className="br-header-tools",
+                        ),
                     ],
                     className="br-header",
                 ),
@@ -332,6 +374,11 @@ def register_documentation_callbacks(
     """Connect inspection tools to the current section and form values."""
     catalog = config_schema_catalog()
     sections_by_key = {section.key: section for section in sections}
+    app.clientside_callback(
+        "function(dark) { return dark ? 'dark' : 'light'; }",
+        Output("wizard-theme", "forceColorScheme"),
+        Input("wizard-dark-mode", "checked"),
+    )
     app.clientside_callback(
         """
         function(heading, section, previousSection) {

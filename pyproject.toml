@@ -79,4 +79,4 @@ filterwarnings = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-"benchrep.gui" = ["assets/*.css"]
+"benchrep.gui" = ["assets/*.css", "assets/*.svg"]

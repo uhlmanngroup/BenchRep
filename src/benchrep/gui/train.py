@@ -48,8 +48,8 @@ def create_training_app(
         sections=training_sections(
             model_family=model_family, overrides=overrides, initial=initial
         ),
-        title="Training workflow configuration",
-        subtitle="Configure a training run using BenchRep's schemas.",
+        title="Training configuration",
+        subtitle="Build, validate, and export a configuration for your training run",
         review=review,
         export_directory=str(export_directory),
     )
