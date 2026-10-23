@@ -276,6 +276,13 @@ def build_wizard_layout(
                                 className="br-editor",
                             ),
                             build_documentation_panel(),
+                            html.Button(
+                                id="wizard-docs-backdrop",
+                                type="button",
+                                tabIndex=-1,
+                                className="br-docs-backdrop",
+                                **{"aria-label": "Close expanded documentation"},
+                            ),
                         ],
                         className="br-workspace",
                     ),
@@ -312,6 +319,16 @@ def build_documentation_panel() -> Component:
     return html.Details(
         [
             html.Summary("Documentation"),
+            html.Div(
+                html.Button(
+                    "Expand",
+                    id="wizard-docs-expand",
+                    type="button",
+                    className="br-docs-expand",
+                    **{"aria-expanded": "false"},
+                ),
+                className="br-docs-toolbar",
+            ),
             dcc.Store(id="wizard-docs-component-source", storage_type="memory"),
             dcc.Store(id="wizard-scroll-section", storage_type="memory"),
             html.Div(
@@ -330,6 +347,7 @@ def build_documentation_panel() -> Component:
                         searchable=True,
                         clearable=True,
                         size="sm",
+                        comboboxProps={"withinPortal": False},
                     ),
                     html.Div(
                         id="wizard-docs-config-output",
@@ -343,6 +361,7 @@ def build_documentation_panel() -> Component:
                         searchable=True,
                         clearable=True,
                         size="sm",
+                        comboboxProps={"withinPortal": False},
                     ),
                     dmc.Select(
                         id="wizard-docs-component",
@@ -352,6 +371,7 @@ def build_documentation_panel() -> Component:
                         clearable=True,
                         size="sm",
                         mt=8,
+                        comboboxProps={"withinPortal": False},
                     ),
                     html.Div(
                         id="wizard-docs-registry-output",
@@ -361,6 +381,7 @@ def build_documentation_panel() -> Component:
                 className="br-docs-content",
             ),
         ],
+        id="wizard-documentation",
         open=True,
         className="br-documentation",
     )
@@ -526,6 +547,130 @@ def register_documentation_callbacks(
                 title="Could not load documentation",
                 color="red",
             )
+
+    app.clientside_callback(
+        """
+        function(expandClicks, backdropClicks) {
+            const ctx = window.dash_clientside.callback_context;
+            if (!ctx.triggered.length) {
+                return [
+                    window.dash_clientside.no_update,
+                    window.dash_clientside.no_update
+                ];
+            }
+
+            const panel = document.getElementById("wizard-documentation");
+            const button = document.getElementById("wizard-docs-expand");
+            const expanding = !panel.classList.contains(
+                "br-documentation-expanded"
+            );
+
+            if (expanding) {
+                const state = {
+                    scroll: panel.scrollTop,
+                    overflow: document.body.style.overflow,
+                    background: [],
+                    keydown: null
+                };
+
+                // Disable interaction outside the panel, including keyboard focus.
+                let current = panel;
+                while (current.parentElement && current !== document.body) {
+                    for (const sibling of current.parentElement.children) {
+                        if (
+                            sibling !== current
+                            && sibling.id !== "wizard-docs-backdrop"
+                            && sibling instanceof HTMLElement
+                        ) {
+                            state.background.push([sibling, sibling.inert]);
+                            sibling.inert = true;
+                        }
+                    }
+                    current = current.parentElement;
+                }
+
+                state.keydown = function(event) {
+                    if (event.key === "Escape") {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        button.click();
+                        return;
+                    }
+                    if (event.key !== "Tab") return;
+
+                    const focusable = Array.from(panel.querySelectorAll(
+                        'button, input, select, textarea, a[href], ' +
+                        'summary, [tabindex]'
+                    )).filter(element =>
+                        !element.disabled
+                        && element.tabIndex >= 0
+                        && element.getClientRects().length
+                    );
+                    
+                    const first = focusable[0];
+                    const last = focusable[focusable.length - 1];
+                    if (!first) {
+                        event.preventDefault();
+                        return;
+                    }
+                    if (event.shiftKey && document.activeElement === first) {
+                        event.preventDefault();
+                        last.focus();
+                    } else if (!event.shiftKey && document.activeElement === last) {
+                        event.preventDefault();
+                        first.focus();
+                    }
+                };
+
+                panel._brExpansion = state;
+                panel.setAttribute("role", "dialog");
+                panel.setAttribute("aria-modal", "true");
+                panel.setAttribute("aria-label", "Documentation");
+                button.setAttribute("aria-expanded", "true");
+                document.body.style.overflow = "hidden";
+                document.addEventListener("keydown", state.keydown, true);
+
+                requestAnimationFrame(() => {
+                    button.focus({preventScroll: true});
+                });
+
+                return [
+                    "br-documentation br-documentation-expanded",
+                    "Restore"
+                ];
+            }
+
+            const state = panel._brExpansion;
+            if (state) {
+                document.removeEventListener("keydown", state.keydown, true);
+                for (const [element, wasInert] of state.background) {
+                    element.inert = wasInert;
+                }
+                document.body.style.overflow = state.overflow;
+            }
+
+            panel.removeAttribute("role");
+            panel.removeAttribute("aria-modal");
+            panel.removeAttribute("aria-label");
+            button.setAttribute("aria-expanded", "false");
+
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    if (state) panel.scrollTop = state.scroll;
+                    button.focus({preventScroll: true});
+                });
+            });
+
+            delete panel._brExpansion;
+            return ["br-documentation", "Expand"];
+        }
+        """,
+        Output("wizard-documentation", "className"),
+        Output("wizard-docs-expand", "children"),
+        Input("wizard-docs-expand", "n_clicks"),
+        Input("wizard-docs-backdrop", "n_clicks"),
+        prevent_initial_call=True,
+    )
 
 
 def _documentation_metadata(
