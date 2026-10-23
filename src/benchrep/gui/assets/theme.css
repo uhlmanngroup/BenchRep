@@ -702,13 +702,23 @@ body {
 [data-container-tone="white"] { background-color: var(--br-surface); }
 
 .br-collapse-toggle {
-    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
     border: 0;
     background: transparent;
     color: var(--br-accent);
-    padding: 2px 5px;
-    font-size: 16px;
+    padding: 2px 0;
+    font: inherit;
+    text-align: left;
     cursor: pointer;
+}
+
+.br-collapse-arrow {
+    flex-shrink: 0;
+    font-size: 16px;
 }
 .br-collapse-toggle:focus-visible {
     outline: 2px solid var(--br-accent);

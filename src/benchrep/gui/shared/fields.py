@@ -168,23 +168,31 @@ def render_editor(
     )
     collapsed = collapsible and node.get("collapsed", False)
     if collapsible:
-        header.children.insert(
-            0,
-            html.Button(
-                "▸" if collapsed else "▾",
-                id=button_id("collapse"),
-                type="button",
-                className="br-collapse-toggle",
-                **{
-                    "aria-label": f"{'Expand' if collapsed else 'Collapse'} {title}",
-                    "aria-expanded": not collapsed,
-                },
-            ),
+        header.children[0] = html.Button(
+            [
+                html.Span(
+                    "▸" if collapsed else "▾",
+                    className="br-collapse-arrow",
+                    **{"aria-hidden": "true"},
+                ),
+                html.Span(title, className="br-field-label"),
+            ],
+            id=button_id("collapse"),
+            type="button",
+            className="br-collapse-toggle",
+            **{
+                "aria-label": f"{'Expand' if collapsed else 'Collapse'} {title}",
+                "aria-expanded": not collapsed,
+            },
         )
         header.children.insert(
-            2,
+            1,
             html.Span(
-                id={"type": "br-group-error", "section": section, "node": node["id"]},
+                id={
+                    "type": "br-group-error",
+                    "section": section,
+                    "node": node["id"],
+                },
                 className="br-group-error",
                 title="This group contains validation errors.",
             ),
