@@ -8,7 +8,7 @@ from dataclasses import dataclass, replace
 from typing import Any, Literal, get_args, get_origin
 
 import dash_mantine_components as dmc
-from dash import dcc, html
+from dash import Dash, Input, Output, dcc, html
 from dash.development.base_component import Component
 
 from benchrep.gui.shared.state import (
@@ -45,7 +45,7 @@ def field_id(section: str, node: dict, action: str, *, button: bool = False) -> 
     }
 
 
-def field_help(spec: EditorSpec, title: str, path: tuple) -> Component:
+def field_help(spec: EditorSpec, title: str, path: tuple, identity: str) -> Component:
     extra = spec.info.json_schema_extra
     metadata = extra if isinstance(extra, dict) else {}
     config_path = metadata.get("config_path", ".".join(map(str, path)))
@@ -63,24 +63,101 @@ def field_help(spec: EditorSpec, title: str, path: tuple) -> Component:
             paragraphs.append(f"**{label}:** {metadata[key]}")
     notes = metadata.get("notes", [])
     paragraphs.extend([notes] if isinstance(notes, str) else map(str, notes))
-    return dmc.Popover(
+    popup_id = f"br-field-docs-{identity}"
+    return html.Span(
         [
-            dmc.PopoverTarget(
-                html.Button(
-                    "i",
-                    type="button",
-                    className="br-help-button",
-                    **{"aria-label": f"Documentation for {title}"},
-                )
+            html.Button(
+                "i",
+                type="button",
+                className="br-help-button br-field-help-trigger",
+                **{
+                    "aria-label": f"Documentation for {title}",
+                    "aria-controls": popup_id,
+                    "aria-expanded": "false",
+                },
             ),
-            dmc.PopoverDropdown(
-                dcc.Markdown("\n\n".join(paragraphs), className="br-field-docs")
+            html.Div(
+                dcc.Markdown("\n\n".join(paragraphs), className="br-field-docs"),
+                id=popup_id,
+                className="br-field-help-popup",
             ),
         ],
-        position="bottom-end",
-        withArrow=True,
-        withinPortal=True,
-        width=420,
+        className="br-field-help",
+    )
+
+
+def register_field_interactions(app: Dash) -> None:
+    """Keep help and collapse interactions local; the server retains editor state."""
+    app.clientside_callback(
+        """function(activeSection) {
+            if (window.brFieldInteractionsInstalled) return window.dash_clientside.no_update;
+            window.brFieldInteractionsInstalled = true;
+            let current = null;
+
+            function position() {
+                if (!current || !current.popup.isConnected) {
+                    current = null;
+                    return;
+                }
+                const {button, popup} = current;
+                const anchor = button.getBoundingClientRect();
+                const box = popup.getBoundingClientRect();
+                const margin = 8;
+                const left = Math.max(margin, Math.min(
+                    anchor.right - box.width, window.innerWidth - box.width - margin
+                ));
+                const below = anchor.bottom + margin;
+                const top = below + box.height <= window.innerHeight - margin
+                    ? below : Math.max(margin, Math.min(
+                        anchor.top - box.height - margin, window.innerHeight - box.height - margin
+                    ));
+                popup.style.left = left + 'px';
+                popup.style.top = top + 'px';
+            }
+
+            document.addEventListener('click', function(event) {
+                const toggle = event.target.closest('.br-collapse-toggle');
+                if (toggle) {
+                    const wrapper = toggle.closest('[data-editor-node]');
+                    const body = wrapper.querySelector(':scope > .br-field-body');
+                    const expanded = toggle.getAttribute('aria-expanded') !== 'true';
+                    const label = toggle.querySelector('.br-field-label').textContent;
+                    window.dash_clientside.set_props(body.id, {hidden: !expanded});
+                    window.dash_clientside.set_props(JSON.parse(toggle.id), {
+                        'aria-expanded': expanded,
+                        'aria-label': (expanded ? 'Collapse ' : 'Expand ') + label
+                    });
+                    return;
+                }
+                const button = event.target.closest('.br-field-help-trigger');
+                if (!button) return;
+                const popup = document.getElementById(button.getAttribute('aria-controls'));
+                if (!popup) return;
+                button.setAttribute('popovertarget', popup.id);
+                popup.brHelpButton = button;
+                if (!popup.hasAttribute('popover')) {
+                    // Dash's HTML wrappers do not expose the native attributes yet.
+                    popup.setAttribute('popover', 'auto');
+                    popup.addEventListener('beforetoggle', function(event) {
+                        const opening = event.newState === 'open';
+                        const button = popup.brHelpButton;
+                        button.setAttribute('aria-expanded', String(opening));
+                        if (opening) {
+                            current = {button, popup};
+                            window.requestAnimationFrame(position);
+                        } else if (current && current.popup === popup) {
+                            current = null;
+                        }
+                    });
+                }
+                // The button's native action handles toggling, Escape and light dismissal.
+            });
+            window.addEventListener('resize', position);
+            document.addEventListener('scroll', position, true);
+            return true;
+        }""",
+        Output("wizard-field-interactions-ready", "data"),
+        Input("wizard-sections", "value"),
     )
 
 
@@ -145,7 +222,7 @@ def render_editor(
                 **{"aria-label": f"{title} mode"},
             )
         )
-    controls.append(field_help(spec, title, path))
+    controls.append(field_help(spec, title, path, node["id"]))
     header = html.Div(
         [
             html.Label(title, className="br-field-label"),
@@ -171,13 +248,13 @@ def render_editor(
         header.children[0] = html.Button(
             [
                 html.Span(
-                    "▸" if collapsed else "▾",
                     className="br-collapse-arrow",
                     **{"aria-hidden": "true"},
                 ),
                 html.Span(title, className="br-field-label"),
             ],
             id=button_id("collapse"),
+            n_clicks=node.get("collapse_clicks", 0),
             type="button",
             className="br-collapse-toggle",
             **{
@@ -553,7 +630,12 @@ def render_editor(
         [
             header if show_mode else None,
             reset if is_section else None,
-            html.Div(body, className="br-field-body", hidden=collapsed),
+            html.Div(
+                body,
+                id=f"br-field-body-{node['id']}",
+                className="br-field-body",
+                hidden=collapsed,
+            ),
             html.Div(
                 id={"type": "br-error", "section": section, "node": node["id"]},
                 className="br-field-mode-error",

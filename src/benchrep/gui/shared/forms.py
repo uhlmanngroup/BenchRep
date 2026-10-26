@@ -17,7 +17,11 @@ from dash.exceptions import PreventUpdate
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 
-from benchrep.gui.shared.fields import FieldPresentation, render_editor
+from benchrep.gui.shared.fields import (
+    FieldPresentation,
+    register_field_interactions,
+    render_editor,
+)
 from benchrep.gui.shared.layout import (
     WizardSection,
     build_wizard_layout,
@@ -280,6 +284,7 @@ def build_workflow_app(
             dcc.Store(id="wizard-editor-state", data=state),
             dcc.Store(id="wizard-focus-request"),
             dcc.Store(id="wizard-focus-result"),
+            dcc.Store(id="wizard-field-interactions-ready"),
             dcc.Store(id="wizard-draft", data=initial_draft),
             dcc.Store(id="wizard-section-errors", data=initial_errors),
             dcc.Store(id="wizard-inline-errors", data=initial_inline),
@@ -342,7 +347,7 @@ def build_workflow_app(
             raise PreventUpdate
         focus_request = no_update
         current = deepcopy(current)
-        structural = trigger == "wizard-sections"
+        structural = "wizard-sections" in triggered
         edited = set()
         # Capture the complete mounted input snapshot, including changes made just before a tab switch.
         input_updates = sorted(
@@ -394,6 +399,20 @@ def build_workflow_app(
             ):
                 structural |= by_key[key].refresh_on_change((key, *path))
             edited.add(key)
+        # Capture collapse counts too, including a click immediately before leaving a section.
+        # Absolute counts avoid losing rapid toggles when requests share an older state.
+        for identifier, count in zip(button_ids, clicks, strict=True):
+            key = identifier["section"]
+            if identifier["action"] != "collapse" or not count or key not in specs:
+                continue
+            found = find_node(specs[key], current[key], identifier["node"])
+            if found:
+                node = found[1]
+                previous_count = node.get("collapse_clicks", 0)
+                if count > previous_count:
+                    if (count - previous_count) % 2:
+                        node["collapsed"] = not node.get("collapsed", False)
+                    node["collapse_clicks"] = count
         action_error = None
         if isinstance(trigger, dict) and trigger["type"] == "br-button":
             count = next(
@@ -412,12 +431,11 @@ def build_workflow_app(
                 (),
             )
             locked = any((key, *path)[: len(p)] == p for p in by_key[key].locked_paths)
-            if trigger["action"] == "collapse":
-                found = find_node(specs[key], current[key], trigger["node"])
-                if found:
-                    found[1]["collapsed"] = not found[1].get("collapsed", False)
-                    structural = True
-            elif key not in initial.supplied_sections and not locked:
+            if (
+                trigger["action"] != "collapse"
+                and key not in initial.supplied_sections
+                and not locked
+            ):
                 try:
                     action = trigger["action"]
                     if action == "activate":
@@ -569,16 +587,28 @@ def build_workflow_app(
         return yaml.safe_dump(draft, sort_keys=False, allow_unicode=True)
 
     app.clientside_callback(
-        "function(errors, ids) { return ids.map(id => (errors || {})[id.node + ':group'] ? '!' : ''); }",
+        """function(errors, ids, previous) {
+            return ids.map((id, index) => {
+                const value = (errors || {})[id.node + ':group'] ? '!' : '';
+                return value === (previous[index] || '') ? window.dash_clientside.no_update : value;
+            });
+        }""",
         Output({"type": "br-group-error", "section": ALL, "node": ALL}, "children"),
         Input("wizard-inline-errors", "data"),
         Input({"type": "br-group-error", "section": ALL, "node": ALL}, "id"),
+        State({"type": "br-group-error", "section": ALL, "node": ALL}, "children"),
     )
     app.clientside_callback(
-        "function(errors, ids) { return ids.map(id => (errors || {})[id.node] || ''); }",
+        """function(errors, ids, previous) {
+            return ids.map((id, index) => {
+                const value = (errors || {})[id.node] || '';
+                return value === (previous[index] || '') ? window.dash_clientside.no_update : value;
+            });
+        }""",
         Output({"type": "br-error", "section": ALL, "node": ALL}, "children"),
         Input("wizard-inline-errors", "data"),
         Input({"type": "br-error", "section": ALL, "node": ALL}, "id"),
+        State({"type": "br-error", "section": ALL, "node": ALL}, "children"),
     )
     app.clientside_callback(
         """function(request) {
@@ -611,5 +641,6 @@ def build_workflow_app(
             Output("wizard-review-panel", "style"),
             Input("wizard-sections", "value"),
         )
+    register_field_interactions(app)
     register_documentation_callbacks(app=app, stage=stage, sections=layout_sections)
     return app

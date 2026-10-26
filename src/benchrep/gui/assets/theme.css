@@ -972,3 +972,33 @@ body {
         position: relative;
     }
 }
+
+/* Native field help stays out of the editor's layout and callback graph. */
+.br-field-help-popup {
+    display: none;
+}
+
+.br-field-help-popup:popover-open {
+    display: block;
+    position: fixed;
+    inset: auto;
+    margin: 0;
+    box-sizing: border-box;
+    width: min(420px, calc(100vw - 16px));
+    max-height: calc(100vh - 16px);
+    overflow: auto;
+    padding: 12px;
+    border: 1px solid var(--br-border);
+    border-radius: 6px;
+    background: var(--br-surface);
+    color: var(--br-text);
+    box-shadow: 0 6px 24px rgb(0 0 0 / 18%);
+}
+
+.br-collapse-toggle[aria-expanded="true"] .br-collapse-arrow::before {
+    content: "▾";
+}
+
+.br-collapse-toggle[aria-expanded="false"] .br-collapse-arrow::before {
+    content: "▸";
+}

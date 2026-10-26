@@ -15,7 +15,7 @@ from benchrep.gui.shared.state import (
     editor_spec,
     new_node,
 )
-from dash import Dash
+from dash import Dash, no_update
 from pydantic import BaseModel
 
 
@@ -89,7 +89,11 @@ def test_semantic_labels():
     )
 
 
-def test_locked_section_can_collapse_without_changing_config(monkeypatch):
+@pytest.mark.parametrize("count, collapsed", [(1, True), (2, False), (3, True)])
+@pytest.mark.parametrize("switch_section", [False, True])
+def test_locked_section_can_collapse_without_changing_config(
+    monkeypatch, count, collapsed, switch_section
+):
     raw = [{"name": "a"}]
     initial = WizardDraft(
         initial_data={"entries": raw}, supplied_sections=frozenset({"entries"})
@@ -116,7 +120,10 @@ def test_locked_section_can_collapse_without_changing_config(monkeypatch):
         forms,
         "ctx",
         SimpleNamespace(
-            triggered_prop_ids={"button.n_clicks": identifier}, triggered_id=identifier
+            triggered_prop_ids={
+                "event": "wizard-sections" if switch_section else identifier
+            },
+            triggered_id="wizard-sections" if switch_section else identifier,
         ),
     )
     update = next(
@@ -127,7 +134,7 @@ def test_locked_section_can_collapse_without_changing_config(monkeypatch):
     result = update(
         "entries",
         [],
-        [1],
+        [count],
         [],
         [identifier],
         {"entries": node},
@@ -135,7 +142,17 @@ def test_locked_section_can_collapse_without_changing_config(monkeypatch):
         {"entries": []},
         {},
     )
-    assert result[0]["entries"]["entries"][0]["node"]["collapsed"]
+    updated = result[0]["entries"]["entries"][0]["node"]
+    assert updated.get("collapsed", False) is collapsed
+    assert updated["collapse_clicks"] == count
+    if not switch_section:
+        assert result[1] is no_update
+    rendered = render_editor(
+        editor_spec(list[Entry]), result[0]["entries"],
+        section="entries", path=("entries",),
+    )
+    toggle = next(c for c in walk(rendered) if getattr(c, "id", None) == identifier)
+    assert toggle.n_clicks == count
     assert collect_node(editor_spec(list[Entry]), result[0]["entries"])[0] == raw
 
 

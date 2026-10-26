@@ -112,7 +112,7 @@ def test_invalid_json_is_retained_and_reported():
 
 
 def test_switching_union_branches_retains_each_value():
-    spec = editor_spec(bool | Literal["auto"])
+    spec = editor_spec(bool | str)
     node = new_node(spec, False)
     original = node["branch"]
     edit_node(spec, node, node["id"], "branch", str(1 - original))
