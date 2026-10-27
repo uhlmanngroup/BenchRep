@@ -518,12 +518,33 @@ class PredictionSourceContext:
                             n for n, ref in step.inputs.items() if ref in producers
                         ),
                     )
-                elif step and len(path) == 5:
-                    original = step.inputs.get(path[4])
+                elif len(path) == 5:
+                    original = step.inputs.get(path[4]) if step else None
+                    producer = producers.get(original)
+
+                    if not path[2]:
+                        note = "Select an assembly step, then an input."
+                    elif step is None:
+                        note = "This assembly step is not present in the loaded training manifest."
+                    elif not path[4]:
+                        note = "Select an input to see its original route."
+                    elif original is None:
+                        note = "This input is not present on the selected assembly step."
+                    elif producer is None:
+                        note = (
+                            f"Original route: {original}. "
+                            "Only inputs routed from a producer step can be overridden."
+                        )
+                    else:
+                        note = (
+                            f"Original route: {original}. "
+                            "Select an output from the same producer step."
+                        )
+
                     guide = replace(
                         guide,
-                        suggestions=outputs.get(producers.get(original), ()),
-                        note=f"Original route: {original}. Select an output from the same producer step.",
+                        suggestions=outputs.get(producer, ()),
+                        note=note,
                     )
         if path[:2] == ("exports", "anndata"):
             available = (
@@ -685,13 +706,22 @@ def prediction_sections(*, context: PredictionSourceContext) -> list[SectionSpec
                     "dataset": validate_dataset_name,
                     "transform_pipelines": validate_transform_names,
                 }.get(key),
-                refresh_on_change=lambda path: path
-                in {
+                refresh_on_change=lambda path: (
+                        path in {
                     ("source", "training_manifest_path"),
                     ("inference", "seed"),
                     ("exports", "anndata", "mode"),
                 }
-                or path[:3] == ("exports", "anndata", "keys"),
+                        or path[:3] == ("exports", "anndata", "keys")
+                        or (
+                                path[:2]
+                                == ("inference", "composite_model_assembly_input_overrides")
+                                and (
+                                        len(path) == 3
+                                        or (len(path) == 5 and path[3] == "inputs")
+                                )
+                        )
+                ),
                 locked_paths=(
                     frozenset({("source", "training_manifest_path")})
                     if key == "source"

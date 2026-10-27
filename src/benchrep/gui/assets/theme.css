@@ -315,10 +315,26 @@ body {
 .br-yaml-preview {
     margin: 0;
     padding: 18px;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
     overflow-x: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
     background: var(--br-code-bg);
     font-size: 0.875rem;
     line-height: 1.6;
+}
+
+#wizard-review-panel {
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr);
+}
+
+#wizard-review-panel > * {
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 .br-component-notice {
