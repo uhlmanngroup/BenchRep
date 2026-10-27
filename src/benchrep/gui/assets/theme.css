@@ -1002,3 +1002,126 @@ body {
 .br-collapse-toggle[aria-expanded="false"] .br-collapse-arrow::before {
     content: "▸";
 }
+
+
+.br-inheritance-note,
+.br-source-note {
+    margin-block: 8px;
+    color: var(--br-muted);
+    font-size: 13px;
+    overflow-wrap: anywhere;
+}
+
+.br-inheritance-preview {
+    margin-block: 8px;
+}
+
+.br-source-context {
+    display: grid;
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.br-source-status {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 16px 18px;
+    border-left: 4px solid var(--br-accent);
+    border-radius: 8px;
+    background: var(--br-accent-soft);
+}
+
+.br-source-status-copy {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.br-source-status-title {
+    display: block;
+    color: var(--br-text);
+    font-size: 14px;
+}
+
+.br-source-status-message {
+    margin: 6px 0 0;
+    color: var(--br-muted);
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+}
+
+.br-source-status-copy > .br-source-note {
+    margin-bottom: 0;
+}
+
+.br-source-status-action {
+    flex-shrink: 0;
+}
+
+.br-source-status-error {
+    border-left-color: var(--br-error);
+    background: var(--br-error-bg);
+}
+
+.br-source-status-error .br-source-status-title {
+    color: var(--br-error);
+}
+
+@media (max-width: 640px) {
+    .br-source-status {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+    }
+
+    .br-source-status-action {
+        align-self: flex-end;
+    }
+}
+
+.br-source-origin {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 4px;
+}
+
+.br-source-path-button {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--br-accent);
+    font: inherit;
+    cursor: pointer;
+}
+
+.br-source-path-button:hover {
+    text-decoration: underline;
+}
+
+.br-source-path-button:focus-visible {
+    outline: 2px solid var(--br-accent);
+    outline-offset: 3px;
+}
+
+.br-source-path-value {
+    display: block;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: var(--br-text);
+    user-select: text;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
+.br-source-summary {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.br-source-summary li + li {
+    margin-top: 4px;
+}

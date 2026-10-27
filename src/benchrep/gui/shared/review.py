@@ -100,6 +100,9 @@ class ReviewSession:
     graph: Callable[[Any], str | None]
     resolved_config: Callable[[Any], Any]
     execution_overrides: Any
+    summary: Callable[[Any], dict] | None = None
+    external_identity: Callable[[dict], str] | None = None
+    checked_external_identity: str | None = None
     result: ConfiguredWorkflow | None = None
     done: Event = field(default_factory=Event)
     lock: RLock = field(default_factory=RLock)
@@ -141,27 +144,40 @@ class ReviewSession:
                 rows[0].update(
                     status="passed", message="All sections validate together."
                 )
-            except Exception as error:  # noqa: BLE001 -- surface check failures without crashing the wizard
+            except (
+                Exception
+            ) as error:  # noqa: BLE001 -- surface check failures without crashing the wizard
                 rows[0].update(status="failed", message=str(error))
             if parsed is not None:
                 try:
+                    self.checked_external_identity = (
+                        self.external_identity(draft)
+                        if self.external_identity
+                        else None
+                    )
                     resolved = self.resolve(parsed.model_copy(deep=True))
                     rows[1].update(
                         status="passed",
                         message="Workflow configuration resolved successfully.",
                     )
-                except Exception as error:  # noqa: BLE001 -- surface check failures without crashing the wizard
+                except (
+                    Exception
+                ) as error:  # noqa: BLE001 -- surface check failures without crashing the wizard
                     rows[1].update(status="failed", message=str(error))
                 try:
                     status, message = self.dependencies(parsed)
                     rows[2].update(status=status, message=message)
-                except Exception as error:  # noqa: BLE001 -- surface check failures without crashing the wizard
+                except (
+                    Exception
+                ) as error:  # noqa: BLE001 -- surface check failures without crashing the wizard
                     rows[2].update(status="failed", message=str(error))
             try:
                 paths = export_paths(directory, filename)
                 messages = [check_export_destination(path) for path in paths]
                 rows[3].update(status="passed", message="\n".join(messages))
-            except Exception as error:  # noqa: BLE001 -- surface check failures without crashing the wizard
+            except (
+                Exception
+            ) as error:  # noqa: BLE001 -- surface check failures without crashing the wizard
                 rows[3].update(status="failed", message=str(error))
             if resolved is not None:
                 try:
@@ -174,14 +190,28 @@ class ReviewSession:
                     )
                     rows[4].update(
                         status="passed" if svg else "skipped",
-                        message="Composite model specification."
-                        if svg
-                        else "Only applicable to Composite models.",
+                        message=(
+                            "Composite model specification."
+                            if svg
+                            else "Only applicable to Composite models."
+                        ),
                     )
-                except Exception as error:  # noqa: BLE001 -- surface check failures without crashing the wizard
+                except (
+                    Exception
+                ) as error:  # noqa: BLE001 -- surface check failures without crashing the wizard
                     rows[4].update(
                         status="warning", message=f"Graph preview unavailable: {error}"
                     )
+            if resolved is not None and self.summary:
+                report["summary"] = self.summary(resolved)
+            if resolved is not None and self.external_identity:
+                try:
+                    if self.external_identity(draft) != self.checked_external_identity:
+                        raise ValueError(
+                            "The source changed during checks. Check configuration again."
+                        )
+                except Exception as error:
+                    rows[1].update(status="failed", message=str(error))
             report["ready"] = (
                 parsed is not None
                 and resolved is not None
@@ -219,6 +249,13 @@ class ReviewSession:
                     "Check configuration again before saving."
                 )
 
+            if (
+                self.external_identity
+                and self.external_identity(draft) != self.checked_external_identity
+            ):
+                raise ValueError(
+                    "The source changed since the last check. Check configuration again."
+                )
             authored_path, resolved_path = export_paths(directory, filename)
             for path in (authored_path, resolved_path):
                 check_export_destination(path)
@@ -251,7 +288,7 @@ def build_review_panel(export_directory: str, filename: str):
     return html.Div(
         [
             html.P(
-                "Check the complete configuration before saving. These checks do not run training or guarantee that runtime resources and custom components will work."
+                "Check the complete configuration before saving. These checks do not execute the workflow or guarantee that runtime resources and custom components will work."
             ),
             dmc.TextInput(
                 id="wizard-export-directory",
@@ -333,7 +370,9 @@ def render_report(report):
                     ),
                     dmc.TabsPanel(
                         [
-                            html.P("Saved as the authored configuration, preserving your choices."),
+                            html.P(
+                                "Saved as the authored configuration, preserving your choices."
+                            ),
                             html.Pre(
                                 report["authored_yaml"], className="br-yaml-preview"
                             ),
@@ -354,6 +393,18 @@ def render_report(report):
                         value="resolved",
                     ),
                 ],
+            )
+        )
+    if report.get("summary"):
+        rows.append(
+            html.Details(
+                [
+                    html.Summary("Resolved workflow details"),
+                    html.Pre(
+                        yaml.safe_dump(report["summary"], sort_keys=False),
+                        className="br-yaml-preview",
+                    ),
+                ]
             )
         )
     if report.get("graph"):
@@ -442,14 +493,17 @@ def register_review_callbacks(app: Dash, session: ReviewSession):
         except Exception as error:  # noqa: BLE001
             return dmc.Alert(str(error), color="red"), False
 
-        return dmc.Alert(
-            [
-                html.Div(f"Authored configuration: {authored_path}"),
-                html.Div(f"Resolved configuration: {resolved_path}"),
-                html.Div("You can close this tab and return to Python."),
-            ],
-            color="green",
-        ), True
+        return (
+            dmc.Alert(
+                [
+                    html.Div(f"Authored configuration: {authored_path}"),
+                    html.Div(f"Resolved configuration: {resolved_path}"),
+                    html.Div("You can close this tab and return to Python."),
+                ],
+                color="green",
+            ),
+            True,
+        )
 
     app.clientside_callback(
         """

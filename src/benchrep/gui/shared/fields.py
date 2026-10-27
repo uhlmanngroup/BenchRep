@@ -34,6 +34,9 @@ class FieldPresentation:
     reorderable: bool = True
     item_label: str = "Item"
     named_variants: tuple[tuple[str, int], ...] | None = None
+    note: str | None = None
+    inherited_value: Any = MISSING
+    branch_labels: tuple[str, ...] | None = None
 
 
 def field_id(section: str, node: dict, action: str, *, button: bool = False) -> dict:
@@ -186,11 +189,7 @@ def render_editor(
     presentation: Callable[[tuple, Any], FieldPresentation] | None = None,
 ) -> Component:
     is_section = len(path) == 1 and show_mode
-    title = (
-            title
-            or spec.info.title
-            or str(path[-1]).replace("_", " ").title()
-    )
+    title = title or spec.info.title or str(path[-1]).replace("_", " ").title()
     locked = locked or path in locked_paths
     identifier = lambda action: field_id(section, node, action)
     button_id = lambda action: field_id(section, node, action, button=True)
@@ -377,7 +376,11 @@ def render_editor(
                 data=[
                     {
                         "value": str(i),
-                        "label": union_variant_details(spec, i)[0],
+                        "label": (
+                            guide.branch_labels[i]
+                            if guide.branch_labels is not None
+                            else union_variant_details(spec, i)[0]
+                        ),
                     }
                     for i in range(len(spec.variants))
                 ],
@@ -386,10 +389,10 @@ def render_editor(
             )
         )
         singleton_choice = (
-                effective.kind == "choice"
-                and len(effective.choices) == 1
-                and type(branch_node.get("value")) is type(effective.choices[0])
-                and branch_node.get("value") == effective.choices[0]
+            effective.kind == "choice"
+            and len(effective.choices) == 1
+            and type(branch_node.get("value")) is type(effective.choices[0])
+            and branch_node.get("value") == effective.choices[0]
         )
 
         if not singleton_choice:
@@ -513,9 +516,11 @@ def render_editor(
                             path=child_path,
                             container_depth=visible_depth + 1,
                             collection_item=True,
-                            title=f"{guide.item_label} {index + 1}"
-                            if spec.kind == "list"
-                            else "Value",
+                            title=(
+                                f"{guide.item_label} {index + 1}"
+                                if spec.kind == "list"
+                                else "Value"
+                            ),
                             locked=locked,
                             locked_paths=locked_paths,
                             options=options,
@@ -528,9 +533,11 @@ def render_editor(
             )
         body.append(
             html.Button(
-                f"Add {guide.item_label.lower()}"
-                if spec.kind == "list"
-                else "Add entry",
+                (
+                    f"Add {guide.item_label.lower()}"
+                    if spec.kind == "list"
+                    else "Add entry"
+                ),
                 id=button_id("add"),
                 disabled=locked,
                 type="button",
@@ -612,6 +619,30 @@ def render_editor(
                     styles={"input": {"fontFamily": "monospace", "fontSize": "13px"}},
                 )
             )
+    if show_mode and guide.note:
+        body.append(html.Div(guide.note, className="br-inheritance-note"))
+    if show_mode and guide.inherited_value is not MISSING and mode in {"omit", "null"}:
+        body.append(
+            html.Details(
+                [
+                    html.Summary("Preview inherited value"),
+                    html.Pre(
+                        json.dumps(guide.inherited_value, indent=2, ensure_ascii=False),
+                        className="br-yaml-preview",
+                    ),
+                ],
+                className="br-inheritance-preview",
+            )
+        )
+        if not locked:
+            body.append(
+                html.Button(
+                    "Copy inherited value to editor",
+                    id=button_id("copy_inherited"),
+                    type="button",
+                    className="br-field-copy",
+                )
+            )
     reset = None
     if show_mode:
         reset = html.Button(
@@ -620,9 +651,11 @@ def render_editor(
             type="button",
             disabled=locked or spec.info.is_required(),
             className="br-field-reset",
-            title="This field has no schema default."
-            if spec.info.is_required()
-            else "Explicitly insert the schema default.",
+            title=(
+                "This field has no schema default."
+                if spec.info.is_required()
+                else "Explicitly insert the schema default."
+            ),
         )
         if not is_section:
             body.append(reset)

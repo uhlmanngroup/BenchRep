@@ -12,7 +12,7 @@ from uuid import uuid4
 
 import dash_mantine_components as dmc
 import yaml
-from dash import ALL, Dash, Input, Output, State, ctx, dcc, html, no_update
+from dash import ALL, Dash, Input, Output, State, ctx, dcc, html, no_update, set_props
 from dash.exceptions import PreventUpdate
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
@@ -56,12 +56,15 @@ class SectionSpec:
     options: Callable[[tuple, Any, Any], list[str] | None] | None = None
     presentation: Callable[[tuple, Any, dict], FieldPresentation] | None = None
     validate_local: Callable[[Any], dict[tuple, str]] | None = None
+    validate_context: Callable[[Any], dict[tuple, str]] | None = None
     refresh_on_change: Callable[[tuple], bool] | None = None
     locked_paths: frozenset[tuple] = frozenset()
     # Adapters are exceptions: ordinary sections need neither.
     to_editor: Callable[[Any], Any] | None = None
     from_editor: Callable[[Any], tuple[Any, dict[tuple, str]]] | None = None
     error_path: Callable[[tuple], tuple] | None = None
+    context_panel: Callable[[dict, dict], Any] | None = None
+    context_action: Callable[[str, tuple, dict], Any] | None = None
 
 
 def _node_paths(
@@ -128,24 +131,43 @@ def evaluate_section(
     section: SectionSpec, spec: EditorSpec, node: dict, *, initial: WizardDraft
 ):
     raw, errors = collect_node(spec, node)
-    if section.key in initial.supplied_sections:
-        return deepcopy(initial.initial_data[section.key]), {}
+    supplied = section.key in initial.supplied_sections
+
+    if supplied:
+        raw = deepcopy(initial.initial_data[section.key])
+
+    context_errors = (
+        section.validate_context(raw) if section.validate_context else {}
+    )
+
+    if supplied:
+        return raw, context_errors
+
     if raw is MISSING:
-        return raw, ({(): "Field required"} if spec.info.is_required() else {})
+        return raw, {
+            **({(): "Field required"} if spec.info.is_required() else {}),
+            **context_errors,
+        }
+
     errors = {
         **{
             _editor_error_path(spec, node, path): message
             for path, message in validate_value(section.annotation, raw).items()
         },
         **errors,
+        **context_errors,
     }
+
     if section.validate_local:
         errors.update(section.validate_local(raw))
+
     if section.from_editor:
         raw, adapter_errors = section.from_editor(raw)
         errors.update(adapter_errors)
+
     if node.get("auto_root") and raw == {}:
         raw = MISSING
+
     return raw, errors
 
 
@@ -197,6 +219,8 @@ def build_workflow_app(
                     className="br-component-notice",
                 )
             )
+        if section.context_panel:
+            content.append(section.context_panel(draft, current[key]))
         section_data, _ = collect_node(specs[key], current[key])
         content.append(
             render_editor(
@@ -206,15 +230,17 @@ def build_workflow_app(
                 path=(key,),
                 title=section.title,
                 presentation=(
-                    lambda path, value: section.presentation(path, value, draft)
-                )
-                if section.presentation
-                else None,
+                    (lambda path, value: section.presentation(path, value, draft))
+                    if section.presentation
+                    else None
+                ),
                 locked=key in initial.supplied_sections,
                 locked_paths=section.locked_paths,
-                options=(lambda path, value: section.options(path, value, section_data))
-                if section.options
-                else None,
+                options=(
+                    (lambda path, value: section.options(path, value, section_data))
+                    if section.options
+                    else None
+                ),
             )
         )
         return html.Div(content)
@@ -262,9 +288,11 @@ def build_workflow_app(
                 content=html.Div(),
                 schema=schema,
                 default_registry=section.default_registry,
-                documentation=f"**Python schema:** `{schema.__name__}`\n\n{cleandoc(doc)}"
-                if doc
-                else None,
+                documentation=(
+                    f"**Python schema:** `{schema.__name__}`\n\n{cleandoc(doc)}"
+                    if doc
+                    else None
+                ),
             )
         )
     if review is not None:
@@ -293,9 +321,11 @@ def build_workflow_app(
                 subtitle=subtitle,
                 sections=layout_sections,
                 active_content=section_view(sections[0].key, state, initial_draft),
-                review_panel=build_review_panel(export_directory, export_filename)
-                if review is not None
-                else None,
+                review_panel=(
+                    build_review_panel(export_directory, export_filename)
+                    if review is not None
+                    else None
+                ),
             ),
         ]
     )
@@ -414,6 +444,7 @@ def build_workflow_app(
                         node["collapsed"] = not node.get("collapsed", False)
                     node["collapse_clicks"] = count
         action_error = None
+        context_action = None
         if isinstance(trigger, dict) and trigger["type"] == "br-button":
             count = next(
                 (v for i, v in zip(button_ids, clicks, strict=True) if i == trigger),
@@ -433,12 +464,20 @@ def build_workflow_app(
             locked = any((key, *path)[: len(p)] == p for p in by_key[key].locked_paths)
             if (
                 trigger["action"] != "collapse"
-                and key not in initial.supplied_sections
-                and not locked
+                and (
+                    key not in initial.supplied_sections
+                    or trigger["action"] == "load_source"
+                )
+                and (not locked or trigger["action"] == "load_source")
             ):
                 try:
                     action = trigger["action"]
-                    if action == "activate":
+                    if (
+                        action in {"load_source", "copy_inherited"}
+                        and by_key[key].context_action
+                    ):
+                        context_action = (key, action, path, trigger["node"])
+                    elif action == "activate":
                         found = find_node(specs[key], current[key], trigger["node"])
                         if found and found[1]["mode"] == "omit":
                             structural |= edit_node(
@@ -504,6 +543,36 @@ def build_workflow_app(
                 inline[identity + ":group"] = any(
                     p[: len(path)] == path for p in issues
                 )
+        if context_action:
+            key, action, path, identity = context_action
+            replacement = by_key[key].context_action(action, (key, *path), draft)
+            if replacement is not MISSING:
+                found = find_node(specs[key], current[key], identity)
+                if found:
+                    node_spec, node = found
+                    node.clear()
+                    node.update(new_node(node_spec, replacement))
+                    raw, issues = evaluate_section(
+                        by_key[key], specs[key], current[key], initial=initial
+                    )
+                    if raw is MISSING:
+                        draft.pop(key, None)
+                    else:
+                        draft[key] = raw
+                    errors[key] = [
+                        {"path": list(p), "message": m} for p, m in issues.items()
+                    ]
+                    for node_id, node_path in _node_paths(specs[key], current[key]):
+                        inline[node_id] = issues.get(node_path, "")
+                        inline[node_id + ":group"] = any(
+                            p[: len(node_path)] == node_path for p in issues
+                        )
+            structural = True
+            if action == "load_source" and review is not None:
+                with review.lock:
+                    review.fingerprint = None
+                set_props("wizard-review-receipt", {"data": None})
+                set_props("wizard-check-report", {"children": []})
         if action_error:
             key, message = action_error
             errors[key].append({"path": [], "message": message})
@@ -530,11 +599,11 @@ def build_workflow_app(
                 *[
                     section_status(
                         {"issues": "present"} if errors.get(s.key) else {},
-                        mode="omit"
-                        if s.key not in draft
-                        else "null"
-                        if draft[s.key] is None
-                        else "value",
+                        mode=(
+                            "omit"
+                            if s.key not in draft
+                            else "null" if draft[s.key] is None else "value"
+                        ),
                     )
                     for s in sections
                 ],
@@ -557,16 +626,20 @@ def build_workflow_app(
             return f"{'.'.join(map(str, (active, *path)))}: {error['message']}"
 
         status = dmc.Alert(
-            html.Ul([html.Li(describe(e)) for e in problems])
-            if problems
-            else (
-                "Whether this section may be omitted or null is checked during final validation."
-                if neutral
-                else "This section passes local validation. Complete workflow validation is still required."
+            (
+                html.Ul([html.Li(describe(e)) for e in problems])
+                if problems
+                else (
+                    "Whether this section may be omitted or null is checked during final validation."
+                    if neutral
+                    else "This section passes local validation. Complete workflow validation is still required."
+                )
             ),
-            title="Check this section"
-            if problems
-            else (selected if neutral else "Local validation passed"),
+            title=(
+                "Check this section"
+                if problems
+                else (selected if neutral else "Local validation passed")
+            ),
             color="red" if problems else ("gray" if neutral else "green"),
         )
         return (
