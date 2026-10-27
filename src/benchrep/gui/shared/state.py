@@ -278,6 +278,10 @@ def new_node(spec: EditorSpec, value: Any = MISSING) -> dict:
         node["value"] = (
             "" if value is MISSING else json.dumps(value, indent=2, ensure_ascii=False)
         )
+    elif spec.kind == "number":
+        node["value"] = (
+            "" if value is MISSING or value is None else deepcopy(value)
+        )
     else:
         node["value"] = None if value is MISSING else deepcopy(value)
     return node
@@ -383,7 +387,9 @@ def edit_node(
         node["mode"] = value
         return changed
     if action == "value":
-        node["value"] = value
+        node["value"] = (
+            "" if current_spec.kind == "number" and value is None else value
+        )
         return False
     if action == "extra":
         node["extra_text"] = value

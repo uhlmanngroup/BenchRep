@@ -633,7 +633,10 @@ def prediction_sections(*, context: PredictionSourceContext) -> list[SectionSpec
         ),
         "transform_pipelines": (
             "Transforms",
-            "Omit or use null to inherit validation-targeted training steps. An empty list disables transforms; an explicit list replaces them.",
+            "Omit this entire section or set it to null to inherit "
+            "validation-targeted training steps. Set this section to an empty "
+            "list to disable transforms, or provide a list to replace all "
+            "inherited pipelines.",
         ),
         "data": (
             "Data loading",
