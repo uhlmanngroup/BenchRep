@@ -330,7 +330,7 @@ class PredictionSourceContext:
                     html.Div(
                         dmc.Tooltip(
                             dmc.Button(
-                                "Reload manifest" if current else "Load manifest",
+                                "Reload source" if current else "Load source",
                                 id=field_id(
                                     "source", node, "load_source", button=True
                                 ),
