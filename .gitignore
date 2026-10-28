@@ -30,7 +30,7 @@ temp_demo/
 
 # Scratch
 scratch/
-tmp_configs/
+wizard_configs/
 
 # IDE
 .idea/

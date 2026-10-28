@@ -268,3 +268,11 @@ def test_registered_union_keeps_separate_custom_parameter_edits():
         spec, node, node["id"], "union_name", json.dumps(["linear", branches["linear"]])
     )
     assert collect_node(spec, node)[0] == raw
+
+
+@pytest.mark.parametrize("annotation,value", [(dict[str, Any] | None, {}), (dict | None, {}), (tuple[int, ...] | None, [])])
+def test_optional_json_containers_preserve_empty(annotation, value):
+    spec = editor_spec(annotation)
+    raw, errors = collect_node(spec, new_node(spec, value))
+    assert raw == value
+    assert not errors

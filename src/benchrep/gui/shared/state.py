@@ -175,9 +175,13 @@ def empty_value(spec: EditorSpec) -> Any:
     if spec.kind == "union":
         return MISSING
     base = base_type(spec.annotation)
-    if spec.kind in ("object", "mapping") or get_origin(base) is dict:
+    if get_origin(base) in (Union, UnionType):
+        non_null = tuple(a for a in get_args(base) if a is not type(None))
+        if len(non_null) == 1:
+            base = base_type(non_null[0])
+    if spec.kind in ("object", "mapping") or base is dict or get_origin(base) is dict:
         return {}
-    if spec.kind == "list" or get_origin(base) in (list, tuple):
+    if spec.kind == "list" or base in (list, tuple) or get_origin(base) in (list, tuple):
         return []
     if spec.kind == "text" or (
         spec.kind == "choice" and any(isinstance(x, str) for x in spec.choices)

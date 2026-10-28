@@ -8,26 +8,38 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     from benchrep.assembly.schemas.training_config_schema import TrainingConfig
     from benchrep.assembly.schemas.prediction_config_schema import PredictionConfig
+    from benchrep.assembly.schemas.evaluation_config_schema import EvaluationConfig
     from benchrep.gui.shared.results import ConfiguredWorkflow
     from benchrep.interfaces.model_families import ModelFamilySpec
-    from benchrep.utils.workflow_overrides import TrainingOverrides, PredictionOverrides
-    from benchrep.utils.workflow_utils import TrainingConfigInput, PredictionConfigInput
+    from benchrep.utils.workflow_overrides import (
+        TrainingOverrides,
+        PredictionOverrides,
+        EvaluationOverrides,
+    )
+    from benchrep.utils.workflow_utils import (
+        TrainingConfigInput,
+        PredictionConfigInput,
+        EvaluationConfigInput,
+    )
 
 
 def configure_workflow(
     *,
-    stage: Literal["training", "prediction"] = "training",
+    stage: Literal["training", "prediction", "evaluation"] = "training",
     model_family: ModelFamilySpec | None = None,
-    config: TrainingConfigInput | PredictionConfigInput = None,
-    overrides: TrainingOverrides | PredictionOverrides | None = None,
+    config: TrainingConfigInput | PredictionConfigInput | EvaluationConfigInput = None,
+    overrides: TrainingOverrides
+    | PredictionOverrides
+    | EvaluationOverrides
+    | None = None,
     compatibility_policy: Literal["error", "warn"] = "error",
     export_directory: Path | str = "wizard_configs",
     port: int = 8050,
     open_browser: bool = True,
 ) -> (
-    ConfiguredWorkflow[
-        TrainingConfig | PredictionConfig, TrainingOverrides | PredictionOverrides
-    ]
+    ConfiguredWorkflow[TrainingConfig, TrainingOverrides]
+    | ConfiguredWorkflow[PredictionConfig, PredictionOverrides]
+    | ConfiguredWorkflow[EvaluationConfig, EvaluationOverrides]
     | None
 ):
     """Run a local wizard until Save & finish or Cancel; return None on cancellation.
@@ -35,10 +47,10 @@ def configure_workflow(
     Saved YAML preserves authored omissions and includes config components.
     The returned overrides retain runtime objects, but omit baked-in components.
     Closing the browser alone does not cancel; use Cancel or Ctrl+C in Python.
-    Training and prediction are supported. GUI dependencies are imported lazily.
+    Training, prediction, and evaluation are supported. GUI dependencies are imported lazily.
     """
-    if stage not in {"training", "prediction"}:
-        raise ValueError("Choose the training or prediction wizard.")
+    if stage not in {"training", "prediction", "evaluation"}:
+        raise ValueError("Choose the training, prediction, or evaluation wizard.")
     import threading
     import webbrowser
 
@@ -47,9 +59,17 @@ def configure_workflow(
     from benchrep.gui.train import create_training_app
     from benchrep.interfaces.model_families import COMPOSITE_FAMILY
 
-    from benchrep.utils.workflow_overrides import TrainingOverrides, PredictionOverrides
+    from benchrep.utils.workflow_overrides import (
+        TrainingOverrides,
+        PredictionOverrides,
+        EvaluationOverrides,
+    )
 
-    expected = TrainingOverrides if stage == "training" else PredictionOverrides
+    expected = {
+        "training": TrainingOverrides,
+        "prediction": PredictionOverrides,
+        "evaluation": EvaluationOverrides,
+    }[stage]
     if overrides is not None and not isinstance(overrides, expected):
         raise TypeError(f"{stage} requires {expected.__name__}.")
     kwargs = {}
@@ -62,8 +82,18 @@ def configure_workflow(
     elif compatibility_policy != "error":
         raise ValueError("compatibility_policy is only configurable for prediction.")
 
+    if stage == "evaluation":
+        if model_family is not None:
+            raise ValueError(
+                "Evaluation uses artifacts and does not select a model family."
+            )
+        from benchrep.gui.evaluate import create_evaluation_app
+
+        factory = create_evaluation_app
+    else:
+        kwargs["model_family"] = model_family or COMPOSITE_FAMILY
+
     app = factory(
-        model_family=model_family or COMPOSITE_FAMILY,
         config=config,
         overrides=overrides,
         export_directory=export_directory,

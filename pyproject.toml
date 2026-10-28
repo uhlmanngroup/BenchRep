@@ -61,6 +61,10 @@ test = [
     "pytest>=8",
     "pytest-sugar",
 ]
+gui-test = [
+    "benchrep[gui,test]",
+    "playwright>=1.56,<2",
+]
 artifact_generation = [
     "scikit-image>=0.24,<1",
 ]

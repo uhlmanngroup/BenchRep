@@ -1147,3 +1147,22 @@ body {
 .br-source-summary li + li {
     margin-top: 4px;
 }
+
+.br-evaluation-source-row {
+    padding: 10px 14px;
+    border-left: 3px solid var(--br-border);
+    margin-block: 8px;
+    overflow-wrap: anywhere;
+}
+
+.br-evaluation-source-row .br-source-status-message {
+    margin-top: 4px;
+}
+
+.br-evaluation-source-row[data-status="error"] > strong {
+    color: var(--br-error);
+}
+
+.br-evaluation-source-row[data-status="warning"] > strong {
+    color: var(--br-warning);
+}

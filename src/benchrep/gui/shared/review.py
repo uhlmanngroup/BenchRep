@@ -97,9 +97,10 @@ class ReviewSession:
     parse: Callable[[dict], Any]
     resolve: Callable[[Any], Any]
     dependencies: Callable[[Any], tuple[str, str]]
-    graph: Callable[[Any], str | None]
+    graph: Callable[[Any], str | None] | None
     resolved_config: Callable[[Any], Any]
     execution_overrides: Any
+    resolved_dependencies: Callable[[Any], tuple[str, str]] | None = None
     summary: Callable[[Any], dict] | None = None
     external_identity: Callable[[dict], str] | None = None
     checked_external_identity: str | None = None
@@ -130,7 +131,7 @@ class ReviewSession:
                     "status": "skipped",
                     "message": "Not run because an earlier check failed.",
                 }
-                for label in CHECK_LABELS
+                for label in (CHECK_LABELS if self.graph is not None else CHECK_LABELS[:-1])
             ]
             report = {"rows": rows, "ready": False, "graph": None}
             self.report = report
@@ -165,7 +166,13 @@ class ReviewSession:
                 ) as error:  # noqa: BLE001 -- surface check failures without crashing the wizard
                     rows[1].update(status="failed", message=str(error))
                 try:
-                    status, message = self.dependencies(parsed)
+                    if self.resolved_dependencies is not None:
+                        status, message = (
+                            self.resolved_dependencies(resolved) if resolved is not None
+                            else ("skipped", "Requires successful workflow resolution.")
+                        )
+                    else:
+                        status, message = self.dependencies(parsed)
                     rows[2].update(status=status, message=message)
                 except (
                     Exception
@@ -179,7 +186,7 @@ class ReviewSession:
                 Exception
             ) as error:  # noqa: BLE001 -- surface check failures without crashing the wizard
                 rows[3].update(status="failed", message=str(error))
-            if resolved is not None:
+            if resolved is not None and self.graph is not None:
                 try:
                     svg = self.graph(resolved)
                     report["graph"] = (
@@ -284,7 +291,7 @@ class ReviewSession:
             return authored_path, resolved_path
 
 
-def build_review_panel(export_directory: str, filename: str):
+def build_review_panel(export_directory: str, filename: str, *, show_graph: bool = True):
     return html.Div(
         [
             html.P(
@@ -309,7 +316,7 @@ def build_review_panel(export_directory: str, filename: str):
                             [html.Span("○ "), html.Strong(label)],
                             className="br-check-row",
                         )
-                        for label in CHECK_LABELS
+                        for label in (CHECK_LABELS if show_graph else CHECK_LABELS[:-1])
                     ],
                 ),
                 type="circle",

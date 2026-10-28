@@ -39,7 +39,7 @@ def source_factory(tmp_path):
 
     def make(family=COMPOSITE_FAMILY, name="source", external_dm=False):
         raw = load_yaml(
-            Path(__file__).parents[2]
+            Path(__file__).parents[3]
             / "examples/configs/training_mnist_composite_multitask.yaml"
         )
         if family != COMPOSITE_FAMILY:
@@ -397,9 +397,8 @@ def test_browser_load_copy_inheritance_and_preserve_edits(prediction_browser):
         str(source)
     )
     page.get_by_role("button", name="Load source", exact=True).click()
-    expect(
-        page.get_by_text("Loaded training run: source · composite", exact=True)
-    ).to_be_visible()
+    expect(page.locator(".br-source-summary")).to_contain_text("Training run: source")
+    expect(page.locator(".br-source-summary")).to_contain_text("Model family: composite")
     page.get_by_role("tab", name="Dataset", exact=False).click()
     copy = page.get_by_role("button", name="Copy inherited value to editor", exact=True)
     expect(copy).to_be_visible()

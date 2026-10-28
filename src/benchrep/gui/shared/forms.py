@@ -322,7 +322,9 @@ def build_workflow_app(
                 sections=layout_sections,
                 active_content=section_view(sections[0].key, state, initial_draft),
                 review_panel=(
-                    build_review_panel(export_directory, export_filename)
+                    build_review_panel(
+                        export_directory, export_filename, show_graph=review.graph is not None
+                    )
                     if review is not None
                     else None
                 ),
