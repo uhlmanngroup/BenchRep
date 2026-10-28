@@ -645,6 +645,7 @@ class TrainingLossTermConfig(_TrainingConfigBaseModel):
 
     id: LossTermId | None = Field(
         default=None,
+        title="Loss term ID",
         description=(
             "Optional user-defined identifier used to distinguish multiple "
             "occurrences of the same registered loss within one loss role."
@@ -856,6 +857,7 @@ class TrainingReproducibilityConfig(_TrainingConfigBaseModel):
 
     float32_matmul_precision: Float32MatmulPrecision = Field(
         default="highest",
+        title="Float32 matrix multiplication precision",
         description="Internal precision used for float32 matrix multiplications.",
         json_schema_extra={
             "omit_behavior": "Uses `highest`.",
@@ -1043,6 +1045,7 @@ class TrainingLoggerConfig(NamedConfig):
 
     wandb_api_key_path: Path | None = Field(
         default=None,
+        title="W&B API key path",
         description="Optional path to a plain-text W&B API-key file.",
         json_schema_extra={
             "omit_behavior": (
@@ -1233,6 +1236,7 @@ class TrainingEarlyStoppingConfig(_TrainingConfigBaseModel):
 
     min_delta: float = Field(
         default=0.0,
+        title="Minimum improvement",
         description=(
             "Minimum change in the monitored metric required to count as an "
             "improvement."
@@ -1801,6 +1805,7 @@ class TrainingDataModuleConfig(_TrainingConfigBaseModel):
 
     val_fraction: float = Field(
         default=0.1,
+        title="Validation fraction",
         ge=0.0,
         lt=1.0,
         description=(
@@ -1820,6 +1825,7 @@ class TrainingDataModuleConfig(_TrainingConfigBaseModel):
 
     num_workers: NonNegativeInt = Field(
         default=4,
+        title="Number of workers",
         description="Number of worker processes used by each DataLoader.",
         json_schema_extra={
             "omit_behavior": "Uses four worker processes.",
@@ -1881,6 +1887,7 @@ class TrainingDataModuleConfig(_TrainingConfigBaseModel):
 
     dataloader_kwargs: dict[str, Any] = Field(
         default_factory=dict,
+        title="Additional DataLoader arguments",
         description=(
             "Additional keyword arguments passed to each DataLoader. "
             "BenchRep-controlled arguments cannot be overridden."
@@ -1927,6 +1934,7 @@ class TrainingTransformStepConfig(NamedConfig):
 
     random_apply: float = Field(
         default=1.0,
+        title="Application probability",
         ge=0.0,
         le=1.0,
         description=(

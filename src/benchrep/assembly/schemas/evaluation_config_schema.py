@@ -262,6 +262,7 @@ class EvaluationSourceConfig(_EvaluationConfigBaseModel):
 
     anndata_path: Path | None = Field(
         default=None,
+        title="AnnData path",
         description=(
             "Path to an AnnData `.h5ad` file containing the representation "
             "and observations used by AnnData-based evaluation."
@@ -331,6 +332,7 @@ class EvaluationSourceConfig(_EvaluationConfigBaseModel):
 
     reconstruction_pair_id: EvaluationReconstructionPairId | None = Field(
         default=None,
+        title="Reconstruction pair ID",
         description=(
             "Identifier of the single reconstruction pair selected from the "
             "prediction manifest for evaluation."
@@ -606,6 +608,7 @@ class EvaluationUMAPParams(_EvaluationConfigBaseModel):
 
     n_pcs: NonNegativeInt | None = Field(
         default=None,
+        title="Number of principal components",
         description=(
             "Number of principal components passed to "
             "`scanpy.pp.neighbors()`."
@@ -623,6 +626,7 @@ class EvaluationUMAPParams(_EvaluationConfigBaseModel):
 
     use_rep: str | None = Field(
         default=None,
+        title="Input representation",
         description=(
             "Representation key passed to `scanpy.pp.neighbors()`. `X` selects "
             "`adata.X`; other values select `adata.obsm[use_rep]`."
@@ -775,6 +779,7 @@ class EvaluationTSNEParams(BaseModel):
 
     n_pcs: NonNegativeInt | None = Field(
         default=None,
+        title="Number of principal components",
         description=(
             "Number of principal components passed to `scanpy.tl.tsne()`."
         ),
@@ -791,6 +796,7 @@ class EvaluationTSNEParams(BaseModel):
 
     use_rep: str | None = Field(
         default=None,
+        title="Input representation",
         description=(
             "Representation key passed to `scanpy.tl.tsne()`. `X` selects "
             "`adata.X`; any other value names an entry in `adata.obsm`."
@@ -897,6 +903,7 @@ class EvaluationReductionsConfig(_EvaluationConfigBaseModel):
 
     pca: EvaluationPCAConfig = Field(
         default_factory=EvaluationPCAConfig,
+        title="PCA",
         description="Configuration for the PCA evaluation step.",
         json_schema_extra={
             "omit_behavior": "Uses `EvaluationPCAConfig` defaults.",
@@ -906,6 +913,7 @@ class EvaluationReductionsConfig(_EvaluationConfigBaseModel):
 
     umap: EvaluationUMAPConfig = Field(
         default_factory=EvaluationUMAPConfig,
+        title="UMAP",
         description="Configuration for the UMAP evaluation step.",
         json_schema_extra={
             "omit_behavior": "Uses `EvaluationUMAPConfig` defaults.",
@@ -915,6 +923,7 @@ class EvaluationReductionsConfig(_EvaluationConfigBaseModel):
 
     tsne: EvaluationTSNEConfig = Field(
         default_factory=EvaluationTSNEConfig,
+        title="t-SNE",
         description="Configuration for the t-SNE evaluation step.",
         json_schema_extra={
             "omit_behavior": "Uses `EvaluationTSNEConfig` defaults.",
@@ -1077,6 +1086,7 @@ class EvaluationLeidenParams(_EvaluationConfigBaseModel):
 
     n_pcs: NonNegativeInt | None = Field(
         default=None,
+        title="Number of principal components",
         description=(
             "Number of principal components passed to "
             "`scanpy.pp.neighbors()`."
@@ -1094,6 +1104,7 @@ class EvaluationLeidenParams(_EvaluationConfigBaseModel):
 
     use_rep: str | None = Field(
         default=None,
+        title="Input representation",
         description=(
             "Representation key passed to `scanpy.pp.neighbors()`. `X` selects "
             "`adata.X`; any other value names an entry in `adata.obsm`."
@@ -1406,6 +1417,7 @@ class EvaluationClusteringConfig(_EvaluationConfigBaseModel):
 
     kmeans: EvaluationKMeansConfig = Field(
         default_factory=EvaluationKMeansConfig,
+        title="K-means",
         description="Configuration for the KMeans evaluation step.",
         json_schema_extra={
             "omit_behavior": "Uses `EvaluationKMeansConfig` defaults.",
@@ -1424,6 +1436,7 @@ class EvaluationClusteringConfig(_EvaluationConfigBaseModel):
 
     hdbscan: EvaluationHDBSCANConfig = Field(
         default_factory=EvaluationHDBSCANConfig,
+        title="HDBSCAN",
         description="Configuration for the HDBSCAN evaluation step.",
         json_schema_extra={
             "omit_behavior": "Uses `EvaluationHDBSCANConfig` defaults.",
@@ -1502,6 +1515,7 @@ class EvaluationReconstructionConfig(_EvaluationConfigBaseModel):
 
     export_tiffs: bool = Field(
         default=False,
+        title="Export TIFFs",
         description=(
             "Whether to export inputs, reconstructions, and configured error "
             "maps as individual TIFF files."
@@ -2049,6 +2063,7 @@ class EvaluationCVTuningConfig(_EvaluationConfigBaseModel):
 
     inner_cv: EvaluationTuningInnerCVConfig = Field(
         default_factory=EvaluationTuningInnerCVConfig,
+        title="Inner cross-validation",
         description="Inner cross-validation settings used during tuning.",
         json_schema_extra={
             "omit_behavior": "Uses three inner folds.",
@@ -2600,6 +2615,7 @@ class EvaluationPredictabilityParamsConfig(_EvaluationConfigBaseModel):
 
     knn: EvaluationKNNProbeConfig = Field(
         default_factory=EvaluationKNNProbeConfig,
+        title="k-NN",
         description="Parameters for the task-dependent nearest-neighbor probe.",
         json_schema_extra={
             "omit_behavior": "Uses `EvaluationKNNProbeConfig` defaults.",
@@ -2618,6 +2634,7 @@ class EvaluationPredictabilityParamsConfig(_EvaluationConfigBaseModel):
 
     xgboost: EvaluationXGBoostProbeConfig = Field(
         default_factory=EvaluationXGBoostProbeConfig,
+        title="XGBoost",
         description="Parameters for the optional task-dependent XGBoost probe.",
         json_schema_extra={
             "omit_behavior": "Uses `EvaluationXGBoostProbeConfig` defaults.",
@@ -2630,6 +2647,7 @@ class EvaluationPredictabilityParamsConfig(_EvaluationConfigBaseModel):
 
     svm_rbf: EvaluationSVMRBFProbeConfig = Field(
         default_factory=EvaluationSVMRBFProbeConfig,
+        title="SVM (RBF kernel)",
         description="Parameters for the task-dependent RBF-SVM probe.",
         json_schema_extra={
             "omit_behavior": "Uses `EvaluationSVMRBFProbeConfig` defaults.",
@@ -2698,6 +2716,7 @@ class EvaluationPredictabilityTargetConfig(_EvaluationConfigBaseModel):
 
     cv: EvaluationCrossValidationConfig = Field(
         default_factory=EvaluationCrossValidationConfig,
+        title="Cross-validation",
         description="Outer cross-validation and scoring configuration.",
         json_schema_extra={
             "omit_behavior": "Uses task-appropriate five-fold CV defaults.",
@@ -2982,6 +3001,7 @@ class EvaluationPlotParams(_EvaluationConfigBaseModel):
 
     dpi: PositiveInt = Field(
         default=300,
+        title="DPI",
         description="Resolution in dots per inch used for exported plots.",
         json_schema_extra={
             "omit_behavior": "Uses 300 DPI.",

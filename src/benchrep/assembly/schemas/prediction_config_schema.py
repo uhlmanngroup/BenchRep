@@ -200,6 +200,7 @@ class PredictionDataConfig(_PredictionConfigBaseModel):
 
     num_workers: NonNegativeInt | None = Field(
         default=None,
+        title="Number of workers",
         description=(
             "Number of worker processes used by the prediction DataLoader when "
             "BenchRep constructs the prediction datamodule."
@@ -220,6 +221,7 @@ class PredictionDataConfig(_PredictionConfigBaseModel):
 
     max_batches: PositiveInt | None = Field(
         default=None,
+        title="Maximum batches",
         description=(
             "Maximum number of prediction batches processed. When configured, "
             "BenchRep passes this value to Lightning as "
@@ -317,6 +319,7 @@ class PredictionInferenceConfig(_PredictionConfigBaseModel):
         "highest",
     ] | None = Field(
         default=None,
+        title="Float32 matrix multiplication precision",
         description="Internal precision used for float32 matrix multiplications.",
         json_schema_extra={
             "omit_behavior": (
@@ -332,6 +335,7 @@ class PredictionInferenceConfig(_PredictionConfigBaseModel):
 
     canonical_vae_reconstruction_latent_source: Literal["mean", "sample"] | None = Field(
         default=None,
+        title="Canonical VAE reconstruction latent source",
         description=(
             "Latent representation decoded for prediction-time reconstruction "
             "by an internally assembled VAE. `mean` decodes the posterior mean "
@@ -361,6 +365,7 @@ class PredictionInferenceConfig(_PredictionConfigBaseModel):
         CompositeModelAssemblyInputOverrideConfig,
     ] | None = Field(
         default=None,
+        title="Composite assembly input overrides",
         min_length=1,
         description=(
             "Prediction-only input-route overrides keyed by composite "
@@ -414,6 +419,7 @@ class PredictionTransformStepConfig(NamedConfig):
 
     random_apply: float = Field(
         default=1.0,
+        title="Application probability",
         ge=0.0,
         le=1.0,
         description=(
@@ -672,6 +678,7 @@ class PredictionReconstructionsExportConfig(_PredictionConfigBaseModel):
 
     n_examples: Literal["all"] | PositiveInt = Field(
         default=32,
+        title="Number of examples",
         description=(
             "Number of reconstruction examples exported. A positive integer "
             "requests at most that many examples, capped by the number of "
@@ -840,6 +847,7 @@ class PredictionExportConfig(_PredictionConfigBaseModel):
 
     anndata: PredictionAnnDataExportConfig = Field(
         default_factory=PredictionAnnDataExportConfig,
+        title="AnnData",
         description=(
             "Configures export of supported non-image prediction outputs to "
             "AnnData."
