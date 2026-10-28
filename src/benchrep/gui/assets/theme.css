@@ -766,7 +766,7 @@ body {
 .br-logo {
     display: block;
     width: auto;
-    height: 50px;
+    height: 80px;
     max-width: 100%;
     object-fit: contain;
 }
