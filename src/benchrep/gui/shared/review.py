@@ -333,6 +333,30 @@ def build_review_panel(export_directory: str, filename: str, *, show_graph: bool
                 className="br-actions",
             ),
             html.Div(id="wizard-save-message", role="status"),
+            dmc.Modal(
+                id="wizard-graph-modal",
+                title="Model graph",
+                opened=False,
+                size="95vw",
+                centered=True,
+                closeOnEscape=True,
+                closeOnClickOutside=True,
+                withCloseButton=True,
+                trapFocus=True,
+                returnFocus=True,
+                children=html.Div(
+                    html.Img(
+                        id="wizard-graph-enlarged",
+                        alt="Enlarged composite model specification graph",
+                        className="br-graph-enlarged",
+                        draggable=False,
+                    ),
+                    className="br-graph-viewport",
+                    tabIndex=0,
+                    role="region",
+                    **{"aria-label": "Scrollable model graph"},
+                ),
+            ),
         ],
         id="wizard-review-panel",
         style={"display": "none"},
@@ -419,10 +443,19 @@ def render_report(report):
             html.Details(
                 [
                     html.Summary("Model graph"),
-                    html.Img(
-                        src=report["graph"],
-                        className="br-spec-graph",
-                        alt="Composite model specification graph",
+                    html.Button(
+                        html.Img(
+                            id="wizard-graph-preview",
+                            src=report["graph"],
+                            className="br-spec-graph",
+                            alt="Composite model specification graph",
+                        ),
+                        id="wizard-graph-expand",
+                        type="button",
+                        n_clicks=0,
+                        className="br-graph-expand",
+                        title="Click to enlarge",
+                        **{"aria-label": "Enlarge model graph"},
                     ),
                 ],
                 open=True,
@@ -432,6 +465,23 @@ def render_report(report):
 
 
 def register_review_callbacks(app: Dash, session: ReviewSession):
+    app.clientside_callback(
+        """
+        function(clicks, source) {
+            const unchanged = window.dash_clientside.no_update;
+            if (!clicks || !source) {
+                return [unchanged, unchanged];
+            }
+            return [true, source];
+        }
+        """,
+        Output("wizard-graph-modal", "opened"),
+        Output("wizard-graph-enlarged", "src"),
+        Input("wizard-graph-expand", "n_clicks", allow_optional=True),
+        State("wizard-graph-preview", "src", allow_optional=True),
+        prevent_initial_call=True,
+    )
+
     @app.callback(
         Output("wizard-check-report", "children"),
         Output("wizard-review-receipt", "data"),

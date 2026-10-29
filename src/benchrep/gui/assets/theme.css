@@ -21,7 +21,7 @@
     --br-success-bg: #dcfce7;
     --br-warning: #865400;
     --br-input-bg: #ffffff;
-    --br-header-bg: linear-gradient(120deg, #f3e8ff, #d8b4fe);
+    --br-header-bg: linear-gradient(120deg, #d8b4fe, #f3e8ff);
     --br-shadow: 0 4px 20px rgb(59 23 88 / 4%);
 }
 
@@ -46,7 +46,7 @@
     --br-success-bg: #203d30;
     --br-warning: #edc170;
      --br-input-bg: #403a49;
-    --br-header-bg: linear-gradient(120deg, #35283f, #513563);
+    --br-header-bg: linear-gradient(120deg, #513563, #35283f);
     --br-shadow: 0 4px 20px rgb(0 0 0 / 15%);
 }
 
@@ -1165,4 +1165,51 @@ body {
 
 .br-evaluation-source-row[data-status="warning"] > strong {
     color: var(--br-warning);
+}
+
+.br-graph-expand {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: zoom-in;
+}
+
+.br-graph-expand:focus-visible {
+    outline: 2px solid var(--mantine-primary-color-filled);
+    outline-offset: 4px;
+}
+
+.br-graph-expand > .br-spec-graph {
+    display: block;
+}
+
+.br-graph-viewport {
+    max-height: 78vh;
+    overflow: auto;
+    background: white;
+}
+
+.br-graph-enlarged {
+    display: block;
+    width: auto;
+    min-width: 100%;
+    max-width: none;
+    height: auto;
+}
+
+.br-graph-viewport {
+    cursor: grab;
+}
+
+.br-graph-viewport.br-graph-dragging {
+    cursor: grabbing;
+    user-select: none;
+}
+
+.br-graph-enlarged {
+    user-select: none;
+    -webkit-user-drag: none;
 }
