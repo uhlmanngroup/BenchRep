@@ -40,14 +40,14 @@
       <stop offset="1" stop-color="#AE83D7"/>
     </linearGradient>
     <linearGradient id="pyramidMiddle" gradientUnits="userSpaceOnUse" x1="800" y1="435" x2="521" y2="757">
-      <stop offset="0" stop-color="#C19ADD"/>
-      <stop offset="0.44" stop-color="#AD82D0"/>
-      <stop offset="1" stop-color="#9464BD"/>
+      <stop offset="0" stop-color="#AD81D6"/>
+      <stop offset="0.44" stop-color="#9869C9"/>
+      <stop offset="1" stop-color="#7B4CAB"/>
     </linearGradient>
     <linearGradient id="pyramidShadow" gradientUnits="userSpaceOnUse" x1="494" y1="477" x2="644" y2="438">
-      <stop offset="0" stop-color="#8053AB"/>
-      <stop offset="0.58" stop-color="#9369B9"/>
-      <stop offset="1" stop-color="#B08ACD"/>
+      <stop offset="0" stop-color="#683495"/>
+      <stop offset="0.58" stop-color="#7945A5"/>
+      <stop offset="1" stop-color="#9970C2"/>
     </linearGradient>
     <radialGradient id="apexReflectedLight" gradientUnits="userSpaceOnUse" cx="616" cy="448" r="70">
       <stop offset="0" stop-color="#F9F0FF" stop-opacity="0.33"/>
