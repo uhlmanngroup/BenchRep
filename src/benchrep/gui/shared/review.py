@@ -356,7 +356,7 @@ def build_review_panel(export_directory: str, filename: str, *, show_graph: bool
                     role="region",
                     **{"aria-label": "Scrollable model graph"},
                 ),
-            ),
+            ) if show_graph else None,
         ],
         id="wizard-review-panel",
         style={"display": "none"},
@@ -465,22 +465,23 @@ def render_report(report):
 
 
 def register_review_callbacks(app: Dash, session: ReviewSession):
-    app.clientside_callback(
-        """
-        function(clicks, source) {
-            const unchanged = window.dash_clientside.no_update;
-            if (!clicks || !source) {
-                return [unchanged, unchanged];
+    if session.graph is not None:
+        app.clientside_callback(
+            """
+            function(clicks, source) {
+                const unchanged = window.dash_clientside.no_update;
+                if (!clicks || !source) {
+                    return [unchanged, unchanged];
+                }
+                return [true, source];
             }
-            return [true, source];
-        }
-        """,
-        Output("wizard-graph-modal", "opened"),
-        Output("wizard-graph-enlarged", "src"),
-        Input("wizard-graph-expand", "n_clicks", allow_optional=True),
-        State("wizard-graph-preview", "src", allow_optional=True),
-        prevent_initial_call=True,
-    )
+            """,
+            Output("wizard-graph-modal", "opened"),
+            Output("wizard-graph-enlarged", "src"),
+            Input("wizard-graph-expand", "n_clicks", allow_optional=True),
+            State("wizard-graph-preview", "src", allow_optional=True),
+            prevent_initial_call=True,
+        )
 
     @app.callback(
         Output("wizard-check-report", "children"),

@@ -17,6 +17,9 @@ from pydantic import (
     field_validator,
 )
 
+from benchrep.assembly.registries.utils import PathInput
+
+
 RegistrySelection: TypeAlias = Literal["all"] | list[str] | None
 
 PredictabilityTargetKey: TypeAlias = Annotated[
@@ -235,7 +238,7 @@ class EvaluationSourceConfig(_EvaluationConfigBaseModel):
     current working directory.
     """
 
-    prediction_manifest_path: Path | None = Field(
+    prediction_manifest_path: PathInput | None = Field(
         default=None,
         description=(
             "Path to a BenchRep prediction manifest used to infer unspecified "
@@ -260,7 +263,7 @@ class EvaluationSourceConfig(_EvaluationConfigBaseModel):
         },
     )
 
-    anndata_path: Path | None = Field(
+    anndata_path: PathInput | None = Field(
         default=None,
         title="AnnData path",
         description=(
@@ -290,7 +293,7 @@ class EvaluationSourceConfig(_EvaluationConfigBaseModel):
         },
     )
 
-    reconstructions_path: Path | None = Field(
+    reconstructions_path: PathInput | None = Field(
         default=None,
         description=(
             "Path to a reconstruction artifact directory used for reconstruction "
@@ -424,7 +427,7 @@ class EvaluationRunConfig(_EvaluationConfigBaseModel):
     project and model identity are inferred from it when possible.
     """
 
-    output_root: Path | None = Field(
+    output_root: PathInput | None = Field(
         default=None,
         description=(
             "Base directory beneath which BenchRep creates the evaluation stage "

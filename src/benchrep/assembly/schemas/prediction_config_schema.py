@@ -22,6 +22,7 @@ from benchrep.assembly.schemas.training_config_schema import (
 from benchrep.assembly.schemas.runtime_override_config_schema import (
     RuntimeOverridesConfig,
 )
+from benchrep.assembly.registries.utils import PathInput
 
 
 # -------------------------
@@ -64,7 +65,7 @@ class PredictionSourceConfig(_PredictionConfigBaseModel):
     compatible with the reconstructed or externally supplied model.
     """
 
-    training_manifest_path: Path | None = Field(
+    training_manifest_path: PathInput | None = Field(
         default=None,
         description=(
             "Path to a BenchRep training manifest. Relative paths are resolved "

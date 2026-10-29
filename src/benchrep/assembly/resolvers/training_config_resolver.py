@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Literal
 
 import torch
@@ -269,7 +270,7 @@ def resolve_training_config(
         datamodule_source=datamodule_source,
         compatibility_policy=compatibility_policy,
         run_identity=RunIdentitySpec(
-            output_root=resolved_config.run.output_root,
+            output_root=Path(resolved_config.run.output_root),
             project_name=resolved_config.run.project_name,
             model_name=model_name,
         ),

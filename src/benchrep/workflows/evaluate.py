@@ -39,6 +39,7 @@ from benchrep.runtime.status import (
     build_evaluation_status_report,
     log_outcome_summary,
 )
+from benchrep.assembly.registries.utils import normalize_path
 
 if TYPE_CHECKING:
     from benchrep.assembly.resolvers.evaluation_config_resolver import (
@@ -71,7 +72,7 @@ def evaluate(
 
     # Prediction manifest override
     if prediction_manifest_path is not None:
-        prediction_manifest_path = Path(prediction_manifest_path).expanduser().resolve()
+        prediction_manifest_path = normalize_path(prediction_manifest_path).resolve()
         if prediction_manifest_path.suffix.lower() not in {".yaml", ".yml"}:
             raise ValueError(
                 "prediction_manifest_path override must point to a YAML file."

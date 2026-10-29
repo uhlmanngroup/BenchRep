@@ -151,7 +151,7 @@ class EvaluationSourceContext:
         values = deepcopy(source) if isinstance(source, dict) else {}
         if self.overrides.prediction_manifest_path is not None:
             values["prediction_manifest_path"] = str(
-                Path(self.overrides.prediction_manifest_path).expanduser().resolve()
+                self.overrides.prediction_manifest_path
             )
         return values
 
@@ -582,7 +582,7 @@ def evaluation_review_session(*, context: EvaluationSourceContext) -> ReviewSess
         return resolve_evaluation_config(
             config,
             prediction_manifest_path_override=(
-                Path(override).expanduser().resolve() if override is not None else None
+                override
             ),
         )
 

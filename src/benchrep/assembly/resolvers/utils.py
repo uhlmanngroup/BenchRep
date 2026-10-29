@@ -7,6 +7,7 @@ from typing import Any, TypeVar, Literal
 from benchrep.assembly.schemas.runtime_override_config_schema import (
     RuntimeComponentOverrideConfig,
 )
+from benchrep.assembly.registries.utils import normalize_path
 
 
 ResolvedT = TypeVar("ResolvedT")
@@ -138,7 +139,7 @@ def get_required_nested_path(
             f"got {type(value).__name__}."
         )
 
-    path = Path(value)
+    path = normalize_path(value)
 
     if not path.is_absolute():
         path = base_dir / path
@@ -200,7 +201,7 @@ def get_optional_nested_path(
             f"got {type(value).__name__}."
         )
 
-    path = Path(value)
+    path = normalize_path(value)
 
     if not path.is_absolute():
         path = base_dir / path

@@ -71,6 +71,7 @@ from benchrep.runtime.status import (
     log_outcome_summary,
 )
 from benchrep.assembly.registries.builtins import register_builtins
+from benchrep.assembly.registries.utils import normalize_path
 
 
 @dataclass
@@ -175,7 +176,7 @@ def _predict(
 
     # Training manifest override
     if training_manifest_path is not None:
-        training_manifest_path = Path(training_manifest_path).resolve()
+        training_manifest_path = normalize_path(training_manifest_path).resolve()
         if training_manifest_path.suffix.lower() not in {".yaml", ".yml"}:
             raise ValueError(
                 "training_manifest_path override must point to a YAML file."

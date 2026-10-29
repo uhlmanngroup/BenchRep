@@ -78,6 +78,7 @@ from benchrep.assembly.schemas.parsing import (
 from benchrep.assembly.schemas.runtime_override_config_schema import (
     RuntimeOverridesConfig,
 )
+from benchrep.assembly.registries.utils import normalize_path
 
 
 SUPPORTED_CONFIG_SCHEMAS = (TrainingConfig, PredictionConfig, EvaluationConfig)
@@ -281,7 +282,7 @@ def compose_effective_config(
 
     # Load original YAML, if supplied and keep for records regardless.
     if config_path is not None:
-        original_config_path = Path(config_path).resolve()
+        original_config_path = normalize_path(config_path).resolve()
         original_config_raw = load_yaml(original_config_path)
         yaml_supplied = True
     else:
@@ -400,7 +401,7 @@ def load_yaml(yaml_path: str | Path) -> dict[str, Any]:
     dict[str, Any]
         Parsed dictionary.
     """
-    yaml_path = Path(yaml_path)
+    yaml_path = normalize_path(yaml_path)
 
     if not yaml_path.exists():
         raise FileNotFoundError(f"YAML file does not exist: {yaml_path}")

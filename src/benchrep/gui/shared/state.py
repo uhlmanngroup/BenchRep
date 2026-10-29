@@ -71,6 +71,9 @@ def editor_spec(annotation: Any, info: FieldInfo | None = None) -> EditorSpec:
     origin, args = get_origin(base), get_args(base)
     common = {"annotation": annotation, "info": info}
     if origin in (Union, UnionType):
+        non_null_types = {base_type(a) for a in args if a is not type(None)}
+        if non_null_types == {Path, str}:
+            return EditorSpec(**common, kind="text")
         variants = tuple(editor_spec(a) for a in args if a is not type(None))
         if variants and all(variant.kind == "choice" for variant in variants):
             choices = []

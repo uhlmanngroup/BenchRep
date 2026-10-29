@@ -425,9 +425,9 @@ def test_browser_source_suggestions_and_review(evaluation_browser):
     page.get_by_role("button", name="Load source", exact=True).click()
     expect(page.locator(".br-source-context")).to_contain_text("2 observation columns")
     page.get_by_role(
-        "button", name="Enter a value for Reconstruction Pair Id", exact=True
+        "button", name="Enter a value for Reconstruction pair ID", exact=True
     ).click()
-    pair = page.get_by_role("textbox", name="Reconstruction Pair Id", exact=True)
+    pair = page.get_by_role("textbox", name="Reconstruction pair ID", exact=True)
     pair.click()
     page.get_by_role("option", name="first", exact=True).click()
     page.get_by_role("button", name="Load source", exact=True).click()
@@ -438,7 +438,7 @@ def test_browser_source_suggestions_and_review(evaluation_browser):
     label.click()
     page.get_by_role("option", name="subject", exact=True).click()
     page.get_by_role("tab", name="Source", exact=False).click()
-    page.get_by_role("textbox", name="Reconstruction Pair Id", exact=True).fill(
+    page.get_by_role("textbox", name="Reconstruction pair ID", exact=True).fill(
         "second"
     )
     page.get_by_role("button", name="Load source", exact=True).click()

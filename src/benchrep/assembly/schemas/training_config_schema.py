@@ -32,7 +32,7 @@ from benchrep.assembly.registries.core import (
     MODELS,
     LOSS_WEIGHT_SCHEDULES,
 )
-from benchrep.assembly.registries.utils import normalize_name
+from benchrep.assembly.registries.utils import normalize_name, PathInput
 from benchrep.architecture.models import (
     Autoencoder,
     VAE,
@@ -149,7 +149,7 @@ class NamedConfig(_TrainingConfigBaseModel):
 class TrainingRunConfig(_TrainingConfigBaseModel):
     """Output location and run identity shared by linked workflows."""
 
-    output_root: Path = Field(
+    output_root: PathInput = Field(
         default=Path("outputs"),
         validate_default=True,
         description="Base directory beneath which BenchRep creates workflow outputs.",
@@ -1043,7 +1043,7 @@ class TrainingLoggerConfig(NamedConfig):
     not reconstruct or use the configured logger.
     """
 
-    wandb_api_key_path: Path | None = Field(
+    wandb_api_key_path: PathInput | None = Field(
         default=None,
         title="W&B API key path",
         description="Optional path to a plain-text W&B API-key file.",
@@ -1560,7 +1560,7 @@ class DatasetConfig(_TrainingConfigBaseModel, Generic[ParamsT]):
 class MNISTDatasetParams(_TrainingConfigBaseModel):
     """Parameters for the built-in MNIST dataset."""
 
-    root: Path = Field(
+    root: PathInput = Field(
         description="Directory containing or receiving the MNIST dataset files.",
         json_schema_extra={
             "omit_behavior": "Required; omission raises a validation error.",
@@ -1614,7 +1614,7 @@ class MNISTDatasetConfig(DatasetConfig[MNISTDatasetParams]):
 class CIFAR10DatasetParams(_TrainingConfigBaseModel):
     """Parameters for the built-in CIFAR-10 dataset."""
 
-    root: Path = Field(
+    root: PathInput = Field(
         description="Directory containing or receiving the CIFAR-10 dataset files.",
         json_schema_extra={
             "omit_behavior": "Required; omission raises a validation error.",
@@ -1671,7 +1671,7 @@ class CIFAR10DatasetConfig(DatasetConfig[CIFAR10DatasetParams]):
 class STL10DatasetParams(_TrainingConfigBaseModel):
     """Parameters for the built-in STL-10 dataset."""
 
-    root: Path = Field(
+    root: PathInput = Field(
         description="Directory containing or receiving the STL-10 dataset files.",
         json_schema_extra={
             "omit_behavior": "Required; omission raises a validation error.",

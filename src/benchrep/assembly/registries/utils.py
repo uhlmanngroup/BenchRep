@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from typing import Any, Literal
+from pathlib import Path
+from typing import Annotated, Any, Literal, TypeAlias
 from collections.abc import Mapping, Sequence
 
+from pydantic import AfterValidator
 
 def normalize_name(name: Any, field_name: str = "name") -> str:
     """Normalize a config name field for registry lookup."""
@@ -15,6 +17,16 @@ def normalize_name(name: Any, field_name: str = "name") -> str:
         raise ValueError(f"{field_name} must be a non-empty string.")
 
     return name
+
+
+def normalize_path(value: Path | str) -> Path:
+    """Reject blank strings and expand the home directory without rebasing."""
+    if isinstance(value, str) and not value.strip():
+        raise ValueError("Path must not be blank; use '.' explicitly if intended.")
+    return Path(value).expanduser()
+
+
+PathInput: TypeAlias = Annotated[Path | str, AfterValidator(normalize_path)]
 
 
 # Resolving helpers

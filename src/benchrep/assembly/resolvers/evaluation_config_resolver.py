@@ -18,6 +18,7 @@ from benchrep.assembly.registries.core import (
 from benchrep.assembly.registries.utils import (
     resolve_registry_keys,
     resolve_registry_param_keys,
+    normalize_path,
 )
 from benchrep.assembly.resolvers.utils import (
     get_optional_nested_path,
@@ -419,7 +420,7 @@ def resolve_evaluation_config(
 
 def resolve_anndata_input(
     *,
-    anndata_path: Path | None,
+    anndata_path: Path | str | None,
     prediction_manifest: dict[str, Any] | None,
     manifest_base_dir: Path | None,
 ) -> EvaluationAnnDataInputSpec | None:
@@ -431,7 +432,7 @@ def resolve_anndata_input(
 
     if anndata_path is not None:
         return EvaluationAnnDataInputSpec(
-            path=anndata_path.expanduser().resolve(),
+            path=normalize_path(anndata_path).resolve(),
             source="direct_path",
         )
 
@@ -459,7 +460,7 @@ def resolve_anndata_input(
 
 def resolve_reconstructions(
     *,
-    reconstructions_path: Path | None,
+    reconstructions_path: Path | str | None,
     reconstruction_pair_id: str | None,
     prediction_manifest: dict[str, Any] | None,
     manifest_base_dir: Path | None,
@@ -477,7 +478,7 @@ def resolve_reconstructions(
     """
 
     if reconstructions_path is not None:
-        bundle_dir = reconstructions_path.expanduser().resolve()
+        bundle_dir = normalize_path(reconstructions_path).resolve()
 
         input_path, reconstruction_path, observations_path, metadata_path = (
             _validate_reconstruction_bundle_dir(bundle_dir)
@@ -733,7 +734,7 @@ def resolve_run_identity(
     """
 
     if run_config.output_root is not None:
-        output_root = run_config.output_root.resolve()
+        output_root = Path(run_config.output_root).resolve()
 
     elif prediction_manifest is not None:
         assert manifest_base_dir is not None
@@ -1651,7 +1652,7 @@ def _resolve_prediction_manifest_path(
     prediction_manifest_path_override: Path | str | None,
 ) -> tuple[EvaluationConfig, Path | None]:
     if prediction_manifest_path_override is not None:
-        prediction_manifest_path = Path(prediction_manifest_path_override).resolve()
+        prediction_manifest_path = normalize_path(prediction_manifest_path_override).resolve()
 
         evaluation_config = evaluation_config.model_copy(
             update={
@@ -1663,7 +1664,7 @@ def _resolve_prediction_manifest_path(
     else:
         prediction_manifest_path = evaluation_config.source.prediction_manifest_path
         if prediction_manifest_path is not None:
-            prediction_manifest_path = prediction_manifest_path.resolve()
+            prediction_manifest_path = normalize_path(prediction_manifest_path).resolve()
 
     if prediction_manifest_path is None:
         return evaluation_config, None

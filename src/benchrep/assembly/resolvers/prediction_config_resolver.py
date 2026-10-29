@@ -25,6 +25,7 @@ from benchrep.assembly.schemas.composite_model_config_schema import (
     CompositeModelAssemblyStepConfig,
 )
 from benchrep.assembly.registries.core import MODELS
+from benchrep.assembly.registries.utils import normalize_path
 from benchrep.assembly.resolvers.loss_resolver import (
     LossSpec,
     resolve_canonical_loss_configs,
@@ -634,7 +635,7 @@ def resolve_prediction_config(
         model_name = training_config.model.name
 
     run_identity = RunIdentitySpec(
-        output_root=training_config.run.output_root,
+        output_root=Path(training_config.run.output_root),
         project_name=training_config.run.project_name,
         model_name=model_name,
     )
@@ -877,7 +878,7 @@ def _resolve_training_manifest_path(
     """
 
     if training_manifest_path_override is not None:
-        training_manifest_path = Path(training_manifest_path_override).resolve()
+        training_manifest_path = normalize_path(training_manifest_path_override).resolve()
 
         prediction_config = prediction_config.model_copy(
             update={
@@ -896,7 +897,7 @@ def _resolve_training_manifest_path(
                 "`training_manifest_path_override` or `source.training_manifest_path`."
             )
 
-        training_manifest_path = training_manifest_path.resolve()
+        training_manifest_path = normalize_path(training_manifest_path).resolve()
 
     if training_manifest_path.suffix.lower() not in {".yaml", ".yml"}:
         raise ValueError(

@@ -20,6 +20,7 @@ import torch
 
 from benchrep.records import get_run_logger
 from benchrep.assembly.registries.core import CALLBACKS, LOGGERS
+from benchrep.assembly.registries.utils import normalize_path
 from benchrep.assembly.schemas import (
     TrainingAdditionalCallbackConfig,
     TrainingCheckpointConfig,
@@ -380,7 +381,7 @@ def _prepare_wandb_api_key(
             f"received logger {logger_config.name!r}."
         )
 
-    credential_path = logger_config.wandb_api_key_path.expanduser()
+    credential_path = normalize_path(logger_config.wandb_api_key_path)
 
     if not credential_path.is_file():
         raise FileNotFoundError(
