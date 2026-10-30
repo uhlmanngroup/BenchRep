@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, overload
 
 if TYPE_CHECKING:
     from benchrep.assembly.schemas.training_config_schema import TrainingConfig
@@ -21,6 +21,51 @@ if TYPE_CHECKING:
         PredictionConfigInput,
         EvaluationConfigInput,
     )
+
+
+@overload
+def configure_workflow(
+    *,
+    stage: Literal["training"] = "training",
+    model_family: ModelFamilySpec | None = None,
+    config: TrainingConfigInput = None,
+    overrides: TrainingOverrides | None = None,
+    compatibility_policy: Literal["error"] = "error",
+    export_directory: Path | str = "wizard_configs",
+    port: int = 8050,
+    open_browser: bool = True,
+) -> ConfiguredWorkflow[TrainingConfig, TrainingOverrides] | None:
+    ...
+
+
+@overload
+def configure_workflow(
+    *,
+    stage: Literal["prediction"],
+    model_family: ModelFamilySpec | None = None,
+    config: PredictionConfigInput = None,
+    overrides: PredictionOverrides | None = None,
+    compatibility_policy: Literal["error", "warn"] = "error",
+    export_directory: Path | str = "wizard_configs",
+    port: int = 8050,
+    open_browser: bool = True,
+) -> ConfiguredWorkflow[PredictionConfig, PredictionOverrides] | None:
+    ...
+
+
+@overload
+def configure_workflow(
+    *,
+    stage: Literal["evaluation"],
+    model_family: None = None,
+    config: EvaluationConfigInput = None,
+    overrides: EvaluationOverrides | None = None,
+    compatibility_policy: Literal["error"] = "error",
+    export_directory: Path | str = "wizard_configs",
+    port: int = 8050,
+    open_browser: bool = True,
+) -> ConfiguredWorkflow[EvaluationConfig, EvaluationOverrides] | None:
+    ...
 
 
 def configure_workflow(
@@ -54,52 +99,102 @@ def configure_workflow(
     import threading
     import webbrowser
 
-    from werkzeug.serving import make_server
+    from werkzeug.serving import (
+        make_server,
+        ThreadedWSGIServer,
+        WSGIRequestHandler,
+    )
 
-    from benchrep.gui.train import create_training_app
     from benchrep.interfaces.model_families import COMPOSITE_FAMILY
-
     from benchrep.utils.workflow_overrides import (
         TrainingOverrides,
         PredictionOverrides,
         EvaluationOverrides,
     )
 
-    expected = {
-        "training": TrainingOverrides,
-        "prediction": PredictionOverrides,
-        "evaluation": EvaluationOverrides,
-    }[stage]
-    if overrides is not None and not isinstance(overrides, expected):
-        raise TypeError(f"{stage} requires {expected.__name__}.")
-    kwargs = {}
-    factory = create_training_app
-    if stage == "prediction":
+    if stage != "prediction" and compatibility_policy != "error":
+        raise ValueError(
+            "compatibility_policy is only configurable for prediction."
+        )
+
+    if stage == "training":
+        from benchrep.assembly.schemas.training_config_schema import TrainingConfig
+        from benchrep.gui.train import create_training_app
+
+        if overrides is not None and not isinstance(overrides, TrainingOverrides):
+            raise TypeError("training requires TrainingOverrides.")
+        if config is not None and not isinstance(config, (Path, str, TrainingConfig)):
+            raise TypeError("training requires a path or TrainingConfig.")
+
+        app = create_training_app(
+            config=config,
+            overrides=overrides,
+            model_family=model_family or COMPOSITE_FAMILY,
+            export_directory=export_directory,
+        )
+
+    elif stage == "prediction":
+        from benchrep.assembly.schemas.prediction_config_schema import PredictionConfig
         from benchrep.gui.predict import create_prediction_app
 
-        factory = create_prediction_app
-        kwargs["compatibility_policy"] = compatibility_policy
-    elif compatibility_policy != "error":
-        raise ValueError("compatibility_policy is only configurable for prediction.")
+        if overrides is not None and not isinstance(overrides, PredictionOverrides):
+            raise TypeError("prediction requires PredictionOverrides.")
+        if config is not None and not isinstance(config, (Path, str, PredictionConfig)):
+            raise TypeError("prediction requires a path or PredictionConfig.")
 
-    if stage == "evaluation":
+        app = create_prediction_app(
+            config=config,
+            overrides=overrides,
+            model_family=model_family or COMPOSITE_FAMILY,
+            compatibility_policy=compatibility_policy,
+            export_directory=export_directory,
+        )
+
+    else:
+        from benchrep.assembly.schemas.evaluation_config_schema import EvaluationConfig
+        from benchrep.gui.evaluate import create_evaluation_app
+
         if model_family is not None:
             raise ValueError(
                 "Evaluation uses artifacts and does not select a model family."
             )
-        from benchrep.gui.evaluate import create_evaluation_app
+        if overrides is not None and not isinstance(overrides, EvaluationOverrides):
+            raise TypeError("evaluation requires EvaluationOverrides.")
+        if config is not None and not isinstance(config, (Path, str, EvaluationConfig)):
+            raise TypeError("evaluation requires a path or EvaluationConfig.")
 
-        factory = create_evaluation_app
-    else:
-        kwargs["model_family"] = model_family or COMPOSITE_FAMILY
+        app = create_evaluation_app(
+            config=config,
+            overrides=overrides,
+            export_directory=export_directory,
+        )
 
-    app = factory(
-        config=config,
-        overrides=overrides,
-        export_directory=export_directory,
-        **kwargs,
+    class WizardRequestHandler(WSGIRequestHandler):
+        """Log failed HTTP requests while keeping routine traffic quiet."""
+
+        def log_request(
+                self,
+                code: int | str = "-",
+                size: int | str = "-",
+        ) -> None:
+            try:
+                status = int(code)
+            except (TypeError, ValueError):
+                super().log_request(code, size)
+                return
+
+            if status >= 400:
+                super().log_request(code, size)
+
+    server = make_server(
+        "127.0.0.1",
+        port,
+        app.server,
+        threaded=True,
+        request_handler=WizardRequestHandler,
     )
-    server = make_server("127.0.0.1", port, app.server, threaded=True)
+
+    assert isinstance(server, ThreadedWSGIServer)
     server.daemon_threads = False
     worker = threading.Thread(target=server.serve_forever, daemon=True)
     worker.start()
