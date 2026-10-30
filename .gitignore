@@ -28,9 +28,10 @@ examples/configs/DEMO/
 examples/usage/DEMO.py
 temp_demo/
 
-# Scratch
+# Scratch and tmps
 scratch/
 wizard_configs/
+08B_wizard_configs/
 
 # IDE
 .idea/
