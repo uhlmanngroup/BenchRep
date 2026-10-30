@@ -889,6 +889,7 @@ class TrainingTrainerConfig(_TrainingConfigBaseModel):
 
     max_epochs: PositiveInt | None = Field(
         default=None,
+        title="Maximum epochs",
         description="Maximum number of complete training epochs.",
         json_schema_extra={
             "omit_behavior": (

@@ -9,7 +9,7 @@ and predicts digit identity and stroke width.
 
 Run from the repository root:
 
-    python examples/usage/08_dual_input_multitask_composite_vae_pipeline.py
+    python examples/usage/08A_dual_input_multitask_composite_vae_yaml.py
 """
 
 from __future__ import annotations
