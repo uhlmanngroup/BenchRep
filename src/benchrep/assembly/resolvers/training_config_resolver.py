@@ -271,7 +271,7 @@ def resolve_training_config(
         compatibility_policy=compatibility_policy,
         run_identity=RunIdentitySpec(
             output_root=Path(resolved_config.run.output_root),
-            project_name=resolved_config.run.project_name,
+            run_name_prefix=resolved_config.run.run_name_prefix,
             model_name=model_name,
         ),
         loss_specs=loss_specs,

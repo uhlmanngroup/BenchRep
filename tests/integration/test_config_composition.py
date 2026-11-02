@@ -350,7 +350,7 @@ def test_yaml_component_replaces_top_level_section(
             make_training_config,
             "run",
             lambda: make_training_run_config().model_copy(
-                update={"project_name": "replacement_component"}
+                update={"run_name_prefix": "replacement_component"}
             ),
             id="training",
         ),

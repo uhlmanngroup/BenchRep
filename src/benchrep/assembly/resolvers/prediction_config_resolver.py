@@ -636,7 +636,7 @@ def resolve_prediction_config(
 
     run_identity = RunIdentitySpec(
         output_root=Path(training_config.run.output_root),
-        project_name=training_config.run.project_name,
+        run_name_prefix=training_config.run.run_name_prefix,
         model_name=model_name,
     )
 

@@ -101,7 +101,7 @@ Every workflow creates an isolated run directory:
 <output_root>/<stage>/<run_name>/
 ```
 
-`<stage>` is `training`, `prediction`, or `evaluation`. Run names combine available project/model identity with a timestamp; a short suffix is added if the path already exists, so an existing run is not overwritten.
+`<stage>` is `training`, `prediction`, or `evaluation`. Run names combine an optional run name prefix and model identity with a timestamp; a short suffix is added if the path already exists, so an existing run is not overwritten.
 
 ### Records shared by every workflow
 

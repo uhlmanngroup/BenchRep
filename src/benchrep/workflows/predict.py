@@ -216,7 +216,7 @@ def _predict(
     run_context = RunContext.create(
         output_root=run_spec.run_identity.output_root,
         stage=run_spec.stage,
-        project_name=run_spec.run_identity.project_name,
+        run_name_prefix=run_spec.run_identity.run_name_prefix,
         model_name=run_spec.run_identity.model_name,
     )
     created_at = now_isoformat()

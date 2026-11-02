@@ -223,7 +223,7 @@ class EvaluationStepSpec:
 class EvaluationRunIdentitySpec:
     output_root: Path
     run_name_stem: str | None
-    project_name: str | None
+    run_name_prefix: str | None
     model_name: str | None
 
 
@@ -728,7 +728,7 @@ def resolve_run_identity(
 ) -> EvaluationRunIdentitySpec:
     """Resolve output location and identity hints for an evaluation run.
 
-    Output-root, project, and model identity are inferred from the linked
+    Output root, run name prefix, and model identity are inferred from the linked
     prediction lineage when not configured directly. ``RunContext`` remains
     responsible for constructing the final timestamped run name.
     """
@@ -764,22 +764,22 @@ def resolve_run_identity(
     run_name_stem = run_config.run_name
 
     if prediction_manifest is None:
-        project_name = None
+        run_name_prefix = None
         model_name = None
 
     else:
-        project_name_value = get_optional_nested_value(
+        run_name_prefix_value = get_optional_nested_value(
             prediction_manifest,
             "appendix",
             "training_manifest",
             "appendix",
             "resolved_config",
             "run",
-            "project_name",
+            "run_name_prefix",
         )
-        project_name = (
-            project_name_value
-            if isinstance(project_name_value, str)
+        run_name_prefix = (
+            run_name_prefix_value
+            if isinstance(run_name_prefix_value, str)
             else None
         )
 
@@ -804,7 +804,7 @@ def resolve_run_identity(
     return EvaluationRunIdentitySpec(
         output_root=output_root,
         run_name_stem=run_name_stem,
-        project_name=project_name,
+        run_name_prefix=run_name_prefix,
         model_name=model_name,
     )
 

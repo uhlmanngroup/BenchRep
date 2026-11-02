@@ -2,7 +2,7 @@ stage: training
 
 run:
   output_root: outputs
-  project_name: integration_test
+  run_name_prefix: integration_test
 
 reproducibility:
   seed: 137

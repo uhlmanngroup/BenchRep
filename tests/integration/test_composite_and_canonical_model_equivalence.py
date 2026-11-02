@@ -173,13 +173,13 @@ def test_canonical_and_composite_vaes_are_end_to_end_equivalent(
 
 def _make_canonical_ae_training_config() -> TrainingConfig:
     raw = load_yaml(CONFIG_DIR / "training_tiny_synthetic_ae.yaml")
-    raw["run"]["project_name"] = "canonical_ae_equivalence"
+    raw["run"]["run_name_prefix"] = "canonical_ae_equivalence"
     return TrainingConfig.model_validate(raw)
 
 
 def _make_composite_ae_training_config() -> TrainingConfig:
     raw = load_yaml(CONFIG_DIR / "training_tiny_synthetic_ae.yaml")
-    raw["run"]["project_name"] = "composite_ae_equivalence"
+    raw["run"]["run_name_prefix"] = "composite_ae_equivalence"
     raw["model"] = {"name": "composite"}
 
     encoder = raw.pop("encoder")
@@ -231,13 +231,13 @@ def _make_composite_ae_training_config() -> TrainingConfig:
 
 def _make_canonical_vae_training_config() -> TrainingConfig:
     raw = load_yaml(CONFIG_DIR / "training_tiny_synthetic_vae.yaml")
-    raw["run"]["project_name"] = "canonical_vae_equivalence"
+    raw["run"]["run_name_prefix"] = "canonical_vae_equivalence"
     return TrainingConfig.model_validate(raw)
 
 
 def _make_composite_vae_training_config() -> TrainingConfig:
     raw = load_yaml(CONFIG_DIR / "training_tiny_synthetic_vae.yaml")
-    raw["run"]["project_name"] = "composite_vae_equivalence"
+    raw["run"]["run_name_prefix"] = "composite_vae_equivalence"
 
     latent_dim = raw["model"]["params"]["latent_dim"]
     raw["model"] = {"name": "composite"}

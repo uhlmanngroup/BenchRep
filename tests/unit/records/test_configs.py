@@ -119,7 +119,7 @@ def test_config_object_record_preserves_input_before_overrides(
     resolved = original.model_copy(
         update={
             "run": original.run.model_copy(
-                update={"project_name": "resolved_project"}
+                update={"run_name_prefix": "resolved_project"}
             )
         }
     )
@@ -137,5 +137,5 @@ def test_config_object_record_preserves_input_before_overrides(
         (tmp_path / "resolved_config.yaml").read_text(encoding="utf-8")
     )
 
-    assert original_raw["run"]["project_name"] == "overridden_project"
-    assert resolved_raw["run"]["project_name"] == "resolved_project"
+    assert original_raw["run"]["run_name_prefix"] == "overridden_project"
+    assert resolved_raw["run"]["run_name_prefix"] == "resolved_project"

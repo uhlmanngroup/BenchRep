@@ -40,7 +40,7 @@ def _make_run_spec(
         compatibility_policy=compatibility_policy,
         run_identity=RunIdentitySpec(
             output_root=Path("."),
-            project_name=None,
+            run_name_prefix=None,
             model_name="test_model",
         ),
     )

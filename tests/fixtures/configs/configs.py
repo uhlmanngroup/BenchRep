@@ -76,7 +76,7 @@ from benchrep.assembly.schemas.evaluation_config_schema import (
 def make_training_run_config() -> TrainingRunConfig:
     return TrainingRunConfig(
         output_root=Path("overridden_outputs"),
-        project_name="overridden_project",
+        run_name_prefix="overridden_project",
     )
 
 

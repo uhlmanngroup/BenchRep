@@ -2,7 +2,7 @@ stage: training
 
 run:
   output_root: outputs
-  project_name: 05_custom_loss_pipeline
+  run_name_prefix: 05_custom_loss_pipeline
 
 reproducibility:
   seed: 137

@@ -7,7 +7,7 @@ reproducibility:
 
 run:
   output_root: outputs
-  project_name: test
+  run_name_prefix: test
 
 trainer:
   max_epochs: 5

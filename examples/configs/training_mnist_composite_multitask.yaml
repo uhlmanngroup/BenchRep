@@ -2,7 +2,7 @@ stage: training
 
 run:
   output_root: outputs
-  project_name: mnist_composite_vae_multitask
+  run_name_prefix: mnist_composite_vae_multitask
 
 reproducibility:
   seed: 137

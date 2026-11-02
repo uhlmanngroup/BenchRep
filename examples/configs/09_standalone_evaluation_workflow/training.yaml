@@ -2,7 +2,7 @@ stage: training
 
 run:
   output_root: outputs
-  project_name: 09_standalone_evaluation_workflow
+  run_name_prefix: 09_standalone_evaluation_workflow
 
 reproducibility:
   seed: 137

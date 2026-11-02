@@ -2,7 +2,7 @@ stage: training
 
 run:
   output_root: outputs
-  project_name: 04_custom_dataset_pipeline
+  run_name_prefix: 04_custom_dataset_pipeline
 
 reproducibility:
   seed: 137

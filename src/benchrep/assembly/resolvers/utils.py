@@ -22,7 +22,7 @@ ComponentSource = Literal[
 @dataclass(frozen=True)
 class RunIdentitySpec:
     output_root: Path
-    project_name: str | None
+    run_name_prefix: str | None
     model_name: str
 
 

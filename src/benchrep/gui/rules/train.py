@@ -348,7 +348,7 @@ def training_sections(
 
     sections = [
         standard(
-            "run", "Run", "Choose where outputs are saved and an optional project name."
+            "run", "Run", "Choose where outputs are saved and an optional run name prefix."
         ),
         standard(
             "reproducibility",

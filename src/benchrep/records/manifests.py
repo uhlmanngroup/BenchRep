@@ -916,7 +916,7 @@ def write_evaluation_manifest(
             },
         },
         "summary": {
-            "project_name": run_spec.run_identity.project_name,
+            "run_name_prefix": run_spec.run_identity.run_name_prefix,
             "model_name": prediction_summary.get("model_name"),
             "model_class": prediction_summary.get("model_class"),
             "model_architecture": prediction_summary.get(

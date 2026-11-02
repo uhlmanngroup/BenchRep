@@ -424,7 +424,7 @@ class EvaluationRunConfig(_EvaluationConfigBaseModel):
 
     BenchRep writes each evaluation beneath an `evaluation/` stage directory and
     creates a timestamped run directory. When a prediction manifest is available,
-    project and model identity are inferred from it when possible.
+    the run name prefix and model identity are inferred from it when possible.
     """
 
     output_root: PathInput | None = Field(
@@ -455,7 +455,7 @@ class EvaluationRunConfig(_EvaluationConfigBaseModel):
             ),
             "null_behavior": "Equivalent to omission.",
             "notes": [
-                "A project name inferred from the manifest is prepended when available.",
+                "A run name prefix inferred from the manifest is prepended when available.",
                 "If the generated directory already exists, BenchRep appends a "
                 "short unique suffix.",
             ],

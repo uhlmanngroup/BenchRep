@@ -31,7 +31,7 @@ class RunContext:
         <output_root>/<stage>/<run_name>/
 
     where `stage` is one of `"training"`, `"prediction"`, or `"evaluation"`.
-    The run name is derived from the project name, model name, and timestamp.
+    The run name is derived from the run name prefix, model name, and timestamp.
     If a run directory with the same name already exists, a short UUID suffix
     is appended to avoid overwriting existing outputs.
 
@@ -145,7 +145,7 @@ class RunContext:
         stage: RunStage,
         run_name_stem: str | None = None,
         model_name: str | None = None,
-        project_name: str | None = None,
+        run_name_prefix: str | None = None,
         timestamp: str | None = None,
     ) -> "RunContext":
         output_root = Path(output_root).expanduser().resolve() / stage
@@ -172,12 +172,12 @@ class RunContext:
         else:
             stem = stage
 
-        if project_name is not None:
-            project_name = _sanitize_run_name_component(
-                project_name,
-                field_name="project_name",
+        if run_name_prefix is not None:
+            run_name_prefix = _sanitize_run_name_component(
+                run_name_prefix,
+                field_name="run_name_prefix",
             )
-            base_run_name = f"{project_name}_{stem}_{timestamp}"
+            base_run_name = f"{run_name_prefix}_{stem}_{timestamp}"
         else:
             base_run_name = f"{stem}_{timestamp}"
 

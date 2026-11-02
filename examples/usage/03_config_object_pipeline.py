@@ -80,7 +80,7 @@ def build_training_config() -> TrainingConfig:
     return TrainingConfig(
         run=TrainingRunConfig(
             output_root=Path("outputs"),
-            project_name="03_config_object_pipeline",
+            run_name_prefix="03_config_object_pipeline",
         ),
         reproducibility=TrainingReproducibilityConfig(
             seed=137,

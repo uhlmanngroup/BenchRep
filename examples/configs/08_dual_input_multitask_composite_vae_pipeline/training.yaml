@@ -2,7 +2,7 @@ stage: training
 
 run:
   output_root: outputs
-  project_name: 08_dual_input_multitask_composite_vae_pipeline
+  run_name_prefix: 08_dual_input_multitask_composite_vae_pipeline
 
 reproducibility:
   seed: 137

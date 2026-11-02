@@ -436,7 +436,7 @@ def _write_prediction_manifest(tmp_path: Path) -> Path:
                     "appendix": {
                         "resolved_config": {
                             "run": {
-                                "project_name": "integration_test",
+                                "run_name_prefix": "integration_test",
                             },
                         },
                     },

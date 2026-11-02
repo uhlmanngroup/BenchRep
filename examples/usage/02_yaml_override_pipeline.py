@@ -62,12 +62,12 @@ def main() -> None:
     inspect_registry("encoder", "conv2d")
     inspect_registry("decoder", "upsample_conv2d")
 
-    # First, let's customize the project name by overriding the run
+    # First, let's customize the run name prefix by overriding the run
     run_config = TrainingRunConfig(
         # A config component replaces the complete matching YAML section.
         # Omitted fields therefore use schema defaults rather than original YAML values.
         output_root=Path("outputs"),
-        project_name="02_yaml_override_pipeline",
+        run_name_prefix="02_yaml_override_pipeline",
     )
 
     # Build separate dataset configs for the training and test splits.

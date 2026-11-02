@@ -164,14 +164,14 @@ class TrainingRunConfig(_TrainingConfigBaseModel):
         },
     )
 
-    project_name: str | None = Field(
+    run_name_prefix: str | None = Field(
         default=None,
         description="Optional prefix used to construct generated run names.",
         json_schema_extra={
-            "omit_behavior": "No project-name prefix is added.",
+            "omit_behavior": "No run name prefix is added.",
             "null_behavior": "Equivalent to omission.",
             "notes": [
-                "The project name is reused by linked prediction runs and propagated "
+                "The run name prefix is reused by linked prediction runs and propagated "
                 "to manifest-linked evaluation runs.",
                 "Unsupported filename characters are replaced with underscores, and "
                 "leading or trailing punctuation is removed.",

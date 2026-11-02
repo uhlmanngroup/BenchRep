@@ -557,7 +557,7 @@ def _make_training_config(
     case: CompositeArchitectureCase,
 ) -> TrainingConfig:
     raw = load_yaml(CONFIG_DIR / "training_tiny_synthetic_ae.yaml")
-    raw["run"]["project_name"] = f"architecture_matrix_{case.name}"
+    raw["run"]["run_name_prefix"] = f"architecture_matrix_{case.name}"
     raw["dataset"]["params"] = _tiny_dataset_params()
     raw["transform_pipelines"] = case.transform_pipelines
     raw["datamodule"].update(
