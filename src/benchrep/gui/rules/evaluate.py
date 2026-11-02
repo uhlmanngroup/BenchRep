@@ -516,7 +516,7 @@ def evaluation_sections(*, context: EvaluationSourceContext) -> list[SectionSpec
         ),
         "run": (
             "Run",
-            "Choose the evaluation output location and an optional run name.",
+            "Choose the evaluation output location and an optional run name stem.",
         ),
         "reductions": (
             "Reductions",

@@ -390,7 +390,7 @@ def make_evaluation_source_config() -> EvaluationSourceConfig:
 def make_evaluation_run_config() -> EvaluationRunConfig:
     return EvaluationRunConfig(
         output_root=Path("overridden_evaluation_outputs"),
-        run_name="overridden_evaluation",
+        run_name_stem="overridden_evaluation",
     )
 
 

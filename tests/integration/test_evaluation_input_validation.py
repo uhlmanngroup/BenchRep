@@ -35,7 +35,7 @@ def test_evaluate_rejects_nonfinite_embeddings(
         ),
         run=EvaluationRunConfig(
             output_root=tmp_path / "outputs",
-            run_name="nonfinite_embeddings",
+            run_name_stem="nonfinite_embeddings",
         ),
         reductions=EvaluationReductionsConfig(
             umap=EvaluationUMAPConfig(enabled=False),
@@ -79,7 +79,7 @@ def test_evaluate_supports_reconstruction_only_input(
             },
             "run": {
                 "output_root": tmp_path / "outputs",
-                "run_name": "reconstruction_only",
+                "run_name_stem": "reconstruction_only",
             },
             "plots": {
                 "enabled": False,

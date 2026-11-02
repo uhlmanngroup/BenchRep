@@ -271,7 +271,7 @@ def test_partial_config_components_preserve_presence_and_lock(tmp_path, context)
         "stage: evaluation\nsource:\n  anndata_path: null\nplots:\n  enabled: false\n"
     )
     overrides = EvaluationOverrides(
-        config_components={"run": EvaluationRunConfig(run_name="supplied")}
+        config_components={"run": EvaluationRunConfig(run_name_stem="supplied")}
     )
     initial = rules.prepare_evaluation_draft(config=path, overrides=overrides)
     assert initial.initial_data["source"] == {"anndata_path": None}
@@ -282,9 +282,9 @@ def test_partial_config_components_preserve_presence_and_lock(tmp_path, context)
     )
     spec = editor_spec(section.annotation, section.field_info)
     raw, errors = evaluate_section(
-        section, spec, new_node(spec, {"run_name": "changed"}), initial=initial
+        section, spec, new_node(spec, {"run_name_stem": "changed"}), initial=initial
     )
-    assert raw["run_name"] == "supplied" and not errors
+    assert raw["run_name_stem"] == "supplied" and not errors
 
 
 def test_advisory_metadata_does_not_reject_manual_column_names(context, artifacts):

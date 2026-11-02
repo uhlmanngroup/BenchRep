@@ -368,7 +368,7 @@ def test_yaml_component_replaces_top_level_section(
             make_evaluation_config,
             "run",
             lambda: make_evaluation_run_config().model_copy(
-                update={"run_name": "replacement_component"}
+                update={"run_name_stem": "replacement_component"}
             ),
             id="evaluation",
         ),

@@ -8,7 +8,7 @@ source:
 
 run:
   output_root: null # null = infer from manifest output dir if possible, else outputs/evaluation/
-  run_name: null # null = let RunContext derive/generate the final run name
+  run_name_stem: null # null = derive the stem from the model name, or use "evaluation"
 
 reductions:
   pca:

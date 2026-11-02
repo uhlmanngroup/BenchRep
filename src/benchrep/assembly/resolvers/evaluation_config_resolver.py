@@ -761,7 +761,7 @@ def resolve_run_identity(
     else:
         output_root = Path("outputs").resolve()
 
-    run_name_stem = run_config.run_name
+    run_name_stem = run_config.run_name_stem
 
     if prediction_manifest is None:
         run_name_prefix = None

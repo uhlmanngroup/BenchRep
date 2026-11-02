@@ -442,7 +442,7 @@ class EvaluationRunConfig(_EvaluationConfigBaseModel):
         },
     )
 
-    run_name: str | None = Field(
+    run_name_stem: str | None = Field(
         default=None,
         description=(
             "Optional stem used to construct the generated evaluation run name. "

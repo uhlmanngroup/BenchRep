@@ -7,7 +7,7 @@ source:
 
 run:
   output_root: outputs
-  run_name: 09_standalone_evaluation_workflow
+  run_name_stem: 09_standalone_evaluation_workflow
 
 reductions:
   pca:

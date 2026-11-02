@@ -8,7 +8,7 @@ source:
 
 run:
   output_root: outputs
-  run_name: 08_dual_input_multitask_composite_vae_pipeline
+  run_name_stem: 08_dual_input_multitask_composite_vae_pipeline
 
 reductions:
   pca:
