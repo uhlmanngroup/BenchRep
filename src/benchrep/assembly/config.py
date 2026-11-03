@@ -424,6 +424,55 @@ def load_yaml(yaml_path: str | Path) -> dict[str, Any]:
     return yaml_file
 
 
+def update_config(config: ConfigT, updates: Mapping[str, Any]) -> ConfigT:
+    """Return a validated copy with the specified fields replaced.
+
+    Parameters
+    ----------
+    config:
+        Base training, prediction, or evaluation config.
+    updates:
+        Existing dotted paths and their replacement values. Use a numeric
+        index for a list item, e.g. ``losses.regularization.0.weight``.
+
+    Returns
+    -------
+    ConfigT
+        A new config of the same type, validated after all replacements.
+    """
+    if not isinstance(config, SUPPORTED_CONFIG_SCHEMAS):
+        raise TypeError("Expected a TrainingConfig, PredictionConfig, or EvaluationConfig.")
+
+    data = config.model_dump(mode="python", round_trip=True)
+
+    for path, value in updates.items():
+        parts = path.split(".")
+        if not all(parts):
+            raise ValueError(f"Invalid config path: {path!r}.")
+
+        node: Any = data
+        for index, part in enumerate(parts):
+            if index and ".".join(parts[:index]) in updates:
+                raise ValueError(f"Overlapping config updates at {path!r}.")
+
+            key: str | int = part
+            if isinstance(node, list):
+                if not part.isascii() or not part.isdecimal() or str(int(part)) != part:
+                    raise KeyError(f"Expected a zero-based list index in {path!r}.")
+                key = int(part)
+                if key >= len(node):
+                    raise KeyError(f"List index out of range in {path!r}.")
+            elif not isinstance(node, dict) or key not in node:
+                raise KeyError(f"Unknown config path: {path!r} (at {part!r}).")
+
+            if index == len(parts) - 1:
+                node[key] = value
+            else:
+                node = node[key]
+
+    return type(config).model_validate(data)
+
+
 def _strip_none_from_type(annotation: Any) -> Any:
     origin = get_origin(annotation)
 
