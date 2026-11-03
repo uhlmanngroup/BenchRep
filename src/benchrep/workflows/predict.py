@@ -91,6 +91,7 @@ class PredictionWorkflowResult:
 
 # Model-specific wrappers
 def predict_ae(
+        *,
         config: PredictionConfigInput = None,
         overrides: PredictionOverrides | None = None,
         compatibility_policy: CompatibilityPolicy = "error",
@@ -109,6 +110,7 @@ def predict_ae(
 
 
 def predict_vae(
+        *,
         config: PredictionConfigInput = None,
         overrides: PredictionOverrides | None = None,
         compatibility_policy: CompatibilityPolicy = "error",
@@ -127,9 +129,10 @@ def predict_vae(
 
 
 def predict_composite(
-    config: PredictionConfigInput = None,
-    overrides: PredictionOverrides | None = None,
-    capture_stdout: bool = False,
+        *,
+        config: PredictionConfigInput = None,
+        overrides: PredictionOverrides | None = None,
+        capture_stdout: bool = False,
 ) -> PredictionWorkflowResult:
     overrides = overrides if overrides is not None else PredictionOverrides()
     overrides.validate_for(COMPOSITE_FAMILY)
@@ -143,11 +146,11 @@ def predict_composite(
 
 
 def _predict(
-    model_family: ModelFamilySpec,
-    overrides: PredictionOverrides,
-    config: PredictionConfigInput = None,
-    compatibility_policy: CompatibilityPolicy = "error",
-    capture_stdout: bool = False,
+        model_family: ModelFamilySpec,
+        overrides: PredictionOverrides,
+        config: PredictionConfigInput = None,
+        compatibility_policy: CompatibilityPolicy = "error",
+        capture_stdout: bool = False,
 ) -> PredictionWorkflowResult:
 
     config_components = overrides.config_components

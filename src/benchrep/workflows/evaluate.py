@@ -60,9 +60,10 @@ class EvaluationWorkflowResult:
     manifest_path: Path
 
 def evaluate(
-    config: EvaluationConfigInput = None,
-    overrides: EvaluationOverrides | None = None,
-    capture_stdout: bool = False,
+        *,
+        config: EvaluationConfigInput = None,
+        overrides: EvaluationOverrides | None = None,
+        capture_stdout: bool = False,
 ) -> EvaluationWorkflowResult:
     overrides = overrides if overrides is not None else EvaluationOverrides()
     config_components = overrides.config_components

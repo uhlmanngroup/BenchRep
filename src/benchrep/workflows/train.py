@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 import lightning as L
-from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint
+from lightning.pytorch.callbacks import EarlyStopping, ModelCheckpoint, Callback
 from lightning.pytorch.utilities.exceptions import SIGTERMException
 
 import torch
@@ -94,8 +94,10 @@ class TrainingWorkflowResult:
 
 # Model-specific wrappers
 def train_ae(
+        *,
         config: TrainingConfigInput = None,
         overrides: TrainingOverrides | None = None,
+        runtime_callbacks: Sequence[Callback] | None = None,
         compatibility_policy: CompatibilityPolicy = "error",
         capture_stdout: bool = False,
 ) -> TrainingWorkflowResult:
@@ -106,14 +108,17 @@ def train_ae(
         model_family=AUTOENCODER_FAMILY,
         overrides=overrides,
         config=config,
+        runtime_callbacks=runtime_callbacks,
         compatibility_policy=compatibility_policy,
         capture_stdout=capture_stdout,
     )
 
 
 def train_vae(
+        *,
         config: TrainingConfigInput = None,
         overrides: TrainingOverrides | None = None,
+        runtime_callbacks: Sequence[Callback] | None = None,
         compatibility_policy: CompatibilityPolicy = "error",
         capture_stdout: bool = False,
 ) -> TrainingWorkflowResult:
@@ -124,15 +129,18 @@ def train_vae(
         model_family=VAE_FAMILY,
         overrides=overrides,
         config=config,
+        runtime_callbacks=runtime_callbacks,
         compatibility_policy=compatibility_policy,
         capture_stdout=capture_stdout,
     )
 
 
 def train_composite(
-    config: TrainingConfigInput = None,
-    overrides: TrainingOverrides | None = None,
-    capture_stdout: bool = False,
+        *,
+        config: TrainingConfigInput = None,
+        overrides: TrainingOverrides | None = None,
+        runtime_callbacks: Sequence[Callback] | None = None,
+        capture_stdout: bool = False,
 ) -> TrainingWorkflowResult:
     overrides = overrides if overrides is not None else TrainingOverrides()
     overrides.validate_for(COMPOSITE_FAMILY)
@@ -141,16 +149,18 @@ def train_composite(
         model_family=COMPOSITE_FAMILY,
         overrides=overrides,
         config=config,
+        runtime_callbacks=runtime_callbacks,
         capture_stdout=capture_stdout,
     )
 
 
 def _train(
-    model_family: ModelFamilySpec,
-    overrides: TrainingOverrides,
-    config: TrainingConfigInput = None,
-    compatibility_policy: CompatibilityPolicy = "error",
-    capture_stdout: bool = False,
+        model_family: ModelFamilySpec,
+        overrides: TrainingOverrides,
+        config: TrainingConfigInput = None,
+        runtime_callbacks: Sequence[Callback] | None = None,
+        compatibility_policy: CompatibilityPolicy = "error",
+        capture_stdout: bool = False,
 ) -> TrainingWorkflowResult:
 
     config_components = overrides.config_components
@@ -342,6 +352,7 @@ def _train(
         early_stopping_config=resolved_training_config.early_stopping,
         additional_callback_configs=resolved_training_config.additional_callbacks,
         gradient_norm_callback=gradient_norm_callback,
+        runtime_callbacks=runtime_callbacks,
     )
 
     if checkpoint_callback is None:
@@ -353,6 +364,13 @@ def _train(
             trainer=trainer,
         )
     )
+
+    runtime_callback_classes = [
+        f"{type(callback).__module__}.{type(callback).__qualname__}"
+        for callback in (runtime_callbacks or ())
+    ]
+    if runtime_callback_classes:
+        training_environment_context["runtime_callbacks"] = runtime_callback_classes
 
     runtime_environment_path = write_runtime_environment(
         output_path=(
@@ -583,6 +601,7 @@ def _train(
         run_spec=run_spec,
         run_context=run_context,
         checkpoint_callback=checkpoint_callback,
+        runtime_callback_classes=runtime_callback_classes,
         early_stopping_record=early_stopping_record,
         composite_model_spec_graph_path=composite_model_spec_graph_path,
         torchview_graph_path=torchview_graph_path,

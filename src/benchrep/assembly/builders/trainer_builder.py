@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 from importlib.util import find_spec
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Sequence
 
 import lightning as L
 from lightning.pytorch.callbacks import (
@@ -55,6 +55,7 @@ def build_trainer(
         early_stopping_config: TrainingEarlyStoppingConfig | None = None,
         additional_callback_configs: list[TrainingAdditionalCallbackConfig] | None = None,
         gradient_norm_callback: GradientNormInspectionCallback | None = None,
+        runtime_callbacks: Sequence[Callback] | None = None,
         max_batches: int | None = None,
 ) -> tuple[
     L.Trainer,
@@ -104,6 +105,9 @@ def build_trainer(
     additional_callback_configs:
         Additional registered callback configurations. Used only during training
         and ignored with a warning during prediction.
+    runtime_callbacks:
+        Lightning callback instances appended after configured additional
+        callbacks during training.
     max_batches:
         Optional prediction diagnostic limit. During prediction, this is mapped
         to Lightning's ``limit_predict_batches``. Ignored during training.
@@ -180,6 +184,11 @@ def build_trainer(
         additional_callbacks = _build_additional_callbacks(
             additional_callback_configs or [],
         )
+        if runtime_callbacks is not None:
+            for callback in runtime_callbacks:
+                if not isinstance(callback, Callback):
+                    raise TypeError("runtime_callbacks must contain Lightning Callback instances.")
+                additional_callbacks.append(callback)
 
         # Extend depth of Lightning's model summary to expand
         # the ModuleDicts used for losses and composite components
@@ -216,6 +225,9 @@ def build_trainer(
             callbacks.append(early_stopping_callback)
 
         callbacks.extend(additional_callbacks)
+
+        if len({id(callback) for callback in callbacks}) != len(callbacks):
+            raise ValueError("The same callback instance was supplied more than once.")
 
         configured_callback_classes = tuple(
             f"{type(callback).__module__}."

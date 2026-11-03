@@ -57,6 +57,7 @@ def write_training_manifest(
     run_spec: TrainingRunSpec,
     run_context: RunContext,
     checkpoint_callback: ModelCheckpoint,
+    runtime_callback_classes: list[str],
     early_stopping_record: EarlyStoppingRecord | None,
     composite_model_spec_graph_path: Path | None = None,
     torchview_graph_path: Path | None = None,
@@ -224,7 +225,9 @@ def write_training_manifest(
         "construction": {
             "config": {
                 "run_reconstructable_from_resolved_config": (
-                        not model_is_external and not datamodule_is_external
+                    not model_is_external
+                    and not datamodule_is_external
+                    and not runtime_callback_classes
                 ),
                 "effective_source": config_composition_result.effective_source,
                 "yaml_supplied": config_composition_result.yaml_supplied,
@@ -254,6 +257,9 @@ def write_training_manifest(
             "resolved_config": config_to_serializable_dict(config),
         },
     }
+
+    if runtime_callback_classes:
+        manifest["construction"]["runtime_callbacks"] = runtime_callback_classes
 
     write_yaml_record(manifest, output_path)
 
