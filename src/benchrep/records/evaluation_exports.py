@@ -477,7 +477,7 @@ def save_evaluation_metrics_json(
 ) -> Path | None:
     """Save available evaluation metrics, returning ``None`` when none exist."""
 
-    metrics = _collect_evaluation_metrics(
+    metrics = collect_evaluation_metrics(
         adata=adata,
         reconstruction_outputs=reconstruction_outputs,
     )
@@ -964,7 +964,7 @@ def export_reconstruction_grids(
     return written_paths
 
 
-def _collect_evaluation_metrics(
+def collect_evaluation_metrics(
     *,
     adata: ad.AnnData | None,
     reconstruction_outputs: Mapping[str, Any] | None = None,

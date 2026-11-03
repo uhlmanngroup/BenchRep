@@ -26,19 +26,20 @@ from benchrep.records import (
     collect_evaluation_environment_context,
     write_runtime_environment,
 )
+from benchrep.records.evaluation_exports import collect_evaluation_metrics
 from benchrep.records.utils import now_isoformat
 from benchrep.runtime import RunContext
 from benchrep.runtime.evaluate_run_validation import (
     prepare_evaluate_source_inputs,
     finalize_evaluation_step_spec,
 )
-from benchrep.assembly.registries.builtins import register_builtins
 from benchrep.runtime.status import (
     EvaluationOutcome,
     EvaluationStatusReport,
     build_evaluation_status_report,
     log_outcome_summary,
 )
+from benchrep.assembly.registries.builtins import register_builtins
 from benchrep.assembly.registries.utils import normalize_path
 
 if TYPE_CHECKING:
@@ -58,6 +59,20 @@ class EvaluationWorkflowResult:
     export_paths: EvaluationExportPaths
     status_report: EvaluationStatusReport
     manifest_path: Path
+
+    def get_metric(self, *path: str | int) -> Any:
+        """Return the in-memory value at a path shown in metrics.json.
+
+        Pass strings for mapping keys and integers for sequence indices.
+        An empty path returns the full metrics mapping.
+        """
+        value: Any = collect_evaluation_metrics(
+            adata=self.adata,
+            reconstruction_outputs=self.reconstruction_outputs,
+        )
+        for key in path:
+            value = value[key]
+        return value
 
 def evaluate(
         *,
