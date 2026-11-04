@@ -389,6 +389,12 @@ def edit_node(
     if not found:
         return False
     current_spec, node = found
+    if action == "remove_unexpected":
+        if current_spec.kind != "object" or current_spec.extra or not node["extra"]:
+            return False
+        node["extra"] = {}
+        node["extra_text"] = "{}"
+        return True
     if action == "mode":
         changed = node["mode"] != value
         node["mode"] = value

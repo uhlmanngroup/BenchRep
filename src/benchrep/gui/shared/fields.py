@@ -456,6 +456,30 @@ def render_editor(
                     styles={"input": {"fontFamily": "monospace"}},
                 )
             )
+        elif node["extra"]:
+            body.append(
+                dmc.Alert(
+                    [
+                        html.P(
+                            "These fields are not recognized by this schema. "
+                            "Remove them here, or correct their names in the source YAML."
+                        ),
+                        html.Pre(
+                            json.dumps(node["extra"], indent=2, ensure_ascii=False)
+                        ),
+                        dmc.Button(
+                            "Remove unexpected fields",
+                            id=button_id("remove_unexpected"),
+                            n_clicks=0,
+                            color="red",
+                            variant="light",
+                            disabled=locked,
+                        ),
+                    ],
+                    title="Unexpected fields",
+                    color="red",
+                )
+            )
     elif spec.kind in ("list", "mapping"):
         value_index = 0
         for index, entry in enumerate(node["entries"]):

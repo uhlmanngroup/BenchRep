@@ -276,3 +276,38 @@ def test_optional_json_containers_preserve_empty(annotation, value):
     raw, errors = collect_node(spec, new_node(spec, value))
     assert raw == value
     assert not errors
+
+
+def test_remove_unexpected_fields_preserves_declared_values():
+    class Settings(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        enabled: bool = False
+
+    spec = editor_spec(Settings)
+    node = new_node(spec, {"enabled": True, "enabld": False})
+
+    # Keep the unexpected key until the user explicitly removes it.
+    raw, errors = collect_node(spec, node)
+    assert not errors
+    assert raw == {"enabled": True, "enabld": False}
+    assert ("enabld",) in validate_value(Settings, raw)
+
+    assert edit_node(spec, node, node["id"], "remove_unexpected", None)
+
+    raw, errors = collect_node(spec, node)
+    assert raw == {"enabled": True}
+    assert not errors
+    assert not validate_value(Settings, raw)
+    assert node["extra_text"] == "{}"
+
+    # Repeating the action has no effect.
+    assert not edit_node(spec, node, node["id"], "remove_unexpected", None)
+
+
+def test_remove_unexpected_fields_preserves_allowed_extras():
+    spec = editor_spec(Example)
+    node = new_node(spec, {"custom_option": 137})
+    before = deepcopy(node)
+
+    assert not edit_node(spec, node, node["id"], "remove_unexpected", None)
+    assert node == before
