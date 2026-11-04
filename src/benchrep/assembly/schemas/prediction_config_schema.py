@@ -244,14 +244,33 @@ class PredictionDataConfig(_PredictionConfigBaseModel):
 class CompositeModelAssemblyInputOverrideConfig(
     _PredictionConfigBaseModel
 ):
-    """Overrides selected input routes for one composite assembly step."""
+    """Reroutes selected inputs of one existing Composite assembly step.
+
+    The enclosing mapping identifies the assembly step. Unspecified input
+    routes remain unchanged. Components and output bindings are preserved.
+    """
 
     inputs: dict[str, str] = Field(
         min_length=1,
         description=(
-            "Mapping from component forward-parameter names to replacement "
-            "composite graph references such as `produces.z_mu`."
+            "Mapping from existing component forward-parameter names to "
+            "replacement `produces.<name>` references."
         ),
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+            "notes": [
+                "The mapping must contain at least one replacement.",
+                "Only inputs currently routed from `produces.*` can be changed.",
+                "The original and replacement outputs must come from the "
+                "same producer assembly step.",
+                "The modified graph must still satisfy component runtime "
+                "contracts and semantic-role compatibility.",
+                "For example, a decoder input may be rerouted from a sampled "
+                "latent to the posterior mean when both are compatible "
+                "outputs of the same variational-head step.",
+            ],
+        },
     )
 
 
@@ -416,7 +435,18 @@ class PredictionInferenceConfig(_PredictionConfigBaseModel):
 # Transform config
 # -------------------------
 class PredictionTransformStepConfig(NamedConfig):
-    """Select one transform step within a prediction pipeline."""
+    """Selects and configures one registered prediction transform.
+
+    `params` are passed as keyword arguments to the registered constructor.
+    The constructed object must be callable and return a tensor when executed
+    within a BenchRep transform pipeline.
+
+    All steps belong to the prediction pipeline; no `apply_to` field is used.
+
+    Use `benchrep.inspect_registry("transform")` to list registered transforms,
+    or pass a transform name as the second argument to inspect its constructor
+    and documentation.
+    """
 
     random_apply: float = Field(
         default=1.0,
@@ -443,11 +473,72 @@ class PredictionTransformStepConfig(NamedConfig):
 
 
 class PredictionTransformPipelineConfig(_PredictionConfigBaseModel):
-    """Configure one routed prediction transform pipeline."""
+    """Configures one ordered, field-routed prediction transform pipeline.
 
-    input: str | None = None
-    output: str | None = None
-    steps: list[PredictionTransformStepConfig] = Field(min_length=1)
+    Pipelines execute in list order and read from the current sample mapping.
+    A later pipeline may therefore consume a field produced or overwritten
+    by an earlier pipeline.
+
+    Canonical models support only the route `x` to `x`. Either omit both
+    routing fields or explicitly set both to `x`.
+
+    Composite routes refer to image-valued declarations under the training
+    configuration's `composite_model_declarations.expects`. When `input` is
+    omitted, exactly one declaration must have role `sample_image`.
+    An omitted `output` uses the resolved input name.
+
+    When input and output differ, the input tensor is cloned before
+    transformation so that the source field remains unchanged. Existing
+    output fields are overwritten.
+    """
+
+    input: str | None = Field(
+        default=None,
+        description="Sample field from which this pipeline reads.",
+        json_schema_extra={
+            "omit_behavior": (
+                "Canonical models use `x`. Composite models use the unique "
+                "input declaration with role `sample_image`; an explicit "
+                "input is required when that role is ambiguous."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Use a bare field name, without an `expects.` prefix.",
+                "Canonical models require both routing fields to be "
+                "omitted or both explicitly set to `x`.",
+            ],
+        },
+    )
+
+    output: str | None = Field(
+        default=None,
+        description="Sample field receiving the transformed tensor.",
+        json_schema_extra={
+            "omit_behavior": (
+                "Uses the resolved input field. For canonical models, "
+                "both routing fields must be omitted together."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Composite outputs must name an image-valued declaration "
+                "under `composite_model_declarations.expects`.",
+                "Use a bare field name, without an `expects.` prefix.",
+                "An existing field with this name is overwritten.",
+            ],
+        },
+    )
+
+    steps: list[PredictionTransformStepConfig] = Field(
+        min_length=1,
+        description="Nonempty sequence of transforms applied in list order.",
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+            "notes": [
+                "Each step retains its own application probability.",
+            ],
+        },
+    )
 
     @field_validator("input", "output")
     @classmethod
@@ -1011,8 +1102,8 @@ class PredictionConfig(_PredictionConfigBaseModel):
         default_factory=PredictionDataConfig,
         description=(
             "Prediction batching, data-loading, and batch-limiting settings. "
-            "This section is ignored when an external prediction datamodule is "
-            "supplied."
+            "`batch_size` and `num_workers` are ignored when an external "
+            "prediction datamodule is supplied. `max_batches` still applies."
         ),
         json_schema_extra={
             "omit_behavior": "Uses the defaults defined by `PredictionDataConfig`.",
@@ -1024,7 +1115,8 @@ class PredictionConfig(_PredictionConfigBaseModel):
         default_factory=PredictionInferenceConfig,
         description=(
             "Prediction randomness, deterministic execution, float32 "
-            "matrix-multiplication precision, and VAE reconstruction behavior."
+            "matrix-multiplication precision, canonical VAE reconstruction "
+            "behavior, and Composite assembly input rerouting."
         ),
         json_schema_extra={
             "omit_behavior": (
