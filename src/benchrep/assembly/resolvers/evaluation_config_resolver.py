@@ -983,16 +983,20 @@ def resolve_step_spec(
         external_clustering_label_key=evaluation_config.metrics.clustering.external.label_key,
     )
 
-    # Guard against key collision for kNNs of UMAP and Leiden (as current implementation is independent kNN ownership)
+    # Guard against key collision for kNNs of UMAP and Leiden.
+    # Each step owns its neighbor graph. Null parameters use backend defaults.
+    umap_neighbors_key = umap_params.get("neighbors_key", "neighbors")
+    leiden_neighbors_key = leiden_params.get("neighbors_key", "neighbors")
+
     if (
-            umap_enabled
-            and leiden_enabled
-            and umap_params["neighbors_key"] == leiden_params["neighbors_key"]
-            and not leiden_params.get("overwrite", False)
+        umap_enabled
+        and leiden_enabled
+        and umap_neighbors_key == leiden_neighbors_key
+        and not leiden_params.get("overwrite", False)
     ):
         raise ValueError(
             "UMAP and Leiden are both enabled and both resolve to the same "
-            f"neighbors_key: {umap_params['neighbors_key']!r}. "
+            f"neighbors_key: {umap_neighbors_key!r}. "
             "BenchRep evaluation steps currently own their own kNN graphs. "
             "Use distinct neighbors_key values, or set "
             "clustering.leiden.params.overwrite=True if you intentionally want "

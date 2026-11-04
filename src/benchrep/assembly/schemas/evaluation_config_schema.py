@@ -2746,7 +2746,7 @@ class EvaluationPredictabilityTargetConfig(_EvaluationConfigBaseModel):
     )
 
 
-class EvaluationPredictabilityConfig(EvaluationStepConfig):
+class EvaluationPredictabilityConfig(_EvaluationConfigBaseModel):
     """Configures embedding predictability for one or more targets.
 
     Each key in `targets` names an `adata.obs` column. Every configured target
