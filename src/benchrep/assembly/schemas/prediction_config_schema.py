@@ -561,11 +561,35 @@ PredictionOutputKey = Annotated[
 
 
 class PredictionAnnDataExportConfig(_PredictionConfigBaseModel):
-    """Configures export of non-image prediction outputs to AnnData.
+    """Configures export of non-image prediction outputs to `anndata.h5ad`.
 
-    `all` selects every supported non-image output. `custom` selects the
-    explicitly configured output keys. Model-dependent key and primary-key
-    resolution occurs later, when the linked training model is known.
+    The selected primary vector-valued output becomes `adata.X`. Other
+    selected vector-valued outputs are stored in `adata.obsm` under their
+    output names. Selected scalar outputs become columns in `adata.obs`.
+    Image-valued outputs cannot be selected for AnnData export.
+
+    Canonical autoencoders support `embedding`. Canonical VAEs also support
+    `z_mu`, `z_logvar`, and `z_sample`. In `all` mode, VAEs export `embedding`,
+    `z_logvar`, and `z_sample`, omitting the redundant `z_mu` representation.
+    Custom selection may explicitly include `z_mu`.
+
+    Composite models select outputs declared under
+    `composite_model_declarations.produces`. Their primary key must be
+    explicitly configured and must identify a selected vector-valued output.
+    Canonical models default to `embedding`, which must also be selected.
+
+    Output selection does not control contextual observation annotations.
+    Canonical annotations come from available `sample_id`, `label`, and
+    `metadata` fields. Composite annotations include declared scalar inputs
+    and group metadata. An optional metadata declaration with role `index`
+    supplies the observation index. Conflicting Composite observation names
+    are rejected.
+
+    Key availability and primary-key compatibility are checked during
+    prediction configuration resolution using the linked training model.
+
+    When export is disabled, selection settings have no runtime effect,
+    but supplied values must still satisfy their field types and constraints.
     """
 
     enabled: bool = Field(
@@ -583,8 +607,9 @@ class PredictionAnnDataExportConfig(_PredictionConfigBaseModel):
     mode: Literal["all", "custom"] | None = Field(
         default=None,
         description=(
-            "Output selection mode. `all` exports every supported non-image "
-            "output, while `custom` exports only `keys`."
+            "Output selection mode. `all` selects supported non-image outputs "
+            "using model-family rules; canonical VAEs omit redundant `z_mu`. "
+            "`custom` selects the outputs listed in `keys`."
         ),
         json_schema_extra={
             "omit_behavior": "Equivalent to `all`.",
@@ -610,6 +635,11 @@ class PredictionAnnDataExportConfig(_PredictionConfigBaseModel):
                 "Custom key lists must be non-empty and contain no duplicates.",
                 "Keys are validated against the linked model during prediction "
                 "configuration resolution.",
+                "Composite keys are bare names from "
+                "`composite_model_declarations.produces`, without a "
+                "`produces.` prefix.",
+                "This selection controls model outputs, not the contextual "
+                "observation annotations included automatically.",
             ],
         },
     )
@@ -631,6 +661,11 @@ class PredictionAnnDataExportConfig(_PredictionConfigBaseModel):
                 "The primary key must resolve to a selected vector-valued output.",
                 "With `mode='custom'`, an explicit primary key must be included "
                 "in `keys`.",
+                "The primary output is stored in `adata.X` and is not also "
+                "copied into `adata.obsm`.",
+                "Canonical models default to `embedding` even in custom "
+                "mode. If `embedding` is not selected, configure another "
+                "selected vector-valued output as the primary key.",
             ],
         },
     )
