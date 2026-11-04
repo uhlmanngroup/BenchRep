@@ -599,34 +599,74 @@ PredictionReconstructionFieldName = Annotated[
 
 
 class PredictionReconstructionPairConfig(_PredictionConfigBaseModel):
-    """Declares one input/reconstruction artifact pair."""
+    """Selects the input and reconstruction belonging to one export bundle.
 
-    input: PredictionReconstructionFieldName
-    reconstruction: PredictionReconstructionFieldName
+    The enclosing `pairs` mapping supplies the bundle's identifier.
+    References use bare names rather than graph-wiring expressions.
+    """
+
+    input: PredictionReconstructionFieldName = Field(
+        description=(
+            "Input field exported for this pair. Canonical models require "
+            "`input`. Composite models require an image-valued declaration "
+            "under `composite_model_declarations.expects`."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+            "notes": [
+                "Use the bare field name, without an `expects.` prefix.",
+            ],
+        },
+    )
+
+    reconstruction: PredictionReconstructionFieldName = Field(
+        description=(
+            "Reconstruction field exported for this pair. Canonical models "
+            "require `reconstruction`. Composite models require a declaration "
+            "with role `reconstruction_image` under "
+            "`composite_model_declarations.produces`."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+            "notes": [
+                "Use the bare field name, without a `produces.` prefix.",
+            ],
+        },
+    )
 
 
 class PredictionReconstructionsExportConfig(_PredictionConfigBaseModel):
-    """Configures export of selected inputs and model reconstructions.
+    """Configures export of input/reconstruction tensor bundles.
 
-    The exported tensors come from the `input` and `reconstruction` fields
-    returned by the model's `predict_step()` for each batch. BenchRep
-    concatenates these fields across prediction batches, selects the requested
-    examples, and writes the selected tensors as separate `.pt` artifacts.
+    Reconstruction export is disabled by default and must be explicitly
+    enabled. It is independent of AnnData export.
 
-    Reconstruction export also writes `obs.pt`, containing the selected source
-    indices and any available `sample_id`, `label`, and metadata fields, plus a
-    metadata artifact describing the selection and exported tensors.
+    In `all` mode, canonical models export the fixed `input` and
+    `reconstruction` pair. Composite models infer pairs from the input and
+    output references wired into their configured reconstruction losses.
+    Each such loss must identify exactly one image-valued input and one
+    output with role `reconstruction_image`. Duplicate inferred pairs are
+    exported only once.
 
-    Unlike embedding-key selection, these settings are not altered by the
-    parent `exports.mode`.
+    Use `custom` mode to select pairs explicitly, including when a Composite
+    model has no reconstruction losses or its loss wiring is ambiguous.
+    Pair fields use bare names, without `expects.` or `produces.` prefixes.
 
-    When `enabled` is omitted or null, BenchRep determines reconstruction
-    availability from the model family's expected prediction-output contract.
-    Reconstruction export is enabled when that contract declares a
-    `reconstruction` field and disabled otherwise. Setting `enabled` to true
-    for an unsupported model family raises during configuration resolution.
-    When export is explicitly or automatically disabled, the remaining settings
-    in this section have no effect.
+    Each pair is exported into a separate bundle. Depending on the include
+    flags, a bundle contains `input.pt`, `reconstruction.pt`, or both.
+    It also contains `obs.pt` with source indices and available contextual
+    observations, and `reconstruction_export_metadata.pt` describing the
+    selection and exported tensors.
+
+    Example selection is applied to the samples collected during prediction.
+    Evaluation of a reconstruction bundle requires both its input and
+    reconstruction artifacts, even though prediction permits exporting
+    either independently.
+
+    When export is disabled, the remaining settings have no runtime effect,
+    but supplied values must still satisfy their field types and constraints.
     """
 
     enabled: bool = Field(
@@ -644,8 +684,9 @@ class PredictionReconstructionsExportConfig(_PredictionConfigBaseModel):
     mode: Literal["all", "custom"] | None = Field(
         default=None,
         description=(
-            "Pair selection mode. `all` derives every supported reconstruction "
-            "pair, while `custom` uses the explicitly configured `pairs`."
+            "Pair selection mode. `all` selects the canonical input/reconstruction "
+            "pair or infers Composite pairs from reconstruction-loss wiring. "
+            "`custom` uses the explicitly configured `pairs`."
         ),
         json_schema_extra={
             "omit_behavior": "Equivalent to `all`.",
@@ -764,8 +805,8 @@ class PredictionReconstructionsExportConfig(_PredictionConfigBaseModel):
     include_input: bool = Field(
         default=True,
         description=(
-            "Whether selected values from the `input` field returned by "
-            "`predict_step()` are written to `input.pt`."
+            "Whether selected input tensors for each pair are written to "
+            "`input.pt` in that pair's reconstruction bundle."
         ),
         json_schema_extra={
             "omit_behavior": "Exports selected model inputs.",
@@ -1014,7 +1055,10 @@ class PredictionConfig(_PredictionConfigBaseModel):
 
     exports: PredictionExportConfig = Field(
         default_factory=PredictionExportConfig,
-        description="Prediction embedding and reconstruction artifact settings.",
+        description=(
+            "Settings for AnnData export of non-image prediction outputs "
+            "and export of input/reconstruction tensor bundles."
+        ),
         json_schema_extra={
             "omit_behavior": "Uses the defaults defined by `PredictionExportConfig`.",
             "null_behavior": "Not allowed.",
