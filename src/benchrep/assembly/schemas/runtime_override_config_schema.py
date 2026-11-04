@@ -10,7 +10,16 @@ from pydantic import (
 
 
 class RuntimeComponentOverrideConfig(BaseModel):
-    """Configuration for an externally supplied component."""
+    """Declares constructor arguments for an externally supplied component.
+
+    This configuration does not contain or instantiate the Python component.
+    Supply the actual model or datamodule through the workflow's
+    `TrainingOverrides` or `PredictionOverrides` object.
+
+    When the supplied component is a class, `params` provides its constructor
+    keyword arguments. When it is an already constructed instance, `params`
+    must be empty.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -32,7 +41,24 @@ class RuntimeComponentOverrideConfig(BaseModel):
 
 
 class RuntimeOverridesConfig(BaseModel):
-    """Records external components required to reconstruct a workflow."""
+    """Declares external model and datamodule requirements in configuration.
+
+    A non-null component entry declares that the workflow requires that
+    component to be supplied through Python. An empty mapping declares the
+    requirement without supplying constructor arguments.
+
+    These declarations allow schema validation without requiring the
+    corresponding config-built component sections. Workflow resolution
+    subsequently checks that the required external components were actually
+    supplied.
+
+    This schema is distinct from the `TrainingOverrides` and
+    `PredictionOverrides` objects passed to workflow entrypoints. Those
+    objects carry actual Python components and configuration overrides.
+
+    Whole-model overrides are supported only by canonical autoencoder and
+    VAE workflows. Composite models are assembled from configuration.
+    """
 
     model_config = ConfigDict(extra="forbid")
 

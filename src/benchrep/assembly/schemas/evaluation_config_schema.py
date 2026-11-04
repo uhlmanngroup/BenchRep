@@ -277,16 +277,20 @@ class EvaluationSourceConfig(_EvaluationConfigBaseModel):
             ),
             "null_behavior": "Equivalent to omission.",
             "notes": [
-                "`adata.X` is the representation consumed by dimensionality "
-                "reduction, clustering, embedding metrics, and predictability "
-                "probes.",
+                "`adata.X` is the primary representation evaluated by the "
+                "workflow. PCA, KMeans, HDBSCAN, embedding metrics, clustering "
+                "metrics, and predictability probes consume it directly.",
                 "`adata.obs` may provide labels, predictability targets, "
                 "cross-validation groups, and plotting metadata.",
-                "`adata.obsm` entries are preserved but are not analyzed by "
-                "the evaluation workflow.",
-                "To evaluate another representation, export it as the prediction "
-                "primary key or provide an AnnData artifact with that "
-                "representation in `adata.X`.",
+                "`adata.obsm` entries are preserved. UMAP, t-SNE, and Leiden "
+                "can consume them through `use_rep`; automatic Scanpy "
+                "representation selection may also reuse or compute PCA.",
+                "Selecting `use_rep` changes only the corresponding step's "
+                "input representation; it does not change `adata.X` or the "
+                "representation used by other evaluation steps.",
+                "To evaluate another representation consistently across "
+                "methods, export it as the prediction primary key or provide "
+                "an AnnData artifact with that representation in `adata.X`.",
                 "A directly configured path overrides the AnnData path recorded "
                 "in the prediction manifest.",
             ],
@@ -743,9 +747,9 @@ class EvaluationUMAPParams(_EvaluationConfigBaseModel):
 class EvaluationUMAPConfig(EvaluationStepConfig):
     """Configures the optional Scanpy UMAP evaluation step.
 
-    UMAP requires anndata and the optional Scanpy dependency. It is disabled
-    by default and is skipped with a warning if explicitly enabled without
-    anndata.
+    UMAP requires AnnData and the optional Scanpy dependency. It is disabled
+    by default. Explicitly enabling it without AnnData raises an error
+    during configuration resolution.
     """
 
     enabled: bool | None = Field(
@@ -1024,8 +1028,8 @@ class EvaluationKMeansConfig(EvaluationStepConfig):
     """Configures the optional scikit-learn KMeans evaluation step.
 
     KMeans clusters `adata.X` directly and does not consume reduction outputs.
-    It is disabled by default and is skipped with a warning if explicitly
-    enabled without anndata.
+    It is disabled by default. Explicitly enabling it without AnnData raises
+    an error during configuration resolution.
     """
 
     enabled: bool | None = Field(
@@ -1230,10 +1234,13 @@ class EvaluationLeidenParams(_EvaluationConfigBaseModel):
 class EvaluationLeidenConfig(EvaluationStepConfig):
     """Configures the optional Scanpy Leiden evaluation step.
 
-    Leiden constructs its own neighbor graph and does not cluster UMAP
-    coordinates. It requires anndata and the optional Scanpy, igraph, and
-    Leiden dependencies. The step is disabled by default and is skipped with a
-    warning if explicitly enabled without anndata.
+    Leiden constructs its own neighbor graph from its configured
+    representation. It does not automatically consume UMAP coordinates
+    or reuse the UMAP step's neighbor graph.
+
+    The step requires AnnData and the dependencies needed by the selected
+    Scanpy Leiden backend. It is disabled by default. Explicitly enabling
+    it without AnnData raises an error during configuration resolution.
     """
 
     enabled: bool | None = Field(
@@ -1381,11 +1388,12 @@ class EvaluationHDBSCANConfig(EvaluationStepConfig):
     """Configures the optional scikit-learn HDBSCAN evaluation step.
 
     HDBSCAN clusters `adata.X` directly and does not consume reduction outputs.
-    Noise observations are excluded from dependent clustering metrics. Producing
-    no non-noise clusters or only one non-noise cluster completes with warnings.
+    Noise observations are excluded from dependent clustering metrics.
+    Producing no non-noise clusters or only one non-noise cluster completes
+    with warnings.
 
-    The step is disabled by default and is skipped with a warning if explicitly
-    enabled without anndata.
+    The step is disabled by default. Explicitly enabling it without AnnData
+    raises an error during configuration resolution.
     """
 
     enabled: bool | None = Field(
@@ -2779,8 +2787,9 @@ class EvaluationPredictabilityConfig(_EvaluationConfigBaseModel):
         ),
         json_schema_extra={
             "omit_behavior": (
-                "Evaluates `adata.obs['label']` as a classification target using "
-                "the target-level defaults."
+                "Configures `adata.obs['label']` as a classification target "
+                "using target-level defaults. The target is evaluated only "
+                "when predictability is explicitly enabled."
             ),
             "null_behavior": "Not allowed.",
             "notes": [
@@ -2825,6 +2834,20 @@ class EvaluationMetricsConfig(_EvaluationConfigBaseModel):
 
     Each nested configuration resolves its own enablement, selection, parameters,
     prerequisites, and result-storage behavior.
+
+    Available results are consolidated into the exported `metrics.json`.
+    Its nested keys provide the lookup paths accepted by
+    `EvaluationWorkflowResult.get_metric(*path)`. The accessor reads the
+    corresponding in-memory results without loading the JSON file.
+
+    Pass mapping keys as strings and sequence indices as integers.
+    An empty path returns the complete collected metrics mapping. Paths may
+    select individual values, vectors, or entire result groups. Results for
+    disabled, skipped, or failed computations may be absent.
+
+    AnnData-derived metric groups appear at the JSON root. Reconstruction
+    results appear under `reconstruction`. JSON serialization may convert
+    in-memory arrays and scalar types into JSON-compatible representations.
     """
 
     clustering: EvaluationClusteringMetricsConfig = Field(
@@ -2949,17 +2972,63 @@ class EvaluationReconstructionGridConfig(_EvaluationConfigBaseModel):
 
 
 class ColorByConfig(_EvaluationConfigBaseModel):
+    """Configures observation-based coloring for reduction plots.
+
+    This expanded form provides explicit control over interpretation and
+    colormap selection. A plain string in `color_by` is equivalent to
+    specifying only `key`.
+    """
+
     key: Annotated[
         str,
         StringConstraints(strip_whitespace=True, min_length=1),
-    ]
+    ] = Field(
+        description="AnnData observation column used to color the projection.",
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+            "notes": [
+                "Columns unavailable when plots are exported are skipped.",
+            ],
+        },
+    )
 
-    kind: Literal["auto", "categorical", "continuous"] = "auto"
+    kind: Literal["auto", "categorical", "continuous"] = Field(
+        default="auto",
+        description="How the observation values are interpreted for coloring.",
+        json_schema_extra={
+            "omit_behavior": "Infers categorical or continuous coloring.",
+            "null_behavior": "Not allowed.",
+            "notes": [
+                "Automatic inference treats categorical, string, object, "
+                "and boolean columns as categorical.",
+                "Numeric columns with at most one distinct non-missing "
+                "value are categorical.",
+                "Integer or integer-like numeric columns with at most "
+                "30 distinct non-missing values are categorical; other "
+                "numeric columns are continuous.",
+                "Choose an explicit kind when automatic inference does "
+                "not match the meaning of the column.",
+            ],
+        },
+    )
 
     cmap: Annotated[
         str,
         StringConstraints(strip_whitespace=True, min_length=1),
-    ] | None = None
+    ] | None = Field(
+        default=None,
+        description="Matplotlib colormap name used for this coloring field.",
+        json_schema_extra={
+            "omit_behavior": "Uses the default colormap for the resolved kind.",
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "Continuous coloring defaults to `plasma`.",
+                "Categorical coloring uses `tab20`, with `nipy_spectral` "
+                "used for higher category counts.",
+            ],
+        },
+    )
 
 
 class EvaluationPlotParams(_EvaluationConfigBaseModel):
@@ -2996,7 +3065,10 @@ class EvaluationPlotParams(_EvaluationConfigBaseModel):
                 "Omitting `cmap` uses the default colormap for the resolved kind.",
                 "Clustering output keys and the external-metric label key are added "
                 "automatically when relevant.",
-                "Duplicate and blank names are removed.",
+                "Duplicate keys retain the first entry. Explicit user entries "
+                "precede automatically added clustering and label entries.",
+                "Blank string entries are ignored. Expanded entries require "
+                "a nonblank `key`.",
                 "Fields unavailable when plots are exported are skipped.",
             ],
         },
