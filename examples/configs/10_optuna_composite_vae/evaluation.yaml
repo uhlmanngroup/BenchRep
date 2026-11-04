@@ -1,0 +1,38 @@
+stage: evaluation
+source:
+  prediction_manifest_path: null
+reductions:
+  pca:
+    enabled: false
+  umap:
+    enabled: false
+  tsne:
+    enabled: false
+clustering:
+  kmeans:
+    enabled: true
+    params:
+      n_clusters: 10
+      n_init: 10
+      random_state: 137
+      key_added: kmeans
+  leiden:
+    enabled: false
+  hdbscan:
+    enabled: false
+metrics:
+  clustering:
+    internal:
+      enabled: false
+    external:
+      enabled: true
+      label_key: label
+      selected: [adjusted_mutual_info]
+  embedding:
+    enabled: false
+  predictability:
+    enabled: false
+  reconstruction:
+    enabled: false
+plots:
+  enabled: false

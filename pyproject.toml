@@ -25,6 +25,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+optuna = [
+    "optuna>=4,<6",
+    "optuna-integration[pytorch-lightning]>=4,<6",
+]
 gui = [
     "dash==3.4.0",
     "dash-pydantic-form==0.18.3",
