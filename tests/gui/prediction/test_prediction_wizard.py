@@ -547,3 +547,40 @@ def test_prediction_launcher_selects_factory_and_retains_policy(monkeypatch):
     assert (
         captured["overrides"] is override and captured["compatibility_policy"] == "warn"
     )
+
+
+@pytest.mark.parametrize(
+    "metadata_fields",
+    [
+        pytest.param({}, id="omitted"),
+        pytest.param({"batch_metadata": None}, id="null"),
+        pytest.param({"batch_metadata": {}}, id="empty"),
+        pytest.param(
+            {"batch_metadata": {"sample_id": "index", "subject": "group"}},
+            id="populated",
+        ),
+    ],
+)
+def test_stratification_suggestions_accept_optional_metadata(
+    source_factory, metadata_fields
+):
+    path, manifest = source_factory()
+    declarations = manifest["appendix"]["resolved_config"][
+        "composite_model_declarations"
+    ]
+    declarations.pop("batch_metadata", None)
+    declarations.update(metadata_fields)
+    path.write_text(yaml.safe_dump(manifest))
+
+    context, draft = context_for(path)
+    before = deepcopy(draft)
+
+    guide = context.presentation(
+        ("exports", "reconstructions", "stratify_by"),
+        None,
+        draft,
+    )
+
+    metadata = metadata_fields.get("batch_metadata") or {}
+    assert set(guide.suggestions) == {"label", *metadata}
+    assert draft == before

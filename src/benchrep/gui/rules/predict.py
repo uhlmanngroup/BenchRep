@@ -622,7 +622,7 @@ class PredictionSourceContext:
                         n
                         for n, r in expects.items()
                         if TENSOR_STRUCTURE_BY_ROLE[r] == "scalar"
-                    ) + tuple(declarations.batch_metadata)
+                    ) + tuple(declarations.batch_metadata or {})
                 elif not composite and self.overrides.model is None:
                     suggestions = ("sample_id", "label")
                 guide = replace(guide, suggestions=suggestions)

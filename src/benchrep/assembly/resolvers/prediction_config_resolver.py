@@ -1366,9 +1366,11 @@ def _resolve_composite_anndata_observations(
     model inputs, and declared batch metadata. At most one metadata field may
     provide the AnnData observation index.
     """
+    batch_metadata = declarations.batch_metadata or {}
+
     index_names = [
         name
-        for name, role in declarations.batch_metadata.items()
+        for name, role in batch_metadata.items()
         if role == "index"
     ]
 
@@ -1402,7 +1404,7 @@ def _resolve_composite_anndata_observations(
                 source="batch_metadata",
                 use_as_index=role == "index",
             )
-            for name, role in declarations.batch_metadata.items()
+            for name, role in batch_metadata.items()
         ]
     )
 
@@ -1445,7 +1447,7 @@ def _resolve_composite_reconstruction_observations(
                 name=name,
                 source="batch_metadata",
             )
-            for name in declarations.batch_metadata
+            for name in (declarations.batch_metadata or {})
         ]
     )
 

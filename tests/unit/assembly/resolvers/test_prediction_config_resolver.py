@@ -9,6 +9,8 @@ from benchrep.assembly.resolvers.prediction_config_resolver import (
     _apply_composite_model_assembly_input_overrides,
     _resolve_prediction_composite_model_spec,
     _resolve_prediction_transform_pipelines,
+    _resolve_composite_anndata_observations,
+    _resolve_composite_reconstruction_observations,
 )
 from benchrep.assembly.schemas import (
     CompositeModelAssemblyInputOverrideConfig,
@@ -503,3 +505,54 @@ def _build_composite_training_config_with_transforms(
             },
         ),
     )
+
+
+@pytest.mark.parametrize(
+    "metadata_fields",
+    [
+        pytest.param({}, id="omitted"),
+        pytest.param({"batch_metadata": None}, id="null"),
+        pytest.param({"batch_metadata": {}}, id="empty"),
+        pytest.param(
+            {"batch_metadata": {"sample_id": "index", "subject": "group"}},
+            id="populated",
+        ),
+    ],
+)
+def test_composite_export_observations_accept_optional_metadata(metadata_fields):
+    declarations = CompositeModelDeclarationsConfig(
+        expects={
+            "x": "sample_image",
+            "label": "categorical_prediction_target_scalar",
+        },
+        produces={"embedding": "embedding_vector"},
+        **metadata_fields,
+    )
+    before = declarations.model_dump()
+    metadata = metadata_fields.get("batch_metadata") or {}
+
+    anndata_observations = _resolve_composite_anndata_observations(
+        declarations=declarations,
+        selected_keys=("embedding",),
+        output_structures_by_key={"embedding": "vector"},
+    )
+    reconstruction_observations = _resolve_composite_reconstruction_observations(
+        declarations=declarations,
+    )
+
+    # Scalar inputs remain available even when no metadata is declared.
+    expected_sources = {
+        "label": "model_input",
+        **{name: "batch_metadata" for name in metadata},
+    }
+    for observations in (anndata_observations, reconstruction_observations):
+        assert {item.name: item.source for item in observations} == expected_sources
+
+    # Only index-role metadata supplies the AnnData observation index.
+    assert {
+        item.name for item in anndata_observations if item.use_as_index
+    } == {
+        name for name, role in metadata.items() if role == "index"
+    }
+
+    assert declarations.model_dump() == before
