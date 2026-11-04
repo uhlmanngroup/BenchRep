@@ -74,7 +74,7 @@ from benchrep.assembly.schemas import (
     EvaluationUMAPConfig,
     EvaluationUMAPParams,
 )
-
+from benchrep.records import print_divider
 
 def build_training_config() -> TrainingConfig:
     return TrainingConfig(
@@ -375,14 +375,15 @@ def build_evaluation_config(
 
 
 def main() -> None:
-    print("\n=== Training ===")
     training_config = build_training_config()
+
+    print_divider("Pipeline", major=True)
+
     training_result = train_vae(
         config=training_config,
     )
     print(f"Training manifest: {training_result.manifest_path}")
 
-    print("\n=== Prediction ===")
     # Here the generated training manifest is stored directly in the prediction
     # config. A manifest path can also be passed to predict_vae() through its
     # overrides=PredictionOverrides(training_manifest_path=...) argument.
@@ -394,7 +395,6 @@ def main() -> None:
     )
     print(f"Prediction manifest: {prediction_result.manifest_path}")
 
-    print("\n=== Evaluation ===")
     # Likewise, this stores the generated prediction manifest directly in the
     # evaluation config. EvaluationOverrides(prediction_manifest_path=...)
     # passed as `overrides` can override it.
@@ -406,7 +406,7 @@ def main() -> None:
     )
     print(f"Evaluation manifest: {evaluation_result.manifest_path}")
 
-    print("\n=== Pipeline complete ===")
+    print_divider("Pipeline", end=True, major=True)
     print(f"Training outputs:   {training_result.run_context.output_dir}")
     print(f"Prediction outputs: {prediction_result.run_context.output_dir}")
     print(f"Evaluation outputs: {evaluation_result.run_context.output_dir}")

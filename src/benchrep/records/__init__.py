@@ -3,6 +3,7 @@ from benchrep.records.logs import (
     capture_console_streams,
     setup_run_logger,
     get_run_logger,
+    print_divider,
 )
 from benchrep.records.manifests import (
     write_training_manifest,
@@ -37,6 +38,7 @@ __all__ = [
     "capture_console_streams",
     "setup_run_logger",
     "get_run_logger",
+    "print_divider",
     "write_training_manifest",
     "write_prediction_manifest",
     "write_evaluation_manifest",

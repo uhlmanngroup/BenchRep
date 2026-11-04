@@ -46,6 +46,7 @@ from benchrep.records import (
     write_runtime_environment,
     ModelGraphDependencyError,
     export_composite_model_spec_graph,
+    print_divider,
 )
 from benchrep.records.utils import now_isoformat
 from benchrep.interfaces.model_families import (
@@ -162,6 +163,8 @@ def _train(
         compatibility_policy: CompatibilityPolicy = "error",
         capture_stdout: bool = False,
 ) -> TrainingWorkflowResult:
+
+    print_divider("training")
 
     config_components = overrides.config_components
     model = overrides.model
@@ -628,6 +631,8 @@ def _train(
             f"{'; '.join(training_errors)} "
             f"The failure manifest was written to '{manifest_path}'."
         )
+
+    print_divider("training", end=True)
 
     return TrainingWorkflowResult(
         config=resolved_training_config,

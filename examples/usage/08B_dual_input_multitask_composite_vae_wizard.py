@@ -32,6 +32,7 @@ from benchrep.architecture.composite_model_component_contracts import (
     ComponentTensorResult,
 )
 from benchrep.assembly.registries import DATASETS, HEADS
+from benchrep.records import print_divider
 
 example_08A = import_module("08A_dual_input_multitask_composite_vae_yaml")
 CONFIG_DIR = example_08A.CONFIG_DIR
@@ -66,10 +67,10 @@ def main() -> None:
         ),
     )
 
-    print("\n=== Training ===")
+    print_divider("Pipeline", major=True)
+
     # Launch configuration wizard for the training workflow.
     # Optionally use the YAML from usage example 08A as a base.
-
     print(
         "\nTIP: For a quick demonstration, navigate to Trainer in the wizard "
         "and change 'Maximum epochs' to 1 before checking and saving the configuration.\n"
@@ -98,7 +99,6 @@ def main() -> None:
     )
     print(f"Training manifest: {training_result.manifest_path}")
 
-    print("\n=== Prediction ===")
     # Launch configuration wizard for the prediction workflow.
     # Optionally, use the YAML from usage example 08A as a base and pass the training manifest path in the overrides.
     prediction_wizard_result = configure_workflow(
@@ -124,7 +124,6 @@ def main() -> None:
     )
     print(f"Prediction manifest: {prediction_result.manifest_path}")
 
-    print("\n=== Evaluation ===")
     # Launch configuration wizard for the evaluation workflow.
     # Optionally, use the YAML from usage example 08A as a base and pass the prediction manifest path in the overrides.
     evaluation_wizard_result = configure_workflow(
@@ -147,7 +146,7 @@ def main() -> None:
     )
     print(f"Evaluation manifest: {evaluation_result.manifest_path}")
 
-    print("\n=== Pipeline complete ===")
+    print_divider("Pipeline", end=True, major=True)
     print(f"Training outputs:   {training_result.run_context.output_dir}")
     print(f"Prediction outputs: {prediction_result.run_context.output_dir}")
     print(f"Evaluation outputs: {evaluation_result.run_context.output_dir}")

@@ -17,6 +17,7 @@ from benchrep import (
     PredictionOverrides,
     EvaluationOverrides,
 )
+from benchrep.records import print_divider
 
 
 
@@ -29,13 +30,13 @@ CONFIG_DIR = (
 
 
 def main() -> None:
-    print("\n=== Training ===")
+    print_divider("Pipeline", major=True)
+
     training_result = train_vae(
         config=CONFIG_DIR / "training.yaml",
     )
     print(f"Training manifest: {training_result.manifest_path}")
 
-    print("\n=== Prediction ===")
     prediction_result = predict_vae(
         config=CONFIG_DIR / "prediction.yaml",
         # Use the manifest generated above instead of hard-coding an output path
@@ -46,7 +47,6 @@ def main() -> None:
     )
     print(f"Prediction manifest: {prediction_result.manifest_path}")
 
-    print("\n=== Evaluation ===")
     evaluation_result = evaluate(
         config=CONFIG_DIR / "evaluation.yaml",
         # The prediction manifest supplies the exported AnnData,
@@ -57,7 +57,7 @@ def main() -> None:
     )
     print(f"Evaluation manifest: {evaluation_result.manifest_path}")
 
-    print("\n=== Pipeline complete ===")
+    print_divider("Pipeline", end=True, major=True)
     print(f"Training outputs:   {training_result.run_context.output_dir}")
     print(f"Prediction outputs: {prediction_result.run_context.output_dir}")
     print(f"Evaluation outputs: {evaluation_result.run_context.output_dir}")

@@ -103,7 +103,6 @@ def describe_evaluation_inputs() -> None:
 def main() -> None:
     describe_evaluation_inputs()
 
-    print("\n=== Evaluation ===")
     # The YAML leaves its source paths unset so this example can demonstrate
     # supplying standalone evaluation artifacts through a config override.
     evaluation_result = evaluate(

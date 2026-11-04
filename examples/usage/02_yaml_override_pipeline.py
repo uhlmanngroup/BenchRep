@@ -30,6 +30,7 @@ from benchrep.assembly.schemas import (
     CIFAR10DatasetParams,
     TrainingConfig,
 )
+from benchrep.records import print_divider
 
 # Resolve config paths relative to this script.
 CONFIG_DIR = (
@@ -113,8 +114,9 @@ def main() -> None:
         },
     )
 
+    print_divider("Pipeline", major=True)
+
     # Configuration components prepared, we can now begin the pipeline
-    print("\n=== Training ===")
     training_result = train_vae(
         config=CONFIG_DIR / "training.yaml",
         # Mapping keys match the top-level field names in `TrainingConfig`.
@@ -137,7 +139,6 @@ def main() -> None:
     print(f"Training manifest: {training_result.manifest_path}")
     print(f"Resolved training config: {resolved_training_config_path}")
 
-    print("\n=== Prediction ===")
     prediction_result = predict_vae(
         config=CONFIG_DIR / "prediction.yaml",
         overrides=PredictionOverrides(
@@ -153,7 +154,6 @@ def main() -> None:
     )
     print(f"Prediction manifest: {prediction_result.manifest_path}")
 
-    print("\n=== Evaluation ===")
     evaluation_result = evaluate(
         config=CONFIG_DIR / "evaluation.yaml",
         # The prediction manifest supplies the exported AnnData,
@@ -164,7 +164,7 @@ def main() -> None:
     )
     print(f"Evaluation manifest: {evaluation_result.manifest_path}")
 
-    print("\n=== Pipeline complete ===")
+    print_divider("Pipeline", end=True, major=True)
     print(f"Training outputs:   {training_result.run_context.output_dir}")
     print(f"Prediction outputs: {prediction_result.run_context.output_dir}")
     print(f"Evaluation outputs: {evaluation_result.run_context.output_dir}")

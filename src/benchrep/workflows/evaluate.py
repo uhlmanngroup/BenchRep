@@ -25,6 +25,7 @@ from benchrep.records import (
     get_runtime_environment_filename,
     collect_evaluation_environment_context,
     write_runtime_environment,
+    print_divider,
 )
 from benchrep.records.evaluation_exports import collect_evaluation_metrics
 from benchrep.records.utils import now_isoformat
@@ -80,6 +81,9 @@ def evaluate(
         overrides: EvaluationOverrides | None = None,
         capture_stdout: bool = False,
 ) -> EvaluationWorkflowResult:
+
+    print_divider("evaluation")
+
     overrides = overrides if overrides is not None else EvaluationOverrides()
     config_components = overrides.config_components
     prediction_manifest_path = overrides.prediction_manifest_path
@@ -335,6 +339,8 @@ def evaluate(
         workflow_status=status_report.status,
         summary=evaluation_manifest["outcome_summary"],
     )
+
+    print_divider("evaluation", end=True)
 
     return EvaluationWorkflowResult(
         config=run_spec.evaluation_config,

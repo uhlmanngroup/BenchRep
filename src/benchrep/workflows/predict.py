@@ -45,6 +45,7 @@ from benchrep.records import (
     write_runtime_environment,
     export_composite_model_spec_graph,
     ModelGraphDependencyError,
+    print_divider,
 )
 from benchrep.records.utils import now_isoformat
 from benchrep.records.prediction_exports import (
@@ -152,6 +153,8 @@ def _predict(
         compatibility_policy: CompatibilityPolicy = "error",
         capture_stdout: bool = False,
 ) -> PredictionWorkflowResult:
+
+    print_divider("prediction")
 
     config_components = overrides.config_components
     model = overrides.model
@@ -746,6 +749,8 @@ def _predict(
             f"{status_report.status!r}: {failure_summary}. "
             f"The manifest was written to '{manifest_path}'."
         )
+
+    print_divider("prediction", end=True)
 
     return PredictionWorkflowResult(
         config=resolved_prediction_config,

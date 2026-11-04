@@ -4,6 +4,8 @@ import sys
 import logging
 from contextlib import contextmanager
 from pathlib import Path
+from rich.console import Console
+from rich.text import Text
 from typing import Iterator, TextIO
 
 from benchrep.runtime import RunContext
@@ -166,3 +168,15 @@ def setup_run_logger(
 
 def get_run_logger() -> logging.Logger:
     return logging.getLogger(RUN_LOGGER_NAME)
+
+
+_console = Console()
+
+
+def print_divider(label: str, *, end: bool = False, major: bool = False) -> None:
+    color = "magenta" if major else "cyan"
+    title = Text(f"{'END' if end else 'BEGIN'} {label.upper()}", style=f"bold {color}")
+
+    _console.print()
+    _console.rule(title, characters="═" if major else "─", style=color)
+    _console.print()
