@@ -279,30 +279,70 @@ class TrainingDecoderConfig(NamedConfig):
 # Loss configuration
 # -------------------------
 class RampScheduleParams(_TrainingConfigBaseModel):
-    """Parameters shared by linear and cosine ramps."""
+    """Defines the positions and endpoint factors of a bounded ramp.
+
+    Position units are selected by the enclosing schedule's `interval`.
+    Before and at `start`, the factor is `start_factor`. At and after `end`,
+    it is `end_factor`. The selected schedule determines interpolation
+    between those positions.
+
+    The end position must be greater than the start position. Factors may
+    increase, decrease, or remain constant.
+    """
 
     start: int = Field(
         default=0,
         strict=True,
         ge=0,
         description="Position at which the ramp starts.",
+        json_schema_extra={
+            "omit_behavior": "Starts at position 0.",
+            "null_behavior": "Not allowed.",
+        },
     )
+
     end: int = Field(
         strict=True,
         gt=0,
         description="Position at which the ramp reaches its final factor.",
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+            "notes": [
+                "Must be greater than `start`.",
+                "With cycling enabled, must be less than `cycle.length`.",
+            ],
+        },
     )
+
     start_factor: float = Field(
         default=0.0,
         ge=0.0,
         allow_inf_nan=False,
         description="Multiplier held before and at the start position.",
+        json_schema_extra={
+            "omit_behavior": "Uses 0.0.",
+            "null_behavior": "Not allowed.",
+            "notes": [
+                "Multiplies the loss term's base weight.",
+                "Zero removes the loss contribution but retains computation "
+                "and logging.",
+            ],
+        },
     )
+
     end_factor: float = Field(
         default=1.0,
         ge=0.0,
         allow_inf_nan=False,
         description="Multiplier held at and after the end position.",
+        json_schema_extra={
+            "omit_behavior": "Uses 1.0, restoring the configured base weight.",
+            "null_behavior": "Not allowed.",
+            "notes": [
+                "May exceed one or be smaller than `start_factor`.",
+            ],
+        },
     )
 
     @model_validator(mode="after")
@@ -313,7 +353,11 @@ class RampScheduleParams(_TrainingConfigBaseModel):
 
 
 class SigmoidScheduleParams(RampScheduleParams):
-    """Endpoint-normalized sigmoid ramp."""
+    """Defines an endpoint-normalized sigmoid ramp.
+
+    Normalization makes the ramp reach the configured endpoint factors
+    exactly, rather than only approaching them asymptotically.
+    """
 
     steepness: float = Field(
         default=10.0,
@@ -323,22 +367,46 @@ class SigmoidScheduleParams(RampScheduleParams):
             "Steepness over the normalized ramp interval. Larger values "
             "concentrate the transition around its midpoint."
         ),
+        json_schema_extra={
+            "omit_behavior": "Uses a steepness of 10.0.",
+            "null_behavior": "Not allowed.",
+            "notes": [
+                "Changes the transition shape without changing its positions "
+                "or endpoint factors.",
+            ],
+        },
     )
 
 
 class ExponentialScheduleParams(RampScheduleParams):
-    """Geometric interpolation between strictly positive endpoint factors."""
+    """Defines geometric interpolation between positive endpoint factors.
+
+    Unlike the other ramps, this schedule cannot start or end at zero.
+    `start_factor` must be supplied explicitly.
+    """
 
     start_factor: float = Field(
         gt=0.0,
         allow_inf_nan=False,
-        description="Strictly positive multiplier at the start position.",
+        description="Strictly positive multiplier held before and at `start`.",
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+        },
     )
+
     end_factor: float = Field(
         default=1.0,
         gt=0.0,
         allow_inf_nan=False,
-        description="Strictly positive multiplier at the end position.",
+        description="Strictly positive multiplier held at and after `end`.",
+        json_schema_extra={
+            "omit_behavior": "Uses 1.0, restoring the configured base weight.",
+            "null_behavior": "Not allowed.",
+            "notes": [
+                "May be greater than, equal to, or smaller than `start_factor`.",
+            ],
+        },
     )
 
 
@@ -351,14 +419,33 @@ ScheduleFactor: TypeAlias = Annotated[
 
 
 class PiecewiseScheduleParams(_TrainingConfigBaseModel):
-    """Ordered position/factor pairs defining a trajectory."""
+    """Defines a schedule using ordered position/factor pairs.
+
+    `piecewise_linear` interpolates between consecutive milestones.
+    `piecewise_constant` holds each milestone's factor until the next one,
+    switching to the new factor at that milestone's position.
+
+    Before the first milestone and after the last, the nearest endpoint
+    factor is held.
+    """
 
     milestones: list[tuple[SchedulePosition, ScheduleFactor]] = Field(
         min_length=2,
         description=(
-            "Strictly increasing [position, factor] pairs. Outside the "
-            "milestone range, hold the nearest endpoint factor."
+            "At least two [position, factor] pairs with strictly increasing "
+            "nonnegative integer positions and finite, nonnegative factors."
         ),
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+            "notes": [
+                "Position units follow the enclosing schedule's `interval`.",
+                "The first position need not be zero.",
+                "Factors may increase, decrease, remain constant, or exceed one.",
+                "With cycling enabled, the last position must be less than "
+                "`cycle.length`.",
+            ],
+        },
     )
 
     @model_validator(mode="after")
@@ -372,15 +459,28 @@ class PiecewiseScheduleParams(_TrainingConfigBaseModel):
 
 
 class LossWeightScheduleCycleConfig(_TrainingConfigBaseModel):
-    """Repeat the schedule using a position local to each cycle."""
+    """Repeats a schedule using positions local to each cycle.
+
+    The wrapped schedule receives `position % length`, ranging from zero
+    through `length - 1`. Cycles start at training position zero and repeat
+    indefinitely. Resetting may produce a jump between endpoint factors.
+    """
 
     length: int = Field(
         strict=True,
         gt=0,
-        description=(
-            "Cycle length in the schedule's interval units. The schedule "
-            "receives position % length, resetting to zero each cycle."
-        ),
+        description="Cycle length in the enclosing schedule's interval units.",
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+            "notes": [
+                "For built-in ramps, `end` must be less than this length.",
+                "For piecewise schedules, the final milestone position must "
+                "be less than this length.",
+                "Custom schedules define their own parameter semantics; "
+                "BenchRep does not infer their endpoint positions.",
+            ],
+        },
     )
 
 
@@ -390,7 +490,32 @@ ScheduleParamsT = TypeVar("ScheduleParamsT")
 class TrainingLossWeightScheduleConfig(
     _TrainingConfigBaseModel, Generic[ScheduleParamsT]
 ):
-    """Common configuration for a registered loss-weight schedule."""
+    """Configures a registered multiplier for a loss term's base weight.
+
+    The effective loss weight is `weight * schedule.factor(position)`.
+    Factors must be finite and nonnegative, but may exceed one. Scheduling
+    changes the loss contribution without disabling its computation.
+
+    Position is either the zero-based epoch index or the number of completed
+    optimizer steps, selected by `interval`. The same schedule is evaluated
+    during training and validation using the model's current position.
+    Consequently, scheduled weights also affect weighted validation losses
+    used for checkpointing or early stopping.
+
+    Built-in ramps hold their endpoint factors outside the configured ramp
+    interval. Piecewise schedules hold their nearest endpoint factor outside
+    the milestone range. An optional cycle repeats the schedule from position
+    zero rather than holding its final factor indefinitely.
+
+    Use `benchrep.inspect_registry("loss_weight_schedule")` to discover
+    registered schedules, or supply a schedule name as the second argument
+    to inspect its constructor and contract.
+
+    Custom schedules receive constructor parameters from `params` and expose
+    `factor(position)`. They do not receive the model, batch, or logged metrics.
+    Their registrations must be available in each process that reconstructs
+    the model.
+    """
 
     name: str = Field(
         description="Registered schedule name.",
@@ -401,6 +526,18 @@ class TrainingLossWeightScheduleConfig(
     )
     params: ScheduleParamsT = Field(
         description="Constructor parameters for the selected schedule.",
+        json_schema_extra={
+            "omit_behavior": (
+                "Required for built-in schedules. Custom schedules default "
+                "to an empty parameter mapping."
+            ),
+            "null_behavior": "Not allowed.",
+            "notes": [
+                "Built-in schedules use their corresponding typed parameter "
+                "schemas. Custom schedule parameters are checked against "
+                "the registered constructor.",
+            ],
+        },
     )
     interval: Literal["epoch", "step"] = Field(
         default="epoch",
@@ -459,7 +596,13 @@ class LinearScheduleConfig(
 ):
     """Linear interpolation between the endpoint factors."""
 
-    name: Literal["linear"]
+    name: Literal["linear"] = Field(
+        description="Selects the linear loss-weight schedule.",
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+        },
+    )
 
 
 class CosineScheduleConfig(
@@ -467,7 +610,13 @@ class CosineScheduleConfig(
 ):
     """Half-cosine interpolation between the endpoint factors."""
 
-    name: Literal["cosine"]
+    name: Literal["cosine"] = Field(
+        description="Selects the cosine loss-weight schedule.",
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+        },
+    )
 
 
 class SigmoidScheduleConfig(
@@ -475,7 +624,13 @@ class SigmoidScheduleConfig(
 ):
     """Sigmoid interpolation normalized to reach both endpoint factors."""
 
-    name: Literal["sigmoid"]
+    name: Literal["sigmoid"] = Field(
+        description="Selects the sigmoid loss-weight schedule.",
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+        },
+    )
 
 
 class ExponentialScheduleConfig(
@@ -483,7 +638,13 @@ class ExponentialScheduleConfig(
 ):
     """Geometric interpolation between endpoint factors."""
 
-    name: Literal["exponential"]
+    name: Literal["exponential"] = Field(
+        description="Selects the exponential loss-weight schedule.",
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+        },
+    )
 
 
 class PiecewiseLinearScheduleConfig(
@@ -491,7 +652,13 @@ class PiecewiseLinearScheduleConfig(
 ):
     """Linear interpolation between consecutive milestones."""
 
-    name: Literal["piecewise_linear"]
+    name: Literal["piecewise_linear"] = Field(
+        description="Selects the piecewise-linear loss-weight schedule.",
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+        },
+    )
 
 
 class PiecewiseConstantScheduleConfig(
@@ -499,7 +666,13 @@ class PiecewiseConstantScheduleConfig(
 ):
     """Hold each milestone's factor until the next milestone."""
 
-    name: Literal["piecewise_constant"]
+    name: Literal["piecewise_constant"] = Field(
+        description="Selects the piecewise-constant loss-weight schedule.",
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+        },
+    )
 
 
 class CustomScheduleConfig(
@@ -748,31 +921,86 @@ LossRoleTerms: TypeAlias = Annotated[
 # Optimizer configuration
 # -------------------------
 class TrainingLRSchedulerConfig(NamedConfig):
-    """Configure a registered LR scheduler attached to the run's optimizer.
+    """Configures a registered learning-rate scheduler for the optimizer.
 
-    `params` are scheduler constructor kwargs, excluding `optimizer`, which
-    BenchRep supplies. Built-ins and custom factories use the same contract.
+    `name` selects a scheduler from the LR-scheduler registry. `params` are
+    constructor keyword arguments, excluding `optimizer`, which BenchRep
+    supplies when Lightning initializes the model's optimizer.
+
+    The registered constructor or factory must return a PyTorch `LRScheduler`
+    or `ReduceLROnPlateau` instance attached to the supplied optimizer.
 
     `interval` and `frequency` control when Lightning advances the scheduler.
-    `monitor` names the logged metric required by ReduceLROnPlateau.
+    A `ReduceLROnPlateau` instance additionally requires `monitor` to identify
+    a logged metric. Other schedulers advance without receiving that metric.
+
+    These schedules change the optimizer's learning rate. Loss-weight
+    schedules are configured separately on individual loss terms.
+
+    Use `benchrep.inspect_registry("lr_scheduler")` to list registered
+    schedulers, or supply a scheduler name as the second argument to inspect
+    its constructor and documentation.
+
+    Custom registrations must be available in each process that reconstructs
+    the config-built model.
     """
 
     interval: Literal["epoch", "step"] = Field(
         default="epoch",
-        description="Whether to advance by epoch or optimizer step.",
+        description=(
+            "Whether Lightning advances the scheduler at epoch or "
+            "optimizer-step intervals."
+        ),
+        json_schema_extra={
+            "omit_behavior": "Uses epoch-based scheduling.",
+            "null_behavior": "Not allowed.",
+            "notes": [
+                "For step-based scheduling, gradient accumulation does not "
+                "cause a scheduler update on every training batch.",
+                "For metric-driven scheduling, the monitored metric must "
+                "be available when Lightning updates the scheduler.",
+            ],
+        },
     )
 
     frequency: int = Field(
         default=1,
         strict=True,
         gt=0,
-        description="Number of intervals between scheduler updates.",
+        description="Number of configured intervals between scheduler updates.",
+        json_schema_extra={
+            "omit_behavior": "Updates at every configured interval.",
+            "null_behavior": "Not allowed.",
+            "notes": [
+                "Passed to Lightning together with `interval`.",
+                "For a validation-monitored scheduler, coordinate this "
+                "frequency with the Trainer's validation-check frequency.",
+            ],
+        },
     )
 
     monitor: str | None = Field(
         default=None,
         min_length=1,
-        description="Logged metric passed to a metric-driven scheduler.",
+        description=(
+            "Exact logged metric key supplied to a ReduceLROnPlateau scheduler."
+        ),
+        json_schema_extra={
+            "omit_behavior": (
+                "Allowed for ordinary schedulers. ReduceLROnPlateau requires "
+                "a nonblank metric key when the scheduler is constructed."
+            ),
+            "null_behavior": "Equivalent to omission.",
+            "notes": [
+                "For example, `losses/val/total_weighted_loss`.",
+                "The metric must be logged by the model and available at "
+                "the scheduler's update time.",
+                "Configure the scheduler's optimization direction through "
+                "`params.mode` when supported.",
+                "This field does not select checkpointing or early-stopping "
+                "metrics; those have separate monitor settings.",
+            ],
+        },
     )
 
     @field_validator("params")
@@ -1212,9 +1440,10 @@ class TrainingEarlyStoppingConfig(_TrainingConfigBaseModel):
             "omit_behavior": "Uses `min`.",
             "null_behavior": "Not allowed.",
             "notes": [
-                "With `min`, lower values are better, improvement requires decreasing by "
-                "at least `min_delta`, `stopping_threshold` is reached below its value, "
-                "and `divergence_threshold` is crossed above its value.",
+                "With `min`, lower values are better. Improvement requires "
+                "a decrease greater than `min_delta`; `stopping_threshold` "
+                "is crossed below its value and `divergence_threshold` "
+                "is crossed above its value.",
                 "With `max`, these directions are reversed.",
             ],
         },
@@ -1227,7 +1456,7 @@ class TrainingEarlyStoppingConfig(_TrainingConfigBaseModel):
             "omit_behavior": "Allows three checks without sufficient improvement.",
             "null_behavior": "Not allowed.",
             "notes": [
-                "An improvement of at least `min_delta` resets the counter.",
+                "An improvement greater than `min_delta` resets the counter.",
                 "Patience counts metric checks, not necessarily epochs.",
                 "Does not apply to immediate stopping, divergence, or non-finite-value "
                 "conditions.",
@@ -1239,8 +1468,8 @@ class TrainingEarlyStoppingConfig(_TrainingConfigBaseModel):
         default=0.0,
         title="Minimum improvement",
         description=(
-            "Minimum change in the monitored metric required to count as an "
-            "improvement."
+            "Absolute improvement threshold. The monitored metric must "
+            "improve by more than this amount to reset patience."
         ),
         json_schema_extra={
             "omit_behavior": "Any improvement greater than zero resets patience.",
@@ -1255,7 +1484,9 @@ class TrainingEarlyStoppingConfig(_TrainingConfigBaseModel):
             "omit_behavior": "Fails when the monitored metric is unavailable.",
             "null_behavior": "Not allowed.",
             "notes": [
-                "When false, Lightning warns instead of raising an error.",
+                "When false, Lightning skips the check if the metric is "
+                "missing. A warning is emitted when the callback's "
+                "`verbose` setting is enabled.",
             ],
         },
     )
@@ -1321,14 +1552,33 @@ class TrainingEarlyStoppingConfig(_TrainingConfigBaseModel):
 # Additional callback configuration
 # -------------------------
 class TrainingAdditionalCallbackConfig(NamedConfig):
-    """Selects and configures one additional registered Lightning callback.
+    """Selects and configures an additional registered Lightning callback.
 
-    `name` identifies a callback in BenchRep's callback registry. `params` are
-    passed unchanged as keyword arguments to the callback constructor.
+    `name` selects an entry in BenchRep's callback registry. `params` are
+    passed as keyword arguments to the registered constructor or factory,
+    which must return a Lightning Callback instance.
 
-    Additional callbacks apply only to training and supplement, rather than
-    replace, BenchRep-managed checkpointing and early stopping. BenchRep records
-    their configuration but does not specially interpret their runtime behavior.
+    Use `benchrep.inspect_registry("callback")` to list registered callbacks,
+    or supply a callback name as the second argument to inspect its
+    constructor and documentation. Custom callbacks must be registered
+    before the training configuration is validated.
+
+    Additional callbacks supplement BenchRep-managed checkpointing and
+    early stopping. They apply only to training and are not inherited by
+    linked prediction runs.
+
+    The built-in `device_stats_monitor` and `learning_rate_monitor`
+    callbacks require a configured training logger.
+
+    Callbacks requiring live Python objects can instead be constructed by
+    the caller and passed through the training entrypoint's
+    `runtime_callbacks` argument. Those instances are appended after
+    configured additional callbacks and do not replace them.
+
+    Configured callback names and parameters are recorded in the resolved
+    configuration. Runtime callback instances are recorded separately by
+    their fully qualified class names; their constructor state is not
+    serialized into the configuration.
     """
 
 
@@ -1408,32 +1658,84 @@ class TrainingTorchviewConfig(_TrainingConfigBaseModel):
 
 
 class _GradientNormConfig(_TrainingConfigBaseModel):
-    """Shared settings for one gradient-norm inspection request."""
+    """Selects the model parameters and norm used by one inspection request.
+
+    All selected gradient elements are treated as one vector. Norms are not
+    averaged across parameter tensors. Frozen parameters are excluded, and
+    parameters unused by the measured loss contribute no gradient.
+
+    A connected zero gradient is reported as zero. Unavailable measurements
+    are skipped with a warning and retried at subsequent sampling positions.
+    """
 
     target: str = Field(
         min_length=1,
         description=(
-            "Canonical component role, composite component ID, "
+            "Model component whose parameter gradients are inspected, "
             "or `whole_model`."
         ),
+        json_schema_extra={
+            "omit_behavior": "Required; omission raises a validation error.",
+            "null_behavior": "Not allowed.",
+            "notes": [
+                "Config-built canonical models support `encoder`, `decoder`, "
+                "and `whole_model`. Canonical VAEs also support "
+                "`variational_head`.",
+                "Composite models support configured component IDs and "
+                "`whole_model`.",
+                "External models support only optimizer-gradient inspection "
+                "with target `whole_model`.",
+                "`whole_model` is reserved when Composite gradient "
+                "inspection is enabled.",
+            ],
+        },
     )
 
     norm_type: Literal["l1", "l2", "inf"] = Field(
         default="l2",
         description=(
-            "l1: sum of absolute gradients; l2: Euclidean norm; "
-            "inf: maximum absolute gradient."
+            "Norm computed over the selected gradients: `l1` sums absolute "
+            "values, `l2` computes the Euclidean norm, and `inf` takes the "
+            "maximum absolute value."
         ),
+        json_schema_extra={
+            "omit_behavior": "Uses the L2 norm.",
+            "null_behavior": "Not allowed.",
+        },
     )
 
 
 class PerLossGradientNormConfig(_GradientNormConfig):
-    """Inspect individual training-batch losses before normal backward.
+    """Measures individual loss gradients before normal training backward.
 
-    Each selected loss produces raw and weighted gradient norms.
+    Each selected loss produces a raw gradient norm and a weighted norm.
+    The weighted norm is the raw norm multiplied by the effective loss
+    weight, including any loss-weight schedule.
+
+    Measurements use additional autograd calculations while preserving the
+    training graph and leaving parameter `.grad` buffers unchanged. This adds
+    computation and may increase memory usage.
+
+    Measurements apply to individual training batches, before gradient
+    accumulation. They are logged without epoch averaging under
+    `grad_norms_wrt_<target>/per_loss/<role>/<loss_id>/<norm_type>/raw`
+    and the corresponding `/weighted` key.
+
+    Per-loss inspection requires a BenchRep-built model.
     """
 
-    kind: Literal["per_loss"] = "per_loss"
+    kind: Literal["per_loss"] = Field(
+        default="per_loss",
+        description="Selects inspection of individual loss gradients.",
+        json_schema_extra={
+            "omit_behavior": (
+                "Defaults to `per_loss` when constructing this concrete class. "
+                "Mappings in `inspection.gradient_norms` must include `kind` "
+                "to select the appropriate schema."
+            ),
+            "null_behavior": "Not allowed.",
+        },
+    )
 
     losses: Literal["all"] | Annotated[
         list[
@@ -1446,9 +1748,23 @@ class PerLossGradientNormConfig(_GradientNormConfig):
     ] = Field(
         default="all",
         description=(
-            "`all` or selected losses expressed as "
+            "`all` or a nonempty list of configured losses expressed as "
             "`<role>.<resolved_loss_identifier>`."
         ),
+        json_schema_extra={
+            "omit_behavior": "Inspects every configured loss term.",
+            "null_behavior": "Not allowed.",
+            "notes": [
+                "Without a configured loss ID, the resolved identifier is "
+                "the canonical registered loss name.",
+                "With a configured ID, the resolved identifier is "
+                "`<id>_<canonical_loss_name>`.",
+                "For example, `reconstruction.mse` selects an MSE term "
+                "without a custom ID.",
+                "Aliases do not change resolved loss identifiers.",
+                "Unknown references and duplicate measurements are rejected.",
+            ],
+        },
     )
 
     every_n_batches: int = Field(
@@ -1459,24 +1775,65 @@ class PerLossGradientNormConfig(_GradientNormConfig):
             "Inspect every N training batches, starting with batch 0 "
             "of each epoch."
         ),
+        json_schema_extra={
+            "omit_behavior": "Inspects every training batch.",
+            "null_behavior": "Not allowed.",
+            "notes": [
+                "Sampling occurs when `batch_index % every_n_batches == 0`.",
+                "This controls measurement frequency. Emission to an "
+                "experiment logger also follows Lightning's logging cadence.",
+            ],
+        },
     )
 
 
 class OptimizerGradientNormConfig(_GradientNormConfig):
-    """Inspect stored parameter gradients before the optimizer update,
-     after accumulation and unscaling, before clipping.
-     """
+    """Measures accumulated gradients immediately before an optimizer update.
 
-    kind: Literal["optimizer_gradients"] = "optimizer_gradients"
+    Inspection occurs after gradient accumulation and mixed-precision
+    unscaling, but before gradient clipping. It reads existing `.grad`
+    buffers without calculating new gradients or modifying them.
+
+    Only parameters belonging to both the selected target and the active
+    optimizer are included. Measurements are logged without epoch averaging
+    under `grad_norms_wrt_<target>/optimizer/<norm_type>`.
+
+    External models may use this inspection with target `whole_model`.
+    """
+
+    kind: Literal["optimizer_gradients"] = Field(
+        default="optimizer_gradients",
+        description="Selects inspection of stored optimizer gradients.",
+        json_schema_extra={
+            "omit_behavior": (
+                "Defaults to `optimizer_gradients` when constructing this "
+                "concrete class. Mappings in `inspection.gradient_norms` "
+                "must include `kind` to select the appropriate schema."
+            ),
+            "null_behavior": "Not allowed.",
+        },
+    )
 
     every_n_optimizer_steps: int = Field(
         default=1,
         strict=True,
         gt=0,
         description=(
-            "Inspect before every N optimizer updates, starting before "
-            "the first update, using the completed optimizer-step count."
+            "Inspect before optimizer updates using the completed-step count, "
+            "starting before the first update."
         ),
+        json_schema_extra={
+            "omit_behavior": "Inspects before every optimizer update.",
+            "null_behavior": "Not allowed.",
+            "notes": [
+                "Sampling occurs when the number of completed optimizer "
+                "steps is divisible by this value.",
+                "Gradient-accumulation batches without an optimizer update "
+                "do not trigger this measurement.",
+                "Emission to an experiment logger also follows Lightning's "
+                "logging cadence.",
+            ],
+        },
     )
 
 
@@ -1508,6 +1865,19 @@ class TrainingInspectionConfig(_TrainingConfigBaseModel):
         json_schema_extra={
             "omit_behavior": "Gradient-norm inspection is disabled.",
             "null_behavior": "Not allowed; use an empty list to disable.",
+            "notes": [
+                "Requires single-process training, Lightning automatic "
+                "optimization, and exactly one optimizer.",
+                "Each mapping must include `kind`: `per_loss` or "
+                "`optimizer_gradients`.",
+                "Duplicate measurements are rejected even when their "
+                "sampling frequencies differ.",
+                "Measurements are logged through Lightning. Configure a "
+                "training logger to persist their history.",
+                "Unavailable measurements produce deduplicated warnings "
+                "included in training provenance. Unexpected errors "
+                "propagate.",
+            ],
         },
     )
 
@@ -1817,9 +2187,9 @@ class TrainingDataModuleConfig(_TrainingConfigBaseModel):
             "omit_behavior": "Reserves 10% of the dataset for validation.",
             "null_behavior": "Not allowed.",
             "notes": [
-                "Validation size is calculated as "
-                "`int(dataset_size * val_fraction)`; setup fails if this produces an "
-                "empty validation subset.",
+                "When `val_fraction > 0`, validation size is calculated as "
+                "`int(dataset_size * val_fraction)`; setup fails if this "
+                "produces an empty validation subset.",
             ],
         },
     )
@@ -1896,6 +2266,15 @@ class TrainingDataModuleConfig(_TrainingConfigBaseModel):
         json_schema_extra={
             "omit_behavior": "Passes no additional DataLoader arguments.",
             "null_behavior": "Not allowed.",
+            "notes": [
+                "Reserved arguments are `dataset`, `batch_size`, `shuffle`, "
+                "`sampler`, `batch_sampler`, `num_workers`, `pin_memory`, "
+                "`persistent_workers`, `drop_last`, and `prefetch_factor`.",
+                "Other argument names must be accepted by the installed "
+                "PyTorch DataLoader.",
+                "With `num_workers=0`, `multiprocessing_context` must be "
+                "omitted or null, and `timeout` must be zero.",
+            ],
         },
     )
 
@@ -2440,13 +2819,18 @@ class TrainingConfig(_TrainingConfigBaseModel):
             "notes": [
                 "These supplement BenchRep-managed checkpointing and early stopping.",
                 "They are not inherited by linked prediction runs.",
+                "Callback instances passed through the training entrypoint's "
+                "`runtime_callbacks` argument supplement this list.",
             ],
         },
     )
 
     inspection: TrainingInspectionConfig = Field(
         default_factory=TrainingInspectionConfig,
-        description="Optional best-effort torchview model-graph export settings.",
+        description=(
+            "Optional model-graph export and training-time gradient-norm "
+            "inspection settings."
+        ),
         json_schema_extra={
             "omit_behavior": "Uses the defaults defined by `TrainingInspectionConfig`.",
             "null_behavior": "Not allowed.",
