@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from benchrep.assembly.schemas import TrainingConfig
+
 from dash import Dash
 
 from benchrep.gui.rules.train import (
     prepare_training_draft,
     training_review_session,
     training_sections,
+    training_incompatible_sections,
 )
 from benchrep.gui.shared.forms import build_workflow_app
 from benchrep.interfaces.model_families import (
@@ -43,6 +46,8 @@ def create_training_app(
     app.wizard_session = review
     return build_workflow_app(
         app=app,
+        config_schema=TrainingConfig,
+        incompatible_sections=training_incompatible_sections(model_family),
         stage="training",
         initial=initial,
         sections=training_sections(

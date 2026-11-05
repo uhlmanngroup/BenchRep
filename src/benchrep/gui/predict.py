@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Literal
+from benchrep.assembly.schemas import PredictionConfig
+
 from dash import Dash
 
 from benchrep.gui.rules.predict import (
@@ -47,6 +49,7 @@ def create_prediction_app(
     app.wizard_session = review
     return build_workflow_app(
         app=app,
+        config_schema=PredictionConfig,
         stage="prediction",
         initial=initial,
         sections=prediction_sections(context=context),

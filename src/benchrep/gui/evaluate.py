@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from benchrep.assembly.schemas import EvaluationConfig
+
 from dash import Dash
 
 from benchrep.gui.rules.evaluate import (
@@ -40,6 +42,7 @@ def create_evaluation_app(
     app.wizard_session = review
     return build_workflow_app(
         app=app,
+        config_schema=EvaluationConfig,
         stage="evaluation",
         initial=initial,
         sections=evaluation_sections(context=context),

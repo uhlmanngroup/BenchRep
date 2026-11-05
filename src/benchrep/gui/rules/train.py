@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any
 
 import lightning as L
-from pydantic import BaseModel, Field, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from benchrep.architecture.composite_model_roles import TENSOR_STRUCTURE_BY_ROLE
 from benchrep.assembly.config import (
-    compose_effective_config,
+    load_yaml,
     normalize_config_components,
 )
 from benchrep.assembly.registries.builtins import register_builtins
@@ -23,7 +24,6 @@ from benchrep.assembly.registries.core import (
     LOGGERS,
     LOSS_WEIGHT_SCHEDULES,
     LR_SCHEDULERS,
-    MODELS,
     OPTIMIZERS,
     RECONSTRUCTION_LOSSES,
     REGRESSION_LOSSES,
@@ -76,6 +76,7 @@ from benchrep.gui.shared.state import (
     WizardDraft,
     editor_spec,
     union_variant_details,
+    MISSING,
 )
 from benchrep.interfaces.model_families import (
     COMPOSITE_FAMILY,
@@ -83,11 +84,14 @@ from benchrep.interfaces.model_families import (
     ModelFamilySpec,
 )
 from benchrep.utils.workflow_overrides import TrainingOverrides
-from benchrep.utils.workflow_utils import TrainingConfigInput
+from benchrep.utils.workflow_utils import TrainingConfigInput, route_config_input
+from benchrep.gui.shared.validation import validate_value
 
 
 class TrainingModelEditor(BaseModel):
     """UI representation of model family and canonical VAE parameters."""
+
+    model_config = ConfigDict(extra="forbid")
 
     name: str = Field(
         description=(
@@ -117,100 +121,48 @@ def prepare_training_draft(
     config: TrainingConfigInput,
     overrides: TrainingOverrides,
 ) -> WizardDraft:
-    """Prepare wizard values; validate a supplied base before displaying it."""
+    """Preserve authored values; complete validation happens during review."""
     register_builtins()
     overrides.validate_for(model_family)
 
-    model_source = (
+    # Validate Python-supplied objects, not the unfinished configuration.
+    if isinstance(model_family, CanonicalModelFamilySpec):
         resolve_component_source(
             overrides.model,
             expected_base_class=model_family.model_base_class,
             component_name="model",
         )
-        if isinstance(model_family, CanonicalModelFamilySpec)
-        else "config"
-    )
-    datamodule_source = resolve_component_source(
+    resolve_component_source(
         overrides.datamodule,
         expected_base_class=L.LightningDataModule,
         component_name="datamodule",
     )
 
+    path, typed = route_config_input(config, TrainingConfig)
+    data = (
+        load_yaml(path)
+        if path is not None
+        else typed.model_dump(mode="json", exclude_unset=True)
+        if typed is not None
+        else {}
+    )
+    if not isinstance(data, dict):
+        raise TypeError("Training configuration must be a mapping.")
+
     components = normalize_config_components(
         schema=TrainingConfig,
         config_components=overrides.config_components,
     )
+    data = deepcopy(data)
+    data.update(
+        TypeAdapter(dict[str, Any]).dump_python(components, mode="json")
+    )
 
-    if config is not None:
-        composition = compose_effective_config(
-            schema=TrainingConfig,
-            config=config,
-            config_components=overrides.config_components,
-            external_model=overrides.model is not None,
-            external_datamodule=overrides.datamodule is not None,
-        )
-
-        # Revalidate typed inputs too: they may have been constructed
-        # under a different runtime-override context.
-        effective = parse_training_config(
-            composition.effective_config.model_dump(mode="python"),
-            model_overridden=overrides.model is not None,
-            datamodule_overridden=overrides.datamodule is not None,
-        )
-
-        # Reuse workflow checks, including model-family compatibility.
-        # This resolves configuration; it does not start training.
-        resolve_training_config(
-            effective,
-            model_family=model_family,
-            model_source=model_source,
-            datamodule_source=datamodule_source,
-            model_override_name=(
-                get_component_override_name(overrides.model)
-                if overrides.model is not None
-                else None
-            ),
-        )
-
-        # Validation uses the effective model; editing starts from the
-        # supplied payload so defaults and normalization do not rewrite it.
-        source = (
-            config.model_dump(mode="python", exclude_unset=True)
-            if isinstance(config, BaseModel)
-            else composition.original_config_raw
-        )
-        data = TypeAdapter(dict[str, Any]).dump_python(
-            source,
-            mode="json",
-        )
-        data.update(
-            TypeAdapter(dict[str, Any]).dump_python(
-                components,
-                mode="json",
-            )
-        )
-    else:
-        # A new draft is intentionally incomplete.
-        data = TypeAdapter(dict[str, Any]).dump_python(
-            components,
-            mode="json",
-        )
+    if config is None:
         data.setdefault("stage", "training")
-
         if overrides.model is None:
             data.setdefault("model", {"name": model_family.name})
-            configured_name = MODELS.resolve_key(
-                normalize_name(
-                    data["model"]["name"],
-                    field_name="model.name",
-                )
-            )
-            if configured_name != model_family.name:
-                raise ValueError(
-                    "The supplied model config component conflicts with "
-                    f"the selected family: {configured_name!r} versus "
-                    f"{model_family.name!r}."
-                )
+
 
     # These are the sections discarded by the training resolver when
     # the corresponding runtime object is supplied.
@@ -240,6 +192,9 @@ def prepare_training_draft(
     for section in omitted_sections:
         data.pop(section, None)
 
+    if overrides.model is None:
+        data.setdefault("model", {"name": model_family.name})
+
     return WizardDraft(
         initial_data=data,
         supplied_sections=frozenset(components) - omitted_sections,
@@ -250,6 +205,33 @@ _ARCHITECTURE_SECTIONS = {
     "encoder": (TrainingEncoderConfig, ENCODERS),
     "decoder": (TrainingDecoderConfig, DECODERS),
 }
+
+
+def training_incompatible_sections(model_family: ModelFamilySpec) -> dict[str, str]:
+    """Explicit family exclusions; runtime-override visibility is separate."""
+    excluded = (
+        tuple(_ARCHITECTURE_SECTIONS)
+        if model_family == COMPOSITE_FAMILY
+        else ("composite_model_declarations", "composite_model_components", "composite_model_assembly")
+    )
+    return {key: f"{key!r} is incompatible with the selected {model_family.name!r} model family."
+            for key in excluded}
+
+
+def incompatible_loss_fields(data: Any, *, composite: bool) -> dict[tuple, str]:
+    errors = {}
+    if not isinstance(data, dict):
+        return errors
+    for role, terms in data.items():
+        if not isinstance(terms, list):
+            continue
+        for index, term in enumerate(terms):
+            if (isinstance(term, dict) and term.get("composite_wiring") is not None
+                    and (not composite or role == "custom_objective")):
+                errors[(role, index, "composite_wiring")] = (
+                    "Composite wiring is unavailable here: inputs are supplied automatically."
+                )
+    return errors
 
 
 def training_architecture_schemas(
@@ -263,7 +245,9 @@ def training_architecture_schemas(
     ):
         return {}
 
-    return {key: schema for key, (schema, _) in _ARCHITECTURE_SECTIONS.items()}
+    excluded = training_incompatible_sections(model_family)
+    return {key: schema for key, (schema, _) in _ARCHITECTURE_SECTIONS.items()
+            if key not in excluded}
 
 
 def architecture_name_options(
@@ -284,7 +268,103 @@ def architecture_name_options(
 class TrainingModelNameEditor(BaseModel):
     """Fixed model-family name for canonical AE and Composite workflows."""
 
+    model_config = ConfigDict(extra="forbid")
+
     name: str
+
+
+def training_model_section(
+    *, model_family: ModelFamilySpec, initial: WizardDraft
+) -> SectionSpec:
+    """Show fixed family controls, retaining unexpected input for explicit removal."""
+    is_vae = model_family.name == "vae"
+    original = initial.initial_data.get("model", MISSING)
+    original_params = original.get("params", MISSING) if isinstance(original, dict) else MISSING
+    unexpected_paths: dict[str, tuple] = {}
+
+    def to_editor(data):
+        values = {"name": model_family.name}
+        if data is None or data is MISSING:
+            return values
+
+        def preserve(path, value):
+            label = "model" + "".join(f"[{key!r}]" for key in path)
+            unexpected_paths[label] = path
+            values[label] = deepcopy(value)
+
+        if not isinstance(data, dict):
+            preserve((), data)
+            return values
+        for key, value in data.items():
+            if key == "name":
+                if value != model_family.name:
+                    preserve(("name",), value)
+            elif key == "params":
+                if isinstance(value, dict):
+                    for name, parameter in value.items():
+                        if is_vae and name == "latent_dim" and (
+                            parameter is None or type(parameter) in (str, int, float, bool)
+                        ):
+                            values["latent_dim"] = parameter
+                        else:
+                            preserve(("params", name), parameter)
+                elif value is not None:
+                    preserve(("params",), value)
+            else:
+                preserve((key,), value)
+        return values
+
+    def from_editor(values):
+        if values is None:
+            return None, {}
+        data = {"name": model_family.name}
+        # Empty/null params are editable empty controls, not a separate UI mode.
+        if isinstance(original_params, dict) or original_params is None:
+            data["params"] = {}
+        if is_vae and "latent_dim" in values:
+            data["params"] = {"latent_dim": values["latent_dim"]}
+        for label, path in unexpected_paths.items():
+            if label not in values:
+                continue
+            value = deepcopy(values[label])
+            if not path:
+                return value, {(): "Remove the malformed model value before configuring its fields."}
+            if len(path) == 1:
+                data[path[0]] = value
+            else:
+                data.setdefault("params", {})[path[1]] = value
+        issues = validate_value(TrainingModelConfig, data)
+        errors = {}
+        for path, message in issues.items():
+            if path[:2] == ("params", "latent_dim"):
+                target = ("latent_dim",)
+            elif path[:1] == ("name",):
+                target = ("name",)
+            else:
+                target = ()
+            errors[target] = f"{errors[target]}; {message}" if target in errors else message
+        return data, errors
+
+    editor = TrainingModelEditor if is_vae else TrainingModelNameEditor
+    return SectionSpec(
+        key="model",
+        title="Model",
+        annotation=editor | None,
+        # Reset must also restore the fixed name in the visible editor state.
+        field_info=Field(
+            default_factory=lambda: {"name": model_family.name},
+            description=TrainingConfig.model_fields["model"].description,
+            json_schema_extra=TrainingConfig.model_fields["model"].json_schema_extra,
+        ),
+        description=(
+            "The model family is fixed by the launcher."
+            + (" Set the VAE latent dimension." if is_vae else "")
+        ),
+        locked_paths=frozenset({("model", "name")}),
+        documentation_schema=TrainingModelConfig,
+        to_editor=to_editor,
+        from_editor=from_editor,
+    )
 
 
 def training_sections(
@@ -300,6 +380,7 @@ def training_sections(
         refresh_on_change=None,
         presentation=None,
         validate_local=None,
+        incompatible_fields=None,
     ):
         info = TrainingConfig.model_fields[key]
         return SectionSpec(
@@ -312,6 +393,7 @@ def training_sections(
             refresh_on_change=refresh_on_change,
             presentation=presentation,
             validate_local=validate_local,
+            incompatible_fields=incompatible_fields,
             default_registry={
                 "optimizer": "optimizer",
                 "logger": "logger",
@@ -357,52 +439,10 @@ def training_sections(
         ),
     ]
     if overrides.model is None:
-        model_data = initial.initial_data.get("model") or {"name": model_family.name}
-        family_name = model_data.get("name", model_family.name)
-        is_vae = model_family.name == "vae"
-
-        def to_editor(data):
-            if data is None:
-                return None
-            values = {"name": family_name}
-            params = data.get("params") or {}
-            if is_vae and "latent_dim" in params:
-                values["latent_dim"] = params["latent_dim"]
-            return values
-
-        def from_editor(values):
-            if values is None:
-                return None, {}
-            data = {"name": family_name}
-            params = (
-                {"latent_dim": values["latent_dim"]}
-                if is_vae and "latent_dim" in values
-                else {}
-            )
-            if params or "params" in model_data:
-                data["params"] = params
-            return data, {}
-
-        editor = TrainingModelEditor if is_vae else TrainingModelNameEditor
         sections.append(
-            SectionSpec(
-                key="model",
-                title="Model",
-                annotation=editor | None,
-                field_info=TrainingConfig.model_fields["model"],
-                description="The model family is fixed by the launcher."
-                + (" Set the VAE latent dimension." if is_vae else ""),
-                documentation_schema=TrainingModelConfig,
-                locked_paths=frozenset({("model", "name")}),
-                to_editor=to_editor,
-                from_editor=from_editor,
-                error_path=lambda path: (
-                    ("params", "latent_dim", *path[1:])
-                    if path and path[0] == "latent_dim"
-                    else path
-                ),
-            )
+            training_model_section(model_family=model_family, initial=initial)
         )
+
     for key in training_architecture_schemas(
         model_family=model_family, overrides=overrides
     ):
@@ -472,6 +512,9 @@ def training_sections(
                 ),
                 options=loss_name_options,
                 validate_local=validate_loss_names,
+                incompatible_fields=lambda data: incompatible_loss_fields(
+                    data, composite=model_family == COMPOSITE_FAMILY
+                ),
                 presentation=lambda path, value, draft: loss_presentation(
                     path, value, draft, composite=model_family == COMPOSITE_FAMILY
                 ),

@@ -17,6 +17,7 @@ from benchrep.gui.shared.state import (
     active_spec,
     base_type,
     empty_value,
+    collect_node,
     union_variant_details,
 )
 
@@ -30,6 +31,7 @@ class FieldPresentation:
     disabled_reason: str | None = None
     order: tuple[str, ...] = ()
     hidden: bool = False
+    incompatibility_reason: str | None = None
     excluded_fields: tuple[str, ...] = ()
     reorderable: bool = True
     item_label: str = "Item"
@@ -197,6 +199,20 @@ def render_editor(
     guide = (
         presentation(path, node.get("value")) if presentation else FieldPresentation()
     )
+    if guide.incompatibility_reason:
+        raw, _ = collect_node(spec, node)
+        return dmc.Alert(
+            [
+                html.P(guide.incompatibility_reason),
+                html.Code(".".join(map(str, path))),
+                html.Pre(json.dumps(raw, indent=2, ensure_ascii=False), className="br-yaml-preview"),
+                dmc.Button(
+                    "Remove field", id=button_id("remove_incompatible"),
+                    n_clicks=0, color="red", variant="light", disabled=locked,
+                ),
+            ],
+            title="Incompatible field", color="red",
+        )
     if guide.hidden and node["mode"] in {"omit", "null"}:
         return html.Div()
     empty = empty_value(effective)

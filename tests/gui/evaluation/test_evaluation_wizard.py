@@ -416,6 +416,7 @@ def test_browser_source_suggestions_and_review(evaluation_browser):
     from playwright.sync_api import expect
 
     page, app, artifacts = evaluation_browser
+    page.get_by_role("button", name="Enter a value for Source", exact=True).click()
     page.get_by_role(
         "button", name="Enter a value for Prediction Manifest Path", exact=True
     ).click()

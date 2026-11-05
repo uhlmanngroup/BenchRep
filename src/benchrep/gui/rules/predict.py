@@ -432,6 +432,20 @@ class PredictionSourceContext:
             )
         return guide
 
+    def incompatible_inference_fields(self, data: Any) -> dict[tuple, str]:
+        if not isinstance(data, dict):
+            return {}
+        errors = {}
+        key = "composite_model_assembly_input_overrides"
+        if data.get(key) is not None and self.model_family != COMPOSITE_FAMILY:
+            errors[(key,)] = "Assembly input rewiring is available only for Composite models."
+        key = "canonical_vae_reconstruction_latent_source"
+        if data.get(key) is not None and (
+            self.model_family != VAE_FAMILY or self.overrides.model is not None
+        ):
+            errors[(key,)] = "Latent-source selection requires a config-built canonical VAE."
+        return errors
+
     def presentation(self, path: tuple, value: Any, draft: dict) -> FieldPresentation:
         guide = FieldPresentation()
         composite = self.model_family == COMPOSITE_FAMILY
@@ -698,6 +712,7 @@ def prediction_sections(*, context: PredictionSourceContext) -> list[SectionSpec
                     "transform_pipelines": "transform",
                 }.get(key),
                 presentation=context.presentation,
+                incompatible_fields=context.incompatible_inference_fields if key == "inference" else None,
                 options=(
                     transform_name_options if key == "transform_pipelines" else None
                 ),

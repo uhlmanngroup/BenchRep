@@ -36,10 +36,11 @@ class WizardSection:
     documentation: str | None = None
     schema: type[BaseModel] | None = None
     default_registry: str | None = None
+    invalid: bool = False
 
 
 def section_status(
-    errors: dict[str, str] | None, *, mode: str | None = None
+        errors: dict[str, str] | None, *, mode: str | None = None
 ) -> Component:
     """Render a section's local validation status."""
     if errors is None:
@@ -98,13 +99,13 @@ def section_heading(section: WizardSection) -> Component:
 
 
 def build_wizard_layout(
-    *,
-    title: str,
-    subtitle: str,
-    sections: Sequence[WizardSection],
-    actions: Sequence[Component] = (),
-    active_content: Component | None = None,
-    review_panel: Component | None = None,
+        *,
+        title: str,
+        subtitle: str,
+        sections: Sequence[WizardSection],
+        actions: Sequence[Component] = (),
+        active_content: Component | None = None,
+        review_panel: Component | None = None,
 ) -> Component:
     """Build the shared shell; the workflow supplies sections and actions."""
     if not sections:
@@ -131,13 +132,14 @@ def build_wizard_layout(
                                     className="br-section-tab-title",
                                 ),
                                 html.Span(
-                                    section_status(None),
+                                    section_status({"issue": "present"}) if section.invalid else section_status(None),
                                     id=f"wizard-section-status-{section.key}",
                                 ),
                             ],
                             className="br-section-tab-label",
                         ),
                         value=section.key,
+                        id=f"wizard-section-tab-{section.key}",
                         className="br-review-tab"
                         if section.key == "__review__"
                         else "",
@@ -300,9 +302,9 @@ def config_schema_catalog() -> dict[str, type[BaseModel]]:
         name: cast(type[BaseModel], value)
         for name, value in vars(schemas).items()
         if not name.startswith("_")
-        and isinstance(value, type)
-        and issubclass(value, BaseModel)
-        and value is not BaseModel
+           and isinstance(value, type)
+           and issubclass(value, BaseModel)
+           and value is not BaseModel
     }
 
 
@@ -388,10 +390,10 @@ def build_documentation_panel() -> Component:
 
 
 def register_documentation_callbacks(
-    *,
-    app: Dash,
-    stage: str,
-    sections: Sequence[WizardSection],
+        *,
+        app: Dash,
+        stage: str,
+        sections: Sequence[WizardSection],
 ) -> None:
     """Connect inspection tools to the current section and form values."""
     catalog = config_schema_catalog()
@@ -476,13 +478,13 @@ def register_documentation_callbacks(
         State("wizard-docs-component-source", "data"),
     )
     def component_options(
-        registry_name,
-        active_key,
-        follow,
-        form_values,
-        current_options,
-        current_component,
-        previous_source,
+            registry_name,
+            active_key,
+            follow,
+            form_values,
+            current_options,
+            current_component,
+            previous_source,
     ):
         names: list[str] = []
         source = None
@@ -606,7 +608,7 @@ def register_documentation_callbacks(
                         && element.tabIndex >= 0
                         && element.getClientRects().length
                     );
-                    
+
                     const first = focusable[0];
                     const last = focusable[focusable.length - 1];
                     if (!first) {
@@ -674,7 +676,7 @@ def register_documentation_callbacks(
 
 
 def _documentation_metadata(
-    rows: Sequence[tuple[str, Component | str]],
+        rows: Sequence[tuple[str, Component | str]],
 ) -> Component:
     """Render consistently aligned documentation labels and values."""
     return html.Dl(
@@ -696,8 +698,8 @@ def _support_text(value: bool | None) -> str:
 
 
 def render_registry_documentation(
-    registry_name: str | None,
-    component_name: str | None,
+        registry_name: str | None,
+        component_name: str | None,
 ) -> Component:
     """Render structured registry documentation."""
     if not registry_name:
@@ -741,8 +743,8 @@ def render_registry_documentation(
         )
 
     for key, title in (
-        ("contract", "Requirements"),
-        ("runtime_override", "Runtime override"),
+            ("contract", "Requirements"),
+            ("runtime_override", "Runtime override"),
     ):
         if data[key]:
             children.extend(
@@ -909,7 +911,7 @@ def render_registry_documentation(
 
 
 def render_config_documentation(
-    schema: type[BaseModel] | None,
+        schema: type[BaseModel] | None,
 ) -> Component:
     """Render schema documentation without parsing console output."""
     if schema is None:
@@ -986,8 +988,8 @@ def render_config_documentation(
         extra = field.json_schema_extra
         if isinstance(extra, dict):
             for key, label in (
-                ("omit_behavior", "When omitted"),
-                ("null_behavior", "When null"),
+                    ("omit_behavior", "When omitted"),
+                    ("null_behavior", "When null"),
             ):
                 value = extra.get(key)
                 if value is not None:

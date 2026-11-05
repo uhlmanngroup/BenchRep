@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from inspect import cleandoc
 from typing import Any
 from uuid import uuid4
@@ -18,6 +18,7 @@ from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 
 from benchrep.gui.shared.fields import (
+    FieldPresentation,
     FieldPresentation,
     register_field_interactions,
     render_editor,
@@ -63,8 +64,48 @@ class SectionSpec:
     to_editor: Callable[[Any], Any] | None = None
     from_editor: Callable[[Any], tuple[Any, dict[tuple, str]]] | None = None
     error_path: Callable[[tuple], tuple] | None = None
+    incompatible_fields: Callable[[Any], dict[tuple, str]] | None = None
+    rejection_reason: str | None = None
+    source_key: str | None = None
     context_panel: Callable[[dict, dict], Any] | None = None
     context_action: Callable[[str, tuple, dict], Any] | None = None
+
+
+def include_rejected_sections(
+    sections: list[SectionSpec],
+    initial: WizardDraft,
+    schema: type[BaseModel],
+    incompatible: dict[str, str] | None = None,
+) -> list[SectionSpec]:
+    """Expose unknown and explicitly incompatible inputs without rewriting them."""
+    result = list(sections)
+    used = {section.key for section in sections} | {"__review__"}
+    incompatible = incompatible or {}
+    for source_key, value in initial.initial_data.items():
+        reason = None
+        if source_key not in schema.model_fields:
+            reason = f"Unknown section: {source_key!r} is not defined by {schema.__name__}."
+        elif source_key in incompatible and value is not None:
+            reason = incompatible[source_key]
+        elif source_key == "stage" and value != schema.model_fields["stage"].default:
+            expected = schema.model_fields["stage"].default
+            reason = f"This wizard configures stage {expected!r}, not {value!r}. Remove this field to use the workflow default."
+        if reason is None:
+            continue
+        key = f"__rejected_{len(result)}"
+        while key in used or key in initial.initial_data:
+            key += "_"
+        used.add(key)
+        result.append(SectionSpec(
+            key=key,
+            source_key=source_key,
+            title=(source_key.replace("_", " ").title()
+                   if source_key in schema.model_fields else str(source_key)),
+            description=reason,
+            annotation=Any,
+            rejection_reason=reason,
+        ))
+    return result
 
 
 def _node_paths(
@@ -131,6 +172,10 @@ def evaluate_section(
     section: SectionSpec, spec: EditorSpec, node: dict, *, initial: WizardDraft
 ):
     raw, errors = collect_node(spec, node)
+    if section.rejection_reason:
+        if node.get("removed"):
+            return MISSING, {}
+        return raw, {(): section.rejection_reason}
     supplied = section.key in initial.supplied_sections
 
     if supplied:
@@ -141,7 +186,10 @@ def evaluate_section(
     )
 
     if supplied:
-        return raw, context_errors
+        return raw, {
+            **context_errors,
+            **(section.incompatible_fields(raw) if section.incompatible_fields else {}),
+        }
 
     if raw is MISSING:
         return raw, {
@@ -165,6 +213,9 @@ def evaluate_section(
         raw, adapter_errors = section.from_editor(raw)
         errors.update(adapter_errors)
 
+    if section.incompatible_fields:
+        errors.update(section.incompatible_fields(raw))
+
     if node.get("auto_root") and raw == {}:
         raw = MISSING
 
@@ -182,8 +233,14 @@ def build_workflow_app(
     review=None,
     export_directory: str = "wizard_configs",
     export_filename: str = "training.yaml",
+    config_schema: type[BaseModel] | None = None,
+    incompatible_sections: dict[str, str] | None = None,
 ) -> Dash:
     """Mount one section; retain all draft state outside the editor subtree."""
+    if config_schema is not None:
+        sections = include_rejected_sections(
+            sections, initial, config_schema, incompatible_sections,
+        )
     specs = {
         section.key: editor_spec(section.annotation, section.field_info)
         for section in sections
@@ -193,20 +250,37 @@ def build_workflow_app(
         raise ValueError("Provide at least one section with unique keys.")
     state = {}
     for section in sections:
-        raw = initial.initial_data.get(section.key, MISSING)
+        raw = initial.initial_data.get(section.source_key if section.source_key is not None else section.key, MISSING)
         if section.to_editor and raw is not MISSING:
             raw = section.to_editor(raw)
         node = new_node(specs[section.key], raw)
-        # Absent object sections expose their fields without inserting defaults.
-        if raw is MISSING and specs[section.key].kind == "object":
-            node["mode"] = "value"
-            node["auto_root"] = True
         state[section.key] = node
 
     def section_view(key, current, draft):
-        if key == "__review__":
+        if key == "__review__" or current[key].get("removed"):
             return html.Div()
         section = by_key[key]
+        if section.rejection_reason:
+            supplied = section.source_key in initial.supplied_sections
+            return dmc.Alert(
+                [
+                    html.P(section.rejection_reason),
+                    html.Pre(
+                        yaml.safe_dump({section.source_key: draft.get(section.source_key)},
+                                       sort_keys=False, allow_unicode=True),
+                        className="br-yaml-preview",
+                    ),
+                    html.P("Supplied in Python. Edit that component and restart the wizard.")
+                    if supplied else None,
+                    dmc.Button(
+                        "Remove section",
+                        id={"type": "br-button", "section": key,
+                            "node": current[key]["id"], "action": "remove_section"},
+                        n_clicks=0, color="red", variant="light", disabled=supplied,
+                    ),
+                ],
+                title="Section unavailable", color="red",
+            )
         content = []
         if key in initial.supplied_sections:
             content.append(
@@ -222,6 +296,17 @@ def build_workflow_app(
         if section.context_panel:
             content.append(section.context_panel(draft, current[key]))
         section_data, _ = collect_node(specs[key], current[key])
+        incompatible = (
+            section.incompatible_fields(section_data)
+            if section.incompatible_fields else {}
+        )
+
+        def presentation(path, value):
+            guide = (section.presentation(path, value, draft)
+                     if section.presentation else FieldPresentation())
+            reason = incompatible.get(path[1:])
+            return replace(guide, incompatibility_reason=reason) if reason else guide
+
         content.append(
             render_editor(
                 specs[key],
@@ -229,11 +314,7 @@ def build_workflow_app(
                 section=key,
                 path=(key,),
                 title=section.title,
-                presentation=(
-                    (lambda path, value: section.presentation(path, value, draft))
-                    if section.presentation
-                    else None
-                ),
+                presentation=presentation,
                 locked=key in initial.supplied_sections,
                 locked_paths=section.locked_paths,
                 options=(
@@ -254,10 +335,11 @@ def build_workflow_app(
             raw, issues = evaluate_section(
                 section, specs[key], current[key], initial=initial
             )
+            source_key = by_key[key].source_key if by_key[key].source_key is not None else key
             if raw is MISSING:
-                draft.pop(key, None)
+                draft.pop(source_key, None)
             else:
-                draft[key] = raw
+                draft[source_key] = raw
             errors[key] = [
                 {"path": list(path), "message": message}
                 for path, message in issues.items()
@@ -288,6 +370,7 @@ def build_workflow_app(
                 content=html.Div(),
                 schema=schema,
                 default_registry=section.default_registry,
+                invalid=bool(initial_errors.get(section.key)),
                 documentation=(
                     f"**Python schema:** `{schema.__name__}`\n\n{cleandoc(doc)}"
                     if doc
@@ -392,7 +475,8 @@ def build_workflow_app(
                 identifier["node"],
                 identifier["action"],
             )
-            if key not in specs or key in initial.supplied_sections:
+            if (key not in specs or key in initial.supplied_sections
+                    or by_key[key].rejection_reason):
                 continue
             found = find_node(specs[key], current[key], identity)
             if not found:
@@ -474,7 +558,26 @@ def build_workflow_app(
             ):
                 try:
                     action = trigger["action"]
-                    if (
+                    if action == "remove_section":
+                        section = by_key[key]
+                        if (not section.rejection_reason
+                                or section.source_key in initial.supplied_sections):
+                            raise PreventUpdate
+                        current[key]["removed"] = True
+                        structural = True
+                        if active == key:
+                            active = next(s.key for s in sections if not s.rejection_reason)
+                            set_props("wizard-sections", {"value": active})
+                    elif action == "remove_incompatible":
+                        section = by_key[key]
+                        raw, _ = collect_node(specs[key], current[key])
+                        invalid = section.incompatible_fields(raw) if section.incompatible_fields else {}
+                        if path not in invalid:
+                            raise PreventUpdate
+                        structural |= edit_node(
+                            specs[key], current[key], trigger["node"], "mode", "omit"
+                        )
+                    elif (
                         action in {"load_source", "copy_inherited"}
                         and by_key[key].context_action
                     ):
@@ -523,6 +626,12 @@ def build_workflow_app(
                                     target.clear()
                                     target.update(fixed[field_path])
                     edited.add(key)
+                    if action in {"remove_section", "remove_incompatible"}:
+                        if review is not None:
+                            with review.lock:
+                                review.fingerprint = None
+                        set_props("wizard-review-receipt", {"data": None})
+                        set_props("wizard-check-report", {"children": []})
                 except ValueError as error:
                     action_error = (key, str(error))
         # Only edited sections are validated. Unvisited sections retain their initial status.
@@ -535,10 +644,11 @@ def build_workflow_app(
             raw, issues = evaluate_section(
                 by_key[key], specs[key], current[key], initial=initial
             )
+            source_key = by_key[key].source_key if by_key[key].source_key is not None else key
             if raw is MISSING:
-                draft.pop(key, None)
+                draft.pop(source_key, None)
             else:
-                draft[key] = raw
+                draft[source_key] = raw
             errors[key] = [{"path": list(p), "message": m} for p, m in issues.items()]
             for identity, path in _node_paths(specs[key], current[key]):
                 inline[identity] = issues.get(path, "")
@@ -625,7 +735,8 @@ def build_workflow_app(
             path = tuple(error["path"])
             if by_key[active].error_path:
                 path = by_key[active].error_path(path)
-            return f"{'.'.join(map(str, (active, *path)))}: {error['message']}"
+            source_key = by_key[active].source_key if by_key[active].source_key is not None else active
+            return f"{'.'.join(map(str, (source_key, *path)))}: {error['message']}"
 
         status = dmc.Alert(
             (
@@ -654,6 +765,18 @@ def build_workflow_app(
                 for s in sections
             ],
         )
+
+    rejected_keys = [section.key for section in sections if section.rejection_reason]
+    if rejected_keys:
+        @app.callback(
+            [Output(f"wizard-section-tab-{key}", "style") for key in rejected_keys],
+            Input("wizard-editor-state", "data"),
+        )
+        def rejected_navigation(current):
+            return [
+                {"display": "none"} if current[key].get("removed") else {}
+                for key in rejected_keys
+            ]
 
     @app.callback(
         Output("wizard-yaml-preview", "children"), Input("wizard-draft", "data")
