@@ -43,3 +43,6 @@ wizard_configs/
 # Dependency/class graphs
 classes_BenchRep.png
 packages_BenchRep.png
+
+# Docs
+/site/

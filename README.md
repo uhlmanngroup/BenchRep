@@ -3,45 +3,38 @@
 BenchRep is a configuration-driven, Lightning-based framework for training representation-learning models, exporting their learned representations, and evaluating those representations through reproducible, linked workflows.
 
 > [!NOTE]
-> BenchRep is an early, pre-1.0 research project under active development. Its APIs, configuration schemas, contracts, supported components, and output formats may still change. BenchRep currently supports canonical autoencoder and VAE workflows alongside highly customizable composite models built from a fully user-declared computation graph, supporting supervised, self-supervised, unsupervised, and multitask architectures.
+> BenchRep is an early, pre-1.0 research project under active development. APIs, schemas, contracts, and supported components may still change. BenchRep currently supports canonical autoencoder and VAE workflows alongside highly customizable composite models built from a fully user-declared computation graph, supporting supervised, self-supervised, unsupervised, and multitask architectures.
 
-BenchRep exposes three separately invoked workflows. Linking workflows does not
-require a single orchestration class: one workflow is linked to another by
-passing its manifest to the downstream workflow.
+## Why BenchRep?
 
-1. **Training** builds or accepts a model and datamodule, fits the model, and records checkpoints and provenance.
-2. **Prediction** <ins>requires</ins> a training manifest, restores the trained model from the resolved checkpoint, runs inference, and exports selected non-image outputs as AnnData and optional reconstruction bundles.
-3. **Evaluation** accepts a prediction manifest, direct artifact paths, or a combination thereof, and evaluates representations and optional reconstructions. Representation inputs must be stored as AnnData (`.h5ad`), while reconstructions must be supplied as BenchRep-compatible PyTorch (`.pt`) artifact bundles.
+### Benchmarking
+- Standardize your benchmarking with reusable pipelines.
+- Evaluate external outputs.
+- Publish traceable results.
 
-> [!IMPORTANT]
-> Separate invocation does <ins>not</ins> mean isolated configuration. Prediction resolves
-> many omitted or null settings from its required training manifest. When
-> evaluation receives a prediction manifest, it may infer artifact paths and run
-> identity from it; evaluation also resolves automatic behavior according to the
-> available inputs. Therefore, omission does not always mean “use a standalone
-> default.” Explicit downstream settings take precedence where supported, and
-> each run records its resulting configuration and provenance.
+### Experimentation
+- Build custom multi-input, multitask architectures.
+- Experiment with interchangeable components.
+- Diagnose issues with runtime inspection and provenance.
+- Automate hyperparameter tuning with Optuna.
 
-Training can run without another workflow. Prediction, by design, is always linked to
-training through a training manifest. Evaluation can run from a prediction
-manifest, direct compatible artifacts, or both.
+### Education
+- Teach representation learning with less coding overhead.
+- Configure through YAML, Python, or GUI wizards.
+- Visualize architectures.
 
-## Current scope
+## How it works
+BenchRep separates training, prediction, and evaluation into configurable workflows linked through manifests that record comprehensive run settings. Configure each workflow through YAML, Python, or a GUI wizard. Evaluation can also run independently on external embeddings and reconstructions.
 
-| Area                           | Built-in support                                                                                                                                                                                   |
-|--------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Model families                 | Canonical autoencoder and VAE; fully user-declared composite models with configurable inputs, outputs, component graph, and loss wiring                                                            |
-| Data                           | MNIST, CIFAR-10, STL-10; routed transform pipelines with independent train/validation behavior and stochastic application                                                                          |
-| Architecture                   | MLP, configurable Conv2D, and ResNet encoders; MLP and upsampling-Conv2D decoders; configurable heads; reusable registered components in composite computation graphs                              |
-| Training                       | Weighted reconstruction, regularization, contrastive, classification, regression, and custom-objective losses; Adam/AdamW/SGD, checkpointing, early stopping, and configurable Lightning callbacks |
-| Tracking                       | CSV, Weights & Biases, TensorBoard, and MLflow loggers                                                                                                                                             |
-| Reproducibility and provenance | Configurable seeding and deterministic execution; original/resolved configs, runtime-environment records, linked manifests, status reports, and local logs                                         |
-| Prediction                     | Flexible checkpoint selection, inherited or replaced transforms, AnnData export of selected representations/predictions, reconstruction-bundle export, and prediction-time latent/graph rerouting  |
-| Embedding evaluation           | PCA, UMAP, t-SNE; K-means, Leiden, HDBSCAN; internal and external clustering metrics; embedding statistics; classification/regression predictability probes                                        |
-| Reconstruction evaluation      | MAE, MSE, RMSE, maximum abs error, error maps, TIFF export, and reconstruction grids                                                                                                               |
-| Extension                      | Registries for datasets, transforms, architecture components, losses, optimizers, loggers, and evaluation metrics; runtime model/datamodule overrides where supported                              |
+![BenchRep workflow chain](docs/assets/workflow-chain.svg)
 
-Use `benchrep.inspect_registry()` to see the exact components available.
+BenchRep provides canonical autoencoders and VAEs with swappable encoders and decoders, alongside composite models whose components and contracts, wiring, and learning objectives are user-defined.
+
+![BenchRep model families](docs/assets/model-families.svg)
+
+BenchRep uses a registry-based system to select built-in or user-registered classes and factories for components such as datasets, transforms, architectures, losses, and evaluation methods. Workflow-specific Overrides objects provide an escape hatch for supplying supported runtime objects or replacing configuration sections.
+
+Each workflow validates its inputs, exports artifacts and provenance records, and returns a Python result object for analysis or automation. Evaluation assesses reconstruction quality, clustering, predictability, and batch effects, producing consolidated metrics and AnnData-integrated outputs.
 
 ## Installation
 
@@ -51,176 +44,72 @@ BenchRep currently targets Python 3.11 or newer and is intended to be installed 
 python -m pip install -e .
 ```
 
-Optional dependency groups are available for scverse-backed evaluation, external loggers, model-graph export, and XGBoost probes:
+Optional extras include GUI wizards, Optuna tuning, scverse evaluation, external loggers, model graphs, and XGBoost probes:
 
 ```bash
 python -m pip install -e ".[scverse,logging,model_graph,xgboost]"
 ```
 
+## Quick start
 
-## Usage
+Run a complete VAE training, prediction, and evaluation chain using the example configurations. Run from the repository root:
 
-The public workflow entry points are `train_ae()`, `train_vae()`, `train_composite()`, `predict_ae()`, `predict_vae()`, `predict_composite()`, and `evaluate()`. BenchRep supports several ways to supply their configuration and runtime components:
+```python
+from pathlib import Path
 
-| Mode | How it works                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Repository reference                                                                                                                                         |
-| --- |-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **YAML** | Pass one YAML path per workflow. This is the canonical declarative route and the simplest way to preserve, review, and rerun a configuration.                                                                                                                                                                                                                                                                                                                                       | [`01_yaml_pipeline.py`](examples/usage/01_yaml_pipeline.py)                                                                                                  |
-| **Typed config object** | Construct a complete Pydantic `TrainingConfig`, `PredictionConfig`, or `EvaluationConfig` and pass it as `full_config_object`. This is useful when configuration is generated or validated in Python.                                                                                                                                                                                                                                                                               | [`03_config_object_pipeline.py`](examples/usage/03_config_object_pipeline.py)                                                                                |
-| **YAML + typed config components** | Use YAML as the base and pass selected top-level Pydantic sections through `config_components` as a mapping. Each supplied section overrides the complete matching YAML section.                                                                                                                                                                                                                                                                                                    | [`02_yaml_override_pipeline.py`](examples/usage/02_yaml_override_pipeline.py)                                                                                |
-| **YAML + registration** | Register a compatible Python class or callable, then refer to its registered name from the YAML. Registration must occur before invoking the workflow and be repeated in each new process.                                                                                                                                                                                                                                                                                          | [`04_custom_dataset_pipeline.py`](examples/usage/04_custom_dataset_pipeline.py) and [`05_custom_loss_pipeline.py`](examples/usage/05_custom_loss_pipeline.py) |
-| **YAML + model/datamodule override** | Supply an external model and/or datamodule as either a class or an instantiated object. Class overrides can be configured through the YAML; instance overrides use the already-constructed object directly. Model overrides replace the config-built model path (for canonical workflows only), while datamodule overrides replace the configured dataset, transforms, and datamodule. BenchRep validates the relevant compatibility contracts according to `compatibility_policy`. | Supported by the workflow entry points; a polished `examples/usage/` script is still pending.                                                                |
+from benchrep import (
+    train_vae,
+    predict_vae,
+    evaluate,
+    PredictionOverrides,
+    EvaluationOverrides,
+)
 
-A complete `full_config_object` has precedence over YAML and `config_components`. In the mixed YAML/component mode, components take precedence over matching YAML sections. Runtime model and datamodule objects then take precedence over their corresponding effective-config sections.
+configs = Path("examples/configs/01_yaml_pipeline")
 
-*Customization is layered. Individual datasets, transforms, architecture components, losses, optimizers, loggers, and evaluation metrics can be registered while retaining BenchRep's config-driven workflows. Canonical autoencoder and VAE models retain fixed architecture and loss contracts and support whole-model or datamodule runtime overrides. Composite models instead expose their architecture through declared inputs, outputs, reusable registered components, assembly wiring, and loss wiring; external datamodules remain supported, while whole-model overrides are intentionally unsupported. Every run records its effective configuration and provenance, and custom registrations or runtime overrides must be supplied again when reconstructing a workflow in a new process.*
+training = train_vae(config=configs / "training.yaml")
 
-Prediction requires a training manifest, whereas evaluation accepts a prediction manifest, direct artifact paths, or a combination thereof. Directly passed manifest paths override those stored in the configs, avoiding hard-coded output directories between stages.
+prediction = predict_vae(
+    config=configs / "prediction.yaml",
+    overrides=PredictionOverrides(
+        training_manifest_path=training.manifest_path,
+    ),
+)
 
-
-## Configuration and component discovery
-
-BenchRep exposes lightweight runtime discovery:
-
-- `benchrep.inspect_registry()` summarizes component registries and their extension policies.
-- `benchrep.inspect_registry("dataset")` lists the components available in the dataset registry.
-- `benchrep.inspect_registry("dataset", "mnist")` shows the MNIST implementation and constructor signature.
-- `benchrep.inspect_config(TrainingConfig)` describes a configuration schema, including field types, defaults, constraints, and nested schema types.
-- `benchrep.list_registries()` and `benchrep.list_registered_components()` return programmatic discovery records.
-
-Configuration classes are exported from `benchrep.assembly.schemas`, and registry objects from `benchrep.assembly.registries`.
-
-## Builders
-
-BenchRep is builder-based internally: validated configuration is resolved into datasets, transform pipelines, datamodules, models, optimizers, trainers, and callbacks. Advanced users may call the builders in `benchrep.assembly.builders` directly, but this is not currently an orthodox usage route and does not receive the same integration testing, documentation, or compatibility attention as the workflow entry points.
-
-## Outputs and provenance
-
-Every workflow creates an isolated run directory:
-
-```text
-<output_root>/<stage>/<run_name>/
+evaluation = evaluate(
+    config=configs / "evaluation.yaml",
+    overrides=EvaluationOverrides(
+        prediction_manifest_path=prediction.manifest_path,
+    ),
+)
 ```
 
-`<stage>` is `training`, `prediction`, or `evaluation`. Run names combine an optional run name prefix and model identity with a timestamp; a short suffix is added if the path already exists, so an existing run is not overwritten.
+Edit the YAMLs to change the experiment settings. With the supplied YAMLs unchanged, outputs are saved under `outputs/<stage>/01_yaml_pipeline_vae_conv2d_upsample_conv2d_<timestamp>/`, where <stage> is training, prediction, or evaluation.
 
-### Records shared by every workflow
+## Configuration wizards
 
-```text
-<run_name>/
-└── records/
-    ├── configs/
-    │   ├── original_config.yaml       # only when YAML was supplied
-    │   └── resolved_config.yaml       # effective validated config
-    ├── logs/
-    │   ├── benchrep.run.log           # BenchRep lifecycle, resolution, and status log
-    │   ├── stderr.log                  # captured stderr from the workflow runtime
-    │   └── stdout.log                  # optional; only when stdout capture is enabled
-    └── metadata/
-        ├── <stage>_manifest.yaml
-        └── <stage>_runtime_environment.yaml
+Create or edit workflow configurations in your browser, with field documentation, component discovery, validation, and YAML export. Install the `gui` extra, then launch a wizard with an example base YAML:
+
+```python
+from benchrep import configure_workflow
+from benchrep.interfaces.model_families import VAE_FAMILY
+
+configured = configure_workflow(
+    stage="training",
+    model_family=VAE_FAMILY,
+    config="examples/configs/01_yaml_pipeline/training.yaml",
+)
 ```
 
-`original_config.yaml` preserves the supplied YAML exactly, including when another input had higher effective precedence. `resolved_config.yaml` records the harmonized configuration actually used after composition and validation. Runtime-object overrides are described in the manifest because their implementation cannot be serialized; custom registry components likewise need to be registered before that YAML can be reconstructed in another process.
+The wizard opens automatically in your browser at http://127.0.0.1:8050. Use `port=...` to choose a different port.
 
-`<stage>_runtime_environment.yaml` records the environment relevant to the workflow, including package, platform, hardware, and enabled-backend context.
+Omit `config` to start fresh. Wizards are available for training, prediction, and evaluation; they configure workflows without running them.
 
-Each manifest is the primary machine-readable index for its run. It records the workflow status, granular outcome or step statuses, issues, timestamps, run identity, configuration provenance, source artifacts, export paths, and summary. Unless overridden, downstream workflows resolve paths and inherited settings from the upstream manifest.
+![BenchRep training configuration wizard](docs/assets/configuration-wizard.png)
 
-### Training outputs
 
-```text
-<training_run>/
-├── checkpoints/
-│   ├── *.ckpt                       # monitored top-k checkpoints
-│   └── last.ckpt                    # when save_last is enabled
-├── architecture/
-│   ├── composite_model_spec_graph.svg   # Composite runs
-│   └── torchview_model_graph.svg        # optional
-└── records/
-    └── metadata/
-        ├── training_manifest.yaml
-        └── training_runtime_environment.yaml
-```
+## Documentation and examples
 
-The training manifest summarizes model and data provenance, checkpoint outputs, workflow status, and reconstructability. Training status is `completed`, `completed_with_warnings`, `completed_after_interruption`, or `failed`. Lightning-handled SIGINT/SIGTERM interruptions are finalized when possible, while non-critical inspection failures are recorded as warnings.
-
-### Prediction outputs
-
-```text
-<prediction_run>/
-├── architecture/
-│   └── composite_model_spec_graph.svg   # Composite runs
-├── anndata/
-│   └── anndata.h5ad
-├── reconstructions/
-│   └── <pair_id>/
-│       ├── input.pt
-│       ├── reconstruction.pt
-│       ├── obs.pt
-│       └── reconstruction_export_metadata.pt
-└── records/
-    └── metadata/
-        ├── prediction_manifest.yaml
-        └── prediction_runtime_environment.yaml
-```
-
-`anndata.h5ad` is the standard non-image prediction artifact. The selected primary representation is stored in `adata.X`; additional vector-valued outputs are stored in `adata.obsm`, while scalar outputs and observation annotations are stored in `adata.obs`.
-
-Reconstruction exports are organized into one bundle per resolved input/reconstruction pair. Each bundle stores the selected input and reconstruction tensors in `input.pt` and `reconstruction.pt`, corresponding annotations in `obs.pt`, and selection metadata in `reconstruction_export_metadata.pt`. Pairs may be inferred from configured reconstruction losses or selected explicitly, and each is recorded separately in the prediction manifest.
-
-Inference and each export are tracked independently, preserving successful artifacts and producing a top-level status of `completed`, `completed_with_warnings`, `partially_completed`, or `failed`. If `partially_completed` or `failed`, BenchRep writes the manifest first and then raises an error, preserving the failure record and any usable artifacts while breaking a workflow chain.
-
-### Evaluation outputs
-
-```text
-<evaluation_run>/
-├── artifacts/
-│   ├── embeddings/
-│   │   └── evaluated_embeddings.h5ad
-│   └── reconstructions/
-│       ├── inputs/
-│       │   └── input_example_*.tif
-│       ├── predictions/
-│       │   └── prediction_example_*.tif
-│       └── error_maps/
-│           └── <error_kind>/
-│               └── error_map_<error_kind>_example_*.tif
-├── figures/
-│   ├── embeddings/
-│   │   ├── reductions/
-│   │   │   ├── uncolored/
-│   │   │   └── colored_by/<obs_key>/
-│   │   └── diagnostics/
-│   │       ├── pca/
-│   │       └── clustering/<cluster_key>/
-│   └── reconstructions/
-│       └── reconstruction_grid_channel_*_page_*.<format>
-└── records/
-    ├── metrics/
-    │   └── metrics.json
-    └── metadata/
-        ├── evaluation_manifest.yaml
-        └── evaluation_runtime_environment.yaml
-```
-
-`evaluated_embeddings.h5ad` is the complete embedding-side result. It preserves the evaluated embedding in `adata.X` and stores generated reductions in `adata.obsm`, cluster assignments/probabilities in `adata.obs`, neighbor graphs in `adata.obsp`, and BenchRep method metadata and metrics under `adata.uns["benchrep"]`. The evaluation manifest includes these internal AnnData locations.
-
-`metrics.json` consolidates scalar metrics and compact array summaries across embedding, clustering, predictability, and reconstruction evaluation. Reconstruction TIFFs are exported per example with multichannel support, while paginated reconstruction grids can include error maps. Embedding figures include annotation-colored projections, and PCA variance and clustering diagnostics, with configurable DPI/output formats.
-
-Evaluation uses dependency-aware pipelines whose steps run, fail, or skip independently according to upstream outcomes. The manifest records step outcomes and aggregate statuses, allowing recoverable failures without aborting unrelated steps.
-
-### Workflow linkage
-
-Prediction manifests embed their complete training manifest and record the selected checkpoint and prediction-time configuration. Evaluation manifests can likewise embed the prediction manifest, preserving the complete training → prediction → evaluation provenance chain while still allowing evaluation to run directly from compatible external artifacts.
-
-## Development status and roadmap
-
-BenchRep is already usable for research experiments across its canonical and composite model workflows, but it should not yet be treated as a stable, comprehensive benchmarking platform. Important ongoing work includes:
-
-- expanding the breadth of built-in datasets, transforms, architecture components, losses, evaluation methods, metrics, and plots;
-- expanding extensibility across evaluation methods and other currently built-in-only components;
-- adding loss-weight scheduling and warm-up mechanisms;
-- adding support for pretrained models and architecture components;
-- adding higher-level experiment and study orchestration above individual workflows, including systematic tuning;
-- potentially adding a Streamlit-based configuration wizard;
-- continuing schema documentation, resilience testing, and end-to-end coverage.
+- [Documentation](docs/index.md): currently being written. For now, refer to [Usage examples](examples/usage/). 
+- [Usage examples](examples/usage/): YAML and Python configuration, custom components, composite models, and Optuna tuning.
+- [Example configurations](examples/configs/): starting points for your own experiments.
