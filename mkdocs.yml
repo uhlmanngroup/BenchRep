@@ -2,29 +2,71 @@ site_name: BenchRep
 site_description: Representation learning and benchmarking
 repo_url: https://github.com/uhlmanngroup/BenchRep
 repo_name: uhlmanngroup/BenchRep
-
 theme:
   name: material
   palette:
-    - scheme: default
-      primary: deep purple
-      accent: purple
-      toggle:
-        icon: material/brightness-7
-        name: Switch to dark mode
-    - scheme: slate
-      primary: deep purple
-      accent: purple
-      toggle:
-        icon: material/brightness-4
-        name: Switch to light mode
+  - scheme: default
+    primary: deep purple
+    accent: purple
+    toggle:
+      icon: material/brightness-7
+      name: Switch to dark mode
+  - scheme: slate
+    primary: deep purple
+    accent: purple
+    toggle:
+      icon: material/brightness-4
+      name: Switch to light mode
   features:
-    - content.code.copy
-
+  - navigation.tabs
+  - navigation.indexes
+  - content.code.copy
 nav:
-  - Home: index.md
-
+- Home: index.md
+- Guides & tutorials:
+  - guides/index.md
+  - Getting started:
+    - Installation: guides/installation.md
+    - Run your first workflow chain: guides/first-workflow-chain.md
+  - Ways to configure the same run:
+    - YAML files: guides/yaml.md
+    - Python config objects: guides/python-configs.md
+    - YAML with Python overrides: guides/overrides.md
+    - Configuration wizard: guides/wizard.md
+  - Worked examples:
+    - Evaluate external embeddings or reconstructions: guides/standalone-evaluation.md
+    - Build a multitask composite model: guides/multitask-composite.md
+    - Register a custom loss: guides/custom-loss.md
+    - Tune hyperparameters with Optuna: guides/optuna.md
+- Using BenchRep:
+  - usage/index.md
+  - Calling workflows:
+    - Entrypoints and model families: usage/entrypoints.md
+    - Overrides and runtime callbacks: usage/runtime-inputs.md
+    - Workflow results: usage/results.md
+  - Writing configurations:
+    - Config sections, defaults, and omissions: usage/configuration.md
+    - Combining YAML and Python: usage/config-composition.md
+    - Using the configuration wizards: usage/wizards.md
+    - Schema reference: usage/schema-reference.md
+  - Defining models and objectives:
+    - Canonical autoencoders and VAEs: usage/canonical-models.md
+    - Composite declarations, components, and assembly: usage/composite-models.md
+    - Losses and weight schedules: usage/losses.md
+  - Discovering and registering components:
+    - Registries and discovery: usage/discovery.md
+    - Registering classes and factories: usage/registration.md
+    - Component contracts: usage/contracts.md
+- How BenchRep works:
+  - internals/index.md
+  - Anatomy of a workflow: internals/workflow-anatomy.md
+  - Run outputs and provenance: internals/run-records.md
+  - Training: internals/training.md
+  - Prediction: internals/prediction.md
+  - Evaluation: internals/evaluation.md
+- API reference:
+  - reference/index.md
 markdown_extensions:
-  - admonition
-  - pymdownx.highlight
-  - pymdownx.superfences
+- admonition
+- pymdownx.highlight
+- pymdownx.superfences
