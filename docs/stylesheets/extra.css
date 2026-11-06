@@ -17,3 +17,8 @@
     height: auto;
     margin-inline: auto;
 }
+
+
+.md-typeset .admonition.align-left p {
+  text-align: start;
+}

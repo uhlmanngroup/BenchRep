@@ -2,19 +2,12 @@
 
 ## Getting started
 
-- [Installation](installation.md)
-- [Run your first workflow chain](first-workflow-chain.md)
+Install BenchRep, then run a convolutional VAE on MNIST to see how training, prediction, and evaluation connect. [Open overview](getting-started/index.md).
 
-## Ways to configure the same run
+## Configure workflows
 
-- [YAML files](yaml.md)
-- [Python config objects](python-configs.md)
-- [YAML with Python overrides](overrides.md)
-- [Configuration wizard](wizard.md)
+Choose a starting point and the input you want to pass to the workflow. [Open overview](configure-workflows/index.md).
 
 ## Worked examples
 
-- [Evaluate external embeddings or reconstructions](standalone-evaluation.md)
-- [Build a multitask composite model](multitask-composite.md)
-- [Register a custom loss](custom-loss.md)
-- [Tune hyperparameters with Optuna](optuna.md)
+Evaluate existing model outputs, build a multitask model, register a loss, or tune hyperparameters with Optuna. Each example focuses on one task. [Open overview](worked-examples/index.md).

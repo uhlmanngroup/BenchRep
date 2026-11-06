@@ -29,21 +29,33 @@ The first run downloads MNIST to `data/mnist/` (~64 MiB). The script prints each
 As an alternative to the terminal command, run the same chain in Python:
 
 ```python
-from benchrep import EvaluationOverrides, PredictionOverrides, evaluate, predict_vae, train_vae
+from benchrep import (
+    EvaluationOverrides,
+    PredictionOverrides,
+    evaluate,
+    predict_vae,
+    train_vae,
+)
 from benchrep.examples import example_config_path
 
 example = "01_yaml_pipeline"
 
-training = train_vae(config=example_config_path(example, stage="training"))
+training = train_vae(
+    config=example_config_path(example, stage="training")
+)
 
 prediction = predict_vae(
     config=example_config_path(example, stage="prediction"),
-    overrides=PredictionOverrides(training_manifest_path=training.manifest_path),
+    overrides=PredictionOverrides(
+        training_manifest_path=training.manifest_path,
+    ),
 )
 
 evaluation = evaluate(
     config=example_config_path(example, stage="evaluation"),
-    overrides=EvaluationOverrides(prediction_manifest_path=prediction.manifest_path),
+    overrides=EvaluationOverrides(
+        prediction_manifest_path=prediction.manifest_path,
+    ),
 )
 ```
 

@@ -2,25 +2,16 @@
 
 ## Calling workflows
 
-- [Entrypoints and model families](entrypoints.md)
-- [Overrides and runtime callbacks](runtime-inputs.md)
-- [Workflow results](results.md)
+Choose an entrypoint, supply its inputs, and use the returned result to inspect a run or start the next workflow. [Open overview](calling-workflows/index.md).
 
 ## Writing configurations
 
-- [Config sections, defaults, and omissions](configuration.md)
-- [Combining YAML and Python](config-composition.md)
-- [Using the configuration wizards](wizards.md)
-- [Schema reference](schema-reference.md)
+Use the schema reference to look up individual fields. The guides below explain how sections, defaults, and overrides fit together. [Open overview](writing-configurations/index.md).
 
 ## Defining models and objectives
 
-- [Canonical autoencoders and VAEs](canonical-models.md)
-- [Composite declarations, components, and assembly](composite-models.md)
-- [Losses and weight schedules](losses.md)
+Choose a canonical autoencoder or VAE for a fixed topology, or declare a composite model to wire components and objectives yourself. [Open overview](models-and-objectives/index.md).
 
 ## Discovering and registering components
 
-- [Registries and discovery](discovery.md)
-- [Registering classes and factories](registration.md)
-- [Component contracts](contracts.md)
+Inspect the registry to find components you can select by name. To add your own, check which registries accept external classes or factories and which contracts they require. [Open overview](discovering-components/index.md).

@@ -29,14 +29,17 @@ nav:
 - Guides & tutorials:
   - guides/index.md
   - Getting started:
+    - guides/getting-started/index.md
     - Installation: guides/installation.md
     - Run your first workflow chain: guides/first-workflow-chain.md
-  - Ways to configure the same run:
+  - Configure workflows:
+    - guides/configure-workflows/index.md
     - YAML files: guides/yaml.md
     - Python config objects: guides/python-configs.md
-    - YAML with Python overrides: guides/overrides.md
+    - Python overrides: guides/overrides.md
     - Configuration wizard: guides/wizard.md
   - Worked examples:
+    - guides/worked-examples/index.md
     - Evaluate external embeddings or reconstructions: guides/standalone-evaluation.md
     - Build a multitask composite model: guides/multitask-composite.md
     - Register a custom loss: guides/custom-loss.md
@@ -44,19 +47,23 @@ nav:
 - Using BenchRep:
   - usage/index.md
   - Calling workflows:
+    - usage/calling-workflows/index.md
     - Entrypoints and model families: usage/entrypoints.md
     - Overrides and runtime callbacks: usage/runtime-inputs.md
     - Workflow results: usage/results.md
   - Writing configurations:
+    - usage/writing-configurations/index.md
     - Config sections, defaults, and omissions: usage/configuration.md
     - Combining YAML and Python: usage/config-composition.md
     - Using the configuration wizards: usage/wizards.md
     - Schema reference: usage/schema-reference.md
   - Defining models and objectives:
+    - usage/models-and-objectives/index.md
     - Canonical autoencoders and VAEs: usage/canonical-models.md
     - Composite declarations, components, and assembly: usage/composite-models.md
     - Losses and weight schedules: usage/losses.md
   - Discovering and registering components:
+    - usage/discovering-components/index.md
     - Registries and discovery: usage/discovery.md
     - Registering classes and factories: usage/registration.md
     - Component contracts: usage/contracts.md
