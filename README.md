@@ -27,7 +27,7 @@ BenchRep is a configuration-driven, Lightning-based framework for training repre
 BenchRep separates training, prediction, and evaluation into configurable workflows linked through manifests that record comprehensive run settings. Configure each workflow through YAML, Python, or a GUI wizard. Evaluation can also run independently on external embeddings and reconstructions.
 
 ![BenchRep workflow chain](docs/assets/workflow-chain.svg)
-*Dash-dot arrows mark optional connections. Wands mark configuration wizards.*
+<sub>*Dash-dot arrows mark optional connections. Wands mark configuration wizards.*</sub>
 
 BenchRep provides canonical autoencoders and VAEs with swappable encoders and decoders, alongside composite models whose components and contracts, wiring, and learning objectives are user-defined.
 

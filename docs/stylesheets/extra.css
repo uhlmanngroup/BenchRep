@@ -1,0 +1,19 @@
+.md-content .md-typeset :is(p, li) {
+    text-align: justify;
+}
+
+.md-typeset figure figcaption {
+    font-size: 0.85em;
+}
+
+[data-md-color-scheme="slate"] .md-typeset strong.highlight {
+    color: #F2AD88;
+}
+
+.md-typeset img[src*="mnist-reconstructions"] {
+    display: block;
+    width: 500px;
+    max-width: 100%;
+    height: auto;
+    margin-inline: auto;
+}

@@ -2,8 +2,11 @@ site_name: BenchRep
 site_description: Representation learning and benchmarking
 repo_url: https://github.com/uhlmanngroup/BenchRep
 repo_name: uhlmanngroup/BenchRep
+extra_css:
+  - stylesheets/extra.css
 theme:
   name: material
+  variant: classic
   palette:
   - scheme: default
     primary: deep purple
