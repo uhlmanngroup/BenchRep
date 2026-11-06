@@ -28,6 +28,9 @@ examples/configs/DEMO/
 examples/usage/DEMO.py
 temp_demo/
 
+# Datasets downloaded by examples run from the repo root
+/data/
+
 # Scratch and tmps
 scratch/
 wizard_configs/
@@ -46,3 +49,7 @@ packages_BenchRep.png
 
 # Docs
 /site/
+
+
+# Build artifacts, including links used by strict editable installs
+/build/

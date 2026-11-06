@@ -7,7 +7,7 @@ source:
 dataset:
   name: fashion_mnist
   params:
-    root: examples/data/fashion_mnist
+    root: data/fashion_mnist
     split: test
     download: true
 

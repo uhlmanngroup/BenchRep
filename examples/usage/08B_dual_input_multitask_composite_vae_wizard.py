@@ -8,14 +8,15 @@ wizard GUI. However, for demonstration purposes, we will use the existing
 Imports and registers the custom dataset and two-input concatenation head from
 example 08A.
 
-Run from the repository root:
+Run from your working directory:
 
-    python examples/usage/08B_dual_input_multitask_composite_vae_wizard.py
+    python -m benchrep.examples.usage.08B_dual_input_multitask_composite_vae_wizard
 """
 
 from __future__ import annotations
 
 from importlib import import_module
+from pathlib import Path
 
 from benchrep import (
     configure_workflow,
@@ -32,10 +33,11 @@ from benchrep.architecture.composite_model_component_contracts import (
     ComponentTensorResult,
 )
 from benchrep.assembly.registries import DATASETS, HEADS
+from benchrep.examples import example_config_path
 from benchrep.records import print_divider
 
-example_08A = import_module("08A_dual_input_multitask_composite_vae_yaml")
-CONFIG_DIR = example_08A.CONFIG_DIR
+example_08A = import_module("benchrep.examples.usage.08A_dual_input_multitask_composite_vae_yaml")
+EXAMPLE = example_08A.EXAMPLE
 EnrichedMNISTDataset = example_08A.EnrichedMNISTDataset
 ConcatenationHead = example_08A.ConcatenationHead
 
@@ -80,9 +82,9 @@ def main() -> None:
 
     training_wizard_result = configure_workflow(
         stage="training",
-        config=CONFIG_DIR / "training.yaml",
+        config=example_config_path(EXAMPLE, stage="training"),
         model_family=COMPOSITE_FAMILY,
-        export_directory=CONFIG_DIR / "08B_wizard_configs",
+        export_directory=Path("wizard_configs") / "08B",
     )
 
     # Stop this example if wizard was canceled.
@@ -103,9 +105,9 @@ def main() -> None:
     # Optionally, use the YAML from usage example 08A as a base and pass the training manifest path in the overrides.
     prediction_wizard_result = configure_workflow(
         stage="prediction",
-        config=CONFIG_DIR / "prediction.yaml",
+        config=example_config_path(EXAMPLE, stage="prediction"),
         model_family=COMPOSITE_FAMILY,
-        export_directory=CONFIG_DIR / "08B_wizard_configs",
+        export_directory=Path("wizard_configs") / "08B",
         overrides=PredictionOverrides(
             training_manifest_path=training_result.manifest_path,
         ),
@@ -128,8 +130,8 @@ def main() -> None:
     # Optionally, use the YAML from usage example 08A as a base and pass the prediction manifest path in the overrides.
     evaluation_wizard_result = configure_workflow(
         stage="evaluation",
-        config=CONFIG_DIR / "evaluation.yaml",
-        export_directory=CONFIG_DIR / "08B_wizard_configs",
+        config=example_config_path(EXAMPLE, stage="evaluation"),
+        export_directory=Path("wizard_configs") / "08B",
         overrides=EvaluationOverrides(
             prediction_manifest_path=prediction_result.manifest_path,
         ),

@@ -13,7 +13,6 @@ poor reconstruction while keeping clustering quality as the final objective.
 import math
 from pathlib import Path
 from datetime import datetime
-import yaml
 
 try:
     import optuna
@@ -32,19 +31,18 @@ from benchrep import (
     train_composite,
     update_config,
 )
+from benchrep.examples import example_config_path, load_example_config
 from benchrep.records import print_divider
 from benchrep.architecture.data import BenchRepDataModule
-from benchrep.assembly.schemas import TrainingConfig
 
 
-CONFIG_DIR = Path(__file__).resolve().parents[1] / "configs" / "10_optuna_composite_vae"
+EXAMPLE = "10_optuna_composite_vae"
 OUTPUT_DIR = Path("outputs/optuna_composite_vae") / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 PRUNING_METRIC = "losses/val/reconstruction/mse"
 SEED = 137
 N_TRIALS = 3
 
-with (CONFIG_DIR / "training.yaml").open(encoding="utf-8") as stream:
-    BASE_CONFIG = TrainingConfig.model_validate(yaml.safe_load(stream))
+BASE_CONFIG = load_example_config(EXAMPLE, stage="training")
 
 
 def run_trial(trial: optuna.Trial) -> float:
@@ -90,7 +88,7 @@ def run_trial(trial: optuna.Trial) -> float:
     validation_dataset = training_result.datamodule.val_dataset
 
     prediction_result = predict_composite(
-        config=CONFIG_DIR / "prediction.yaml",
+        config=example_config_path(EXAMPLE, stage="prediction"),
         overrides=PredictionOverrides(
             training_manifest_path=training_result.manifest_path,
             datamodule=BenchRepDataModule(
@@ -104,7 +102,7 @@ def run_trial(trial: optuna.Trial) -> float:
     )
 
     evaluation_result = evaluate(
-        config=CONFIG_DIR / "evaluation.yaml",
+        config=example_config_path(EXAMPLE, stage="evaluation"),
         overrides=EvaluationOverrides(
             prediction_manifest_path=prediction_result.manifest_path,
         ),

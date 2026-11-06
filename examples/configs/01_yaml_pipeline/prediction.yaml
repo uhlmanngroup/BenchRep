@@ -7,7 +7,7 @@ source:
 dataset:
   name: mnist
   params:
-    root: examples/data/mnist
+    root: data/mnist
     split: test
     download: true
 

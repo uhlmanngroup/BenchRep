@@ -7,12 +7,11 @@ full-context interface. Neither registration declares Composite runtime inputs.
 Both losses are combined with BenchRep's built-in MSE reconstruction loss and
 Gaussian KL regularization.
 
-Run from the repository root:
+Run from your working directory:
 
-    python examples/usage/05_custom_loss_pipeline.py
+    python -m benchrep.examples.usage.05_custom_loss_pipeline
 """
 
-from pathlib import Path
 from collections.abc import Mapping
 from typing import Any
 
@@ -31,15 +30,12 @@ from benchrep.architecture.losses import (
     LossComponent,
 )
 from benchrep.assembly.registries import RECONSTRUCTION_LOSSES, CUSTOM_OBJECTIVE_LOSSES
+from benchrep.examples import example_config_path
 from benchrep.records import print_divider
 
 
 # Resolve config paths relative to this script.
-CONFIG_DIR = (
-    Path(__file__).resolve().parents[1]
-    / "configs"
-    / "05_custom_loss_pipeline"
-)
+EXAMPLE = "05_custom_loss_pipeline"
 
 # How losses work in BenchRep:
 #
@@ -186,12 +182,12 @@ def main() -> None:
     print_divider("Pipeline", major=True)
 
     training_result = train_vae(
-        config=CONFIG_DIR / "training.yaml",
+        config=example_config_path(EXAMPLE, stage="training"),
     )
     print(f"Training manifest: {training_result.manifest_path}")
 
     prediction_result = predict_vae(
-        config=CONFIG_DIR / "prediction.yaml",
+        config=example_config_path(EXAMPLE, stage="prediction"),
         overrides=PredictionOverrides(
             training_manifest_path=training_result.manifest_path,
         ),
@@ -199,7 +195,7 @@ def main() -> None:
     print(f"Prediction manifest: {prediction_result.manifest_path}")
 
     evaluation_result = evaluate(
-        config=CONFIG_DIR / "evaluation.yaml",
+        config=example_config_path(EXAMPLE, stage="evaluation"),
         overrides=EvaluationOverrides(
             prediction_manifest_path=prediction_result.manifest_path,
         )

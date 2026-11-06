@@ -1,8 +1,8 @@
 """Run a comprehensive standalone evaluation from static artifacts.
 
-Run from the repository root:
+Run from your working directory:
 
-    python examples/usage/09_standalone_evaluation_workflow.py
+    python -m benchrep.examples.usage.09_standalone_evaluation_workflow
 
 This example demonstrates that BenchRep evaluation can run independently of
 its training and prediction workflows. It evaluates an AnnData embedding
@@ -32,28 +32,18 @@ The dataset definition and artifact-generation workflow are available under
 ``examples/artifact_generation/09_standalone_evaluation_workflow``.
 """
 
-from pathlib import Path
 
 import anndata as ad
 import torch
 
 from benchrep import evaluate, EvaluationOverrides
 from benchrep.assembly.schemas import EvaluationSourceConfig
+from benchrep.examples import example_asset_path, example_config_path
 
 
-EXAMPLES_DIR = Path(__file__).resolve().parents[1]
-CONFIG_DIR = (
-    EXAMPLES_DIR
-    / "configs"
-    / "09_standalone_evaluation_workflow"
-)
-ASSET_DIR = (
-    EXAMPLES_DIR
-    / "assets"
-    / "09_standalone_evaluation_workflow"
-)
-
-CONFIG_PATH = CONFIG_DIR / "evaluation.yaml"
+EXAMPLE = "09_standalone_evaluation_workflow"
+CONFIG_PATH = example_config_path(EXAMPLE, stage="evaluation")
+ASSET_DIR = example_asset_path(EXAMPLE)
 ANNDATA_PATH = ASSET_DIR / "anndata.h5ad"
 RECONSTRUCTION_BUNDLE_DIR = ASSET_DIR / "reconstruction_bundle"
 

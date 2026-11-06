@@ -1,8 +1,8 @@
 """Run a BenchRep pipeline using Pydantic configuration objects.
 
-Run from the repository root:
+Run from your working directory:
 
-    python examples/usage/03_config_object_pipeline.py
+    python -m benchrep.examples.usage.03_config_object_pipeline
 
 This example constructs the same general MNIST VAE pipeline as
 01_yaml_pipeline.py without loading configuration from YAML.
@@ -89,7 +89,7 @@ def build_training_config() -> TrainingConfig:
         ),
         dataset=MNISTDatasetConfig(
             params=MNISTDatasetParams(
-                root=Path("examples/data/mnist"),
+                root=Path("data/mnist"),
                 split="train",
                 download=True,
             ),
@@ -199,7 +199,7 @@ def build_prediction_config(
         ),
         dataset=MNISTDatasetConfig(
             params=MNISTDatasetParams(
-                root=Path("examples/data/mnist"),
+                root=Path("data/mnist"),
                 split="test",
                 download=True,
             ),

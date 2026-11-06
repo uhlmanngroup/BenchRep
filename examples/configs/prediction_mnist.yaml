@@ -1,13 +1,13 @@
 stage: prediction
 
 source:
-  training_manifest_path: /home/qptero/github/BenchRep/outputs/training/test_vae_conv2d_upsample_conv2d_20260622-161610/records/metadata/training_manifest.yaml
+  training_manifest_path: null  # Supply a manifest path here or via overrides.
   checkpoint: best              # best | last | checkpoint filename in training checkpoint dir
 
 dataset:
   name: mnist
   params:
-    root: examples/data/mnist
+    root: data/mnist
     split: test
     download: true
 

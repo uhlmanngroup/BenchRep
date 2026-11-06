@@ -7,7 +7,7 @@ source:
 dataset:
   name: stl10
   params:
-    root: examples/data/stl10
+    root: data/stl10
     split: test
     download: true
 

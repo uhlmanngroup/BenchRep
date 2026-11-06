@@ -1,8 +1,8 @@
 """Run a BenchRep pipeline using typed overrides on existing YAML configs.
 
-Run from the repository root:
+Run from your working directory:
 
-    python examples/usage/02_yaml_override_pipeline.py
+    python -m benchrep.examples.usage.02_yaml_override_pipeline
 
 This example adapts the MNIST VAE pipeline from 01_yaml_pipeline.py to
 CIFAR-10. It demonstrates registry and schema inspection, top-level config
@@ -30,14 +30,11 @@ from benchrep.assembly.schemas import (
     CIFAR10DatasetParams,
     TrainingConfig,
 )
+from benchrep.examples import example_config_path
 from benchrep.records import print_divider
 
 # Resolve config paths relative to this script.
-CONFIG_DIR = (
-    Path(__file__).resolve().parents[1]
-    / "configs"
-    / "01_yaml_pipeline"
-)
+EXAMPLE = "01_yaml_pipeline"
 
 
 def main() -> None:
@@ -75,7 +72,7 @@ def main() -> None:
     cifar_10_training_config = CIFAR10DatasetConfig(
         name="cifar10",
         params=CIFAR10DatasetParams(
-            root=Path("examples/data/cifar10"),
+            root=Path("data/cifar10"),
             split="train",
             download=True,
         ),
@@ -84,7 +81,7 @@ def main() -> None:
     cifar_10_prediction_config = CIFAR10DatasetConfig(
         name="cifar10",
         params=CIFAR10DatasetParams(
-            root=Path("examples/data/cifar10"),
+            root=Path("data/cifar10"),
             split="test",
             download=True,
         ),
@@ -118,7 +115,7 @@ def main() -> None:
 
     # Configuration components prepared, we can now begin the pipeline
     training_result = train_vae(
-        config=CONFIG_DIR / "training.yaml",
+        config=example_config_path(EXAMPLE, stage="training"),
         # Mapping keys match the top-level field names in `TrainingConfig`.
         overrides=TrainingOverrides(
             config_components={
@@ -140,7 +137,7 @@ def main() -> None:
     print(f"Resolved training config: {resolved_training_config_path}")
 
     prediction_result = predict_vae(
-        config=CONFIG_DIR / "prediction.yaml",
+        config=example_config_path(EXAMPLE, stage="prediction"),
         overrides=PredictionOverrides(
             # Use the manifest generated above instead of hard-coding an output path
             # in prediction.yaml.
@@ -155,7 +152,7 @@ def main() -> None:
     print(f"Prediction manifest: {prediction_result.manifest_path}")
 
     evaluation_result = evaluate(
-        config=CONFIG_DIR / "evaluation.yaml",
+        config=example_config_path(EXAMPLE, stage="evaluation"),
         # The prediction manifest supplies the exported AnnData,
         # reconstructions, provenance, and inherited run identity.
         overrides=EvaluationOverrides(

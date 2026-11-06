@@ -75,6 +75,9 @@ artifact_generation = [
 docs = [
     "mkdocs-material",
 ]
+dev = [
+    "benchrep[scverse,logging,model_graph,xgboost,optuna,gui-test,artifact_generation,docs]",
+]
 
 
 [tool.pytest.ini_options]
@@ -86,8 +89,10 @@ filterwarnings = [
     "ignore:The argument 'device' of Tensor\\.is_pinned\\(\\) is deprecated.*:DeprecationWarning",
 ]
 
-[tool.setuptools.packages.find]
-where = ["src"]
+[tool.setuptools.package-dir]
+"" = "src"
+"benchrep.examples" = "examples"
 
 [tool.setuptools.package-data]
+"benchrep.examples" = ["configs/*.yaml", "configs/*/*.yaml", "assets/**/*"]
 "benchrep.gui" = ["assets/*.css", "assets/*.js", "assets/*.svg"]

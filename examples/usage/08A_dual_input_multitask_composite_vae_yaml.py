@@ -7,16 +7,15 @@ Registers a two-input concatenation head that combines encoder features
 before variational parameterization. The model reconstructs both images
 and predicts digit identity and stroke width.
 
-Run from the repository root:
+Run from your working directory:
 
-    python examples/usage/08A_dual_input_multitask_composite_vae_yaml.py
+    python -m benchrep.examples.usage.08A_dual_input_multitask_composite_vae_yaml
 """
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any, Final, Literal
 
 import numpy as np
@@ -43,15 +42,12 @@ from benchrep.architecture.composite_model_component_contracts import (
     ComponentTensorResult,
 )
 from benchrep.assembly.registries import DATASETS, HEADS
+from benchrep.examples import example_config_path
 from benchrep.records import print_divider
 
 
 # Resolve config paths relative to this script.
-CONFIG_DIR = (
-    Path(__file__).resolve().parents[1]
-    / "configs"
-    / "08_dual_input_multitask_composite_vae_pipeline"
-)
+EXAMPLE = "08_dual_input_multitask_composite_vae_pipeline"
 
 # Custom dataset constants
 Split = Literal["train", "test"]
@@ -361,12 +357,12 @@ def main() -> None:
 
     print_divider("Pipeline", major=True)
     training_result = train_composite(
-        config=CONFIG_DIR / "training.yaml",
+        config=example_config_path(EXAMPLE, stage="training"),
     )
     print(f"Training manifest: {training_result.manifest_path}")
 
     prediction_result = predict_composite(
-        config=CONFIG_DIR / "prediction.yaml",
+        config=example_config_path(EXAMPLE, stage="prediction"),
         overrides=PredictionOverrides(
             training_manifest_path=training_result.manifest_path,
         ),
@@ -374,7 +370,7 @@ def main() -> None:
     print(f"Prediction manifest: {prediction_result.manifest_path}")
 
     evaluation_result = evaluate(
-        config=CONFIG_DIR / "evaluation.yaml",
+        config=example_config_path(EXAMPLE, stage="evaluation"),
         overrides=EvaluationOverrides(
             prediction_manifest_path=prediction_result.manifest_path,
         ),

@@ -1,15 +1,14 @@
 """Run the canonical YAML-configured BenchRep pipeline with a custom dataset.
 
-Run from the repository root:
+Run from your working directory:
 
-    python examples/usage/04_custom_dataset_pipeline.py
+    python -m benchrep.examples.usage.04_custom_dataset_pipeline
 
 This example is similar to 01_yaml_pipeline but leverages the custom dataset
 configuration feature to allow for the use of an external dataset not built
 into BenchRep.
 """
 
-from pathlib import Path
 from typing import Any, Literal
 
 from torchvision.datasets import FashionMNIST
@@ -25,15 +24,11 @@ from benchrep import (
 )
 from benchrep.architecture.data import BaseDataset
 from benchrep.assembly.registries import DATASETS
+from benchrep.examples import example_config_path
 from benchrep.records import print_divider
 
 
-# Resolve config paths relative to this script
-CONFIG_DIR = (
-    Path(__file__).resolve().parents[1]
-    / "configs"
-    / "04_custom_dataset_pipeline"
-)
+EXAMPLE = "04_custom_dataset_pipeline"
 
 
 # Adapt an external dataset to the BenchRep dataset contract.
@@ -100,12 +95,12 @@ def main() -> None:
 
     print_divider("Pipeline", major=True)
     training_result = train_vae(
-        config=CONFIG_DIR / "training.yaml",
+        config=example_config_path(EXAMPLE, stage="training"),
     )
     print(f"Training manifest: {training_result.manifest_path}")
 
     prediction_result = predict_vae(
-        config=CONFIG_DIR / "prediction.yaml",
+        config=example_config_path(EXAMPLE, stage="prediction"),
         overrides=PredictionOverrides(
             training_manifest_path=training_result.manifest_path,
         ),
@@ -113,7 +108,7 @@ def main() -> None:
     print(f"Prediction manifest: {prediction_result.manifest_path}")
 
     evaluation_result = evaluate(
-        config=CONFIG_DIR / "evaluation.yaml",
+        config=example_config_path(EXAMPLE, stage="evaluation"),
         overrides=EvaluationOverrides(
             prediction_manifest_path=prediction_result.manifest_path,
         ),
