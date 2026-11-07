@@ -1,6 +1,12 @@
 # BenchRep
 
-BenchRep is a configuration-driven, Lightning-based framework for training representation-learning models, exporting their learned representations, and evaluating those representations through reproducible, linked workflows. You can reuse a <strong class="highlight">benchmark</strong> across models, <strong class="highlight">experiment</strong> with architectures and learning objectives, or <strong class="highlight">teach</strong> representation learning through a configuration wizard.
+BenchRep is a configuration-driven, Lightning-based, extensible Python <strong class="highlight">workbench for representation learning</strong>:
+
+- <strong class="highlight">Experiment</strong> with architectures and learning objectives using configurations that simplify repeated runs with targeted changes.
+- <strong class="highlight">Benchmark</strong> models reproducibly.
+- <strong class="highlight">Teach</strong> representation learning through exploration with minimal coding overhead.
+
+It connects model training, representation export, and standardized evaluation through reproducible, linked workflows.
 
 ## Start here
 
