@@ -48,7 +48,7 @@ python -m pip install -e .
 Optional extras include GUI wizards, Optuna tuning, scverse evaluation, external loggers, model graphs, and XGBoost probes:
 
 ```bash
-python -m pip install -e ".[scverse,logging,model_graph,xgboost]"
+python -m pip install -e ".[full]"
 ```
 
 ## Quick start
