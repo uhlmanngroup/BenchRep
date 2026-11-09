@@ -13,10 +13,12 @@ poor reconstruction while keeping clustering quality as the final objective.
 import math
 from pathlib import Path
 from datetime import datetime
+from threading import Thread
 
 try:
     import optuna
     from optuna_integration import PyTorchLightningPruningCallback
+    from optuna_dashboard import run_server
 except ImportError as exc:
     raise ImportError(
         "This example requires BenchRep's optional Optuna dependencies. "
@@ -40,7 +42,7 @@ EXAMPLE = "10_optuna_composite_vae"
 OUTPUT_DIR = Path("outputs/optuna_composite_vae") / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 PRUNING_METRIC = "losses/val/reconstruction/mse"
 SEED = 137
-N_TRIALS = 3
+N_TRIALS = 10
 
 BASE_CONFIG = load_example_config(EXAMPLE, stage="training")
 
@@ -158,6 +160,11 @@ def objective(trial: optuna.Trial) -> float:
 
 
 if __name__ == "__main__":
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=False)
+
+    # Use persistent storage to allow later inspection via dashboard.
+    storage = f"sqlite:///{(OUTPUT_DIR / 'optuna.db').resolve()}"
+
     study = optuna.create_study(
         direction="minimize",
         sampler=optuna.samplers.TPESampler(seed=SEED),
@@ -165,9 +172,18 @@ if __name__ == "__main__":
             n_startup_trials=5,
             n_warmup_steps=5,
         ),
+        storage=storage,
     )
 
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=False)
+    # Run dashboard server in another thread so it can be viewed live.
+    Thread(
+        target=run_server,
+        args=(storage,),
+        kwargs={"host": "127.0.0.1", "port": 8080},
+        daemon=True,
+    ).start()
+
+    print("Live dashboard: http://127.0.0.1:8080")
 
     try:
         study.optimize(

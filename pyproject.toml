@@ -28,6 +28,7 @@ dependencies = [
 optuna = [
     "optuna>=4,<6",
     "optuna-integration[pytorch-lightning]>=4,<6",
+    "optuna-dashboard",
 ]
 gui = [
     "dash==3.4.0",
@@ -77,7 +78,7 @@ full = [
     "benchrep[scverse,logging,model_graph,xgboost,optuna,gui,artifact_generation]",
 ]
 dev = [
-    "benchrep[scverse,logging,model_graph,xgboost,optuna,gui-test,artifact_generation,docs]",
+    "benchrep[full,gui-test,docs]",
 ]
 
 
