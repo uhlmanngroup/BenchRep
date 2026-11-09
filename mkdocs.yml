@@ -44,7 +44,7 @@ nav:
     - Evaluate external embeddings or reconstructions: guides/standalone-evaluation.md
     - Build a multitask composite model: guides/multitask-composite.md
     - Register a custom loss: guides/custom-loss.md
-    - Tune hyperparameters with Optuna: guides/optuna.md
+    - Tune with Optuna: guides/optuna.md
 - Using BenchRep:
   - usage/index.md
   - Calling workflows:

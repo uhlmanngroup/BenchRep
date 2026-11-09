@@ -80,7 +80,7 @@ def run_trial(trial: optuna.Trial) -> float:
         ],
     )
 
-    # Allow SIGINT/SIGKILL to terminate the whole study.
+    # Stop the whole study if training was interrupted by SIGINT or SIGTERM.
     if training_result.status_report.interruption_signal is not None:
         raise KeyboardInterrupt("Training interrupted.")
 
@@ -110,7 +110,7 @@ def run_trial(trial: optuna.Trial) -> float:
         ),
     )
 
-    # Use the metric mapping inferred from the exported metrics.json.
+    # Read the in-memory metric using the same path as in metrics.json.
     ami = float(evaluation_result.get_metric(
         "clustering", "external", "kmeans", "metrics", "adjusted_mutual_info", "value"
     ))
@@ -142,7 +142,7 @@ def objective(trial: optuna.Trial) -> float:
 
     except optuna.TrialPruned:
         # Pruning is an expected outcome.
-        # Re-raise so Optuna marks the trial as PRUNED.
+        # Re-raise pruning without recording it as an error.
         raise
 
     except Exception as exc:
@@ -192,7 +192,7 @@ if __name__ == "__main__":
             gc_after_trial=True,
             catch=(Exception,),
             callbacks=[save_trials_csv],
-            n_jobs=1, # BenchRep is currently incompatible with multithreading.
+            n_jobs=1, # BenchRep workflows cannot run concurrently in threads.
         )
     finally:
         csv_path = OUTPUT_DIR / "trials.csv"
