@@ -1,15 +1,14 @@
 stage: prediction
+
 source:
   training_manifest_path: null
   checkpoint: best
-# The example supplies the already transformed training validation subset
-# through PredictionOverrides.datamodule. Null to inherit without duplicating transforms.
-dataset: null
-transform_pipelines: []
-data:
-  batch_size: 128
-  num_workers: 0
-  max_batches: null
+
+# The script supplies the training validation subset through
+# PredictionOverrides.datamodule, including its transforms and loader settings.
+overrides:
+  datamodule: {}
+
 inference:
   seed: 137
   seed_workers: true
@@ -19,6 +18,7 @@ inference:
     reconstruct:
       inputs:
         z: produces.z_mu
+
 exports:
   anndata:
     enabled: true
