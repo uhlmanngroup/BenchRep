@@ -7,6 +7,7 @@ extra_css:
 theme:
   name: material
   variant: classic
+  logo: assets/logo.svg
   palette:
   - scheme: default
     primary: deep purple

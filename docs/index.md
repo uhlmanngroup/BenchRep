@@ -1,4 +1,7 @@
-# BenchRep
+<h1 style="display: flex; align-items: center; gap: 0.4em;">
+  <img src="assets/logo.svg" alt="" style="height: 1.5em; width: auto;">
+  <span>BenchRep</span>
+</h1>
 
 BenchRep is a configuration-driven, Lightning-based, extensible Python <strong class="highlight">workbench for representation learning</strong>:
 
