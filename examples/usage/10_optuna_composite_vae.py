@@ -192,6 +192,7 @@ if __name__ == "__main__":
             gc_after_trial=True,
             catch=(Exception,),
             callbacks=[save_trials_csv],
+            n_jobs=1, # BenchRep is currently incompatible with multithreading.
         )
     finally:
         csv_path = OUTPUT_DIR / "trials.csv"
