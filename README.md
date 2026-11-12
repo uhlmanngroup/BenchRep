@@ -26,12 +26,19 @@ BenchRep is a configuration-driven, Lightning-based, extensible **Python workben
 ## How it works
 BenchRep separates training, prediction, and evaluation into configurable workflows linked through manifests that record comprehensive run settings. Configure each workflow through YAML, Python, or a GUI wizard. Evaluation can also run independently on external embeddings and reconstructions.
 
-![BenchRep workflow chain](docs/assets/workflow-chain.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/workflow-chain-dark.svg">
+  <img src="docs/assets/workflow-chain-light.svg" alt="BenchRep workflow chain">
+</picture>
+
 <sub>*Dash-dot arrows mark optional connections. Wands mark configuration wizards.*</sub>
 
 BenchRep provides canonical autoencoders and VAEs with swappable encoders and decoders, alongside composite models whose components and contracts, wiring, and learning objectives are user-defined.
 
-![BenchRep model families](docs/assets/model-families.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/model-families-dark.svg">
+  <img src="docs/assets/model-families-light.svg" alt="BenchRep model families">
+</picture>
 
 BenchRep uses a registry-based system to select built-in or user-registered classes and factories for components such as datasets, transforms, architectures, losses, and evaluation methods. Workflow-specific Overrides objects provide an escape hatch for supplying supported runtime objects or replacing configuration sections.
 
@@ -68,19 +75,19 @@ from benchrep import (
 
 configs = Path("examples/configs/01_yaml_pipeline")
 
-training = train_vae(config=configs / "training.yaml")
+training_result = train_vae(config=configs / "training.yaml")
 
-prediction = predict_vae(
+prediction_result = predict_vae(
     config=configs / "prediction.yaml",
     overrides=PredictionOverrides(
-        training_manifest_path=training.manifest_path,
+        training_manifest_path=training_result.manifest_path,
     ),
 )
 
-evaluation = evaluate(
+evaluation_result = evaluate(
     config=configs / "evaluation.yaml",
     overrides=EvaluationOverrides(
-        prediction_manifest_path=prediction.manifest_path,
+        prediction_manifest_path=prediction_result.manifest_path,
     ),
 )
 ```
@@ -106,7 +113,10 @@ The wizard opens automatically in your browser at http://127.0.0.1:8050. Use `po
 
 Omit `config` to start fresh. Wizards are available for training, prediction, and evaluation; they configure workflows without running them.
 
-![BenchRep training configuration wizard](docs/assets/configuration-wizard.png)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/configuration-wizard-dark.png">
+  <img src="docs/assets/configuration-wizard-light.png" alt="BenchRep training configuration wizard">
+</picture>
 
 
 ## Documentation and examples

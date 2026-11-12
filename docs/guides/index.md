@@ -1,13 +1,19 @@
-# Guides & tutorials
+# Tutorials
+
+Run a first workflow chain, then explore a specific task. Each tutorial focuses on the code needed for that task and links to complete usage examples where available. For the underlying rules and interfaces, see [Understanding BenchRep](../understanding/index.md).
 
 ## Getting started
 
-Install BenchRep, then run a convolutional VAE on MNIST to see how training, prediction, and evaluation connect. [Open overview](getting-started/index.md).
+[Install BenchRep and run your first workflow chain](getting-started/index.md) to train a VAE on MNIST, export its outputs, and evaluate them.
 
-## Configure workflows
+## Choose a task
 
-Choose a starting point and the input you want to pass to the workflow. [Open overview](configure-workflows/index.md).
-
-## Worked examples
-
-Evaluate existing model outputs, build a multitask model, register a loss, or tune hyperparameters with Optuna. Each example focuses on one task. [Open overview](worked-examples/index.md).
+- [Configure workflows](configure-workflows/index.md) through YAML, Python config objects, overrides, or the browser wizard.
+- [Register external components](register-components.md) and select them in a workflow config.
+- [Build a composite model](multitask-composite.md).
+- [Evaluate external outputs](standalone-evaluation.md).
+- [Assess predictability](predictability.md).
+- [Balance learning objectives](balance-objectives.md).
+- [Control prediction exports](prediction-exports.md).
+- [Use custom models and datamodules](runtime-implementations.md).
+- [Tune with Optuna](optuna.md).

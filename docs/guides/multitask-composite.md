@@ -1,3 +1,1 @@
-# Build a multitask composite model
-
-<!-- Add page content here. -->
+# Build a composite model

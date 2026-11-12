@@ -1,0 +1,18 @@
+{# Reuse the handler's parameter rendering, then format a real Python definition. #}
+{% set parameters -%}
+  {%- with signature = true -%}
+    {%- include "signature.html.jinja" -%}
+  {%- endwith -%}
+{%- endset %}
+{% set definition -%}
+  {%- if "async" in function.labels %}async {% endif -%}
+  def {{ function.name }}
+  {%- with obj = function, signature = true -%}
+    {%- include "type_parameters.html.jinja" -%}
+  {%- endwith -%}
+  {{- parameters }}:
+    pass
+{%- endset %}
+{# The temporary body makes the header valid for Black; it is not displayed. #}
+{% set formatted = definition|format_code(config.line_length) %}
+{{ formatted.rstrip().rsplit("\n", 1)[0]|highlight(language="python", classes=["doc-signature"], linenums=false) }}

@@ -25,6 +25,8 @@ from benchrep.interfaces.model_families import (
 class TrainingOverrides:
     """Overrides supplied to a training entrypoint.
 
+    Attributes
+    ----------
     config_components
         Mapping of TrainingConfig field names to typed config sections.
         Each component replaces the entire matching top-level section of
@@ -38,6 +40,8 @@ class TrainingOverrides:
         LightningDataModule instance or class. None uses the configured
         datamodule.
 
+    Notes
+    -----
     Supplying a class allows BenchRep to construct it using configured
     constructor parameters. A supplied instance is used directly.
     """
@@ -55,6 +59,8 @@ class TrainingOverrides:
 class PredictionOverrides:
     """Overrides supplied to a prediction entrypoint.
 
+    Attributes
+    ----------
     config_components
         Mapping of PredictionConfig field names to typed config sections.
         Each component replaces the entire matching top-level section of
@@ -71,6 +77,8 @@ class PredictionOverrides:
         Training manifest YAML path, taking precedence over the path in
         the effective prediction config. None uses the configured path.
 
+    Notes
+    -----
     External models, datamodules, and custom registrations used during
     training are not automatically restored as Python objects from the
     manifest; supply or register them again where required.
@@ -90,6 +98,8 @@ class PredictionOverrides:
 class EvaluationOverrides:
     """Overrides supplied to the evaluation entrypoint.
 
+    Attributes
+    ----------
     config_components
         Mapping of EvaluationConfig field names to typed config sections.
         Each component replaces the entire matching top-level section of

@@ -82,6 +82,37 @@ def evaluate(
         capture_stdout: bool = False,
 ) -> EvaluationWorkflowResult:
 
+    """Evaluate embeddings, reconstructions, or both and export metrics and figures.
+    
+    Parameters
+    ----------
+    config : EvaluationConfigInput, optional
+        Evaluation YAML path or `EvaluationConfig` object. The source can
+        identify a prediction manifest or standalone external artifacts.
+        If omitted, overrides and defaults must supply a valid configuration.
+    overrides : EvaluationOverrides, optional
+        Whole configuration sections and a prediction manifest path. The
+        manifest override takes precedence over the source path in the
+        effective config. Runtime model/datamodule overrides are not accepted.
+    capture_stdout : bool, default=False
+        Also save stdout during the captured execution phase to the run's
+        log directory. Stderr is captured independently of this option;
+        both streams remain visible in the console.
+    
+    Returns
+    -------
+    EvaluationWorkflowResult
+        Resolved config, evaluated AnnData and/or reconstruction outputs,
+        exported paths, run context, status report, and manifest path.
+        Use `get_metric()` to access values using the `metrics.json` structure.
+    
+    Notes
+    -----
+    Evaluation can run independently of BenchRep training and prediction.
+    Inspect `status_report` for failed or skipped steps and exports; a returned
+    result can contain partial results. Invalid inputs and fatal execution
+    errors can still raise exceptions.
+    """
     print_divider("evaluation")
 
     overrides = overrides if overrides is not None else EvaluationOverrides()

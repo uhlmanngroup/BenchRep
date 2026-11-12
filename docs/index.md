@@ -22,7 +22,12 @@ It connects model training, representation export, and standardized evaluation t
 Training fits a model and saves checkpoints. Prediction uses a trained model to export embeddings, reconstructions, or both. Evaluation measures properties such as clustering quality, predictability, and reconstruction error.
 
 <figure>
-  <img src="assets/workflow-chain.svg" alt="BenchRep workflow chain">
+  <a class="br-image-light" href="assets/workflow-chain-light.svg">
+    <img src="assets/workflow-chain-light.svg" alt="BenchRep workflow chain">
+  </a>
+  <a class="br-image-dark" href="assets/workflow-chain-dark.svg">
+    <img src="assets/workflow-chain-dark.svg" alt="BenchRep workflow chain">
+  </a>
   <figcaption>Dash-dot arrows mark optional connections. Wands mark configuration wizards.</figcaption>
 </figure>
 
@@ -34,7 +39,7 @@ Each run also saves its resolved configuration, runtime environment, logs, and s
 
 You can write a workflow config in <strong class="highlight">YAML</strong>, build it in <strong class="highlight">Python</strong>, or use the <strong class="highlight">browser wizard</strong> to explore the available fields and export a YAML. Configs refer to registered components by name. You can inspect registries and, where supported, register your own classes or factories. Once registered, custom components such as datasets and losses can be selected by name just like built-in ones.
 
-For training, a [canonical autoencoder or VAE](usage/canonical-models.md) gives you a predefined architecture with your choice of encoder and decoder. With a [composite model](usage/composite-models.md), you specify which components to use, how they connect, and which values feed each loss. This lets you build multi-input and multitask models directly in config.
+For training, a [canonical autoencoder or VAE](understanding/models/canonical.md) gives you a predefined architecture with your choice of encoder and decoder. With a [composite model](understanding/models/composite.md), you specify which components to use, how they connect, and which values feed each loss. This lets you build multi-input and multitask models directly in config.
 
 
 <strong class="highlight">Want to compare two encoders?</strong>
@@ -48,9 +53,8 @@ Register your own components, wire them into a composite model, and define a cus
 
 ## Explore the docs
 
-- **[Guides & tutorials](guides/index.md)** walk through tasks such as configuring a run in the wizard, building a multitask model, and tuning hyperparameters with Optuna.
-- **[Using BenchRep](usage/index.md)** explains how to write configs, call workflows, inspect results, and register your own components.
-- **[How BenchRep works](internals/index.md)** follows a run from config validation and resolution through execution, artifact export, and provenance tracking.
-- **[API reference](reference/index.md)** is where to look up the signatures and parameters of public functions and classes.
+- **[Tutorials](guides/index.md)** demonstrate configuration routes, external components, composite models, and hyperparameter tuning through concrete examples.
+- **[Understanding BenchRep](understanding/index.md)** explains configuration rules, model and data interfaces, workflow behavior, provenance, and execution internals.
+- **[Reference](reference/index.md)** provides lookup pages for public APIs, configuration fields, and registered components.
 
 BenchRep is under active development. Its public interfaces and configuration schemas may change before version 1.0.

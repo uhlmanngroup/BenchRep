@@ -102,6 +102,51 @@ def train_ae(
         compatibility_policy: CompatibilityPolicy = "error",
         capture_stdout: bool = False,
 ) -> TrainingWorkflowResult:
+    """Train a canonical autoencoder and export checkpoints and run records.
+    
+    Parameters
+    ----------
+    config : TrainingConfigInput, optional
+        Training YAML path or `TrainingConfig` object. If omitted, the
+        configuration sections in `overrides`, together with schema defaults,
+        must supply a valid training configuration.
+    overrides : TrainingOverrides, optional
+        Whole configuration sections and supported runtime model/datamodule
+        classes or instances. Supplied sections replace the corresponding
+        sections in `config`.
+    runtime_callbacks : Sequence[Callback], optional
+        Lightning callback instances appended after configured additional
+        callbacks. Use this for callbacks requiring runtime objects, such as
+        an Optuna trial. Callback class names are recorded before fitting;
+        the instances are not serialized for later reconstruction.
+    compatibility_policy : {"error", "warn"}, default="error"
+        Handling of supported model/datamodule contract checks. `"warn"`
+        logs those compatibility issues and continues; it does not disable
+        configuration validation or runtime checks.
+    capture_stdout : bool, default=False
+        Also save stdout during the captured execution phase to the run's
+        log directory. Stderr is captured independently of this option;
+        both streams remain visible in the console.
+    
+    Returns
+    -------
+    TrainingWorkflowResult
+        Resolved config, model, datamodule, trainer, callback references,
+        run paths, status report, and manifest path.
+    
+    Raises
+    ------
+    RuntimeError
+        Post-training validation finalizes the run as failed, for example
+        when required checkpoint outputs are unavailable. Setup and execution
+        can also raise their own validation or runtime errors.
+    
+    Notes
+    -----
+    Inspect `status_report` on the returned result, including
+    `interruption_signal` for a handled SIGINT or SIGTERM. Other execution
+    errors may propagate before final records are written.
+    """
     overrides = overrides if overrides is not None else TrainingOverrides()
     overrides.validate_for(AUTOENCODER_FAMILY)
 
@@ -123,6 +168,51 @@ def train_vae(
         compatibility_policy: CompatibilityPolicy = "error",
         capture_stdout: bool = False,
 ) -> TrainingWorkflowResult:
+    """Train a canonical variational autoencoder and export checkpoints and run records.
+    
+    Parameters
+    ----------
+    config : TrainingConfigInput, optional
+        Training YAML path or `TrainingConfig` object. If omitted, the
+        configuration sections in `overrides`, together with schema defaults,
+        must supply a valid training configuration.
+    overrides : TrainingOverrides, optional
+        Whole configuration sections and supported runtime model/datamodule
+        classes or instances. Supplied sections replace the corresponding
+        sections in `config`.
+    runtime_callbacks : Sequence[Callback], optional
+        Lightning callback instances appended after configured additional
+        callbacks. Use this for callbacks requiring runtime objects, such as
+        an Optuna trial. Callback class names are recorded before fitting;
+        the instances are not serialized for later reconstruction.
+    compatibility_policy : {"error", "warn"}, default="error"
+        Handling of supported model/datamodule contract checks. `"warn"`
+        logs those compatibility issues and continues; it does not disable
+        configuration validation or runtime checks.
+    capture_stdout : bool, default=False
+        Also save stdout during the captured execution phase to the run's
+        log directory. Stderr is captured independently of this option;
+        both streams remain visible in the console.
+    
+    Returns
+    -------
+    TrainingWorkflowResult
+        Resolved config, model, datamodule, trainer, callback references,
+        run paths, status report, and manifest path.
+    
+    Raises
+    ------
+    RuntimeError
+        Post-training validation finalizes the run as failed, for example
+        when required checkpoint outputs are unavailable. Setup and execution
+        can also raise their own validation or runtime errors.
+    
+    Notes
+    -----
+    Inspect `status_report` on the returned result, including
+    `interruption_signal` for a handled SIGINT or SIGTERM. Other execution
+    errors may propagate before final records are written.
+    """
     overrides = overrides if overrides is not None else TrainingOverrides()
     overrides.validate_for(VAE_FAMILY)
 
@@ -143,6 +233,46 @@ def train_composite(
         runtime_callbacks: Sequence[Callback] | None = None,
         capture_stdout: bool = False,
 ) -> TrainingWorkflowResult:
+    """Train a composite model and export checkpoints and run records.
+    
+    Parameters
+    ----------
+    config : TrainingConfigInput, optional
+        Training YAML path or `TrainingConfig` object. If omitted, the
+        configuration sections in `overrides`, together with schema defaults,
+        must supply a valid training configuration.
+    overrides : TrainingOverrides, optional
+        Whole configuration sections and a runtime datamodule class or
+        instance. Whole-model overrides are not supported for composite models.
+    runtime_callbacks : Sequence[Callback], optional
+        Lightning callback instances appended after configured additional
+        callbacks. Use this for callbacks requiring runtime objects, such as
+        an Optuna trial. Callback class names are recorded before fitting;
+        the instances are not serialized for later reconstruction.
+    capture_stdout : bool, default=False
+        Also save stdout during the captured execution phase to the run's
+        log directory. Stderr is captured independently of this option;
+        both streams remain visible in the console.
+    
+    Returns
+    -------
+    TrainingWorkflowResult
+        Resolved config, model, datamodule, trainer, callback references,
+        run paths, status report, and manifest path.
+    
+    Raises
+    ------
+    RuntimeError
+        Post-training validation finalizes the run as failed, for example
+        when required checkpoint outputs are unavailable. Setup and execution
+        can also raise their own validation or runtime errors.
+    
+    Notes
+    -----
+    Inspect `status_report` on the returned result, including
+    `interruption_signal` for a handled SIGINT or SIGTERM. Other execution
+    errors may propagate before final records are written.
+    """
     overrides = overrides if overrides is not None else TrainingOverrides()
     overrides.validate_for(COMPOSITE_FAMILY)
 

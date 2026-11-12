@@ -426,19 +426,40 @@ def load_yaml(yaml_path: str | Path) -> dict[str, Any]:
 
 def update_config(config: ConfigT, updates: Mapping[str, Any]) -> ConfigT:
     """Return a validated copy with the specified fields replaced.
-
+    
     Parameters
     ----------
-    config:
-        Base training, prediction, or evaluation config.
-    updates:
-        Existing dotted paths and their replacement values. Use a numeric
-        index for a list item, e.g. ``losses.regularization.0.weight``.
-
+    config : ConfigT
+        Base `TrainingConfig`, `PredictionConfig`, or `EvaluationConfig`.
+    updates : Mapping[str, Any]
+        Existing dotted paths and their replacement values. Use a zero-based
+        numeric index for a list item, e.g. `losses.regularization.0.weight`.
+        A parent path and one of its descendants cannot both be updated.
+    
     Returns
     -------
     ConfigT
         A new config of the same type, validated after all replacements.
+        The supplied config is not edited in place. This does not perform
+        workflow resolution or instantiate components.
+    
+    Raises
+    ------
+    TypeError
+        `config` is not one of the supported workflow config classes.
+    KeyError
+        A path does not exist, traverses a non-container, or uses an invalid
+        or out-of-range list index.
+    ValueError
+        A path contains an empty segment, or updates overlap.
+    pydantic.ValidationError
+        The replaced values do not satisfy the workflow config schema.
+    
+    Notes
+    -----
+    Paths refer to the dumped configuration structure. This helper does not
+    add missing keys or append list items. It serializes and revalidates the
+    config; it does not guarantee a deep copy of arbitrary Python objects.
     """
     if not isinstance(config, SUPPORTED_CONFIG_SCHEMAS):
         raise TypeError("Expected a TrainingConfig, PredictionConfig, or EvaluationConfig.")

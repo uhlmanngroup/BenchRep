@@ -40,26 +40,26 @@ from benchrep.examples import example_config_path
 
 example = "01_yaml_pipeline"
 
-training = train_vae(
+training_result = train_vae(
     config=example_config_path(example, stage="training")
 )
 
-prediction = predict_vae(
+prediction_result = predict_vae(
     config=example_config_path(example, stage="prediction"),
     overrides=PredictionOverrides(
-        training_manifest_path=training.manifest_path,
+        training_manifest_path=training_result.manifest_path,
     ),
 )
 
-evaluation = evaluate(
+evaluation_result = evaluate(
     config=example_config_path(example, stage="evaluation"),
     overrides=EvaluationOverrides(
-        prediction_manifest_path=prediction.manifest_path,
+        prediction_manifest_path=prediction_result.manifest_path,
     ),
 )
 ```
 
-The prediction YAML specifies `checkpoint: best` and leaves the training manifest path open. Passing `training.manifest_path` tells prediction **which training run** to load that checkpoint from. Evaluation uses `prediction.manifest_path` to locate the exported embeddings and reconstructions. This lets you reuse the same YAMLs across runs.
+The prediction YAML specifies `checkpoint: best` and leaves the training manifest path open. Passing `training_result.manifest_path` tells prediction **which training run** to load that checkpoint from. Evaluation uses `prediction_result.manifest_path` to locate the exported embeddings and reconstructions. This lets you reuse the same YAMLs across runs.
 
 ## Inspect the result
 
@@ -67,14 +67,14 @@ Open `figures/anndata/` in the evaluation output directory printed by the script
 
 | Digit label | K-means cluster |
 | :---: | :---: |
-| ![UMAP of MNIST test embeddings colored by digit label](../assets/guides/first-workflow-chain/mnist-umap-label.png) | ![UMAP of the same test embeddings colored by k-means cluster](../assets/guides/first-workflow-chain/mnist-umap-kmeans.png) |
+| [![UMAP of MNIST test embeddings colored by digit label](../assets/guides/first-workflow-chain/mnist-umap-label.png)](../assets/guides/first-workflow-chain/mnist-umap-label.png) | [![UMAP of the same test embeddings colored by k-means cluster](../assets/guides/first-workflow-chain/mnist-umap-kmeans.png)](../assets/guides/first-workflow-chain/mnist-umap-kmeans.png) |
 
-<small>Each point represents one MNIST test image.</small>
+<small class="br-caption">Each point represents one MNIST test image.</small>
 
 External clustering metrics in `records/metrics/metrics.json` include adjusted mutual information (AMI), adjusted Rand index (ARI), and homogeneity. From Python, retrieve AMI directly from the evaluation result:
 
 ```python
-ami = evaluation.get_metric(
+ami = evaluation_result.get_metric(
     "clustering", "external", "kmeans", "metrics", "adjusted_mutual_info", "value"
 )
 print(f"Clustering AMI: {ami:.3f}")
@@ -84,6 +84,6 @@ The panel below shows selected test inputs, their VAE reconstructions, and the c
 
 [![Selected MNIST inputs, VAE reconstructions, and absolute-error maps](../assets/guides/first-workflow-chain/mnist-reconstructions-preview.png)](../assets/guides/first-workflow-chain/mnist-reconstructions.png)
 
-<small>Click the figure to view all 32 examples.</small>
+<small class="br-caption">Click the figure to view all 32 examples.</small>
 
-To change the experiment, start with the [YAML configuration guide](yaml.md) or [supply overrides from Python](overrides.md).
+To change the experiment, see [Configure workflows](configure-workflows/index.md) for the YAML, Python, override, and wizard routes.

@@ -1,0 +1,28 @@
+{# Shared presentation for BenchRep API entries. #}
+{% macro category(obj, config) -%}
+  {%- if config.extra.get("api_kind") -%}{{ config.extra.api_kind }}
+  {%- elif obj.is_class -%}
+    {%- if ".assembly.schemas." in obj.canonical_path -%}schema
+    {%- elif "dataclass" in obj.labels -%}dataclass
+    {%- else -%}class{%- endif -%}
+  {%- elif obj.is_function -%}
+    {{- "method" if obj.parent.is_class else "function" -}}
+  {%- elif "property" in obj.labels -%}property
+  {%- elif obj.name.isupper() -%}constant
+  {%- else -%}attribute
+  {%- endif -%}
+{%- endmacro %}
+
+{% macro badge(obj, config) -%}
+  {% set kind = category(obj, config)|trim %}
+  <span class="br-api-badge br-api-badge--{{ kind }}">{{ kind }}</span>
+{%- endmacro %}
+
+{% macro location(obj, config) -%}
+  <div class="br-api-location">
+    <span>Defined in <code>{{ obj.module.path }}</code></span>
+    {% if config.extra.get("source_base_url") %}
+      <a class="br-api-source" href="{{ config.extra.source_base_url.rstrip('/') }}/{{ obj.relative_filepath.as_posix() }}{% if obj.lineno %}#L{{ obj.lineno }}{% endif %}">Source</a>
+    {% endif %}
+  </div>
+{%- endmacro %}

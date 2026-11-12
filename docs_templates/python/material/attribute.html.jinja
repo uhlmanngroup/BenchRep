@@ -1,0 +1,15 @@
+{% extends "_base/attribute.html.jinja" %}
+{% import "benchrep.html.jinja" as br %}
+
+{% block heading scoped %}
+  <code class="br-api-name">{{ attribute_name }}</code>
+{% endblock heading %}
+
+{% block labels scoped %}
+  {{ br.badge(attribute, config) }}
+{% endblock labels %}
+
+{% block signature scoped %}
+  {{ br.location(attribute, config) }}
+  {{ super() }}
+{% endblock signature %}

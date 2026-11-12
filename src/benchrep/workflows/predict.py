@@ -98,6 +98,47 @@ def predict_ae(
         compatibility_policy: CompatibilityPolicy = "error",
         capture_stdout: bool = False,
 ) -> PredictionWorkflowResult:
+    """Run prediction with a trained canonical autoencoder and export selected outputs.
+    
+    Parameters
+    ----------
+    config : PredictionConfigInput, optional
+        Prediction YAML path or `PredictionConfig` object. If omitted,
+        overrides and defaults must supply a valid prediction configuration.
+        The source selects the training run and checkpoint.
+    overrides : PredictionOverrides, optional
+        Configuration sections, a training manifest path, and supported
+        runtime model/datamodule classes or instances. The manifest override
+        takes precedence over the source path in the effective config.
+    compatibility_policy : {"error", "warn"}, default="error"
+        Handling of supported model/datamodule contract checks. `"warn"`
+        logs those compatibility issues and continues; it does not disable
+        configuration validation or runtime checks.
+    capture_stdout : bool, default=False
+        Also save stdout during the captured execution phase to the run's
+        log directory. Stderr is captured independently of this option;
+        both streams remain visible in the console.
+    
+    Returns
+    -------
+    PredictionWorkflowResult
+        Resolved config, model, datamodule, trainer, collected predictions,
+        export results, run paths, status report, and manifest path.
+    
+    Raises
+    ------
+    RuntimeError
+        Prediction finalizes with a partially completed or failed status.
+        In that case, the manifest is written before this error is raised.
+        Setup and execution errors can also propagate earlier.
+
+    Notes
+    -----
+    Inspect `status_report` for warnings and `export_result` for the
+    generated artifact paths. Re-register custom components and re-supply
+    external runtime objects when needed; manifests do not restore
+    arbitrary Python objects.
+    """
     overrides = overrides if overrides is not None else PredictionOverrides()
     overrides.validate_for(AUTOENCODER_FAMILY)
 
@@ -117,6 +158,47 @@ def predict_vae(
         compatibility_policy: CompatibilityPolicy = "error",
         capture_stdout: bool = False,
 ) -> PredictionWorkflowResult:
+    """Run prediction with a trained canonical VAE and export selected outputs.
+    
+    Parameters
+    ----------
+    config : PredictionConfigInput, optional
+        Prediction YAML path or `PredictionConfig` object. If omitted,
+        overrides and defaults must supply a valid prediction configuration.
+        The source selects the training run and checkpoint.
+    overrides : PredictionOverrides, optional
+        Configuration sections, a training manifest path, and supported
+        runtime model/datamodule classes or instances. The manifest override
+        takes precedence over the source path in the effective config.
+    compatibility_policy : {"error", "warn"}, default="error"
+        Handling of supported model/datamodule contract checks. `"warn"`
+        logs those compatibility issues and continues; it does not disable
+        configuration validation or runtime checks.
+    capture_stdout : bool, default=False
+        Also save stdout during the captured execution phase to the run's
+        log directory. Stderr is captured independently of this option;
+        both streams remain visible in the console.
+    
+    Returns
+    -------
+    PredictionWorkflowResult
+        Resolved config, model, datamodule, trainer, collected predictions,
+        export results, run paths, status report, and manifest path.
+    
+    Raises
+    ------
+    RuntimeError
+        Prediction finalizes with a partially completed or failed status.
+        In that case, the manifest is written before this error is raised.
+        Setup and execution errors can also propagate earlier.
+
+    Notes
+    -----
+    Inspect `status_report` for warnings and `export_result` for the
+    generated artifact paths. Re-register custom components and re-supply
+    external runtime objects when needed; manifests do not restore
+    arbitrary Python objects.
+    """
     overrides = overrides if overrides is not None else PredictionOverrides()
     overrides.validate_for(VAE_FAMILY)
 
@@ -135,6 +217,43 @@ def predict_composite(
         overrides: PredictionOverrides | None = None,
         capture_stdout: bool = False,
 ) -> PredictionWorkflowResult:
+    """Run prediction with a trained composite model and export selected outputs.
+    
+    Parameters
+    ----------
+    config : PredictionConfigInput, optional
+        Prediction YAML path or `PredictionConfig` object. If omitted,
+        overrides and defaults must supply a valid prediction configuration.
+        The source selects the training run and checkpoint.
+    overrides : PredictionOverrides, optional
+        Configuration sections, a training manifest path, and a runtime
+        datamodule class or instance. The manifest override takes precedence
+        over the configured path. Whole-model overrides are not supported.
+    capture_stdout : bool, default=False
+        Also save stdout during the captured execution phase to the run's
+        log directory. Stderr is captured independently of this option;
+        both streams remain visible in the console.
+    
+    Returns
+    -------
+    PredictionWorkflowResult
+        Resolved config, model, datamodule, trainer, collected predictions,
+        export results, run paths, status report, and manifest path.
+    
+    Raises
+    ------
+    RuntimeError
+        Prediction finalizes with a partially completed or failed status.
+        In that case, the manifest is written before this error is raised.
+        Setup and execution errors can also propagate earlier.
+
+    Notes
+    -----
+    Inspect `status_report` for warnings and `export_result` for the
+    generated artifact paths. Re-register custom components and re-supply
+    external runtime objects when needed; manifests do not restore
+    arbitrary Python objects.
+    """
     overrides = overrides if overrides is not None else PredictionOverrides()
     overrides.validate_for(COMPOSITE_FAMILY)
 

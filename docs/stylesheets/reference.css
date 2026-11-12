@@ -1,0 +1,98 @@
+/* Shared API reference presentation; ordinary code blocks are unaffected. */
+.md-typeset .doc-heading > .br-api-name {
+  padding: 0;
+  color: inherit;
+  background: none;
+  font-family: var(--md-code-font-family, monospace);
+  font-size: 0.95rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.md-typeset .br-api-badge {
+  display: inline-block;
+  margin-inline-start: 0.7em;
+  padding: 0.22em 0.65em;
+  border-radius: 0.35em;
+  vertical-align: middle;
+  font-family: var(--md-code-font-family, monospace);
+  font-size: 0.60rem;
+  font-weight: 600;
+  line-height: 1.5;
+  letter-spacing: 0;
+  white-space: nowrap;
+  color: var(--br-badge-fg, #475569);
+  background: var(--br-badge-bg, #e2e8f0);
+}
+
+.br-api-badge--function, .br-api-badge--method {
+  --br-badge-fg: #6231aa;
+  --br-badge-bg: #ece2ff;
+}
+.br-api-badge--class {
+  --br-badge-fg: #00675c;
+  --br-badge-bg: #d1f3e9;
+}
+.br-api-badge--dataclass {
+  --br-badge-fg: #805000;
+  --br-badge-bg: #fff0bf;
+}
+.br-api-badge--schema {
+  --br-badge-fg: #914220;
+  --br-badge-bg: #ffe2ce;
+}
+.br-api-badge--constant, .br-api-badge--attribute, .br-api-badge--property {
+  --br-badge-fg: #155e87;
+  --br-badge-bg: #dcefff;
+}
+
+[data-md-color-scheme="slate"] .br-api-badge--function,
+[data-md-color-scheme="slate"] .br-api-badge--method {
+  --br-badge-fg: #d9c2ff;
+  --br-badge-bg: #42305f;
+}
+[data-md-color-scheme="slate"] .br-api-badge--class {
+  --br-badge-fg: #9aead3;
+  --br-badge-bg: #173f3a;
+}
+[data-md-color-scheme="slate"] .br-api-badge--dataclass {
+  --br-badge-fg: #ffdc85;
+  --br-badge-bg: #4b3c20;
+}
+[data-md-color-scheme="slate"] .br-api-badge--schema {
+  --br-badge-fg: #ffc19b;
+  --br-badge-bg: #52382d;
+}
+[data-md-color-scheme="slate"] .br-api-badge--constant,
+[data-md-color-scheme="slate"] .br-api-badge--attribute,
+[data-md-color-scheme="slate"] .br-api-badge--property {
+  --br-badge-fg: #a6dcff;
+  --br-badge-bg: #253e52;
+}
+
+.md-typeset .br-api-location {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.3em 1.2em;
+  margin: 0.45rem 0 0.8rem;
+  color: var(--md-default-fg-color--light);
+  font-size: 0.75em;
+  text-align: start;
+}
+.md-typeset .br-api-location code {
+  overflow-wrap: anywhere;
+}
+.md-typeset .br-api-source {
+  white-space: nowrap;
+}
+
+/* Black supplies real line breaks; wrapping handles narrow screens and long types. */
+.md-typeset .doc-signature pre > code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+.md-typeset .doc-signature pre {
+  overflow-x: visible;
+}

@@ -1,0 +1,26 @@
+{% extends "_base/function.html.jinja" %}
+{% import "benchrep.html.jinja" as br %}
+
+{% block heading scoped %}
+  <code class="br-api-name">{{ function_name }}</code>
+{% endblock heading %}
+
+{% block labels scoped %}
+  {{ br.badge(function, config) }}
+{% endblock labels %}
+
+{% block signature scoped %}
+  {{ br.location(function, config) }}
+  {% if config.show_signature %}
+    {% if function.overloads and config.show_overloads %}
+      {% for overload in function.overloads %}
+        {% with function = overload %}
+          {% include "python_definition.html.jinja" %}
+        {% endwith %}
+      {% endfor %}
+    {% endif %}
+    {% if not (config.show_overloads and function.overloads and config.overloads_only) %}
+      {% include "python_definition.html.jinja" %}
+    {% endif %}
+  {% endif %}
+{% endblock signature %}

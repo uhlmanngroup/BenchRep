@@ -3,7 +3,9 @@ site_description: Representation learning and benchmarking
 repo_url: https://github.com/uhlmanngroup/BenchRep
 repo_name: uhlmanngroup/BenchRep
 extra_css:
-  - stylesheets/extra.css
+- stylesheets/extra.css
+- stylesheets/reference.css
+- stylesheets/appearance.css
 theme:
   name: material
   variant: classic
@@ -24,60 +26,118 @@ theme:
   features:
   - navigation.tabs
   - navigation.indexes
+  - navigation.footer
   - content.code.copy
 nav:
 - Home: index.md
-- Guides & tutorials:
+- Tutorials:
   - guides/index.md
   - Getting started:
     - guides/getting-started/index.md
     - Installation: guides/installation.md
     - Run your first workflow chain: guides/first-workflow-chain.md
-  - Configure workflows:
-    - guides/configure-workflows/index.md
-    - YAML files: guides/yaml.md
-    - Python config objects: guides/python-configs.md
-    - Python overrides: guides/overrides.md
-    - Configuration wizard: guides/wizard.md
-  - Worked examples:
-    - guides/worked-examples/index.md
-    - Evaluate external embeddings or reconstructions: guides/standalone-evaluation.md
-    - Build a multitask composite model: guides/multitask-composite.md
-    - Register a custom loss: guides/custom-loss.md
-    - Tune with Optuna: guides/optuna.md
-- Using BenchRep:
-  - usage/index.md
-  - Calling workflows:
-    - usage/calling-workflows/index.md
-    - Entrypoints and model families: usage/entrypoints.md
-    - Overrides and runtime callbacks: usage/runtime-inputs.md
-    - Workflow results: usage/results.md
-  - Writing configurations:
-    - usage/writing-configurations/index.md
-    - Config sections, defaults, and omissions: usage/configuration.md
-    - Combining YAML and Python: usage/config-composition.md
-    - Using the configuration wizards: usage/wizards.md
-    - Schema reference: usage/schema-reference.md
-  - Defining models and objectives:
-    - usage/models-and-objectives/index.md
-    - Canonical autoencoders and VAEs: usage/canonical-models.md
-    - Composite declarations, components, and assembly: usage/composite-models.md
-    - Losses and weight schedules: usage/losses.md
-  - Discovering and registering components:
-    - usage/discovering-components/index.md
-    - Registries and discovery: usage/discovery.md
-    - Registering classes and factories: usage/registration.md
-    - Component contracts: usage/contracts.md
-- How BenchRep works:
-  - internals/index.md
-  - Anatomy of a workflow: internals/workflow-anatomy.md
-  - Run outputs and provenance: internals/run-records.md
-  - Training: internals/training.md
-  - Prediction: internals/prediction.md
-  - Evaluation: internals/evaluation.md
-- API reference:
+  - Configure workflows: guides/configure-workflows/index.md
+  - Register external components: guides/register-components.md
+  - Build a composite model: guides/multitask-composite.md
+  - Evaluate external outputs: guides/standalone-evaluation.md
+  - Assess predictability: guides/predictability.md
+  - Balance learning objectives: guides/balance-objectives.md
+  - Control prediction exports: guides/prediction-exports.md
+  - Use custom models and datamodules: guides/runtime-implementations.md
+  - Tune with Optuna: guides/optuna.md
+- Understanding BenchRep:
+  - understanding/index.md
+  - Workflows & configuration:
+    - understanding/workflows/index.md
+    - Workflows and model families: understanding/workflows/workflows.md
+    - Configuration semantics: understanding/workflows/configuration.md
+    - Python overrides: understanding/workflows/overrides.md
+    - Configuration wizards: understanding/workflows/wizards.md
+  - Data:
+    - understanding/data/index.md
+    - Datasets and sample structure: understanding/data/datasets.md
+    - Transform pipelines: understanding/data/transforms.md
+    - Splits and dataloaders: understanding/data/datamodules.md
+  - Models & objectives:
+    - understanding/models/index.md
+    - Canonical models: understanding/models/canonical.md
+    - Composite models: understanding/models/composite.md
+    - Architecture component contracts: understanding/models/component-contracts.md
+    - Losses and objectives: understanding/models/losses.md
+    - Loss-weight schedules: understanding/models/loss-weight-schedules.md
+  - Training:
+    - understanding/training/index.md
+    - Training and optimization: understanding/training/optimization.md
+    - Callbacks and checkpoints: understanding/training/callbacks.md
+    - Monitoring and inspection: understanding/training/inspection.md
+  - Prediction:
+    - understanding/prediction/index.md
+    - Loading models for prediction: understanding/prediction/loading-models.md
+    - Selecting prediction exports: understanding/prediction/exports.md
+  - Evaluation:
+    - understanding/evaluation/index.md
+    - Inputs and evaluation pipelines: understanding/evaluation/inputs.md
+    - Reductions and clustering: understanding/evaluation/reductions-clustering.md
+    - Metrics and their contracts: understanding/evaluation/metrics.md
+    - Predictability probes: understanding/evaluation/predictability.md
+    - Reconstruction evaluation: understanding/evaluation/reconstructions.md
+    - Figures and visualization: understanding/evaluation/figures.md
+  - Results & provenance:
+    - understanding/results/index.md
+    - Run directories and result objects: understanding/results/runs.md
+    - Artifact formats: understanding/results/artifacts.md
+    - Manifests and provenance: understanding/results/provenance.md
+    - Reproducibility: understanding/results/reproducibility.md
+    - Statuses and failures: understanding/results/statuses.md
+  - Extensibility:
+    - understanding/extensibility/index.md
+    - Registries and discovery: understanding/extensibility/discovery.md
+    - Registering components: understanding/extensibility/registration.md
+    - External models and datamodules: understanding/extensibility/runtime-implementations.md
+  - Execution internals:
+    - understanding/internals/index.md
+    - Anatomy of a workflow: understanding/internals/workflow-anatomy.md
+    - How the wizard works: understanding/internals/wizard-architecture.md
+    - Codebase map: understanding/internals/codebase.md
+- Reference:
   - reference/index.md
+  - Workflow entrypoints: reference/workflows.md
+  - Overrides and config helpers: reference/configuration.md
+  - Configuration schemas:
+    - reference/schemas/index.md
+    - Training: reference/schemas/training.md
+    - Prediction: reference/schemas/prediction.md
+    - Evaluation: reference/schemas/evaluation.md
+    - Shared and composite schemas: reference/schemas/shared.md
+  - Configuration wizards: reference/wizards.md
+  - Results and statuses: reference/results.md
+  - Registries and discovery: reference/registries.md
+  - Extension interfaces: reference/interfaces.md
+  - Component catalogue: reference/components.md
+  - Example helpers: reference/helpers.md
 markdown_extensions:
+- toc:
+    permalink: true
 - admonition
 - pymdownx.highlight
 - pymdownx.superfences
+plugins:
+  - mkdocstrings:
+      custom_templates: docs_templates
+      handlers:
+        python:
+          paths: [src]
+          options:
+            allow_inspection: false
+            docstring_style: numpy
+            members: false
+            show_root_heading: true
+            show_root_full_path: false
+            show_signature_annotations: true
+            separate_signature: true
+            line_length: 72
+            merge_init_into_class: true
+            show_source: false
+            docstring_section_style: list
+            extra:
+              source_base_url: https://github.com/uhlmanngroup/BenchRep/blob/main
