@@ -25,6 +25,21 @@ class Autoencoder(BenchRepAutoencoderModel):
     target. Custom objective losses receive the complete batch and forward
     output, allowing objectives that do not fit the reconstruction-loss
     contract. Terms from both roles contribute additively to the total loss.
+
+    Parameters
+    ----------
+    encoder
+        Instantiated encoder. Its input shape must agree with the decoder output shape when both are declared.
+    decoder
+        Instantiated decoder for reconstruction.
+    reconstruction_losses
+        Named reconstruction LossTerm objects. Use an empty mapping when this role is unused.
+    custom_objective_losses
+        Named full-context LossTerm objects. Use an empty mapping when unused.
+    optimizer_factory
+        Callable receiving model parameters and returning a PyTorch optimizer.
+    lr_scheduler_factory
+        Optional callable receiving that optimizer and returning a Lightning scheduler configuration.
     """
     def __init__(
         self,
@@ -86,6 +101,18 @@ class Autoencoder(BenchRepAutoencoderModel):
         )
 
     def forward(self, x: torch.Tensor) -> AutoencoderForwardOutput:
+        """Encode and reconstruct a batch of inputs.
+
+        Parameters
+        ----------
+        x
+            Tensor with shape (batch, *encoder.input_shape).
+
+        Returns
+        -------
+        AutoencoderForwardOutput
+            Mapping containing embedding and reconstruction tensors.
+        """
         z = self.encode(x)
         reconstruction = self.decode(z)
         return {
@@ -94,12 +121,23 @@ class Autoencoder(BenchRepAutoencoderModel):
         }
 
     def encode(self, x: torch.Tensor) -> torch.Tensor:
+        """Return encoder features for a batch of inputs.
+
+        The result is the embedding passed directly to the decoder.
+        """
         return self.encoder(x)
 
     def decode(self, z: torch.Tensor) -> torch.Tensor:
+        """Decode a batch of latent vectors into reconstructions.
+        """
         return self.decoder(z)
 
     def training_step(self, batch: AutoencoderBatch, batch_idx: int) -> torch.Tensor:
+        """Compute and log the weighted training objective, returning a scalar loss.
+
+        The batch follows AutoencoderBatch; reconstruction targets are batch["x"].
+        Each term uses its weight at the current epoch and optimizer-step count.
+        """
         return self._compute_loss_step(
             batch,
             stage="train",
@@ -107,12 +145,24 @@ class Autoencoder(BenchRepAutoencoderModel):
         )
 
     def validation_step(self, batch: AutoencoderBatch, batch_idx: int) -> torch.Tensor:
+        """Compute and log the weighted validation objective, returning a scalar loss.
+
+        The batch follows AutoencoderBatch; reconstruction targets are batch["x"].
+        Each term uses its weight at the current epoch and optimizer-step count.
+        """
         return self._compute_loss_step(batch, stage="val")
 
     def test_step(self, batch: AutoencoderBatch, batch_idx: int) -> torch.Tensor:
+        """Compute and log the weighted test objective, returning a scalar loss.
+
+        The batch follows AutoencoderBatch; reconstruction targets are batch["x"].
+        Each term uses its weight at the current epoch and optimizer-step count.
+        """
         return self._compute_loss_step(batch, stage="test")
 
     def predict_step(self, batch: AutoencoderBatch, batch_idx: int) -> AutoencoderPredictionOutput:
+        """Return embeddings, inputs, reconstructions, and available sample annotations.
+        """
         x = self._get_input_from_batch(batch)
         output = self(x)
 
@@ -128,6 +178,8 @@ class Autoencoder(BenchRepAutoencoderModel):
     def configure_optimizers(
             self,
     ) -> torch.optim.Optimizer | dict[str, Any]:
+        """Create the optimizer and optional Lightning scheduler configuration from their factories.
+        """
         optimizer = self.optimizer_factory(self.parameters())
 
         if self.lr_scheduler_factory is None:

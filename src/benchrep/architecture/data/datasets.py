@@ -129,11 +129,18 @@ class _TorchvisionClassificationDataset(BaseDataset):
         self.dataset = dataset
 
     def __len__(self) -> int:
+        """Return the number of samples in the selected torchvision split.
+        """
         assert isinstance(self.dataset, Sized)
 
         return len(self.dataset)
 
     def __getitem__(self, index: int) -> dict[str, Any]:
+        """Return x, label, and the split-local sample_id for one index.
+
+        Images are tensors in their original uint8 scale; transform pipelines
+        are applied separately. The STL-10 unlabeled split uses label -1.
+        """
         x, y = self.dataset[index]
 
         sample = {

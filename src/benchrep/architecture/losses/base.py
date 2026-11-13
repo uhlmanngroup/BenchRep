@@ -10,7 +10,29 @@ from benchrep.architecture.losses.weight_schedules import LossWeightSchedule
 
 
 class LossTerm(nn.Module):
-    """Container for a loss, its base weight, and an optional schedule."""
+    """Container for an instantiated loss, its base weight, and an optional schedule.
+
+    Used when constructing BenchRep's concrete models directly. Config-driven
+    workflows build these containers automatically. This is distinct from the
+    LossComponent registry-entry contract.
+
+
+    Parameters
+    ----------
+    loss
+        Instantiated loss module, available as the loss attribute. The model calls this module with the role-specific inputs.
+    weight
+        Base loss weight. Built-in model constructors validate role-level weight requirements.
+    weight_schedule
+        Optional multiplier schedule. None keeps the base weight constant.
+    schedule_interval
+        Use the epoch index or completed optimizer-step count as the schedule position.
+
+    Notes
+    -----
+    LossTerm does not implement forward(). Use loss to compute the raw objective
+    and effective_weight() to obtain its multiplier; built-in models do both.
+    """
 
     def __init__(
         self,

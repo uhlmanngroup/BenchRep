@@ -9,7 +9,13 @@ from torch import nn
 
 
 class MSERegressionLoss(nn.Module):
-    """Mean squared error for continuous predictions."""
+    """Mean squared error for continuous predictions.
+
+    Parameters
+    ----------
+    reduction
+        Mean or sum of squared errors across all tensor elements.
+    """
 
     def __init__(
         self,
@@ -31,6 +37,8 @@ class MSERegressionLoss(nn.Module):
         prediction: torch.Tensor,
         target: torch.Tensor,
     ) -> torch.Tensor:
+        """Return scalar mean or summed squared error; prediction and target must have identical shapes.
+        """
         if prediction.shape != target.shape:
             raise ValueError(
                 "prediction and target must have the same shape, got "

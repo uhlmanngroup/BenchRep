@@ -33,7 +33,7 @@
             <tr>
               <td><code>{{ entry.name }}</code></td>
               <td>{% for alias in entry.aliases %}<code>{{ alias }}</code>{% if not loop.last %}, {% endif %}{% else %}—{% endfor %}</td>
-              <td>{% if entry.source %}<a href="{{ config.extra.source_base_url }}/{{ entry.source }}"><code>{{ entry.target }}</code></a>{% else %}<code>{{ entry.target }}</code>{% endif %}</td>
+              <td>{% if entry.reference %}<autoref identifier="{{ entry.reference }}"><code>{{ entry.target }}</code></autoref> · <a href="{{ config.extra.source_base_url }}/{{ entry.source }}">Source</a>{% elif entry.source %}<a href="{{ config.extra.source_base_url }}/{{ entry.source }}"><code>{{ entry.target }}</code></a>{% else %}<code>{{ entry.target }}</code>{% endif %}</td>
             </tr>
           {% endfor %}
           </tbody>

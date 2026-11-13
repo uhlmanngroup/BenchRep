@@ -38,6 +38,21 @@ class CompositeModel(L.LightningModule):
     The resolved model specification defines architecture assembly and tensor
     bindings. Resolved loss specifications independently define loss identities
     and runtime wiring.
+
+    Parameters
+    ----------
+    model_spec
+        Resolved declarations and assembly wiring produced by configuration resolution.
+    loss_specs
+        Resolved loss identities and tensor bindings.
+    components_by_id
+        Instantiated modules keyed by the component IDs in model_spec. Reusing an ID shares its parameters.
+    losses_by_role
+        Role-to-loss-ID mappings of instantiated LossTerm objects.
+    optimizer_factory
+        Callable receiving model parameters and returning a PyTorch optimizer.
+    lr_scheduler_factory
+        Optional callable receiving that optimizer and returning a Lightning scheduler configuration.
     """
 
     def __init__(
@@ -116,7 +131,20 @@ class CompositeModel(L.LightningModule):
         self,
         model_inputs: Mapping[str, torch.Tensor],
     ) -> dict[str, torch.Tensor]:
-        """Execute the resolved assembly graph."""
+        """Execute the resolved assembly graph and return its declared outputs.
+
+        Parameters
+        ----------
+        model_inputs
+            Mapping from names in the expects declaration to batched tensors.
+            Inputs and component results are checked against their declared structures.
+
+        Returns
+        -------
+        dict[str, torch.Tensor]
+            Tensors keyed by produces names. Steps run in dependency order;
+            repeated references to a component ID use the same module instance.
+        """
 
         _validate_model_inputs(
             model_spec=self.model_spec,
@@ -196,6 +224,11 @@ class CompositeModel(L.LightningModule):
         batch: Mapping[str, Any],
         batch_idx: int,
     ) -> torch.Tensor:
+        """Compute and log the weighted training objective for a declared batch.
+
+        Returns a scalar tensor. Ordinary losses receive their resolved tensor
+        bindings; custom objectives receive the full batch and model-output mappings.
+        """
         return self._compute_loss_step(
             batch,
             stage="train",
@@ -207,6 +240,11 @@ class CompositeModel(L.LightningModule):
         batch: Mapping[str, Any],
         batch_idx: int,
     ) -> torch.Tensor:
+        """Compute and log the weighted validation objective for a declared batch.
+
+        Returns a scalar tensor. Ordinary losses receive their resolved tensor
+        bindings; custom objectives receive the full batch and model-output mappings.
+        """
         return self._compute_loss_step(
             batch,
             stage="val",
@@ -217,6 +255,11 @@ class CompositeModel(L.LightningModule):
         batch: Mapping[str, Any],
         batch_idx: int,
     ) -> torch.Tensor:
+        """Compute and log the weighted test objective for a declared batch.
+
+        Returns a scalar tensor. Ordinary losses receive their resolved tensor
+        bindings; custom objectives receive the full batch and model-output mappings.
+        """
         return self._compute_loss_step(
             batch,
             stage="test",
@@ -254,6 +297,8 @@ class CompositeModel(L.LightningModule):
     def configure_optimizers(
             self,
     ) -> torch.optim.Optimizer | dict[str, Any]:
+        """Create the optimizer and optional Lightning scheduler configuration from their factories.
+        """
         optimizer = self.optimizer_factory(self.parameters())
 
         if self.lr_scheduler_factory is None:

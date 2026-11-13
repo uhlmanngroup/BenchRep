@@ -333,14 +333,20 @@ class UpsampleConv2DDecoder(BaseDecoder):
 
     @property
     def input_dim(self) -> int:
+        """Number of latent features expected per sample.
+        """
         return self._input_dim
 
     @property
     def output_shape(self) -> tuple[int, int, int]:
+        """Shape of one reconstructed sample, excluding the batch dimension.
+        """
         return self._output_shape
 
     @property
     def initial_shape(self) -> tuple[int, int, int]:
+        """Feature-map shape after the initial latent projection and before upsampling.
+        """
         return self._initial_shape
 
     @staticmethod
@@ -505,6 +511,18 @@ class UpsampleConv2DDecoder(BaseDecoder):
         return output_shape
 
     def forward(self, z: torch.Tensor) -> torch.Tensor:
+        """Decode latent vectors into reconstructed samples.
+
+        Parameters
+        ----------
+        z
+            Tensor with shape (batch, input_dim).
+
+        Returns
+        -------
+        torch.Tensor
+            Reconstructions with shape (batch, *output_shape).
+        """
         if z.shape[-1] != self.input_dim:
             raise ValueError(
                 f"Expected decoder input feature dimension {self.input_dim}, "

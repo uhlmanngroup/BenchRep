@@ -6,6 +6,7 @@ constructors or validators, and leaves the Python API and its docstrings alone.
 from __future__ import annotations
 
 import ast
+import re
 from copy import deepcopy
 from functools import lru_cache
 from html import escape
@@ -73,6 +74,33 @@ class Catalogue:
                     pending.append(self.aliases[token.id])
         self.aliases = {k: v for k, v in self.aliases.items() if k in reachable}
         self.targets = {k: v for k, v in self.paths.items() if k in self.aliases or (k in self.classes and not k.startswith("_"))}
+        self.schema_targets = dict(self.targets)
+        # Other public API aliases are explicit reference targets too. Read their
+        # declarations without treating their neighboring classes as schemas.
+        documented = {
+            target
+            for page in (self.root / "docs/reference").rglob("*.md")
+            for target in re.findall(r"^::: (\S+)", page.read_text(), re.MULTILINE)
+        }
+        for target in sorted(documented):
+            module, _, name = target.rpartition(".")
+            path = self.root / "src" / Path(*module.split(".")).with_suffix(".py")
+            if not path.is_file():
+                continue
+            for node in ast.parse(path.read_text(encoding="utf-8")).body:
+                if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                    symbol, value = node.target.id, node.value
+                elif isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+                    symbol, value = node.targets[0].id, node.value
+                else:
+                    continue
+                if symbol == name and value is not None:
+                    self.aliases[name] = value
+                    self.paths[name] = target
+                    self.targets[name] = target
+            # Link concrete types used within aliases to their reference entry.
+            self.targets.setdefault(name, target)
+
 
     def linked(self, expression):
         """Link type names while leaving string literals and punctuation alone."""

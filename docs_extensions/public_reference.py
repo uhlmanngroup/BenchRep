@@ -6,6 +6,7 @@ examples under the same name used by setuptools. No docstrings are synthesized.
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 
 from griffe import Extension, visit
@@ -151,12 +152,20 @@ class PublicReference(Extension):
         if mod.path != "benchrep.assembly.registries.core":
             return
         catalogue = read_catalogue()
+        documented = {
+            target
+            for page in (ROOT / "docs/reference").rglob("*.md")
+            for target in re.findall(r"^::: (\S+)", page.read_text(), re.MULTILINE)
+        }
         for registry in catalogue:
             for entry in registry["entries"]:
                 entry["source"] = None
+                entry["reference"] = None
                 if entry["target"].startswith("benchrep."):
                     obj = loader.modules_collection.get_member(entry["target"])
                     if obj.is_alias:
                         obj = obj.final_target
                     entry["source"] = f"{obj.relative_filepath.as_posix()}#L{obj.lineno}"
+                    if obj.path in documented:
+                        entry["reference"] = obj.path
         mod.extra["benchrep_catalogue"] = catalogue

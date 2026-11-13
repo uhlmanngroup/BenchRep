@@ -123,6 +123,10 @@ class MLPHead(nn.Module):
         self.net = nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Map feature vectors of shape (batch, input_dim) to (batch, output_dim).
+
+        The final linear layer has no additional output activation.
+        """
         if not isinstance(x, torch.Tensor):
             raise TypeError(
                 f"{type(self).__name__} expects a torch.Tensor, "

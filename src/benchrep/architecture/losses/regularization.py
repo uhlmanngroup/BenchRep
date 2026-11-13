@@ -13,14 +13,14 @@ from torch import nn
 class GaussianKLDivergenceLoss(nn.Module):
     """KL divergence from a diagonal Gaussian posterior to a standard normal prior.
 
-    This is the standard regularization term used in vanilla VAEs:
+    Computes -0.5 * sum(1 + z_logvar - z_mu**2 - exp(z_logvar)) over the
+    last (latent) dimension, then reduces the remaining dimensions.
 
-        KL[N(z_mu, diag(exp(z_logvar))) || N(0, I)]
 
-    Args:
-        reduction:
-            How to reduce the per-sample KL values. Supported values are
-            ``"mean"`` and ``"sum"``.
+    Parameters
+    ----------
+    reduction
+        Mean or sum of the per-sample KL values.
     """
 
     def __init__(self, reduction: str = "mean") -> None:
@@ -39,17 +39,20 @@ class GaussianKLDivergenceLoss(nn.Module):
         z_mu: torch.Tensor,
         z_logvar: torch.Tensor,
     ) -> torch.Tensor:
-        """Return KL divergence for Gaussian posterior parameters.
+        """Return the reduced KL divergence for matching posterior parameter tensors.
 
-        Args:
-            z_mu:
-                Posterior mean tensor with shape ``(..., latent_dim)``.
-            z_logvar:
-                Posterior log-variance tensor with shape
-                ``(..., latent_dim)``.
+        Parameters
+        ----------
+        z_mu
+            Posterior means with shape (..., latent_dim).
+        z_logvar
+            Posterior log-variances with the same shape as z_mu.
 
-        Returns:
-            Scalar KL divergence reduced across samples.
+        Returns
+        -------
+        torch.Tensor
+            Scalar KL divergence, summed over latent dimensions and reduced
+            over samples using the configured mean or sum.
         """
 
         if z_mu.shape != z_logvar.shape:

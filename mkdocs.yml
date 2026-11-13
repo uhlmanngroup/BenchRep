@@ -119,8 +119,14 @@ nav:
   - Results and statuses: reference/results.md
   - Registries and discovery: reference/registries.md
   - Extension interfaces: reference/interfaces.md
-  - Component catalogue: reference/components.md
-  - Example helpers: reference/helpers.md
+  - Component catalogue:
+    - reference/components.md
+    - Models: reference/components/models.md
+    - Encoders, decoders, and heads: reference/components/architectures.md
+    - Datasets: reference/components/datasets.md
+    - Losses: reference/components/losses.md
+    - Loss-weight schedules: reference/components/schedules.md
+  - Example and artifact helpers: reference/helpers.md
 extra:
   logo_dark: assets/logo-dark.svg
 markdown_extensions:
@@ -146,6 +152,7 @@ plugins:
             show_root_full_path: false
             show_signature_annotations: true
             separate_signature: true
+            signature_crossrefs: true
             line_length: 72
             merge_init_into_class: true
             show_source: false

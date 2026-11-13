@@ -20,24 +20,18 @@ from torch import nn
 
 
 class GaussianVariationalHead(nn.Module):
-    """Map encoder features to a sampled latent vector and posterior parameters.
+    """Map encoder features to diagonal Gaussian posterior parameters and a sample.
 
-    The head predicts the mean and log-variance of a diagonal Gaussian
-    approximate posterior:
+    Two learned linear maps produce the posterior mean and log-variance.
+    Reparameterization draws a sample in both training and evaluation mode.
 
-        q(z | x) = N(z_mu, diag(exp(z_logvar)))
 
-    Sampling uses the reparameterization trick so gradients can flow through the
-    stochastic latent variable during training (standard VAE architecture).
-
-    Args:
-        in_features:
-            Number of input features from the encoder. The head expects a single
-            feature vector per sample, with shape ``(batch_size, in_features)``.
-            Multimodal or multi-encoder models should fuse features before this
-            head, or use separate heads when modeling separate posteriors.
-        latent_dim:
-            Size of the latent embedding.
+    Parameters
+    ----------
+    in_features
+        Number of encoder features per sample.
+    latent_dim
+        Number of latent dimensions; all 3 returned tensors have this width.
     """
 
     def __init__(self, in_features: int, latent_dim: int) -> None:
@@ -63,6 +57,19 @@ class GaussianVariationalHead(nn.Module):
         self.logvar_layer = nn.Linear(in_features, latent_dim)
 
     def forward(self, x: torch.Tensor) -> dict[str, torch.Tensor]:
+        """Return z_mu, z_logvar, and z_sample for a batch of encoder features.
+
+        Parameters
+        ----------
+        x
+            Tensor with shape (batch, in_features).
+
+        Returns
+        -------
+        dict[str, torch.Tensor]
+            Posterior means, log-variances, and reparameterized samples, each
+            with shape (batch, latent_dim).
+        """
         if not isinstance(x, torch.Tensor):
             raise TypeError(
                 f"{type(self).__name__} expects a torch.Tensor, "

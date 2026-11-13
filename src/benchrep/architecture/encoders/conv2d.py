@@ -272,14 +272,20 @@ class Conv2DEncoder(BaseEncoder):
 
     @property
     def input_shape(self) -> tuple[int, int, int]:
+        """Expected shape of one input sample, excluding the batch dimension.
+        """
         return self._input_shape
 
     @property
     def output_dim(self) -> int:
+        """Number of output features per sample.
+        """
         return self._output_dim
 
     @property
     def feature_shape(self) -> tuple[int, int, int]:
+        """Shape of the final feature map before flattening or pooling, excluding the batch dimension.
+        """
         return self._feature_shape
 
     @staticmethod
@@ -435,6 +441,18 @@ class Conv2DEncoder(BaseEncoder):
         return feature_shape
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Encode an input batch into vectors of shape (batch, output_dim).
+
+        Parameters
+        ----------
+        x
+            Input tensor with shape (batch, *input_shape).
+
+        Returns
+        -------
+        torch.Tensor
+            Encoded feature vectors.
+        """
         if x.ndim != 4:
             raise ValueError(
                 "Conv2DEncoder expects a 4D tensor [batch, channels, height, width], "

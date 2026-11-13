@@ -83,7 +83,37 @@ def export_torchview_graph(
     input_size: Sequence[int] | None = None,
     input_data: Any | None = None,
 ) -> Path:
-    """Export a Torchview graph from either a dummy size or runtime data."""
+    """Export a traced Torchview model graph.
+
+    Parameters
+    ----------
+    model
+        Model to trace with Torchview.
+    output_path
+        Destination path. Its suffix selects the Graphviz output format;
+        no suffix defaults to PNG. Parent directories are created.
+    expand_nested
+        Expand nested modules in the rendered graph.
+    depth
+        Module nesting depth shown by Torchview.
+    input_size
+        Dummy input shape, including the batch dimension. Supply exactly one
+        of input_size and input_data.
+    input_data
+        Actual example input accepted by Torchview, as an alternative to input_size.
+
+    Returns
+    -------
+    Path
+        Absolute path of the rendered graph.
+
+    Raises
+    ------
+    ModelGraphDependencyError
+        The Torchview Python package is unavailable.
+    RuntimeError
+        Tracing or rendering fails, including Graphviz executable failures.
+    """
 
     if (input_size is None) == (input_data is None):
         raise ValueError(
@@ -229,12 +259,29 @@ def build_composite_model_spec_graph(
     *,
     graph_name: str = "Composite model specification",
 ) -> Digraph:
-    """Build a conceptual architecture graph from a resolved model spec.
+    """Build a Graphviz graph of resolved composite declarations and wiring.
 
-    The graph represents BenchRep declarations, assembly steps, component
-    sharing, produced outputs, and configured losses. It intentionally omits
-    internal PyTorch operations such as activations, reshaping, and individual
-    neural-network layers.
+    Parameters
+    ----------
+    model_spec
+        Resolved CompositeModelSpec, including component sharing, declarations,
+        and assembly connections. Available as run_spec.composite_model_spec
+        after composite training.
+    loss_specs
+        Resolved loss specifications, available as run_spec.loss_specs.
+    graph_name
+        Graph name and displayed heading.
+
+    Returns
+    -------
+    graphviz.Digraph
+        Graph object, not a saved file. Shows declared model and loss wiring,
+        rather than internal PyTorch operations.
+
+    Raises
+    ------
+    ModelGraphDependencyError
+        The Graphviz Python package is unavailable.
     """
 
     try:
@@ -641,7 +688,29 @@ def export_composite_model_spec_graph(
     output_path: Path | str,
     graph_name: str = "Composite model specification",
 ) -> Path:
-    """Render and export a resolved Composite model specification as SVG."""
+    """Render the resolved composite specification graph to SVG.
+
+    Parameters
+    ----------
+    model_spec
+        Resolved CompositeModelSpec; see build_composite_model_spec_graph().
+    loss_specs
+        Resolved loss identities and tensor bindings.
+    output_path
+        Destination with .svg or no suffix. Parent directories are created.
+    graph_name
+        Graph name and displayed heading.
+
+    Returns
+    -------
+    Path
+        Absolute path of the rendered SVG.
+
+    Raises
+    ------
+    ModelGraphDependencyError
+        The Graphviz Python package or dot executable is unavailable.
+    """
 
     output_path = Path(output_path).expanduser()
 

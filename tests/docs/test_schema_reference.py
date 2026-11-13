@@ -30,7 +30,7 @@ def test_every_public_schema_and_reachable_alias_is_documented_once(catalogue):
     for path in (ROOT / "docs/reference/schemas").glob("*.md"):
         entries += re.findall(r"^::: (\S+)", path.read_text(), re.MULTILINE)
     assert len(entries) == len(set(entries))
-    assert set(entries) == set(catalogue.targets.values())
+    assert set(entries) == set(catalogue.schema_targets.values())
 
 
 def test_inherited_fields_and_specializations(catalogue):
@@ -93,3 +93,17 @@ class DocsOnlyFactory:
     assert field["factory"] and field["default"] == "1 / 0"
     del catalogue.classes["DocsOnlyFactory"]
     del catalogue.paths["DocsOnlyFactory"]
+
+
+def test_public_contract_aliases_link_to_their_documented_types(catalogue):
+    expected = {
+        "ComponentResult": ["ComponentTensorResult", "ComponentMappingResult"],
+        "CompositeModelTensorRole": ["CompositeModelInputRole", "CompositeModelOutputRole"],
+        "PredictionMetadata": ["PredictionObsValue"],
+        "TrainingConfigInput": ["TrainingConfig"],
+        "SupportedModel": ["BenchRepAutoencoderModel", "BenchRepVAEModel", "CompositeModel"],
+    }
+    for name, dependencies in expected.items():
+        html = catalogue.linked(catalogue.aliases[name])
+        for dependency in dependencies:
+            assert f'identifier="{catalogue.targets[dependency]}"' in html, (name, dependency)

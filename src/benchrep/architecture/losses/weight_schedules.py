@@ -48,7 +48,19 @@ def _interpolate(start_value: float, end_value: float, fraction: float) -> float
 
 
 class LinearSchedule:
-    """Linear ramp, holding the endpoint factors outside its interval."""
+    """Linear ramp, holding the endpoint factors outside its interval.
+
+    Parameters
+    ----------
+    end
+        Position at which the end factor is reached; must exceed start.
+    start
+        Position at which the ramp starts.
+    start_factor
+        Nonnegative factor held at and before start.
+    end_factor
+        Nonnegative factor held at and after end.
+    """
 
     def __init__(
         self,
@@ -67,6 +79,11 @@ class LinearSchedule:
         self.end_factor = _validate_factor(end_factor, "end_factor")
 
     def factor(self, position: int) -> float:
+        """Return the factor at a nonnegative integer position.
+
+        Endpoint factors are held outside the ramp; subclasses select the
+        interpolation curve within it. This call does not advance state.
+        """
         position = _validate_position(position)
         if position <= self.start:
             return self.start_factor
@@ -81,7 +98,10 @@ class LinearSchedule:
 
 
 class CosineSchedule(LinearSchedule):
-    """Half-cosine ramp with the same endpoint behavior as a linear ramp."""
+    """Half-cosine ramp with the same endpoint behavior as a linear ramp.
+
+    Constructor parameters and endpoint behavior are inherited from LinearSchedule.
+    """
 
     def _ramp_factor(self, fraction: float) -> float:
         fraction = 0.5 * (1.0 - math.cos(math.pi * fraction))
@@ -108,6 +128,19 @@ class SigmoidSchedule(LinearSchedule):
     sigmoid values near 0.5. As steepness approaches zero, f(t) approaches t.
     For steepness below 1e-6, the implementation sets f(t) = t, producing
     linear interpolation between start_factor and end_factor.
+
+    Parameters
+    ----------
+    end
+        Position at which the end factor is reached; must exceed start.
+    start
+        Position at which the ramp starts.
+    start_factor
+        Nonnegative factor held at and before start.
+    end_factor
+        Nonnegative factor held at and after end.
+    steepness
+        Strictly positive sigmoid steepness. Smaller values approach a linear ramp.
     """
 
     def __init__(
@@ -150,6 +183,17 @@ class ExponentialSchedule(LinearSchedule):
     """Exponential ramp implemented by linear interpolation in log space.
 
     Both endpoint factors must be strictly positive.
+
+    Parameters
+    ----------
+    end
+        Position at which the end factor is reached; must exceed start.
+    start
+        Position at which the ramp starts.
+    start_factor
+        Strictly positive factor held at and before start.
+    end_factor
+        Strictly positive factor held at and after end.
     """
 
     def __init__(
@@ -228,6 +272,11 @@ class PiecewiseConstantSchedule:
             )
 
     def factor(self, position: int) -> float:
+        """Return the factor at a nonnegative integer position.
+
+        Endpoint factors are held outside the milestones. Interpolation between
+        milestones follows the concrete schedule class.
+        """
         position = _validate_position(position)
         if position <= self._positions[0]:
             return self.milestones[0][1]
@@ -270,6 +319,13 @@ class CyclicSchedule:
 
     The wrapped schedule receives positions from 0 through length - 1.
     At each cycle boundary, its position resets to zero.
+
+    Parameters
+    ----------
+    schedule
+        Instantiated LossWeightSchedule to repeat.
+    length
+        Positive number of positions in each cycle.
     """
 
     def __init__(
@@ -288,6 +344,8 @@ class CyclicSchedule:
         self.schedule = schedule
 
     def factor(self, position: int) -> float:
+        """Return the wrapped schedule factor at position modulo length.
+        """
         position = _validate_position(position)
         cycle_position = position % self.length
         return self.schedule.factor(cycle_position)

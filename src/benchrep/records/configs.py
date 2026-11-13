@@ -114,7 +114,28 @@ def save_config_yaml(
     out_dir: Path,
     filename: str,
 ) -> Path:
-    """Save a config object as a YAML."""
+    """Save a config object or mapping as YAML and return the written path.
+
+    Parameters
+    ----------
+    config
+        Pydantic config object or plain mapping to serialize. Default-valued
+        fields are included; this is not an omission-preserving YAML editor.
+    out_dir
+        Existing destination directory. This function does not create it.
+    filename
+        Output filename. An existing file at this location is overwritten.
+
+    Returns
+    -------
+    Path
+        Written YAML path.
+
+    Notes
+    -----
+    Unsupported runtime objects are replaced by descriptive
+    __benchrep_unserializable__ markers, not reconstructible implementations.
+    """
 
     output_path = out_dir / filename
     config_dict = config_to_serializable_dict(config)

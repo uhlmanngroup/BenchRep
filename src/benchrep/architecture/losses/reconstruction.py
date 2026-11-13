@@ -30,6 +30,10 @@ class MSEReconstructionLoss(nn.Module):
         self.loss = nn.MSELoss(reduction=reduction)
 
     def forward(self, reconstruction: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        """Return the configured mean or sum of elementwise squared reconstruction error.
+
+        Supply reconstruction and target tensors of matching shape.
+        """
         if reconstruction.shape != target.shape:
             raise ValueError(
                 f"reconstruction and target must have the same shape, got "
@@ -67,6 +71,10 @@ class MAEReconstructionLoss(nn.Module):
         reconstruction: torch.Tensor,
         target: torch.Tensor,
     ) -> torch.Tensor:
+        """Return the configured mean or sum of elementwise absolute reconstruction error.
+
+        Supply reconstruction and target tensors of matching shape.
+        """
         if reconstruction.shape != target.shape:
             raise ValueError(
                 f"reconstruction and target must have the same shape, got "

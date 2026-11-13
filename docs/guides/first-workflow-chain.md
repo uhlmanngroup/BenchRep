@@ -80,7 +80,7 @@ ami = evaluation_result.get_metric(
 print(f"Clustering AMI: {ami:.3f}")
 ```
 
-The panel below shows selected test inputs, their VAE reconstructions, and the corresponding absolute-error maps.
+The panel below shows selected test inputs, their VAE reconstructions, and the corresponding absolute-error maps. Reconstruction panels can be found in the `figures/reconstructions` directory.
 
 [![Selected MNIST inputs, VAE reconstructions, and absolute-error maps](../assets/guides/first-workflow-chain/mnist-reconstructions-preview.png)](../assets/guides/first-workflow-chain/mnist-reconstructions.png)
 

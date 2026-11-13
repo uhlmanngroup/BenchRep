@@ -13,7 +13,13 @@ from benchrep.evaluation.utils import ArrayLike, to_numpy
 
 
 def read_h5ad(path: str | Path) -> ad.AnnData:
-    """Read an AnnData evaluation artifact from disk."""
+    """Read an AnnData artifact from an existing .h5ad path.
+
+    Returns
+    -------
+    anndata.AnnData
+        Loaded data and annotations. No BenchRep evaluation is performed.
+    """
     path = Path(path)
 
     if not path.exists():
@@ -28,7 +34,17 @@ def write_h5ad(
     *,
     overwrite: bool = False,
 ) -> None:
-    """Write an AnnData evaluation artifact to disk."""
+    """Write AnnData to disk, creating missing parent directories.
+
+    Parameters
+    ----------
+    adata
+        Annotated matrix to save.
+    path
+        Destination .h5ad path.
+    overwrite
+        Permit replacement of an existing file; otherwise raise FileExistsError.
+    """
     path = Path(path)
 
     if path.exists() and not overwrite:
@@ -48,12 +64,28 @@ def package_matrix_as_anndata(
     label_key: str = "label",
     metadata: pd.DataFrame | Mapping[str, Sequence[Any]] | None = None,
 ) -> ad.AnnData:
-    """
-    Package a matrix (e.g. embeddings) and sample-level annotations into
-    an AnnData object.
+    """Package external embeddings and sample annotations as AnnData.
 
-    BenchRep evaluation uses AnnData as its internal contract:
-    `adata.X` stores the matrix, and `adata.obs` stores sample metadata.
+    Parameters
+    ----------
+    matrix
+        Two-dimensional matrix with shape (samples, features), stored in X.
+        Tensors are detached and moved to CPU. Values are not normalized.
+    sample_ids
+        Unique identifiers, converted to strings and used as obs.index.
+        If omitted, generate sample_0, sample_1, and so on.
+    labels
+        Optional one-dimensional labels aligned to matrix rows.
+    label_key
+        Observation column for labels. Replaces a same-named metadata column.
+    metadata
+        DataFrame or mapping of observation columns, aligned by row order.
+        A DataFrame's existing index is replaced by sample_ids.
+
+    Returns
+    -------
+    anndata.AnnData
+        Matrix in X and sample annotations in obs, ready to save for evaluation.
     """
 
     matrix_array = to_numpy(matrix)

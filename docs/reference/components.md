@@ -11,7 +11,15 @@ inspect_registry("encoder", "conv2d")
 inspect_registry("custom_objective_loss")
 ```
 
-Implementation links open BenchRep's source. Third-party implementations are identified by their Python path; their installed signatures can be inspected with the same discovery call. Availability in this catalogue does not imply that optional dependencies are installed.
+Documented BenchRep implementations link to their API entries; separate source links open their definitions. Third-party implementations are identified by their Python path; their installed signatures can be inspected with the same discovery call. Availability in this catalogue does not imply that optional dependencies are installed.
+
+## Implementation reference
+
+- **[Models](components/models.md):** autoencoder, VAE, and composite model behavior and Lightning hooks.
+- **[Encoders, decoders, and heads](components/architectures.md):** constructor parameters, dimensions, and forward methods.
+- **[Datasets](components/datasets.md):** sample formats and dataset access.
+- **[Losses](components/losses.md):** raw objectives and their tensor inputs.
+- **[Loss-weight schedules](components/schedules.md):** position-based multipliers and schedule parameters.
 
 ::: benchrep.assembly.registries.core
     options:

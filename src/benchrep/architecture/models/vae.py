@@ -41,6 +41,27 @@ class VAE(BenchRepVAEModel):
     During prediction, reconstruction may use either the posterior mean or sampled
     latent, with the posterior mean used by default. The deterministic embedding
     exposed for downstream evaluation is ``z_mu``.
+
+    Parameters
+    ----------
+    encoder
+        Instantiated encoder. Its input shape must agree with the decoder output shape when both are declared.
+    decoder
+        Instantiated decoder for reconstruction.
+    reconstruction_losses
+        Named reconstruction LossTerm objects. Use an empty mapping when this role is unused.
+    custom_objective_losses
+        Named full-context LossTerm objects. Use an empty mapping when unused.
+    optimizer_factory
+        Callable receiving model parameters and returning a PyTorch optimizer.
+    lr_scheduler_factory
+        Optional callable receiving that optimizer and returning a Lightning scheduler configuration.
+    variational_head
+        Gaussian head mapping encoder features to posterior parameters and a sampled latent. Its latent dimension must match decoder.input_dim.
+    regularization_losses
+        Named posterior-regularization LossTerm objects. Without custom objectives, both reconstruction and regularization roles must be nonempty.
+    prediction_reconstruction_latent_source
+        Whether predict_step reconstructs from the posterior mean or a sample. This does not change forward()'s default of sampling.
     """
 
     def __init__(
@@ -137,6 +158,22 @@ class VAE(BenchRepVAEModel):
             *,
             reconstruction_latent_source: Literal["mean", "sample"] = "sample",
     ) -> VAEForwardOutput:
+        """Compute posterior parameters, sample a latent, and reconstruct the input.
+
+        Parameters
+        ----------
+        x
+            Input tensor with shape (batch, *encoder.input_shape).
+        reconstruction_latent_source
+            Decode z_sample or z_mu. A sample is drawn in either case, including
+            in evaluation mode; this argument chooses only the decoder input.
+
+        Returns
+        -------
+        VAEForwardOutput
+            Mapping containing embedding (z_mu), reconstruction, z_sample,
+            z_mu, and z_logvar. Latent tensors have shape (batch, latent_dim).
+        """
         encoder_features = self.encode(x)
         latent = self.variational_head(encoder_features)
         if reconstruction_latent_source == "mean":
@@ -158,12 +195,23 @@ class VAE(BenchRepVAEModel):
         }
 
     def encode(self, x: torch.Tensor) -> torch.Tensor:
+        """Return encoder features for a batch of inputs.
+
+        These are the features before the variational head, not the posterior mean.
+        """
         return self.encoder(x)
 
     def decode(self, latent: torch.Tensor) -> torch.Tensor:
+        """Decode a batch of latent vectors into reconstructions.
+        """
         return self.decoder(latent)
 
     def training_step(self, batch: AutoencoderBatch, batch_idx: int) -> torch.Tensor:
+        """Compute and log the weighted training objective, returning a scalar loss.
+
+        The batch follows AutoencoderBatch; reconstruction targets are batch["x"].
+        Each term uses its weight at the current epoch and optimizer-step count.
+        """
         return self._compute_loss_step(
             batch,
             stage="train",
@@ -171,12 +219,28 @@ class VAE(BenchRepVAEModel):
         )
 
     def validation_step(self, batch: AutoencoderBatch, batch_idx: int) -> torch.Tensor:
+        """Compute and log the weighted validation objective, returning a scalar loss.
+
+        The batch follows AutoencoderBatch; reconstruction targets are batch["x"].
+        Each term uses its weight at the current epoch and optimizer-step count.
+        """
         return self._compute_loss_step(batch, stage="val")
 
     def test_step(self, batch: AutoencoderBatch, batch_idx: int) -> torch.Tensor:
+        """Compute and log the weighted test objective, returning a scalar loss.
+
+        The batch follows AutoencoderBatch; reconstruction targets are batch["x"].
+        Each term uses its weight at the current epoch and optimizer-step count.
+        """
         return self._compute_loss_step(batch, stage="test")
 
     def predict_step(self, batch: AutoencoderBatch, batch_idx: int) -> VAEPredictionOutput:
+        """Return embeddings, inputs, reconstructions, and available sample annotations.
+
+        Embeddings are posterior means. Reconstructions use
+        prediction_reconstruction_latent_source; posterior parameters and samples
+        are also returned.
+        """
         x = self._get_input_from_batch(batch)
         output = self(
             x,
@@ -198,6 +262,8 @@ class VAE(BenchRepVAEModel):
     def configure_optimizers(
             self,
     ) -> torch.optim.Optimizer | dict[str, Any]:
+        """Create the optimizer and optional Lightning scheduler configuration from their factories.
+        """
         optimizer = self.optimizer_factory(self.parameters())
 
         if self.lr_scheduler_factory is None:

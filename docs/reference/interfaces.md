@@ -124,6 +124,16 @@ Register a custom objective as `LossComponent(MyObjective)` in `CUSTOM_OBJECTIVE
       members:
         - factor
 
+## Runtime loss terms
+
+[`LossComponent`][benchrep.architecture.losses.composite_model_contracts.LossComponent] describes a registry entry. `LossTerm` wraps an instantiated loss with its weight and optional schedule when constructing a [built-in model](components/models.md) directly. Config-driven workflows create these containers for you; an independent whole-model override does not have to use them.
+
+::: benchrep.architecture.losses.base.LossTerm
+    options:
+      heading_level: 3
+      members:
+        - effective_weight
+
 ## Evaluation metrics
 
 Register the wrapper, not its bare `fn`. The selected registry determines the metric's input arguments; the wrapper declares its output shape. A vector axis must be supported by the consuming evaluator, not merely be an arbitrary label.
@@ -193,3 +203,44 @@ Import these constants from `benchrep.interfaces.model_families`, for example wh
 ::: benchrep.interfaces.model_families.CanonicalModelFamilySpec
     options:
       heading_level: 3
+
+## Supporting contract types
+
+The architecture contracts above use [`TensorStructure`][benchrep.architecture.composite_model_roles.TensorStructure] for per-sample shape categories and [`ComponentResult`][benchrep.architecture.composite_model_component_contracts.ComponentResult] for their output declarations. Loss ports use [`CompositeModelTensorRole`][benchrep.architecture.composite_model_roles.CompositeModelTensorRole]; its constituent roles are documented under [Shared and composite schemas](schemas/shared.md#field-types).
+
+::: benchrep.architecture.composite_model_roles.TensorStructure
+    options:
+      heading_level: 3
+
+::: benchrep.architecture.composite_model_roles.CompositeModelTensorRole
+    options:
+      heading_level: 3
+
+::: benchrep.architecture.composite_model_component_contracts.ComponentResult
+    options:
+      heading_level: 3
+
+::: benchrep.evaluation.metrics.contracts.MetricResultKind
+    options:
+      heading_level: 3
+
+::: benchrep.interfaces.contracts.PredictionObsValue
+    options:
+      heading_level: 3
+
+::: benchrep.interfaces.contracts.PredictionMetadata
+    options:
+      heading_level: 3
+
+::: benchrep.interfaces.model_families.SupportedModel
+    options:
+      heading_level: 3
+
+::: benchrep.interfaces.model_families.SupportedModelBaseClass
+    options:
+      heading_level: 3
+
+::: benchrep.architecture.utils.IntPair
+    options:
+      heading_level: 3
+

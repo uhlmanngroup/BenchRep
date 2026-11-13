@@ -9,7 +9,21 @@ from torch import nn
 
 
 class TripletMarginContrastiveLoss(nn.Module):
-    """Triplet margin loss over anchor, positive, and negative vectors."""
+    """Triplet margin loss over anchor, positive, and negative vectors.
+
+    Parameters
+    ----------
+    margin
+        Positive margin between positive and negative pair distances.
+    p
+        Norm degree used for pairwise distances.
+    eps
+        Small constant used for numerical stability in distance computation.
+    swap
+        Whether to allow swapping the positive-negative distance as in PyTorch TripletMarginLoss.
+    reduction
+        Mean or sum across triplets.
+    """
 
     def __init__(
         self,
@@ -42,4 +56,8 @@ class TripletMarginContrastiveLoss(nn.Module):
         positive: torch.Tensor,
         negative: torch.Tensor,
     ) -> torch.Tensor:
+        """Return scalar triplet-margin loss for anchor, positive, and negative embeddings.
+
+        Supply matching tensors of shape (batch, features), or individual vectors.
+        """
         return self.loss(anchor, positive, negative)

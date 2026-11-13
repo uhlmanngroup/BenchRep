@@ -37,3 +37,12 @@ Use [overrides](configuration.md) to replace config sections or supply supported
 ::: benchrep.evaluate
     options:
       heading_level: 3
+
+## Compatibility policy
+
+Training and prediction accept this policy for supported runtime compatibility checks.
+
+::: benchrep.runtime.utils.CompatibilityPolicy
+    options:
+      heading_level: 3
+

@@ -66,15 +66,20 @@ def test_unrecognized_dynamic_registration_fails_instead_of_disappearing(tmp_pat
 
 
 def test_explicit_reference_targets_resolve_and_have_real_docstrings(package):
-    for filename in ["wizards.md", "results.md", "registries.md", "interfaces.md", "helpers.md"]:
-        text = (ROOT / "docs/reference" / filename).read_text()
+    for page in (ROOT / "docs/reference").rglob("*.md"):
+        if "schemas" in page.parts:
+            continue
+        text = page.read_text()
         for target in re.findall(r"^::: (\S+)", text, re.MULTILINE):
             obj = package[target.removeprefix("benchrep.")]
             if obj.is_alias:
                 obj = obj.final_target
             if obj.is_module:
                 continue
-            assert obj.docstring, target
+            if obj.is_attribute:
+                assert obj.value is not None, target
+            else:
+                assert obj.docstring, target
             assert obj.filepath.is_relative_to(ROOT), target
 
 
@@ -117,3 +122,15 @@ assert package['examples.example_config_path'].docstring
 assert package['assembly.registries.core'].extra['benchrep_catalogue']
 '''
     subprocess.run([sys.executable, "-c", script], cwd=ROOT, check=True, capture_output=True, text=True)
+
+
+def test_catalogue_links_documented_implementations(package):
+    catalogue = package["assembly.registries.core"].extra["benchrep_catalogue"]
+    entries = {entry["name"]: entry for registry in catalogue for entry in registry["entries"]}
+    assert entries["conv2d"]["reference"] == "benchrep.architecture.encoders.conv2d.Conv2DEncoder"
+    assert entries["vae"]["reference"] == "benchrep.architecture.models.vae.VAE"
+    assert entries["linear"]["source"]  # Schedule or probe implementation remains traceable.
+    for registry in catalogue:
+        for entry in registry["entries"]:
+            if entry["reference"]:
+                assert package[entry["reference"].removeprefix("benchrep.")].is_class

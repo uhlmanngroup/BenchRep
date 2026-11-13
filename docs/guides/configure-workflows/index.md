@@ -9,7 +9,7 @@ There are several ways to configure a BenchRep workflow. You can edit a YAML, bu
 | [Python overrides](#python-overrides) | Replacing whole sections alongside a base config |
 | [Browser wizard](#browser-wizard) | Editing fields interactively, reviewing, and saving |
 
-The snippets below are alternatives: each changes the [first tutorial’s](../first-workflow-chain.md) MNIST VAE latent dimension from 32 to 64. Each route also links to a complete runnable example. Those scripts use their own settings; they do not pick up changes made in these snippets.
+The snippets below are alternatives: each changes the [first tutorial’s](../first-workflow-chain.md) MNIST VAE latent dimension from 32 to 64. Each route also links to a complete runnable example demonstrating the logic, though each script uses its own settings.
 
 <strong class="highlight">Requirements.</strong> The YAML and Python snippets need the core installation; the wizard needs `gui`. The complete example chains also use `scverse`. See [Installation](../installation.md) to choose extras. The composite wizard example additionally needs `artifact_generation` for its custom dataset.
 

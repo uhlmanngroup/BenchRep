@@ -8,6 +8,25 @@ from benchrep.architecture.encoders.base import BaseEncoder
 
 
 class TorchvisionResNet(BaseEncoder):
+    """Torchvision ResNet feature extractor with a learned output projection.
+
+    The original classifier is replaced by global average pooling and a linear
+    projection to output_dim. No image normalization is applied by this wrapper.
+
+
+    Parameters
+    ----------
+    input_shape
+        Per-sample (channels, height, width).
+    output_dim
+        Number of projected output features.
+    variant
+        One of resnet18, resnet34, resnet50, resnet101, or resnet152.
+    weights
+        Torchvision weights identifier, or None for random initialization. Pretrained weights require 3 input channels.
+    small_stem
+        Replace the first convolution with a new 3x3 stride-1 convolution and remove the initial max pooling. The replacement convolution is newly initialized even when weights are supplied.
+    """
     def __init__(
         self,
         input_shape: tuple[int, int, int],
@@ -111,14 +130,20 @@ class TorchvisionResNet(BaseEncoder):
 
     @property
     def input_shape(self) -> tuple[int, int, int]:
+        """Expected shape of one input sample, excluding the batch dimension.
+        """
         return self._input_shape
 
     @property
     def output_dim(self) -> int:
+        """Number of output features per sample.
+        """
         return self._output_dim
 
     @property
     def feature_shape(self) -> tuple[int, int, int]:
+        """Shape of the final feature map before flattening or pooling, excluding the batch dimension.
+        """
         return self._feature_shape
 
     def _infer_feature_shape(self) -> tuple[int, int, int]:
@@ -156,6 +181,18 @@ class TorchvisionResNet(BaseEncoder):
         return feature_shape
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Encode an input batch into vectors of shape (batch, output_dim).
+
+        Parameters
+        ----------
+        x
+            Input tensor with shape (batch, *input_shape).
+
+        Returns
+        -------
+        torch.Tensor
+            Encoded feature vectors.
+        """
         if x.ndim != 4:
             raise ValueError(
                 "TorchvisionResNet expects a 4D tensor [batch, channels, height, width], "
