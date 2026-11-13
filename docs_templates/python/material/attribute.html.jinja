@@ -11,5 +11,9 @@
 
 {% block signature scoped %}
   {{ br.location(attribute, config) }}
-  {{ super() }}
+  {% if attribute.extra.get("benchrep_type_alias") %}
+    <div class="br-schema-alias"><code>{{ attribute.extra["benchrep_type_alias"]|safe }}</code></div>
+  {% else %}
+    {{ super() }}
+  {% endif %}
 {% endblock signature %}

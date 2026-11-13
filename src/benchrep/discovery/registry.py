@@ -376,6 +376,22 @@ def inspect_registry(
     a registry and component name, describes the selected implementation.
 
     Component names may be canonical names or registered aliases.
+
+    Parameters
+    ----------
+    registry
+        Discovery name, such as ``"encoder"``; omit to list all registries.
+    component
+        Component name or alias in the selected registry; omit to list its entries.
+    file
+        Text stream receiving output. ``None`` uses standard output.
+
+    Raises
+    ------
+    ValueError
+        The registry is unknown, or a component is supplied without a registry.
+    KeyError
+        The component is unknown in the selected registry.
     """
     emit = partial(print, file=file)
 
@@ -442,11 +458,34 @@ def registry_documentation(
     *,
     include_component_details: bool = False,
 ) -> dict[str, Any]:
-    """Return registry documentation without console formatting.
+    """Return structured discovery metadata without printing it.
 
-    Component listings contain names and aliases by default. Detailed listings
-    also include targets and runtime contracts, without inspecting docstrings
-    or signatures. A selected component includes its full documentation.
+    Parameters
+    ----------
+    registry
+        Registry discovery name, as returned by ``list_registries()``.
+    component
+        Canonical component name or alias to inspect, or ``None`` for the registry.
+    include_component_details
+        Include signatures, descriptions, targets, and available runtime contracts
+        for every component. Otherwise the component list contains names and aliases.
+
+    Returns
+    -------
+    dict[str, Any]
+        Registry metadata with ``name``, ``object_path``, ``custom_registration``,
+        ``registration_entry``, ``runtime_instance_override``, ``config_locations``,
+        ``contract``, ``runtime_override``, ``components``, and
+        ``selected_component``. The selected component is fully described when
+        requested, otherwise ``None``. Unavailable signatures or descriptions can
+        be ``None``.
+
+    Raises
+    ------
+    ValueError
+        The registry is unknown.
+    KeyError
+        The component is unknown in the selected registry.
     """
     registry_name, info = _resolve_registry(registry)
     selected_registry = info.registry
@@ -767,7 +806,14 @@ def _callable_signature(item: Any) -> str | None:
 
 
 def list_registries() -> dict[str, str]:
-    """Return registry names and their public registry-object paths."""
+    """Return discovery names mapped to public registry-object paths.
+
+    Returns
+    -------
+    dict[str, str]
+        Keys accepted by ``inspect_registry()`` and ``list_registered_components()``;
+        values identify registry objects under ``benchrep.assembly.registries``.
+    """
     return {
         name: _registry_object_path(registry_info)
         for name, registry_info in _COMPONENT_REGISTRIES.items()
@@ -779,7 +825,26 @@ def list_registered_components(
     *,
     include_aliases: bool = False,
 ) -> tuple[str, ...] | dict[str, tuple[str, ...]]:
-    """Return the components registered in a named registry."""
+    """List components in a registry, optionally including their aliases.
+
+    Parameters
+    ----------
+    registry
+        Discovery name such as ``"encoder"`` or ``"reconstruction_loss"``.
+    include_aliases
+        Return a mapping from canonical names to alias tuples when true.
+
+    Returns
+    -------
+    tuple[str, ...] or dict[str, tuple[str, ...]]
+        Sorted canonical names, or canonical names mapped to their sorted aliases.
+        Includes built-ins and components registered in the current Python process.
+
+    Raises
+    ------
+    ValueError
+        The registry name is unknown.
+    """
     _, registry_info = _resolve_registry(registry)
     selected_registry = registry_info.registry
 

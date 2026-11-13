@@ -26,6 +26,19 @@ EvaluationStatus = Literal[
 
 @dataclass(frozen=True)
 class EvaluationOutcome:
+    """State and issues for an individual evaluation operation.
+
+    Attributes
+    ----------
+    name : str
+        Operation identifier.
+    category : str
+        Category used to group the operation.
+    status : EvaluationOutcomeStatus
+        ``pending``, ``running``, ``disabled``, ``completed``, ``completed_with_warnings``, ``skipped``, or ``failed``. Pending and running states must be finalized before aggregation.
+    issues : tuple[str, ...]
+        Reasons, warnings, or errors associated with the operation.
+    """
     name: str
     category: str
     status: EvaluationOutcomeStatus
@@ -34,12 +47,36 @@ class EvaluationOutcome:
 
 @dataclass(frozen=True)
 class EvaluationSectionStatus:
+    """Aggregate status and individual outcomes for one evaluation section.
+
+    Attributes
+    ----------
+    status : EvaluationStatus
+        ``disabled``, ``completed``, ``completed_with_warnings``, ``partially_completed``, or ``failed``.
+    outcomes : tuple[EvaluationOutcome, ...]
+        Individual operation outcomes, including disabled operations.
+    """
     status: EvaluationStatus
     outcomes: tuple[EvaluationOutcome, ...]
 
 
 @dataclass(frozen=True)
 class EvaluationStatusReport:
+    """Overall evaluation status and its section-level outcomes.
+
+    Attributes
+    ----------
+    anndata : EvaluationSectionStatus
+        Outcomes of analyses performed on AnnData.
+    reconstructions : EvaluationSectionStatus
+        Outcomes of reconstruction analyses.
+    exports : EvaluationSectionStatus
+        Outcomes of artifact and figure exports.
+    status : EvaluationStatus
+        Overall status. A fatal issue makes the run ``failed``; mixed successful and unsuccessful active sections produce ``partially_completed``.
+    fatal_issue : str | None
+        Fatal workflow error, otherwise ``None``.
+    """
     anndata: EvaluationSectionStatus
     reconstructions: EvaluationSectionStatus
     exports: EvaluationSectionStatus

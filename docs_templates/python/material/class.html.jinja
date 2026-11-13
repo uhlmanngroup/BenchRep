@@ -13,3 +13,23 @@
   {{ br.location(class, config) }}
   {{ super() }}
 {% endblock signature %}
+
+{% block bases scoped %}
+  {% if class.extra.get("benchrep_schema") %}
+    {% set schema = class.extra["benchrep_schema"] %}
+    {% if schema.bases_html %}
+      <p>Based on: {% for base in schema.bases_html %}<code>{{ base|safe }}</code>{% if not loop.last %}, {% endif %}{% endfor %}.</p>
+    {% endif %}
+  {% else %}
+    {{ super() }}
+  {% endif %}
+{% endblock bases %}
+
+{% block children scoped %}
+  {% if class.extra.get("benchrep_schema") %}
+    {% set schema = class.extra["benchrep_schema"] %}
+    {% include "schema_fields.html.jinja" %}
+  {% else %}
+    {{ super() }}
+  {% endif %}
+{% endblock children %}

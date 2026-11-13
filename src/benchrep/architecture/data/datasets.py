@@ -33,7 +33,7 @@ class BaseDataset(Dataset[dict[str, Any]], ABC):
 
     @abstractmethod
     def __getitem__(self, index: int) -> dict[str, Any]:
-        """Return one sample as a dictionary containing at least key ``"x"``."""
+        """Return one sample dictionary with the fields required by the consuming model."""
         raise NotImplementedError
 
     @staticmethod

@@ -77,6 +77,33 @@ from benchrep.assembly.registries.utils import normalize_path
 
 @dataclass
 class PredictionWorkflowResult:
+    """Predictions, exported artifacts, and records returned by prediction.
+
+    Attributes
+    ----------
+    config : PredictionConfig
+        Resolved configuration used by this workflow.
+    run_spec : PredictionRunSpec
+        Resolved execution plan. Primarily useful when inspecting how configuration was translated into runtime instructions.
+    run_context : RunContext
+        Run identity and conventional output locations. A path being present here does not guarantee an artifact was written.
+    manifest_path : Path
+        Path to this run's manifest, for provenance and downstream workflow inputs.
+    status_report : PredictionStatusReport
+        Overall status and workflow-specific outcomes or issues.
+    model : SupportedModel
+        Model instance used by the workflow.
+    datamodule : L.LightningDataModule
+        Datamodule instance used by the workflow.
+    trainer : L.Trainer
+        Lightning trainer used by the workflow.
+    composite_model_spec_graph_path : Path | None
+        Exported composite specification graph, or ``None`` if unavailable.
+    predictions : list[Any]
+        Per-batch prediction outputs collected by Lightning, before artifact export.
+    export_result : PredictionExportResult
+        Paths and outcomes for AnnData and reconstruction exports.
+    """
     config: PredictionConfig
     run_spec: PredictionRunSpec
     run_context: RunContext

@@ -52,6 +52,27 @@ if TYPE_CHECKING:
 
 @dataclass
 class EvaluationWorkflowResult:
+    """Evaluated data, exported paths, and records returned by evaluation.
+
+    Attributes
+    ----------
+    config : EvaluationConfig
+        Resolved configuration used by this workflow.
+    run_spec : EvaluationRunSpec
+        Resolved execution plan. Primarily useful when inspecting how configuration was translated into runtime instructions.
+    run_context : RunContext
+        Run identity and conventional output locations. A path being present here does not guarantee an artifact was written.
+    manifest_path : Path
+        Path to this run's manifest, for provenance and downstream workflow inputs.
+    status_report : EvaluationStatusReport
+        Overall status and workflow-specific outcomes or issues.
+    adata : ad.AnnData | None
+        Evaluated AnnData object when an AnnData input was loaded, otherwise ``None``. Metrics and analysis outputs are attached to this object.
+    reconstruction_outputs : dict[str, Any] | None
+        In-memory reconstruction evaluation outputs, or ``None`` when unavailable.
+    export_paths : EvaluationExportPaths
+        Paths of exported evaluated data, metrics, and figures.
+    """
     config: EvaluationConfig
     run_spec: EvaluationRunSpec
     run_context: RunContext
@@ -62,10 +83,34 @@ class EvaluationWorkflowResult:
     manifest_path: Path
 
     def get_metric(self, *path: str | int) -> Any:
-        """Return the in-memory value at a path shown in metrics.json.
+        """Read an in-memory metric using the nesting shown in ``metrics.json``.
 
-        Pass strings for mapping keys and integers for sequence indices.
-        An empty path returns the full metrics mapping.
+        Parameters
+        ----------
+        *path
+            String mapping keys or integer sequence indices, in traversal order.
+            With no arguments, return the complete metrics mapping.
+
+        Returns
+        -------
+        Any
+            Value at the requested path. No JSON file is read.
+
+        Raises
+        ------
+        KeyError
+            A mapping key is absent, for example when the metric was not computed.
+        IndexError
+            A sequence index is out of range.
+        TypeError
+            A path element cannot index the current value.
+
+        Examples
+        --------
+        >>> ami = evaluation_result.get_metric(
+        ...     "clustering", "external", "kmeans", "metrics",
+        ...     "adjusted_mutual_info", "value",
+        ... )
         """
         value: Any = collect_evaluation_metrics(
             adata=self.adata,

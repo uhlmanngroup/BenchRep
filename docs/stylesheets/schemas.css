@@ -1,0 +1,35 @@
+/* Schema fields stay out of the page TOC; each has a stable link target. */
+.md-typeset details.br-schema-field {
+  margin: 0.55rem 0;
+  border: 1px solid var(--br-rule);
+  border-radius: 0.3rem;
+  box-shadow: none;
+  font-size: 0.8rem;
+  background: transparent;
+  scroll-margin-top: 5rem;
+}
+.md-typeset details.br-schema-field > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.3em 1em;
+  background: var(--br-accent-soft);
+  padding-left: 0.7rem;
+  padding-right: 2rem;
+}
+.md-typeset details.br-schema-field > summary::before { display: none; }
+.md-typeset details.br-schema-field > summary > code { font-weight: 700; }
+.md-typeset .br-schema-default { font-size: 0.72rem; font-weight: 400; }
+.md-typeset .br-schema-type,
+.md-typeset .br-schema-default code,
+.md-typeset .br-schema-alias code { white-space: pre-wrap; overflow-wrap: anywhere; }
+.md-typeset .br-schema-alias {
+  background: var(--md-code-bg-color);
+  padding: 0.8rem;
+  border-radius: 0.3rem;
+}
+.md-typeset .br-schema-behavior > p { margin-top: 0.15rem; }
+.md-typeset .br-schema-notes li > p { margin-block: 0.3rem; }
+.md-typeset .br-schema-extra { font-size: 0.75rem; }
+.br-api-badge--type-alias { --br-badge-fg: #155e87; --br-badge-bg: #dcefff; }
+[data-md-color-scheme="slate"] .br-api-badge--type-alias { --br-badge-fg: #a6dcff; --br-badge-bg: #253e52; }

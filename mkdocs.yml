@@ -6,10 +6,16 @@ extra_css:
 - stylesheets/extra.css
 - stylesheets/reference.css
 - stylesheets/appearance.css
+- stylesheets/home.css
+- stylesheets/schemas.css
 theme:
   name: material
   variant: classic
-  logo: assets/logo.svg
+  custom_dir: docs_overrides
+  logo: assets/logo-light.svg
+  font:
+    text: Instrument Sans
+    code: Roboto Mono
   palette:
   - scheme: default
     primary: deep purple
@@ -115,6 +121,8 @@ nav:
   - Extension interfaces: reference/interfaces.md
   - Component catalogue: reference/components.md
   - Example helpers: reference/helpers.md
+extra:
+  logo_dark: assets/logo-dark.svg
 markdown_extensions:
 - toc:
     permalink: true
@@ -128,6 +136,9 @@ plugins:
         python:
           paths: [src]
           options:
+            extensions:
+              - docs_extensions/schema_reference.py
+              - docs_extensions/public_reference.py
             allow_inspection: false
             docstring_style: numpy
             members: false

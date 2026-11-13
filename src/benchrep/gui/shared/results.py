@@ -21,24 +21,22 @@ OverridesT = TypeVar(
 
 @dataclass(frozen=True, kw_only=True)
 class ConfiguredWorkflow(Generic[ConfigT, OverridesT]):
-    """Configuration and execution overrides produced by the wizard.
+    """Configuration and execution overrides returned by the wizard.
 
-    config
-        Composed, validated workflow config, including supplied config
-        components.
-    overrides
-        Overrides still required for execution. Config components already
-        incorporated into config are removed from this returned bundle.
-        The original caller-supplied overrides object is not modified.
-    config_path
-        Path to the authored YAML saved by the wizard.
-    resolved_config_path
-        Path to the resolved YAML saved by the wizard.
-    authored_config
-        Raw composed configuration, retaining omitted keys and explicit nulls.
-    resolved_config
-        Environment-dependent settings produced during review, for inspection.
-        Execution should use config or config_path and resolve again.
+    Attributes
+    ----------
+    config : ConfigT
+        Composed, validated workflow config, including supplied config components.
+    overrides : OverridesT
+        Overrides still needed at execution. Components already incorporated into ``config`` are removed; the caller's original overrides are not modified.
+    config_path : Path | None
+        Saved authored YAML path, or ``None`` when unavailable.
+    resolved_config_path : Path | None
+        Saved resolved YAML path, or ``None`` when unavailable.
+    authored_config : dict[str, Any] | None
+        Authored mapping preserving omitted keys and explicit nulls, or ``None`` when unavailable.
+    resolved_config : ConfigT | None
+        Environment-dependent config produced during review, or ``None`` when unavailable. Use ``config`` or ``config_path`` for execution so settings are resolved again.
     """
 
     config: ConfigT

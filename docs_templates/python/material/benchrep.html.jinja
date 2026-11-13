@@ -1,9 +1,12 @@
 {# Shared presentation for BenchRep API entries. #}
 {% macro category(obj, config) -%}
   {%- if config.extra.get("api_kind") -%}{{ config.extra.api_kind }}
+  {%- elif obj.extra.get("benchrep_type_alias") -%}type-alias
   {%- elif obj.is_class -%}
     {%- if ".assembly.schemas." in obj.canonical_path -%}schema
     {%- elif "dataclass" in obj.labels -%}dataclass
+    {%- elif "typing_extensions.TypedDict" in obj.bases|map(attribute="canonical_path") or "typing.TypedDict" in obj.bases|map(attribute="canonical_path") -%}typed-dict
+    {%- elif "typing.Protocol" in obj.bases|map(attribute="canonical_path") -%}protocol
     {%- else -%}class{%- endif -%}
   {%- elif obj.is_function -%}
     {{- "method" if obj.parent.is_class else "function" -}}
@@ -15,7 +18,7 @@
 
 {% macro badge(obj, config) -%}
   {% set kind = category(obj, config)|trim %}
-  <span class="br-api-badge br-api-badge--{{ kind }}">{{ kind }}</span>
+  <span class="br-api-badge br-api-badge--{{ kind }}{% if kind in ['typed-dict', 'protocol'] %} br-api-badge--class{% endif %}">{{ kind|replace("-", " ") }}</span>
 {%- endmacro %}
 
 {% macro location(obj, config) -%}

@@ -29,11 +29,41 @@ SupportedModelBaseClass: TypeAlias = (
 
 @dataclass(frozen=True)
 class ModelFamilySpec:
+    """Model-family identifier used by workflow configuration interfaces.
+
+    Attributes
+    ----------
+    name : str
+        Canonical model-family name.
+
+    Notes
+    -----
+    Use the predefined family constants. Constructing a spec does not register a new model family.
+    """
     name: str
 
 
 @dataclass(frozen=True)
 class CanonicalModelFamilySpec(ModelFamilySpec):
+    """Canonical-family contract extending the model-family name.
+
+    Attributes
+    ----------
+    model_base_class : SupportedModelBaseClass
+        Required base class for a whole-model runtime override.
+    expected_batch_type : type[Any]
+        Expected canonical batch dictionary type.
+    expected_batch_contract_kind : ContractKind
+        Representation of the batch contract; the canonical families use ``typeddict``.
+    expected_prediction_output_type : type[Any]
+        Expected per-batch prediction output type.
+    expected_prediction_output_contract_kind : ContractKind
+        Representation of the prediction contract; the canonical families use ``dataclass``.
+
+    Notes
+    -----
+    The inherited ``name`` identifies the family. Prefer ``AUTOENCODER_FAMILY`` or ``VAE_FAMILY``.
+    """
     model_base_class: SupportedModelBaseClass
     expected_batch_type: type[Any]
     expected_batch_contract_kind: ContractKind

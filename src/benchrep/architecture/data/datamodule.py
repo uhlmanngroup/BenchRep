@@ -100,12 +100,13 @@ class BenchRepDataModule(L.LightningDataModule):
         pipeline is supplied.
     prediction_pipelines:
         Optional explicit transform pipeline applied to prediction samples.
-        When omitted, ``validation_pipeline`` is used.
+        When omitted, ``validation_pipelines`` is used.
     batch_size:
         Number of samples per batch.
     val_fraction:
         Fraction of ``train_dataset`` used for validation when ``val_dataset`` is
-        not provided.
+        not provided. Must be in ``[0, 1)`` and set to 0 when supplying
+        an explicit validation dataset or when no training dataset is supplied.
     num_workers:
         Number of worker processes used by each DataLoader.
     pin_memory:
@@ -124,6 +125,24 @@ class BenchRepDataModule(L.LightningDataModule):
     dataloader_kwargs:
         Additional keyword arguments passed to every DataLoader. Cannot
         override BenchRep-controlled arguments.
+
+    Attributes
+    ----------
+    train_dataset : Dataset or None
+        Prepared training dataset after ``setup()``; initially ``None``.
+    val_dataset : Dataset or None
+        Prepared validation dataset after ``setup()``, or ``None`` without validation.
+    test_dataset : Dataset or None
+        Test dataset with any configured validation pipelines applied.
+    predict_dataset : Dataset or None
+        Prediction dataset with any configured prediction pipelines applied.
+
+    Notes
+    -----
+    At least one training, test, or prediction dataset is required. Validation
+    alone is insufficient. Passing ``prediction_pipelines=[]`` disables the
+    validation-pipeline fallback. Whole-datamodule workflow overrides accept other
+    ``LightningDataModule`` subclasses too; this is BenchRep's supplied implementation.
     """
 
     def __init__(
@@ -232,6 +251,7 @@ class BenchRepDataModule(L.LightningDataModule):
     def setup(self, stage: str | None = None) -> None:
         # Lightning may call setup multiple times. If setup already prepared the final
         # training dataset, do not split or reassign train/val datasets again.
+        """Prepare training and validation datasets once, splitting training data when requested."""
         if self.train_dataset is not None:
             return
 
@@ -285,6 +305,7 @@ class BenchRepDataModule(L.LightningDataModule):
         )
 
     def train_dataloader(self) -> DataLoader:
+        """Return the shuffled training loader; fail if training data is unavailable."""
         if self.train_dataset is None:
             raise RuntimeError(
                 "No training dataset is available. Provide train_dataset before calling "
@@ -304,6 +325,7 @@ class BenchRepDataModule(L.LightningDataModule):
         )
 
     def val_dataloader(self) -> DataLoader | None:
+        """Return the validation loader, or ``None`` when no validation dataset is available."""
         if self.val_dataset is None:
             return None
 
@@ -320,6 +342,7 @@ class BenchRepDataModule(L.LightningDataModule):
         )
 
     def test_dataloader(self) -> DataLoader | None:
+        """Return the test loader, or ``None`` when test data is unavailable."""
         if self.test_dataset is None:
             return None
 
@@ -336,6 +359,7 @@ class BenchRepDataModule(L.LightningDataModule):
         )
 
     def predict_dataloader(self) -> DataLoader | None:
+        """Return the prediction loader, or ``None`` when prediction data is unavailable."""
         if self.predict_dataset is None:
             return None
 

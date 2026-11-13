@@ -79,6 +79,35 @@ from benchrep.inspection.gradient_norms import GradientNormInspectionCallback
 
 @dataclass
 class TrainingWorkflowResult:
+    """Objects and records returned by a training workflow.
+
+    Attributes
+    ----------
+    config : TrainingConfig
+        Resolved configuration used by this workflow.
+    run_spec : TrainingRunSpec
+        Resolved execution plan. Primarily useful when inspecting how configuration was translated into runtime instructions.
+    run_context : RunContext
+        Run identity and conventional output locations. A path being present here does not guarantee an artifact was written.
+    manifest_path : Path
+        Path to this run's manifest, for provenance and downstream workflow inputs.
+    status_report : TrainingStatusReport
+        Overall status and workflow-specific outcomes or issues.
+    model : SupportedModel
+        Model instance used by the workflow.
+    datamodule : L.LightningDataModule
+        Datamodule instance used by the workflow.
+    trainer : L.Trainer
+        Lightning trainer used by the workflow.
+    composite_model_spec_graph_path : Path | None
+        Exported composite specification graph, or ``None`` if unavailable.
+    checkpoint_callback : ModelCheckpoint
+        Checkpoint callback used during training; inspect it for selected checkpoint paths.
+    early_stopping_callback : EarlyStopping | None
+        Early-stopping callback when configured, otherwise ``None``.
+    torchview_graph_path : Path | None
+        Exported model graph, or ``None`` if unavailable.
+    """
     config: TrainingConfig
     run_spec: TrainingRunSpec
     run_context: RunContext

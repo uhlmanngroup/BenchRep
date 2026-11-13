@@ -29,6 +29,17 @@ ACCEPTABLE_TRAINING_STATUSES = frozenset[TrainingStatus](
 
 @dataclass(frozen=True)
 class TrainingStatusReport:
+    """Training completion state, issues, and any handled interruption.
+
+    Attributes
+    ----------
+    status : TrainingStatus
+        ``completed``, ``completed_with_warnings``, ``completed_after_interruption``, or ``failed``. Errors take precedence over interruption, then warnings.
+    issues : tuple[str, ...]
+        Recorded errors and warnings, including their severity prefixes.
+    interruption_signal : TrainingInterruptionSignal | None
+        ``sigint`` or ``sigterm`` when an interruption was handled, otherwise ``None``.
+    """
     status: TrainingStatus
     issues: tuple[str, ...]
     interruption_signal: TrainingInterruptionSignal | None

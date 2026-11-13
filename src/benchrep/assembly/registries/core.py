@@ -110,7 +110,35 @@ class Registry:
         item: RegistryEntry,
         *aliases: str,
     ) -> None:
-        """Register a user-provided component."""
+        """Register an entry under a canonical name and optional aliases.
+
+        Parameters
+        ----------
+        key
+            Canonical name. Names are stripped, lowercased, and have hyphens replaced
+            with underscores.
+        item
+            Callable or typed entry required by this registry. Registration stores it;
+            it does not instantiate the component.
+        *aliases
+            Additional names resolving to the same entry.
+
+        Raises
+        ------
+        RuntimeError
+            This registry does not permit external registration.
+        KeyError
+            A name or alias already exists, including a built-in name.
+        TypeError
+            A key is not a string or the entry violates the registry's type contract.
+        ValueError
+            A normalized name is empty or a role-specific contract is invalid.
+
+        Notes
+        -----
+        Register custom entries in each Python process before resolving a config that
+        uses them. Existing entries cannot be overwritten through this method.
+        """
         if not self.custom_registration_supported:
             raise RuntimeError(
                 "Custom registration is not supported for the "
@@ -184,6 +212,23 @@ class Registry:
             )
 
     def get(self, key: str) -> RegistryEntry:
+        """Return the entry stored under a canonical name or alias.
+
+        Parameters
+        ----------
+        key
+            Component name; normalized as in ``register()``.
+
+        Returns
+        -------
+        RegistryEntry
+            The original callable or contract wrapper, without instantiation.
+
+        Raises
+        ------
+        KeyError
+            The name is not registered.
+        """
         _ensure_builtins_registered()
 
         # Retrieve a registered object by name, with a debuggable error for unknown keys.
@@ -214,7 +259,33 @@ class Registry:
         return self._canonical_keys[key]
 
     def create(self, key: str, **kwargs: Any) -> Any:
-        """Instantiate the implementation represented by a registry entry."""
+        """Instantiate a callable entry using keyword arguments.
+
+        Parameters
+        ----------
+        key
+            Canonical name or alias.
+        **kwargs
+            Keyword arguments passed to the constructor or factory.
+
+        Returns
+        -------
+        Any
+            Constructor or factory result. Architecture and loss entries are unwrapped
+            to their ``component`` before calling.
+
+        Raises
+        ------
+        KeyError
+            The name is not registered.
+        TypeError
+            The selected target is not callable or its arguments are incompatible.
+            ``EvaluationMetric`` entries are not constructors; use ``get()`` instead.
+
+        Notes
+        -----
+        This is direct construction, not workflow resolution or compatibility checking.
+        """
 
         entry = self.get(key)
 

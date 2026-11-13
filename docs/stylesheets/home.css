@@ -1,0 +1,117 @@
+/* Home-specific layout. Documentation pages keep their reading layout. */
+.md-typeset .br-home-hero { margin: 0.3rem 0 1.6rem; }
+.md-typeset h1.br-home-title {
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+  margin: 0 0 0.8rem;
+  font-size: clamp(2.8rem, 5vw, 3.6rem);
+  letter-spacing: -0.04em;
+}
+.md-typeset .br-home-title img {
+  width: 1.3em;
+  height: auto;
+  margin: 0;
+  flex-shrink: 0;
+}
+.md-content .md-typeset .br-home-lead {
+  max-width: 55ch;
+  margin: 0;
+  font-size: 1.13rem;
+  line-height: 1.55;
+  text-align: start;
+  color: var(--md-default-fg-color--light);
+}
+.md-typeset .br-icon { width: 1.2rem; height: 1.2rem; flex-shrink: 0; color: var(--br-accent); }
+
+.md-typeset .br-intents {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1.1rem;
+  margin: 1.5rem 0 1.2rem;
+  padding-block: 1.25rem;
+  border-block: 1px solid var(--br-rule);
+}
+.md-typeset .br-intent-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--md-default-fg-color);
+  font-size: 0.85rem;
+  font-weight: 650;
+}
+.md-content .md-typeset .br-intents p {
+  margin: 0.45rem 0 0;
+  font-size: 0.77rem;
+  line-height: 1.65;
+  color: var(--md-default-fg-color--light);
+  text-align: start;
+}
+
+/* One primary action and two quieter starting points. */
+.md-typeset .br-start {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin-block: 1rem 1.6rem;
+}
+.md-typeset .br-start-link {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 1rem;
+  border: 1px solid var(--br-rule);
+  border-radius: 0.5rem;
+  background: var(--br-surface);
+  color: var(--md-default-fg-color);
+  text-decoration: none;
+  transition: border-color 140ms ease, background-color 140ms ease;
+}
+.md-typeset .br-start-link strong { font-size: 0.82rem; line-height: 1.4; }
+.md-typeset .br-start-link > span { font-size: 0.73rem; line-height: 1.6; color: var(--md-default-fg-color--light); }
+.md-typeset .br-start-link:hover { border-color: var(--br-accent); background: var(--br-surface-raised); }
+.md-typeset .br-start-link--primary,
+.md-typeset .br-start-link--primary:hover {
+  border-color: var(--br-button-bg);
+  background: var(--br-button-bg);
+  color: var(--br-button-fg);
+}
+.md-typeset .br-start-link--primary:hover { background: var(--br-button-hover); }
+.md-typeset .br-start-link--primary :is(.br-icon, span) { color: inherit; }
+
+/* Documentation routes: compact, fully clickable rows, rather than a link list. */
+.md-typeset .br-doc-routes { margin-block: 1rem 1.5rem; border-top: 1px solid var(--br-rule); }
+.md-typeset .br-doc-route {
+  display: grid;
+  grid-template-columns: 1.3rem minmax(0, 1fr) 1rem;
+  align-items: start;
+  gap: 0.8rem;
+  padding: 1rem 0.3rem;
+  border-bottom: 1px solid var(--br-rule);
+  color: var(--md-default-fg-color);
+  text-decoration: none;
+  transition: background-color 140ms ease;
+}
+.md-typeset .br-doc-route:hover { background: var(--br-accent-soft); }
+.md-typeset .br-doc-route strong { display: block; margin-bottom: 0.2rem; font-size: 0.85rem; }
+.md-typeset .br-doc-route small { display: block; color: var(--md-default-fg-color--light); font-size: 0.75rem; line-height: 1.6; }
+.md-typeset .br-doc-route .br-icon { margin-top: 0.15rem; }
+.md-typeset .br-doc-route .br-route-arrow { width: 1rem; height: 1rem; }
+.md-typeset .br-development-note { color: var(--md-default-fg-color--light); font-size: 0.75rem; }
+
+@media screen and (max-width: 38em) {
+  .md-typeset .br-intents,
+  .md-typeset .br-start { grid-template-columns: 1fr; }
+  .md-typeset .br-intents { gap: 1rem; }
+  .md-typeset .br-start-link { gap: 0.35rem; }
+  .md-typeset .br-home-lead { font-size: 1rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .md-typeset :is(.br-start-link, .br-doc-route) { transition: none; }
+}
+
+.md-typeset a.br-start-link--primary,
+.md-typeset a.br-start-link--primary:is(:visited, :hover, :focus, :active) {
+  color: var(--br-button-fg);
+}

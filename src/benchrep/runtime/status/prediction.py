@@ -31,6 +31,17 @@ ACCEPTABLE_PREDICTION_STATUSES = frozenset[PredictionStatus](
 
 @dataclass(frozen=True)
 class PredictionOutcome:
+    """Outcome of inference or a prediction export branch.
+
+    Attributes
+    ----------
+    name : str
+        Operation identifier.
+    status : PredictionOutcomeStatus
+        ``disabled``, ``completed``, ``completed_with_warnings``, ``partially_completed``, ``skipped``, or ``failed``.
+    issues : tuple[str, ...]
+        Reasons, warnings, or errors associated with this operation.
+    """
     name: str
     status: PredictionOutcomeStatus
     issues: tuple[str, ...] = ()
@@ -38,6 +49,19 @@ class PredictionOutcome:
 
 @dataclass(frozen=True)
 class PredictionStatusReport:
+    """Prediction status with separate inference and export outcomes.
+
+    Attributes
+    ----------
+    inference : PredictionOutcome
+        Outcome of model inference.
+    anndata_export : PredictionOutcome
+        Outcome of AnnData export.
+    reconstructions_export : PredictionOutcome
+        Aggregate outcome of reconstruction exports.
+    status : PredictionStatus
+        ``completed``, ``completed_with_warnings``, ``partially_completed``, or ``failed``. Disabled exports are excluded from aggregation.
+    """
     inference: PredictionOutcome
     anndata_export: PredictionOutcome
     reconstructions_export: PredictionOutcome

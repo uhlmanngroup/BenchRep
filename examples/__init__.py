@@ -25,10 +25,36 @@ def _resource(root: Path, relative: str) -> Path:
 
 
 def example_config_path(name: str, *, stage: Stage | None = None) -> Path:
-    """Locate a shipped YAML. Use a bundle name and stage, or a relative YAML filename.
+    """Locate a packaged YAML without loading or validating it.
 
-    Pass the path to a workflow or wizard to preserve the original YAML and
-    allow incomplete templates to be completed by overrides.
+    Parameters
+    ----------
+    name
+        Example bundle name when ``stage`` is supplied, such as
+        ``"01_yaml_pipeline"``. Otherwise a YAML filename relative to the packaged
+        ``configs`` directory, including any subdirectory.
+    stage
+        ``"training"``, ``"prediction"``, or ``"evaluation"``. When supplied, locate
+        ``<name>/<stage>.yaml``.
+
+    Returns
+    -------
+    Path
+        Absolute path to the packaged YAML. Pass it to a workflow or wizard;
+        incomplete templates can be completed through overrides.
+
+    Raises
+    ------
+    ValueError
+        Invalid stage, absolute or escaping resource path, or non-YAML resource.
+    FileNotFoundError
+        The requested resource does not exist.
+
+    Notes
+    -----
+    Treat packaged files as read-only. Copy a YAML before editing it. Relative
+    paths inside it retain the workflow's usual path semantics; this helper does
+    not rewrite them relative to the package directory.
     """
     if stage is not None and stage not in _SCHEMAS:
         raise ValueError(f"Unknown workflow stage: {stage!r}")
@@ -40,7 +66,25 @@ def example_config_path(name: str, *, stage: Stage | None = None) -> Path:
 
 
 def example_asset_path(relative: str) -> Path:
-    """Locate a shipped example input file or directory under examples/assets."""
+    """Locate a packaged example input file or directory.
+
+    Parameters
+    ----------
+    relative
+        Path relative to the packaged ``examples/assets`` directory.
+
+    Returns
+    -------
+    Path
+        Absolute path to an existing resource. Treat packaged inputs as read-only.
+
+    Raises
+    ------
+    ValueError
+        The requested path is absolute or escapes the assets directory.
+    FileNotFoundError
+        The resource is missing or the request names the assets root itself.
+    """
     return _resource(_ROOT / "assets", relative)
 
 
@@ -59,6 +103,34 @@ def load_example_config(name: str, *, stage: Literal["evaluation"]) -> Evaluatio
 def load_example_config(
     name: str, *, stage: Stage
 ) -> TrainingConfig | PredictionConfig | EvaluationConfig:
-    """Validate a complete stage YAML and return a fresh config object."""
+    """Load a complete packaged stage YAML into a fresh config object.
+
+    Parameters
+    ----------
+    name
+        Example bundle name, such as ``"01_yaml_pipeline"``.
+    stage
+        Stage selecting both the YAML and its workflow configuration class.
+
+    Returns
+    -------
+    TrainingConfig or PredictionConfig or EvaluationConfig
+        Schema-validated configuration matching the selected stage.
+
+    Raises
+    ------
+    FileNotFoundError
+        The requested packaged YAML is unavailable.
+    ValueError
+        The stage or resource path is invalid.
+    pydantic.ValidationError
+        The YAML does not satisfy the selected workflow schema.
+
+    Notes
+    -----
+    This performs schema validation, not workflow resolution. Use
+    ``update_config()`` to create edited copies. For an incomplete YAML that needs
+    config overrides before validation, use ``example_config_path()`` instead.
+    """
     path = example_config_path(name, stage=stage)
     return _SCHEMAS[stage].model_validate(load_yaml(path))

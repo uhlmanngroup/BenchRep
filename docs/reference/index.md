@@ -9,5 +9,5 @@ Look up the functions, classes, configuration fields, and component interfaces u
 - [Results and statuses](results.md)
 - [Registries and discovery](registries.md)
 - [Extension interfaces](interfaces.md)
-- [Built-in components](components.md)
-- [Example and artifact helpers](helpers.md)
+- [Component catalogue](components.md)
+- [Example helpers](helpers.md)

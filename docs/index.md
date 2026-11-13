@@ -1,21 +1,51 @@
-<h1 style="display: flex; align-items: center; gap: 0.4em;">
-  <img src="assets/logo.svg" alt="" style="height: 1.5em; width: auto;">
-  <span>BenchRep</span>
-</h1>
+---
+hide:
+  - navigation
+---
 
-BenchRep is a configuration-driven, Lightning-based, extensible Python <strong class="highlight">workbench for representation learning</strong>:
+<div class="br-home-hero">
+  <h1 class="br-home-title">
+    <img class="br-image-light" src="assets/logo-light.svg" alt="">
+    <img class="br-image-dark" src="assets/logo-dark.svg" alt="">
+    <span class="br-wordmark">BenchRep</span>
+  </h1>
+  <p class="br-home-lead">A configuration-driven, Lightning-based, extensible Python <strong class="highlight">workbench for representation learning</strong>.</p>
+</div>
 
-- <strong class="highlight">Experiment</strong> with architectures and learning objectives using configurations that simplify repeated runs with targeted changes.
-- <strong class="highlight">Benchmark</strong> models reproducibly.
-- <strong class="highlight">Teach</strong> representation learning through exploration with minimal coding overhead.
-
-It connects model training, representation export, and standardized evaluation through reproducible, linked workflows.
+<div class="br-intents">
+  <div>
+    <strong class="br-intent-title"><svg class="br-icon " aria-hidden="true"><use href="assets/interface-icons.svg#sliders"></use></svg> Experiment</strong>
+    <p>Explore architectures and learning objectives using configurations that simplify repeated runs with targeted changes.</p>
+  </div>
+  <div>
+    <strong class="br-intent-title"><svg class="br-icon " aria-hidden="true"><use href="assets/interface-icons.svg#chart"></use></svg> Benchmark</strong>
+    <p>Compare models reproducibly through linked training, representation export, and standardized evaluation workflows.</p>
+  </div>
+  <div>
+    <strong class="br-intent-title"><svg class="br-icon " aria-hidden="true"><use href="assets/interface-icons.svg#book"></use></svg> Teach</strong>
+    <p>Explore representation learning with minimal coding overhead.</p>
+  </div>
+</div>
 
 ## Start here
 
-- **[Install BenchRep](guides/installation.md)** and choose the optional dependencies you need.
-- **[Run your first workflow chain](guides/first-workflow-chain.md)** to train a VAE, export embeddings and reconstructions, and evaluate them.
-- **[Evaluate external embeddings or reconstructions](guides/standalone-evaluation.md)** if you already have model outputs and want to go straight to evaluation.
+<nav class="br-start" aria-label="Getting started">
+  <a class="br-start-link" href="guides/installation.md">
+    <svg class="br-icon " aria-hidden="true"><use href="assets/interface-icons.svg#download"></use></svg>
+    <strong>Install BenchRep</strong>
+    <span>Choose the optional dependencies you need.</span>
+  </a>
+  <a class="br-start-link br-start-link--primary" href="guides/first-workflow-chain.md">
+    <svg class="br-icon " aria-hidden="true"><use href="assets/interface-icons.svg#play"></use></svg>
+    <strong>Run your first workflow chain</strong>
+    <span>Train a VAE, export embeddings and reconstructions, and evaluate them.</span>
+  </a>
+  <a class="br-start-link" href="guides/standalone-evaluation.md">
+    <svg class="br-icon " aria-hidden="true"><use href="assets/interface-icons.svg#chart"></use></svg>
+    <strong>Evaluate external outputs</strong>
+    <span>Start with existing embeddings or reconstructions and go straight to evaluation.</span>
+  </a>
+</nav>
 
 ## Workflows and provenance
 
@@ -53,8 +83,22 @@ Register your own components, wire them into a composite model, and define a cus
 
 ## Explore the docs
 
-- **[Tutorials](guides/index.md)** demonstrate configuration routes, external components, composite models, and hyperparameter tuning through concrete examples.
-- **[Understanding BenchRep](understanding/index.md)** explains configuration rules, model and data interfaces, workflow behavior, provenance, and execution internals.
-- **[Reference](reference/index.md)** provides lookup pages for public APIs, configuration fields, and registered components.
+<nav class="br-doc-routes" aria-label="Documentation sections">
+  <a class="br-doc-route" href="guides/index.md">
+    <svg class="br-icon " aria-hidden="true"><use href="assets/interface-icons.svg#book"></use></svg>
+    <span><strong>Tutorials</strong><small>Configuration routes, external components, composite models, and hyperparameter tuning through concrete examples.</small></span>
+    <svg class="br-icon br-route-arrow" aria-hidden="true"><use href="assets/interface-icons.svg#arrow"></use></svg>
+  </a>
+  <a class="br-doc-route" href="understanding/index.md">
+    <svg class="br-icon " aria-hidden="true"><use href="assets/interface-icons.svg#layers"></use></svg>
+    <span><strong>Understanding BenchRep</strong><small>Configuration rules, model and data interfaces, workflow behavior, provenance, and execution internals.</small></span>
+    <svg class="br-icon br-route-arrow" aria-hidden="true"><use href="assets/interface-icons.svg#arrow"></use></svg>
+  </a>
+  <a class="br-doc-route" href="reference/index.md">
+    <svg class="br-icon " aria-hidden="true"><use href="assets/interface-icons.svg#code"></use></svg>
+    <span><strong>Reference</strong><small>Lookup pages for public APIs, configuration fields, and registered components.</small></span>
+    <svg class="br-icon br-route-arrow" aria-hidden="true"><use href="assets/interface-icons.svg#arrow"></use></svg>
+  </a>
+</nav>
 
-BenchRep is under active development. Its public interfaces and configuration schemas may change before version 1.0.
+<p class="br-development-note">BenchRep is under active development. Its public interfaces and configuration schemas may change before version 1.0.</p>

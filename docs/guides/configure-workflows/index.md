@@ -159,6 +159,9 @@ if wizard_result is not None:
     )
 ```
 
+!!! note "Starting without a base config"
+    Omit `config` to start from scratch. You only need to specify `stage`. For training and prediction, the wizard assumes a composite model unless you choose a different `model_family`. Set it explicitly to choose another family and show its compatible configuration sections.
+
 The launcher opens your browser at <http://127.0.0.1:8050> by default; pass `port=...` to change it. The Python call waits while you edit and returns when you save or cancel. The launcher's `model_family` fixes the family, even if the base YAML names another one.
 
 Select **Model**, change **Latent Dim** to `64`, and inspect **Preview YAML draft**. The **Documentation** panel shows schemas and registered components. The screenshot shows the starting configuration, before the edit.

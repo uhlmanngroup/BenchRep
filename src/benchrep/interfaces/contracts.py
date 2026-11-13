@@ -12,22 +12,18 @@ PredictionMetadata: TypeAlias = dict[str, PredictionObsValue]
 
 # Model input contracts
 class AutoencoderBatch(TypedDict):
-    """Batch contract for autoencoder-style reconstruction models.
+    """Dictionary batch contract shared by canonical autoencoders and VAEs.
 
-    Required:
-        x:
-            Input tensor to reconstruct.
-
-    Optional:
-        sample_id:
-            Per-sample identifiers used to track outputs during inference or
-            downstream evaluation.
-        label:
-            Per-sample labels used for annotation or
-            evaluation (e.g. cell type).
-        metadata:
-            Additional per-sample metadata, e.g. patient_id, batch,
-            treatment_group, or timepoint.
+    Attributes
+    ----------
+    x : torch.Tensor
+        Required input tensor to reconstruct.
+    sample_id : NotRequired[PredictionObsValue]
+        Optional per-sample identifiers.
+    label : NotRequired[PredictionObsValue]
+        Optional per-sample labels, for annotation and evaluation.
+    metadata : NotRequired[PredictionMetadata]
+        Optional mapping of additional observation annotations.
     """
     x: torch.Tensor
     sample_id: NotRequired[PredictionObsValue]
@@ -37,21 +33,34 @@ class AutoencoderBatch(TypedDict):
 
 # Model forward contracts
 class AutoencoderForwardOutput(TypedDict):
-    """Forward output returned by ``Autoencoder``."""
+    """Forward-output dictionary produced by the built-in autoencoder.
+
+    Attributes
+    ----------
+    embedding : torch.Tensor
+        Encoded representation.
+    reconstruction : torch.Tensor
+        Decoder reconstruction.
+    """
     embedding: torch.Tensor
     reconstruction: torch.Tensor
 
 
 class VAEForwardOutput(TypedDict):
-    """
-    Forward output returned by ``VAE``.
+    """Forward-output dictionary produced by the built-in VAE.
 
-    `embedding` is the model-agnostic representation used by generic BenchRep
-    inference/evaluation code. For VAEs, it is intentionally set to `z_mu`
-    (i.e. redundant by design).
-
-    `z_mu` and `z_logvar` are the approximate posterior parameters used for
-    KL divergence. `z_sample` is the stochastic latent sample used by the decoder.
+    Attributes
+    ----------
+    embedding : torch.Tensor
+        Model-agnostic representation; the built-in VAE uses ``z_mu``.
+    reconstruction : torch.Tensor
+        Decoder reconstruction from the sampled latent variable.
+    z_sample : torch.Tensor
+        Sample drawn from the approximate posterior and passed to the decoder.
+    z_mu : torch.Tensor
+        Approximate posterior mean.
+    z_logvar : torch.Tensor
+        Approximate posterior log variance.
     """
 
     embedding: torch.Tensor
@@ -64,7 +73,23 @@ class VAEForwardOutput(TypedDict):
 # Model prediction contracts
 @dataclass(slots=True)
 class AutoencoderPredictionOutput:
-    """Prediction output returned by autoencoder-family models."""
+    """Per-batch prediction contract for an autoencoder-family model.
+
+    Attributes
+    ----------
+    embedding : torch.Tensor
+        Batch of learned representations.
+    input : torch.Tensor
+        Batch of original model inputs.
+    reconstruction : torch.Tensor
+        Batch of reconstructed inputs.
+    sample_id : PredictionObsValue | None
+        Optional per-sample identifiers aligned with the prediction rows.
+    label : PredictionObsValue | None
+        Optional per-sample labels aligned with the prediction rows.
+    metadata : PredictionMetadata | None
+        Optional additional observation annotations aligned with the prediction rows.
+    """
 
     # Core representation outputs
     embedding: torch.Tensor
@@ -81,7 +106,29 @@ class AutoencoderPredictionOutput:
 
 @dataclass(slots=True)
 class VAEPredictionOutput:
-    """Prediction output returned by VAE-family models."""
+    """Per-batch prediction contract for a VAE-family model.
+
+    Attributes
+    ----------
+    embedding : torch.Tensor
+        Batch of representations exported as the model-agnostic embedding; the built-in VAE uses ``z_mu``.
+    z_sample : torch.Tensor
+        Batch of sampled latent variables.
+    z_mu : torch.Tensor
+        Batch of approximate posterior means.
+    z_logvar : torch.Tensor
+        Batch of approximate posterior log variances.
+    input : torch.Tensor
+        Batch of original model inputs.
+    reconstruction : torch.Tensor
+        Batch of reconstructed inputs.
+    sample_id : PredictionObsValue | None
+        Optional per-sample identifiers aligned with the prediction rows.
+    label : PredictionObsValue | None
+        Optional per-sample labels aligned with the prediction rows.
+    metadata : PredictionMetadata | None
+        Optional additional observation annotations aligned with the prediction rows.
+    """
 
     # Core representation outputs
     embedding: torch.Tensor
@@ -101,7 +148,17 @@ class VAEPredictionOutput:
 
 @dataclass(slots=True)
 class CompositePredictionOutput:
-    """Prediction output returned by configuration-built Composite models."""
+    """Per-batch output of a configuration-built composite model.
+
+    Attributes
+    ----------
+    model_inputs : dict[str, torch.Tensor]
+        Declared input names mapped to their batch tensors.
+    model_outputs : dict[str, torch.Tensor]
+        Declared output names mapped to their batch tensors.
+    batch_metadata : PredictionMetadata
+        Observation annotations retained from the batch.
+    """
 
     model_inputs: dict[str, torch.Tensor]
     model_outputs: dict[str, torch.Tensor]

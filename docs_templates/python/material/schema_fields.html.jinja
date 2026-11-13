@@ -1,0 +1,30 @@
+{# Field descriptions and semantics are read directly from Pydantic declarations. #}
+<p class="br-schema-extra"><strong>Additional fields:</strong> {{ schema.extra_description|e }}</p>
+<div class="br-schema-fields">
+{% for field in schema.fields %}
+  <details class="br-schema-field" id="{{ class.path }}.{{ field.name }}">
+    <summary>
+      <code>{{ field.name }}</code>
+      <span class="br-schema-default">{% if field.required %}Required{% else %}Default{% if field.factory %} factory{% endif %}: <code>{{ field.default_html|safe }}</code>{% endif %}</span>
+    </summary>
+    <p><strong>Type:</strong> <code class="br-schema-type">{{ field.type_html|safe }}</code></p>
+    {{ field.description|convert_markdown(heading_level + 1, class.path ~ '.' ~ field.name) }}
+    {% if field.settings %}
+      <p><strong>Field constraints and settings:</strong>
+      {% for key, value in field.settings.items() %}<code>{{ key }}={{ value|e }}</code>{% if not loop.last %}, {% endif %}{% endfor %}.</p>
+    {% endif %}
+    {% for key, label in [('omit_behavior', 'If omitted'), ('null_behavior', 'If null')] %}
+      {% if field.extra.get(key) %}
+        <div class="br-schema-behavior"><strong>{{ label }}</strong>
+          {{ field.extra[key]|convert_markdown(heading_level + 1, class.path ~ '.' ~ field.name) }}
+        </div>
+      {% endif %}
+    {% endfor %}
+    {% if field.notes %}
+      <div class="br-schema-notes"><strong>Notes</strong><ul>
+      {% for note in field.notes %}<li>{{ note|convert_markdown(heading_level + 1, class.path ~ '.' ~ field.name) }}</li>{% endfor %}
+      </ul></div>
+    {% endif %}
+  </details>
+{% endfor %}
+</div>

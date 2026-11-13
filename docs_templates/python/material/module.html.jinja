@@ -1,0 +1,48 @@
+{% extends "_base/module.html.jinja" %}
+
+{% block contents scoped %}
+  {% if config.extra.get("registry_index") %}
+    <table>
+      <thead><tr><th>Discovery name</th><th>Registry object</th><th>Entry type</th><th>External registration</th></tr></thead>
+      <tbody>
+      {% for registry in module.extra["benchrep_catalogue"] %}
+        <tr>
+          <td><code>{{ registry.name }}</code></td>
+          <td><code>{{ registry.symbol }}</code></td>
+          <td>{{ registry.entry_type }}</td>
+          <td>{{ "Supported" if registry.custom_registration else "Closed" }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% elif config.extra.get("component_catalogue") %}
+    {% for registry in module.extra["benchrep_catalogue"] %}
+      {% filter heading(2, id="catalogue-" ~ registry.name, toc_label=registry.name|replace("_", " ")|capitalize) %}
+        {{ registry.name|replace("_", " ")|capitalize }}
+      {% endfilter %}
+      <p><code>benchrep.assembly.registries.{{ registry.symbol }}</code> · {{ registry.entry_type }} entries · {{ "External registration supported" if registry.custom_registration else "Closed registry" }}.</p>
+      <p>Configuration: {% for location in registry.locations %}<code>{{ location }}</code>{% if not loop.last %}; {% endif %}{% endfor %}.</p>
+      {% if registry.contract %}
+        {{ registry.contract|convert_markdown(heading_level=3, html_id="catalogue-" ~ registry.name) }}
+      {% endif %}
+      {% if registry.entries %}
+        <table>
+          <thead><tr><th>Name</th><th>Aliases</th><th>Implementation</th></tr></thead>
+          <tbody>
+          {% for entry in registry.entries %}
+            <tr>
+              <td><code>{{ entry.name }}</code></td>
+              <td>{% for alias in entry.aliases %}<code>{{ alias }}</code>{% if not loop.last %}, {% endif %}{% else %}—{% endfor %}</td>
+              <td>{% if entry.source %}<a href="{{ config.extra.source_base_url }}/{{ entry.source }}"><code>{{ entry.target }}</code></a>{% else %}<code>{{ entry.target }}</code>{% endif %}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% else %}
+        <p>No built-in entries. Register an implementation before using this registry in a config.</p>
+      {% endif %}
+    {% endfor %}
+  {% else %}
+    {{ super() }}
+  {% endif %}
+{% endblock contents %}

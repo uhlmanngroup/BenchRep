@@ -36,12 +36,44 @@ PredictionOutputLike: TypeAlias = (
 
 @dataclass(frozen=True)
 class PredictionAnnDataExportResult:
+    """AnnData artifact location and export outcome.
+
+    Attributes
+    ----------
+    path : Path | None
+        Written AnnData path, or ``None`` if no file was exported.
+    outcome : PredictionOutcome
+        AnnData export outcome and issues.
+    """
     path: Path | None
     outcome: PredictionOutcome
 
 
 @dataclass(frozen=True)
 class PredictionReconstructionBundlePaths:
+    """Locations and sampling counts for a reconstruction bundle.
+
+    Attributes
+    ----------
+    bundle_dir : Path
+        Bundle directory; may be a planned location if export failed.
+    input_path : Path | None
+        Exported input array path, or ``None``.
+    reconstruction_path : Path | None
+        Exported reconstruction array path, or ``None``.
+    obs_path : Path | None
+        Observation annotations path, or ``None``.
+    metadata_path : Path | None
+        Bundle metadata path, or ``None``.
+    n_examples_exported : int | None
+        Number of exported examples when known.
+    n_strata : int | None
+        Number of sampling strata when stratified sampling was used.
+    n_represented_strata : int | None
+        Number of strata represented in the exported selection, when known.
+    n_omitted_strata : int | None
+        Number of strata omitted from the exported selection, when known.
+    """
     bundle_dir: Path
     input_path: Path | None = None
     reconstruction_path: Path | None = None
@@ -55,6 +87,17 @@ class PredictionReconstructionBundlePaths:
 
 @dataclass(frozen=True)
 class PredictionReconstructionPairExportResult:
+    """Export result for one declared input–reconstruction pair.
+
+    Attributes
+    ----------
+    pair : PredictionReconstructionPairSpec
+        Resolved specification identifying the input and reconstruction being exported.
+    paths : PredictionReconstructionBundlePaths
+        Bundle paths and selection counts.
+    outcome : PredictionOutcome
+        Export outcome for this pair.
+    """
     pair: PredictionReconstructionPairSpec
     paths: PredictionReconstructionBundlePaths
     outcome: PredictionOutcome
@@ -62,17 +105,36 @@ class PredictionReconstructionPairExportResult:
 
 @dataclass(frozen=True)
 class PredictionReconstructionsExportResult:
+    """Per-pair reconstruction exports and their aggregate outcome.
+
+    Attributes
+    ----------
+    pairs : tuple[PredictionReconstructionPairExportResult, ...]
+        Results for the requested reconstruction pairs.
+    outcome : PredictionOutcome
+        Aggregate reconstruction export outcome.
+    """
     pairs: tuple[PredictionReconstructionPairExportResult, ...]
     outcome: PredictionOutcome
 
 
 @dataclass(frozen=True)
 class PredictionExportResult:
+    """Artifact export results attached to a prediction workflow result.
+
+    Attributes
+    ----------
+    anndata : PredictionAnnDataExportResult
+        AnnData export path and outcome.
+    reconstructions : PredictionReconstructionsExportResult
+        Reconstruction bundle results and aggregate outcome.
+    """
     anndata: PredictionAnnDataExportResult
     reconstructions: PredictionReconstructionsExportResult
 
     @property
     def outcomes(self) -> tuple[PredictionOutcome, PredictionOutcome]:
+        """Return the AnnData and reconstruction outcomes, in that order."""
         return (
             self.anndata.outcome,
             self.reconstructions.outcome,

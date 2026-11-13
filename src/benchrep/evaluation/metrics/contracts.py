@@ -27,7 +27,21 @@ _VECTOR_RESULT_KINDS: Final[frozenset[str]] = frozenset(
 
 @dataclass(frozen=True)
 class EvaluationMetric:
-    """Registered evaluation metric and its declared result contract."""
+    """Evaluation callable paired with a declared result shape.
+
+    Attributes
+    ----------
+    fn : Callable[..., Any]
+        Metric callable. Its input arguments depend on the registry: embeddings and cluster labels; reference and cluster labels; embeddings alone; or input and reconstruction arrays. Configured metric parameters are passed as keyword arguments.
+    result_kind : MetricResultKind
+        ``scalar``, ``vector``, ``scalar_mapping``, or ``vector_mapping``. Mappings provide named results; vectors provide one value per declared axis entry.
+    vector_axis : str | None
+        Required for vector results and forbidden for scalar results. Names the axis understood by the consuming evaluator, such as ``embedding_dimension``.
+
+    Notes
+    -----
+    Registration validates this declaration, not the metric output. During evaluation, results must contain finite real numeric values, vectors must match the available axis length, and mappings must be nonempty. Register this wrapper itself, rather than the bare callable.
+    """
 
     fn: Callable[..., Any]
     result_kind: MetricResultKind

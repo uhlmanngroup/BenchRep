@@ -87,12 +87,57 @@ def configure_workflow(
     | ConfiguredWorkflow[EvaluationConfig, EvaluationOverrides]
     | None
 ):
-    """Run a local wizard until Save & finish or Cancel; return None on cancellation.
+    """Run a browser configuration wizard and wait for Save & finish or Cancel.
 
-    Saved YAML preserves authored omissions and includes config components.
-    The returned overrides retain runtime objects, but omit baked-in components.
-    Closing the browser alone does not cancel; use Cancel or Ctrl+C in Python.
-    Training, prediction, and evaluation are supported. GUI dependencies are imported lazily.
+    Parameters
+    ----------
+    stage
+        Workflow to configure; defaults to training.
+    model_family
+        Family contract for training or prediction. Use ``AUTOENCODER_FAMILY``,
+        ``VAE_FAMILY``, or ``COMPOSITE_FAMILY`` from
+        ``benchrep.interfaces.model_families``. ``None`` selects composite for
+        these stages. Evaluation requires ``None`` because it uses artifacts.
+    config
+        Base YAML path or matching workflow config object. ``None`` starts a new
+        draft. A YAML draft can contain incomplete or invalid entries for editing.
+    overrides
+        Matching ``TrainingOverrides``, ``PredictionOverrides``, or
+        ``EvaluationOverrides``. Config components are composed into the draft;
+        upstream paths and supported runtime objects participate in review.
+    compatibility_policy
+        Prediction compatibility policy: ``"error"`` rejects incompatible settings;
+        ``"warn"`` permits the compatibility issues handled as warnings by the
+        prediction resolver. Other stages require ``"error"``.
+    export_directory
+        Directory in which to save the authored and resolved YAML files.
+    port
+        Local HTTP port on ``127.0.0.1``; defaults to 8050.
+    open_browser
+        Attempt to open the local address in the default browser. The address is
+        printed whether or not the browser is opened.
+
+    Returns
+    -------
+    ConfiguredWorkflow or None
+        Stage-specific configuration, remaining execution overrides, and saved
+        paths after Save & finish. Cancel or Ctrl+C returns ``None``.
+
+    Raises
+    ------
+    TypeError
+        The config object or overrides do not match the selected stage.
+    ValueError
+        The stage is unknown, evaluation receives a model family, or a
+        non-prediction stage receives a non-default compatibility policy.
+
+    Notes
+    -----
+    Requires the ``gui`` extra. Review performs workflow-level schema validation,
+    resolution, and checks of known feature dependencies and export settings.
+    Execution resolves the authored configuration again in the run environment.
+    The call blocks while editing, then returns to the same Python process.
+    Closing the browser alone does not cancel the session.
     """
     if stage not in {"training", "prediction", "evaluation"}:
         raise ValueError("Choose the training, prediction, or evaluation wizard.")

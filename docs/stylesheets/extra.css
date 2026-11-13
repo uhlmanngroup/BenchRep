@@ -6,8 +6,9 @@
     font-size: 0.85em;
 }
 
-[data-md-color-scheme="slate"] .md-typeset strong.highlight {
-    color: #F2AD88;
+.md-typeset strong.highlight {
+    color: var(--br-emphasis);
+    font-weight: 650;
 }
 
 .md-typeset img[src*="mnist-reconstructions"] {
@@ -21,4 +22,9 @@
 
 .md-typeset .admonition.align-left p {
   text-align: start;
+}
+
+/* Generated API/schema documentation contains long Python identifiers. */
+.md-content .md-typeset .doc :is(p, li) {
+    text-align: start;
 }

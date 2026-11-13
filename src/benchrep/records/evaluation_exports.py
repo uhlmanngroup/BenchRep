@@ -45,6 +45,23 @@ RECONSTRUCTION_GRID_LABEL_VALUE_MAX_LENGTH = 32
 
 @dataclass(frozen=True)
 class EvaluationExportPaths:
+    """Locations of evaluation artifacts and figures.
+
+    Attributes
+    ----------
+    evaluated_anndata_path : Path | None
+        Written evaluated AnnData file, or ``None``.
+    metrics_json_path : Path | None
+        Written consolidated metrics JSON, or ``None``.
+    reduction_plot_paths : dict[str, list[Path]] | None
+        Reduction identifiers mapped to exported figure paths, when available.
+    cluster_size_plot_paths : dict[str, list[Path]] | None
+        Clustering identifiers mapped to exported cluster-size figure paths, when available.
+    reconstruction_tiff_paths : dict[str, Any] | None
+        Exported reconstruction TIFF paths, grouped by pair when applicable, or ``None``.
+    reconstruction_grid_paths : dict[str, list[Path]] | None
+        Reconstruction grid identifiers mapped to exported figure paths, or ``None``.
+    """
     evaluated_anndata_path: Path | None
     metrics_json_path: Path | None
     reduction_plot_paths: dict[str, list[Path]] | None = None
