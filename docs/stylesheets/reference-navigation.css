@@ -1,0 +1,84 @@
+/* Compact category badges in the right-hand table of contents. */
+.md-sidebar--secondary .md-nav__link.br-toc-entry {
+  display: grid;
+  grid-template-columns: 1.3rem minmax(0, 1fr);
+  align-items: start;
+  column-gap: 0.3rem;
+}
+
+.md-sidebar--secondary .br-toc-name,
+.md-sidebar--secondary .br-toc-name .md-ellipsis,
+.md-sidebar--secondary .br-toc-name .md-typeset,
+.md-sidebar--secondary .br-toc-name code {
+  min-width: 0;
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  word-break: normal;
+}
+
+/* Keep each identifier word intact unless that word alone is too wide. */
+.md-sidebar--secondary .br-toc-word {
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.md-sidebar--secondary .br-toc-kind {
+  margin-top: 0.12em;
+  padding: 0.1em 0.2em;
+  border-radius: 0.25em;
+  font-family: var(--md-code-font-family, monospace);
+  font-size: 0.47rem;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+  text-align: center;
+  color: var(--br-badge-fg, #475569);
+  background: var(--br-badge-bg, #e2e8f0);
+}
+
+/* One continuous guide groups a class's members below its own description. */
+.md-typeset .doc-class > .doc-contents > .doc-children:has(> .doc-object) {
+  margin-block: 1.2rem 1.6rem;
+  margin-inline-start: 0.2rem;
+  padding-inline-start: 1rem;
+  border-inline-start: 2px solid var(--br-rule, #7546b52b);
+}
+
+@media (max-width: 44.984375em) {
+  .md-typeset .doc-class > .doc-contents > .doc-children:has(> .doc-object) {
+    margin-inline-start: 0;
+    padding-inline-start: 0.55rem;
+  }
+}
+
+/* Main sections: spacing and a subtle divider. */
+.md-sidebar--secondary .md-nav__link.br-toc-section {
+  margin-top: 0.9rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--br-rule);
+}
+
+/* Subsections: spacing alone. */
+.md-sidebar--secondary .md-nav__link.br-toc-subsection {
+  margin-top: 0.55rem;
+}
+
+/* Muted labels; preserve emphasis for the active item. */
+.md-sidebar--secondary .md-nav__link:is(
+  .br-toc-section, .br-toc-subsection
+):not(.md-nav__link--active) {
+  color: var(--md-default-fg-color--light);
+  font-weight: 400;
+}
+
+/* No opening divider above the first section. */
+.md-sidebar--secondary .md-nav__list > .md-nav__item:first-child
+> .md-nav__link.br-toc-section {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}

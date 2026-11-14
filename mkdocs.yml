@@ -9,6 +9,9 @@ extra_css:
 - stylesheets/appearance.css
 - stylesheets/home.css
 - stylesheets/schemas.css
+- stylesheets/reference-navigation.css
+extra_javascript:
+- javascripts/reference-navigation.js
 theme:
   name: material
   variant: classic
