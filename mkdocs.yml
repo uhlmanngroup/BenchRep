@@ -2,6 +2,7 @@ site_name: BenchRep
 site_description: Representation learning and benchmarking
 repo_url: https://github.com/uhlmanngroup/BenchRep
 repo_name: uhlmanngroup/BenchRep
+edit_uri: edit/main/docs/
 extra_css:
 - stylesheets/extra.css
 - stylesheets/reference.css
@@ -34,6 +35,9 @@ theme:
   - navigation.indexes
   - navigation.footer
   - content.code.copy
+  - content.action.view
+  icon:
+    view: fontawesome/solid/code
 nav:
 - Home: index.md
 - Tutorials:
