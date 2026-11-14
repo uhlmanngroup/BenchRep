@@ -195,7 +195,7 @@
 .md-typeset :is(p, li) > a:hover { text-decoration-color: currentColor; }
 
 /* Reserve the same padding in every sidebar row to avoid a selection jump. */
-.md-sidebar--primary .md-nav__link {
+.md-sidebar--primary .md-nav__link:not(.md-nav__container) {
   padding: 0.25rem 0.45rem;
   border-radius: 0.3rem;
 }
