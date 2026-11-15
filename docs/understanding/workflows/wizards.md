@@ -43,7 +43,14 @@ The sidebar marks local validity in green, issues in red, and valid omitted or n
 
 A collection of locally valid sections can still fail here. Changes to the draft or export settings require another check before saving.
 
-[![Review and finish after checking a training configuration.](../../assets/guides/configuration-wizard/review-and-finish.png)](../../assets/guides/configuration-wizard/review-and-finish.png)
+<figure>
+  <a class="br-image-light" href="../../assets/guides/configuration-wizard/review-and-finish-light.png">
+    <img src="../../assets/guides/configuration-wizard/review-and-finish-light.png" alt="Review and finish after checking a training configuration.">
+  </a>
+  <a class="br-image-dark" href="../../assets/guides/configuration-wizard/review-and-finish-dark.png">
+    <img src="../../assets/guides/configuration-wizard/review-and-finish-dark.png" alt="Review and finish after checking a training configuration.">
+  </a>
+</figure>
 
 <small class="br-caption">Review separates the validation results from the authored and resolved YAML previews.</small>
 

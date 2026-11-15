@@ -222,14 +222,9 @@ def build_wizard_layout(
                                 html.Div(
                                     [
                                         html.Img(
-                                            src=get_asset_url("logo-light.svg"),
+                                            src=get_asset_url("logo.svg"),
                                             alt="",
-                                            className="br-logo br-logo-light",
-                                        ),
-                                        html.Img(
-                                            src=get_asset_url("logo-dark.svg"),
-                                            alt="",
-                                            className="br-logo br-logo-dark",
+                                            className="br-logo",
                                         ),
                                         html.Span(
                                             "BenchRep",

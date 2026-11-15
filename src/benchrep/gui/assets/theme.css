@@ -23,7 +23,7 @@
     --br-success-bg: #dcfce7;
     --br-warning: #865400;
     --br-input-bg: #ffffff;
-    --br-header-bg: linear-gradient(120deg, #d8b4fe, #f3e8ff);
+    --br-header-bg: #d8b4fe;
     --br-shadow: 0 4px 20px rgb(59 23 88 / 4%);
 }
 
@@ -48,7 +48,7 @@
     --br-success-bg: #203d30;
     --br-warning: #edc170;
      --br-input-bg: #403a49;
-    --br-header-bg: linear-gradient(120deg, #513563, #35283f);
+    --br-header-bg: #513563;
     --br-shadow: 0 4px 20px rgb(0 0 0 / 15%);
 }
 
@@ -769,18 +769,6 @@ body {
 .br-logo {
     height: 4.68rem;
     width: auto;
-}
-
-.br-logo-dark {
-    display: none;
-}
-
-[data-mantine-color-scheme="dark"] .br-logo-light {
-    display: none;
-}
-
-[data-mantine-color-scheme="dark"] .br-logo-dark {
-    display: block;
 }
 
 .br-header {

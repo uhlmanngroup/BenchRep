@@ -16,7 +16,7 @@ theme:
   name: material
   variant: classic
   custom_dir: docs_overrides
-  logo: assets/logo-light.svg
+  logo: assets/logo.svg
   font:
     text: Instrument Sans
     code: Roboto Mono
@@ -134,8 +134,6 @@ nav:
     - Losses: reference/components/losses.md
     - Loss-weight schedules: reference/components/schedules.md
   - Example and artifact helpers: reference/helpers.md
-extra:
-  logo_dark: assets/logo-dark.svg
 markdown_extensions:
 - toc:
     permalink: true

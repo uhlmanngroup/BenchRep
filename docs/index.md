@@ -5,8 +5,7 @@ hide:
 
 <div class="br-home-hero">
   <h1 class="br-home-title">
-    <img class="br-image-light" src="assets/logo-light.svg" alt="">
-    <img class="br-image-dark" src="assets/logo-dark.svg" alt="">
+    <img src="assets/logo.svg" alt="">
     <span class="br-wordmark">BenchRep</span>
   </h1>
   <p class="br-home-lead">A configuration-driven, Lightning-based, extensible Python <strong class="highlight">workbench for representation learning</strong>.</p>
