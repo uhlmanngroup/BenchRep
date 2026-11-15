@@ -13,7 +13,7 @@ The required entry depends on what you register:
 | Loss | `LossComponent` containing the module class and any required input contract | A term within an existing loss role |
 | Evaluation metric | `EvaluationMetric` containing the executed function and its result contract | A metric group's `selected` list, with per-name `params` |
 
-See [Registering components](../understanding/extensibility/registration.md) for the complete registry map. Model families, reductions, clustering methods, and predictability probes currently do not accept custom registrations.
+See [Registering components](../concepts/extensibility/registration.md) for the complete registry map. Model families, reductions, clustering methods, and predictability probes currently do not accept custom registrations.
 
 <strong class="highlight">Requirements.</strong> The complete dataset and loss examples use `scverse` for evaluation:
 
@@ -56,7 +56,7 @@ class FashionMNISTDataset(BaseDataset):
         return {"x": image, "label": label, "sample_id": index}
 ```
 
-This adapter converts images to tensors; the example's configured transform pipeline handles conversion to scaled floating-point values. See [Datasets and sample structure](../understanding/data/datasets.md) and [Transform pipelines](../understanding/data/transforms.md) for the contracts.
+This adapter converts images to tensors; the example's configured transform pipeline handles conversion to scaled floating-point values. See [Datasets and sample structure](../concepts/data/datasets.md) and [Transform pipelines](../concepts/data/transforms.md) for the contracts.
 
 Register the class directly, with an optional alias:
 
@@ -129,7 +129,7 @@ RECONSTRUCTION_LOSSES.register(
 )
 ```
 
-`gradient_difference` is the registered name; `gdl` is an optional alias. `LossComponent` wraps the loss module class. Canonical models supply its fixed inputs; composite use additionally requires a declared input contract. See [Losses and objectives](../understanding/models/losses.md).
+`gradient_difference` is the registered name; `gdl` is an optional alias. `LossComponent` wraps the loss module class. Canonical models supply its fixed inputs; composite use additionally requires a declared input contract. See [Losses and objectives](../concepts/models/losses.md).
 
 ## Add a full-context objective
 
@@ -213,7 +213,7 @@ losses:
         n_classes: 10
 ```
 
-Each `params` mapping supplies constructor arguments; `weight` scales the returned scalar before BenchRep sums the terms. Here, `embedding_dim` must match the VAE’s latent dimension, and `n_classes` matches MNIST’s 10 digit classes. Loss weights do not need to sum to 1. See [Losses and objectives](../understanding/models/losses.md) for the weighting and wiring rules.
+Each `params` mapping supplies constructor arguments; `weight` scales the returned scalar before BenchRep sums the terms. Here, `embedding_dim` must match the VAE’s latent dimension, and `n_classes` matches MNIST’s 10 digit classes. Loss weights do not need to sum to 1. See [Losses and objectives](../concepts/models/losses.md) for the weighting and wiring rules.
 
 Run the complete loss example, including registration, training, prediction, and evaluation:
 
@@ -229,8 +229,8 @@ Training logs the raw and weighted terms separately. Evaluation still uses its o
 
 The same register-and-select pattern applies elsewhere, but the interface must match the component's role:
 
-- [Architecture component contracts](../understanding/models/component-contracts.md) describe input ports and tensor or mapping results.
-- [Metrics and their contracts](../understanding/evaluation/metrics.md) describe executed metric functions and scalar, vector, or mapping results.
-- [Registries and discovery](../understanding/extensibility/discovery.md) explains how to inspect names, aliases, parameters, and contracts before using a component.
+- [Architecture component contracts](../concepts/models/component-contracts.md) describe input ports and tensor or mapping results.
+- [Metrics and their contracts](../concepts/evaluation/metrics.md) describe executed metric functions and scalar, vector, or mapping results.
+- [Registries and discovery](../concepts/extensibility/discovery.md) explains how to inspect names, aliases, parameters, and contracts before using a component.
 
 To vary the settings in either example, see [Configure workflows](configure-workflows/index.md).

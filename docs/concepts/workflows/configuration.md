@@ -37,15 +37,6 @@ Composition determines **which settings are supplied**. Schema validation checks
 
 For example, a VAE latent dimension must be positive at schema validation. Resolution can then set the config-built canonical decoder's input dimension from it. Prediction can resolve `checkpoint: best` to a particular checkpoint using the training manifest.
 
-<!-- Figure slot: configuration lifecycle. Suggested assets:
-../../assets/understanding/workflows/configuration-lifecycle-light.svg
-../../assets/understanding/workflows/configuration-lifecycle-dark.svg
-Show authored input and section overrides feeding composition/validation,
-then resolution using upstream records and runtime context, then execution.
-A preconstructed config object has already undergone schema validation;
-do not imply every route performs exactly the same internal calls.
--->
-
 A resolved config remains configuration data. A **run specification** contains the resulting execution instructions; a **run context** identifies the run and its output directories. Builders and workflow execution use these objects to construct components and perform the work. Their implementation belongs in [Anatomy of a workflow](../internals/workflow-anatomy.md).
 
 ## Omitted, null, and empty are different inputs

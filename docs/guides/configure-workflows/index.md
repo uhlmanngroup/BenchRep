@@ -101,7 +101,7 @@ Pass that section as `model=model` when constructing `TrainingConfig`, together 
 python -m benchrep.examples.usage.03_config_object_pipeline
 ```
 
-See [Configuration semantics](../../understanding/workflows/configuration.md) for field updates, defaults, and validation.
+See [Configuration semantics](../../concepts/workflows/configuration.md) for field updates, defaults, and validation.
 
 ## Python overrides
 
@@ -125,7 +125,7 @@ training_result = train_vae(
 
 The supplied section replaces the <strong class="highlight">entire `model` section</strong>. Omitted fields take their schema defaults; required fields still need values. Here, `gaussian_vae` is an alias for `vae`, so it matches the family expected by `train_vae()`.
 
-The base can also be a config object. You can omit `config` if `config_components`, together with defaults, supplies a valid workflow config. Manifest paths and supported runtime model/datamodule implementations can also be supplied through overrides; see [Python overrides](../../understanding/workflows/overrides.md).
+The base can also be a config object. You can omit `config` if `config_components`, together with defaults, supplies a valid workflow config. Manifest paths and supported runtime model/datamodule implementations can also be supplied through overrides; see [Python overrides](../../concepts/workflows/overrides.md).
 
 The complete overrides example adapts the MNIST pipeline to CIFAR-10 by replacing the dataset and architecture sections:
 
@@ -178,7 +178,7 @@ Select **Model**, change **Latent Dim** to `64`, and inspect **Preview YAML draf
 
 Open **Review & finish**, click **Check configuration**, then **Save & finish**. Review performs workflow-level validation and resolution, including known dependency checks. Saving writes authored and resolved YAMLs and returns the config to your script; **Cancel** returns `None`.
 
-The wizard accepts an `overrides` argument and returns the overrides still needed for execution. This also lets you pass upstream manifest paths when configuring prediction or evaluation. See [Configuration wizards](../../understanding/workflows/wizards.md) for editing states, local validation, review, and returned values.
+The wizard accepts an `overrides` argument and returns the overrides still needed for execution. This also lets you pass upstream manifest paths when configuring prediction or evaluation. See [Configuration wizards](../../concepts/workflows/wizards.md) for editing states, local validation, review, and returned values.
 
 For a complete chain configured through 3 wizard sessions, run the composite example. It uses a different, multi-input model and a custom dataset:
 

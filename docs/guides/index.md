@@ -1,6 +1,6 @@
 # Tutorials
 
-Run a first workflow chain, then explore a specific task. Each tutorial focuses on the code needed for that task and links to complete usage examples where available. For the underlying rules and interfaces, see [Understanding BenchRep](../understanding/index.md).
+Run a first workflow chain, then explore a specific task. Each tutorial focuses on the code needed for that task and links to complete usage examples where available. For the underlying rules and interfaces, see [Concepts & design](../concepts/index.md).
 
 ## Getting started
 

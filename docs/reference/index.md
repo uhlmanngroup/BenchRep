@@ -1,6 +1,6 @@
 # Reference
 
-Look up the functions, configuration fields, contracts, and implementations used to configure, run, and extend BenchRep. For explanations of their behavior and relationships, see [Understanding BenchRep](../understanding/index.md).
+Look up the functions, configuration fields, contracts, and implementations used to configure, run, and extend BenchRep. For explanations of their behavior and relationships, see [Concepts & design](../concepts/index.md).
 
 - **[Workflow entrypoints](workflows.md):** launch training, prediction, or evaluation and inspect their arguments.
 - **[Overrides and config helpers](configuration.md):** replace config sections, supply runtime objects, update fields, and load or save YAML.

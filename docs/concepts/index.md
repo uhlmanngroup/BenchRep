@@ -1,4 +1,4 @@
-# Understanding BenchRep
+# Concepts & design
 
 Explore how BenchRep interprets configurations, builds models, runs workflows, and records their results. The sections below explain the shared rules and the behavior specific to each workflow. For runnable examples, see [Tutorials](../guides/index.md).
 

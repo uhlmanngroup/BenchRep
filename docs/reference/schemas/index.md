@@ -22,7 +22,7 @@ Each schema shows its defining Python module and a source link. Expand a field f
 - **Additional fields** describes the schema's handling of unknown keys. Acceptance by a schema does not guarantee acceptance by a downstream constructor or resolver.
 - **Field types** lists aliases used by these fields. Constraints inside `Annotated[...]` and named Pydantic types such as `PositiveInt` apply as well as the field-level settings shown in each entry.
 
-The reference displays declarations and authored guidance; it does not execute validators or enumerate every cross-field rule. A workflow can reject a combination of individually valid fields during validation or resolution. See [Configuration validation and resolution](../../understanding/workflows/configuration.md) for the broader model.
+The reference displays declarations and authored guidance; it does not execute validators or enumerate every cross-field rule. A workflow can reject a combination of individually valid fields during validation or resolution. See [Configuration validation and resolution](../../concepts/workflows/configuration.md) for the broader model.
 
 ## Inspect from Python
 

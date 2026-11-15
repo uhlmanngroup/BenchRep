@@ -48,13 +48,6 @@ Suppose the original optimizer parameters contain both `lr` and `weight_decay`:
 
 Omitted fields in the replacement follow that section's schema defaults; required fields must still be supplied. Component constructor defaults may apply to omitted constructor arguments. Use [`update_config()`][benchrep.update_config] when your intent is to retain a section and change individual existing fields.
 
-<!-- Figure slot: section replacement versus field update. Suggested assets:
-../../assets/understanding/workflows/section-replacement-light.svg
-../../assets/understanding/workflows/section-replacement-dark.svg
-Use the optimizer comparison above: highlight retained weight_decay for a
-field update and its absence after replacing the complete optimizer section.
--->
-
 A base `config` is optional when `config_components` and schema defaults provide enough information to construct a valid workflow config. Overrides do not make missing requirements disappear.
 
 ## Connect runs without rewriting paths

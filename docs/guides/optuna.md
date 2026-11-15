@@ -76,7 +76,7 @@ training_result = train_composite(
 ```
 
 !!! note "Runtime and configured callbacks"
-    `runtime_callbacks` accepts callback instances created in Python, such as this pruning callback bound to the current Optuna trial. These are added alongside callbacks configured through `additional_callbacks`, `checkpointing`, and `early_stopping`. See [Callbacks and checkpoints](../understanding/training/callbacks.md) for details.
+    `runtime_callbacks` accepts callback instances created in Python, such as this pruning callback bound to the current Optuna trial. These are added alongside callbacks configured through `additional_callbacks`, `checkpointing`, and `early_stopping`. See [Callbacks and checkpoints](../concepts/training/callbacks.md) for details.
 
 At each validation epoch, the callback reports reconstruction MSE to Optuna and raises `TrialPruned` if the study’s pruner decides to stop the trial. See the [Lightning callback reference](https://optuna-integration.readthedocs.io/en/stable/reference/generated/optuna_integration.PyTorchLightningPruningCallback.html).
 
@@ -84,7 +84,7 @@ In this training YAML checkpoints are also selected based on validation reconstr
 
 ## Evaluate on the validation split
 
-Since training-time pruning uses the validation split, we reuse that split for prediction so the final clustering objective assesses the same samples. We pass `training_result.datamodule.val_dataset` to a new datamodule supplied through `PredictionOverrides`, preserving the subset’s transforms and bypassing the prediction config’s dataset and transform settings. See [External models and datamodules](../understanding/extensibility/runtime-implementations.md) for the implementation contracts.
+Since training-time pruning uses the validation split, we reuse that split for prediction so the final clustering objective assesses the same samples. We pass `training_result.datamodule.val_dataset` to a new datamodule supplied through `PredictionOverrides`, preserving the subset’s transforms and bypassing the prediction config’s dataset and transform settings. See [External models and datamodules](../concepts/extensibility/runtime-implementations.md) for the implementation contracts.
 
 ```python
 validation_dataset = training_result.datamodule.val_dataset

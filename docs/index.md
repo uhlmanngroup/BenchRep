@@ -72,7 +72,7 @@ Each workflow has its own configuration, describing the components and settings 
 
 Configs refer to registered components by name. You can inspect registries and, where supported, register your own classes or factories. Once registered, custom components such as datasets and losses can be selected by name just like built-in ones.
 
-For training, a [canonical autoencoder or VAE](understanding/models/canonical.md) gives you a predefined architecture with your choice of encoder and decoder. With a [composite model](understanding/models/composite.md), you specify which components to use, how they connect, and which values feed each loss. This lets you build multi-input and multitask models directly in config.
+For training, a [canonical autoencoder or VAE](concepts/models/canonical.md) gives you a predefined architecture with your choice of encoder and decoder. With a [composite model](concepts/models/composite.md), you specify which components to use, how they connect, and which values feed each loss. This lets you build multi-input and multitask models directly in config.
 
 
 <strong class="highlight">Want to compare two encoders?</strong>
@@ -92,9 +92,9 @@ Register your own components, wire them into a composite model, and define a cus
     <span><strong>Tutorials</strong><small>Configuration routes, external components, composite models, and hyperparameter tuning through concrete examples.</small></span>
     <svg class="br-icon br-route-arrow" aria-hidden="true"><use href="assets/interface-icons.svg#arrow"></use></svg>
   </a>
-  <a class="br-doc-route" href="understanding/index.md">
+  <a class="br-doc-route" href="concepts/index.md">
     <svg class="br-icon " aria-hidden="true"><use href="assets/interface-icons.svg#gear"></use></svg>
-    <span><strong>Understanding BenchRep</strong><small>Configuration rules, model and data interfaces, workflow behavior, provenance, and execution internals.</small></span>
+    <span><strong>Concepts &amp; design</strong><small>Configuration rules, model and data interfaces, workflow behavior, provenance, and execution internals.</small></span>
     <svg class="br-icon br-route-arrow" aria-hidden="true"><use href="assets/interface-icons.svg#arrow"></use></svg>
   </a>
   <a class="br-doc-route" href="reference/index.md">

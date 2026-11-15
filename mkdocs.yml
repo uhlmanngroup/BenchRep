@@ -58,60 +58,60 @@ nav:
   - Control prediction exports: guides/prediction-exports.md
   - Use custom models and datamodules: guides/runtime-implementations.md
   - Tune with Optuna: guides/optuna.md
-- Understanding BenchRep:
-  - understanding/index.md
+- Concepts & design:
+  - concepts/index.md
   - Workflows & configuration:
-    - understanding/workflows/index.md
-    - Workflows and model families: understanding/workflows/workflows.md
-    - Configuration semantics: understanding/workflows/configuration.md
-    - Python overrides: understanding/workflows/overrides.md
-    - Configuration wizards: understanding/workflows/wizards.md
+    - concepts/workflows/index.md
+    - Workflows and model families: concepts/workflows/workflows.md
+    - Configuration semantics: concepts/workflows/configuration.md
+    - Python overrides: concepts/workflows/overrides.md
+    - Configuration wizards: concepts/workflows/wizards.md
   - Data:
-    - understanding/data/index.md
-    - Datasets and sample structure: understanding/data/datasets.md
-    - Transform pipelines: understanding/data/transforms.md
-    - Splits and dataloaders: understanding/data/datamodules.md
+    - concepts/data/index.md
+    - Datasets and sample structure: concepts/data/datasets.md
+    - Transform pipelines: concepts/data/transforms.md
+    - Splits and dataloaders: concepts/data/datamodules.md
   - Models & objectives:
-    - understanding/models/index.md
-    - Canonical models: understanding/models/canonical.md
-    - Composite models: understanding/models/composite.md
-    - Architecture component contracts: understanding/models/component-contracts.md
-    - Losses and objectives: understanding/models/losses.md
-    - Loss-weight schedules: understanding/models/loss-weight-schedules.md
+    - concepts/models/index.md
+    - Canonical models: concepts/models/canonical.md
+    - Composite models: concepts/models/composite.md
+    - Architecture component contracts: concepts/models/component-contracts.md
+    - Losses and objectives: concepts/models/losses.md
+    - Loss-weight schedules: concepts/models/loss-weight-schedules.md
   - Training:
-    - understanding/training/index.md
-    - Training and optimization: understanding/training/optimization.md
-    - Callbacks and checkpoints: understanding/training/callbacks.md
-    - Monitoring and inspection: understanding/training/inspection.md
+    - concepts/training/index.md
+    - Training and optimization: concepts/training/optimization.md
+    - Callbacks and checkpoints: concepts/training/callbacks.md
+    - Monitoring and inspection: concepts/training/inspection.md
   - Prediction:
-    - understanding/prediction/index.md
-    - Loading models for prediction: understanding/prediction/loading-models.md
-    - Selecting prediction exports: understanding/prediction/exports.md
+    - concepts/prediction/index.md
+    - Loading models for prediction: concepts/prediction/loading-models.md
+    - Selecting prediction exports: concepts/prediction/exports.md
   - Evaluation:
-    - understanding/evaluation/index.md
-    - Inputs and evaluation pipelines: understanding/evaluation/inputs.md
-    - Reductions and clustering: understanding/evaluation/reductions-clustering.md
-    - Metrics and their contracts: understanding/evaluation/metrics.md
-    - Predictability probes: understanding/evaluation/predictability.md
-    - Reconstruction evaluation: understanding/evaluation/reconstructions.md
-    - Figures and visualization: understanding/evaluation/figures.md
+    - concepts/evaluation/index.md
+    - Inputs and evaluation pipelines: concepts/evaluation/inputs.md
+    - Reductions and clustering: concepts/evaluation/reductions-clustering.md
+    - Metrics and their contracts: concepts/evaluation/metrics.md
+    - Predictability probes: concepts/evaluation/predictability.md
+    - Reconstruction evaluation: concepts/evaluation/reconstructions.md
+    - Figures and visualization: concepts/evaluation/figures.md
   - Results & provenance:
-    - understanding/results/index.md
-    - Run directories and result objects: understanding/results/runs.md
-    - Artifact formats: understanding/results/artifacts.md
-    - Manifests and provenance: understanding/results/provenance.md
-    - Reproducibility: understanding/results/reproducibility.md
-    - Statuses and failures: understanding/results/statuses.md
+    - concepts/results/index.md
+    - Run directories and result objects: concepts/results/runs.md
+    - Artifact formats: concepts/results/artifacts.md
+    - Manifests and provenance: concepts/results/provenance.md
+    - Reproducibility: concepts/results/reproducibility.md
+    - Statuses and failures: concepts/results/statuses.md
   - Extensibility:
-    - understanding/extensibility/index.md
-    - Registries and discovery: understanding/extensibility/discovery.md
-    - Registering components: understanding/extensibility/registration.md
-    - External models and datamodules: understanding/extensibility/runtime-implementations.md
+    - concepts/extensibility/index.md
+    - Registries and discovery: concepts/extensibility/discovery.md
+    - Registering components: concepts/extensibility/registration.md
+    - External models and datamodules: concepts/extensibility/runtime-implementations.md
   - Execution internals:
-    - understanding/internals/index.md
-    - Anatomy of a workflow: understanding/internals/workflow-anatomy.md
-    - How the wizard works: understanding/internals/wizard-architecture.md
-    - Codebase map: understanding/internals/codebase.md
+    - concepts/internals/index.md
+    - Anatomy of a workflow: concepts/internals/workflow-anatomy.md
+    - How the wizard works: concepts/internals/wizard-architecture.md
+    - Codebase map: concepts/internals/codebase.md
 - Reference:
   - reference/index.md
   - Workflow entrypoints: reference/workflows.md
