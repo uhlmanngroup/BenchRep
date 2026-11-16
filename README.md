@@ -36,8 +36,8 @@ BenchRep separates training, prediction, and evaluation into configurable workfl
 BenchRep provides canonical autoencoders and VAEs with swappable encoders and decoders, alongside composite models whose components and contracts, wiring, and learning objectives are user-defined.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/model-families-dark.svg">
-  <img src="docs/assets/model-families-light.svg" alt="BenchRep model families">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/model-families-vconcise-dark.svg">
+  <img src="docs/assets/model-families-vconcise-light.svg" alt="BenchRep model families">
 </picture>
 
 BenchRep uses a registry-based system to select built-in or user-registered classes and factories for components such as datasets, transforms, architectures, losses, and evaluation methods. Workflow-specific Overrides objects provide an escape hatch for supplying supported runtime objects or replacing configuration sections.

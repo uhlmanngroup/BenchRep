@@ -30,21 +30,30 @@ The connection is a **manifest path**, not a requirement that all stages share o
 
 Prediction requires a training manifest even when you supply a model override. Evaluation can instead start from external embeddings or reconstructions, without a BenchRep training or prediction run. See [Loading models for prediction](../prediction/loading-models.md), [Evaluation inputs](../evaluation/inputs.md), and [Manifests and provenance](../results/provenance.md).
 
-## Stage and family are separate choices
+## Model families
 
-The **stage** determines the work to perform. The **model family** determines the model's construction and runtime contracts for training and prediction.
+Training and prediction support 3 model families: autoencoder and VAE, collectively called **canonical models**, and composite. Each family defines how a model is constructed and which interfaces its components and runtime overrides must satisfy.
 
-| Family | Training / prediction entrypoints | Configuration-built architecture |
-| --- | --- | --- |
-| Autoencoder | `train_ae()` / `predict_ae()` | Encoder → decoder |
-| VAE | `train_vae()` / `predict_vae()` | Encoder → variational head → decoder |
-| Composite | `train_composite()` / `predict_composite()` | Declared components and their execution graph |
+<figure>
+  <a class="br-image-light" href="../../assets/model-families-concise-light.svg">
+    <img src="../../assets/model-families-concise-light.svg" alt="Comparison of BenchRep’s autoencoder, VAE, and composite model families, including their architectures, customization, use cases, and entrypoints.">
+  </a>
+  <a class="br-image-dark" href="../../assets/model-families-concise-dark.svg">
+    <img src="../../assets/model-families-concise-dark.svg" alt="Comparison of BenchRep’s autoencoder, VAE, and composite model families, including their architectures, customization, use cases, and entrypoints.">
+  </a>
+</figure>
 
-For a config-built model, the selected family must agree with the model named in configuration; registered aliases still select the same family. Changing `vae` to `composite` is therefore more than a name change: it changes the architecture description and contracts BenchRep expects.
+For a config-built model, the selected family must agree with the model named in configuration; registered aliases still select the same family. Changing `vae` to `composite`, for example, changes the architecture description and contracts BenchRep expects.
 
 Canonical models allow your choice of compatible encoder and decoder within their predefined topology. Composite models let you declare connections and loss inputs. For the architectural details, see [Canonical models](../models/canonical.md) and [Composite models](../models/composite.md).
 
 `evaluate()` has no model-family argument: it consumes artifacts rather than executing the model that produced them.
+
+### Why separate model families?
+
+**Canonical models prioritize ease of use:** the family establishes how components interact, how losses receive their inputs, and other behavior that would otherwise require explicit configuration. They are implemented as conventional, subclassable AE/VAE classes, keeping their behavior directly readable and customizable without depending on the composite graph machinery.
+
+**Composite models prioritize flexibility:** a general model implementation executes user-declared architectures and objectives. That generality requires more explicit contracts and wiring. Keeping the implementations separate lets canonical models remain straightforward while composite models accommodate structures beyond those predefined conventions.
 
 ## Configuration does not own every implementation
 
