@@ -42,6 +42,18 @@
   }
 
   function decorateReferenceNavigation() {
+    document.querySelectorAll(".md-content .md-typeset code").forEach((code) => {
+      if (
+        code.closest("pre, .highlight, .doc-signature") ||
+        code.classList.contains("br-inline-identifier")
+      ) {
+        return;
+      }
+
+      addWordBreaks(code);
+      code.classList.add("br-inline-identifier");
+    });
+
     document.querySelectorAll(
       '.md-sidebar--secondary .md-nav__link[href^="#"]'
     ).forEach((link) => {

@@ -82,3 +82,18 @@
   padding-top: 0;
   border-top: 0;
 }
+
+/* Wrap inline identifiers at meaningful boundaries. */
+.md-content .md-typeset code.br-inline-identifier {
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+.md-content .md-typeset code.br-inline-identifier .br-toc-word {
+  display: inline-block;
+  max-width: 100%;
+  white-space: normal;
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
