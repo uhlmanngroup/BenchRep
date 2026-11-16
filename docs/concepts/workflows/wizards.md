@@ -1,6 +1,6 @@
 # Configuration wizards
 
-The wizard makes a configuration's structure visible: you can explore sections, inspect registered components, and check how choices fit together before running a workflow. It edits the same configuration consumed by the Python entrypoints and YAML-based runs.
+The wizard provides a graphical, interactive way to configure a workflow, with integrated documentation and sections tailored to the chosen model family. You can explore fields, inspect registered components, and check how choices fit together before running. It edits the same configuration accepted by the Python entrypoints, which you can also write directly in YAML or Python.
 
 The wizard **authors and reviews** a configuration; it does not train, predict, or evaluate. For a runnable walkthrough, see [Configure workflows](../../guides/configure-workflows/index.md#browser-wizard).
 
@@ -14,7 +14,7 @@ The launcher starts a local server and normally opens the browser at <http://127
 
 ## Edit with the schema beside you
 
-The editor organizes fields by section. Its **Documentation** panel follows the selected section and exposes schema descriptions, registered components, aliases, and constructor signatures. **Preview YAML draft** shows the current authored settings without starting execution.
+The editor organizes fields by section. Its **Documentation** panel follows the selected section and exposes schema descriptions, registered components, aliases, and constructor signatures. **Preview YAML draft** shows the current authored settings as YAML.
 
 <figure>
   <a class="br-image-light" href="../../assets/configuration-wizard-light.png">
@@ -28,7 +28,7 @@ The editor organizes fields by section. Its **Documentation** panel follows the 
 
 Field menus distinguish **Omit**, **Null**, **Empty**, and **Value** where supported. These preserve different authored choices; their effects are defined by the field, as explained in [Configuration semantics](configuration.md#omitted-null-and-empty-are-different-inputs).
 
-The sidebar marks local validity in green, issues in red, and valid omitted or null sections with a neutral dash. Unexpected fields or sections remain visible so you can remove them. These indicators describe the current local state, not whether the complete experiment is executable.
+The sidebar marks local validity in green, issues in red, and valid omitted or null sections with a neutral dash. Unexpected fields or sections remain visible so you can remove them. These indicators describe the current **local state**, not whether the complete experiment is executable.
 
 ## Review the complete configuration
 
@@ -36,10 +36,10 @@ The sidebar marks local validity in green, issues in red, and valid omitted or n
 
 | Check | What it establishes |
 | --- | --- |
-| Schema validation | The composed draft satisfies the workflow schema, including schema-level relationships |
-| Resolution | Sections, selected components, applicable upstream information, and runtime override requirements fit together |
-| Dependencies | Known dependencies for enabled features are available, or their absence is reported |
-| Export destination | The authored and resolved YAMLs can be saved to the selected locations without overwriting existing files |
+| Schema validation | The composed draft satisfies the workflow schema and its field compatibility rules (e.g. through `TrainingConfig.model_validate()`) |
+| Resolution | Sections, selected components, upstream settings, and runtime override requirements form a coherent workflow (e.g. through `resolve_training_config()`) |
+| Dependencies | Known dependencies for enabled features are available; missing dependencies are reported (e.g. Torchview and Graphviz for model graph export) |
+| Export destination | The authored and resolved YAMLs have valid save locations without overwriting existing files |
 
 A collection of locally valid sections can still fail here. Changes to the draft or export settings require another check before saving.
 
@@ -55,6 +55,17 @@ A collection of locally valid sections can still fail here. Changes to the draft
 <small class="br-caption">Review separates the validation results from the authored and resolved YAML previews.</small>
 
 The **Authored YAML** preserves the choices in the draft, including omissions and explicit nulls. The **Resolved YAML** shows the interpretation produced during review. For composite configurations, review can also preview the specification graph to inspect declared wiring without constructing or training the model; this requires Graphviz.
+
+<figure>
+  <a class="br-image-light" href="../../assets/configuration-wizard-composite-spec-graph-light.png">
+    <img src="../../assets/configuration-wizard-composite-spec-graph-light.png" alt="Preview specification graph of composite models.">
+  </a>
+  <a class="br-image-dark" href="../../assets/configuration-wizard-composite-spec-graph-dark.png">
+    <img src="../../assets/configuration-wizard-composite-spec-graph-dark.png" alt="Preview specification graph of composite models">
+  </a>
+</figure>
+
+<small>Model specification preview for the [composite wizard example](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/08B_dual_input_multitask_composite_vae_wizard.py), available before training.</small>
 
 ??? note "What a successful review does not guarantee"
     Review does not instantiate and exercise every component. It cannot establish that all custom dependencies are available, that real batches satisfy every runtime expectation, or that the run will fit in memory. Some optional outputs, such as an unavailable graph preview, can produce a warning without blocking configuration export. Execution still performs its own checks.
@@ -82,12 +93,13 @@ if wizard_result is not None:
     )
 ```
 
-Use the authored configuration for subsequent execution so BenchRep can resolve it in that run's context. A review snapshot can depend on the environment and upstream artifacts available when it was checked.
+!!! tip "Which config should you use?"
+    Prefer the authored configuration for subsequent runs: it preserves instructions such as selecting the best checkpoint or inheriting upstream settings. For example, resolution replaces `checkpoint: best` with an absolute checkpoint path; reusing the resolved YAML keeps that specific path rather than selecting the best checkpoint for the next run.
 
 ## Overrides enter and leave the wizard
 
-The wizard accepts the same workflow-specific override bundles described in [Python overrides](overrides.md). For example, launch a prediction wizard with `overrides=PredictionOverrides(training_manifest_path=training_result.manifest_path)` to review it against the run you just trained.
+The wizard accepts the same workflow-specific override bundles described in [Python overrides](overrides.md). Supplying them upfront lets it account for runtime implementations and upstream runs when determining which sections need configuration and checking the draft. For example, pass `overrides=PredictionOverrides(training_manifest_path=training_result.manifest_path)` to review a prediction config against the run you just trained.
 
-Section overrides become part of the editable draft and are removed from the returned override bundle. Other inputs needed at execution, including runtime objects and supplied manifest overrides, are retained. Forwarding both `wizard_result.config` and `wizard_result.overrides` preserves that combination without applying the original section replacements over your edits again.
+Section overrides become part of the editable draft and are removed from the returned override bundle. Other inputs needed at execution, like runtime objects and supplied manifest overrides, are retained. Forwarding both `wizard_result.config` and `wizard_result.overrides` preserves that combination without re-applying config replacements.
 
 For how the editor preserves draft state and manages review internally, see [How the wizard works](../internals/wizard-architecture.md).

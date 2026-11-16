@@ -21,7 +21,7 @@ encoder:
     hidden_dims: [256, 128]
 ```
 
-Here `mlp` selects an encoder implementation, while `params` configures that implementation. A registered alias selects the same implementation under another name. External components use this interface where the relevant registry permits registration.
+Here `mlp` selects a registered encoder by name or alias, while `params` supplies its constructor arguments. External components use the same interface where the registry supports custom registration.
 
 The schema determines which sections and fields are allowed; the component contract determines how an implementation fits into the model or workflow. Not every section follows the same `name`/`params` structure. Use the [schema reference](../../reference/schemas/index.md) for configuration fields and the [component catalogue](../../reference/components.md) for names and constructor details.
 
@@ -43,7 +43,7 @@ A resolved config remains configuration data. A **run specification** contains t
 
 These states express different choices; their meaning depends on the field. An empty collection explicitly supplies no entries. `null` supplies a null value, which a field may reject or interpret as inheritance, disabling, or another documented behavior. Omission uses the field's default or omission rule.
 
-For prediction's `transform_pipelines`, when using a config-built datamodule:
+Take prediction's `transform_pipelines` as an example, when using a config-built datamodule:
 
 | Supplied value | Interpretation |
 | --- | --- |
@@ -60,6 +60,8 @@ A **schema default** supplies an omitted value without consulting another run. A
 
 Prediction illustrates the difference: its config controls inference and exports, while selected settings can inherit from training. This is explicit field-level behavior, not a general merge of the training and prediction YAMLs. See [Loading models for prediction](../prediction/loading-models.md).
 
+To check what took effect, inspect the saved `resolved_config.yaml`. Prediction and evaluation manifests also list inherited fields under `config_inheritance`, distinguishing them from explicitly supplied settings and defaults.
+
 ## Editing a config in Python
 
 [`update_config()`][benchrep.update_config] returns a validated copy after changing existing field paths:
@@ -75,7 +77,7 @@ training_config = update_config(
 )
 ```
 
-The base remains reusable. This updates a field within the existing configuration; [section overrides](overrides.md#replace-a-config-section) instead replace a complete section. Neither operation replaces workflow resolution.
+The base remains reusable. This updates a field within the existing configuration; [section overrides](overrides.md#replace-a-config-section) instead replace a complete section.
 
 ## Paths follow their source
 

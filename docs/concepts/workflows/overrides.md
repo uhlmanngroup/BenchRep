@@ -46,13 +46,14 @@ Suppose the original optimizer parameters contain both `lr` and `weight_decay`:
 | `update_config()` changes `optimizer.params.lr` | `lr: 0.0003`, `weight_decay: 0.01` |
 | Section override supplies only `params={"lr": 0.0003}` | `lr: 0.0003`; the previous `weight_decay` is not carried over |
 
-Omitted fields in the replacement follow that section's schema defaults; required fields must still be supplied. Component constructor defaults may apply to omitted constructor arguments. Use [`update_config()`][benchrep.update_config] when your intent is to retain a section and change individual existing fields.
+Omitted fields use the section’s schema defaults or, for component parameters, constructor defaults where applicable. Required fields must still be supplied. Use [`update_config()`][benchrep.update_config] when your intent is to retain a section and change individual existing fields.
 
-A base `config` is optional when `config_components` and schema defaults provide enough information to construct a valid workflow config. Overrides do not make missing requirements disappear.
+!!! note "A base config is optional"
+    The base `config` can be omitted when `config_components` and schema defaults provide enough information to construct a valid workflow config.
 
 ## Connect runs without rewriting paths
 
-The result of one workflow supplies the manifest path needed by the next:
+Configs include fields for upstream manifest paths, but overrides let you pass these directly from a preceding workflow’s result without editing the config:
 
 ```python
 from benchrep import EvaluationOverrides, PredictionOverrides
@@ -74,16 +75,18 @@ A supplied manifest path takes precedence over the source path in the effective 
 
 A runtime override changes **who provides the model or data-loading behavior**. This is broader than selecting another registered component.
 
-| Runtime override | Supported use | Required interface |
-| --- | --- | --- |
-| Model | Canonical AE/VAE training and prediction | `BenchRepAutoencoderModel` or `BenchRepVAEModel` |
-| Datamodule | Training and prediction for all 3 families | `LightningDataModule` |
+| Runtime override | Supported use                                | Required interface | Config sections bypassed                                                                                                                                    |
+| --- |----------------------------------------------| --- |-------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Model | Training and prediction for canonical AE/VAE | `BenchRepAutoencoderModel` or `BenchRepVAEModel` | **Training:** `model`, `encoder`, `decoder`, `losses`, `optimizer`<br><br>**Prediction:** The same sections from the recorded training config               |
+| Datamodule | Training and prediction for all 3 families   | `LightningDataModule` | **Training:** `dataset`, `transform_pipelines`, `datamodule`<br><br>**Prediction:** `dataset`, `transform_pipelines`, `data.batch_size`, `data.num_workers` |
 
 A whole-model override supplies the Lightning model, including its training and optimizer behavior where applicable. BenchRep does not rebuild that model's architecture or losses from the normal training sections. A datamodule override supplies the workflow's loaders and data preparation instead of the configured dataset/transform/datamodule construction.
 
 The surrounding workflow still handles tasks such as trainer setup, prediction exports, and records. In particular, prediction still selects a checkpoint through its training manifest and loads its weights into the model.
 
-**Pass a class** when BenchRep should construct it using `overrides.model.params` or `overrides.datamodule.params` in the config. **Pass an instance** when you have already constructed it; its constructor `params` must be empty. The Python override object supplies the implementation; the config's `overrides` section supplies constructor requirements and parameters.
+<strong class="highlight">Pass a class</strong> when BenchRep should construct it: supply the class through the entrypoint’s `overrides` argument and its constructor parameters through the config’s `overrides.model.params` or `overrides.datamodule.params`. 
+
+<strong class="highlight">Pass an instance</strong> when you have already constructed it; its constructor `params` must be empty. The Python override object supplies the implementation; the config's `overrides` section supplies constructor requirements and parameters.
 
 See [External models and datamodules](../extensibility/runtime-implementations.md) for their runtime responsibilities, and [Extension interfaces](../../reference/interfaces.md) for the base classes and contracts.
 
@@ -92,6 +95,9 @@ See [External models and datamodules](../extensibility/runtime-implementations.m
 
 ## Runtime callbacks are separate
 
-Training accepts callback instances through `runtime_callbacks`, independently of its overrides object. This supports callbacks that need live Python objects, such as an Optuna trial. They are added alongside callbacks constructed from configuration. See [Callbacks and checkpoints](../training/callbacks.md).
+Training also accepts callback instances through `runtime_callbacks`, independently of its overrides object. This supports callbacks that need live Python objects, such as an Optuna trial. They are added alongside callbacks constructed from configuration. See [Callbacks and checkpoints](../training/callbacks.md).
 
-Registrations and runtime objects belong to the current Python process. Recorded names and settings do not recreate arbitrary Python implementations: import registrations and supply required runtime overrides again when starting another process.
+??? note "Reconstructing runs with runtime inputs"
+    Manifests record whether a run can be reconstructed from its resolved config alone, under `construction.config.run_reconstructable_from_resolved_config`. Supplying a model, datamodule, or runtime callback makes this `false`: the config alone cannot recreate those Python implementations.
+
+    This does not necessarily block downstream prediction. Training callbacks are not needed for prediction; training with an external model requires a compatible model override for prediction, while for an external training datamodule, prediction can work either with an explicit dataset config and suitable transforms or a datamodule override.

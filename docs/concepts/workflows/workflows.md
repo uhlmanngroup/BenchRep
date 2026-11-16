@@ -10,7 +10,9 @@ BenchRep separates fitting a model, exporting its predictions, and evaluating th
 | Prediction | Training manifest, checkpoint selection, and prediction settings | Run inference and export selected outputs | AnnData embeddings and reconstruction bundles |
 | Evaluation | Prediction manifest or external artifact paths, plus analysis settings | Analyze the exported data | Metrics, figures, and evaluated data |
 
-Each workflow manages its own run directory and returns a Python result containing its config, run context, status report, and manifest path. Stage-specific fields expose objects such as the trained model or evaluated AnnData. See [Results and statuses](../../reference/results.md).
+Each workflow manages its own run directory and returns a Python result containing its config, run context, status report, and manifest path. Workflow-specific fields expose objects such as the trained model or evaluated AnnData. See [Results and statuses](../../reference/results.md).
+
+Some failures are recorded while other work continues. Status reports identify warnings and failures; which failures are recoverable depends on the workflow and step. See [Statuses and failures](../results/statuses.md).
 
 <figure>
   <a class="br-image-light" href="../../assets/workflow-chain-light.svg">
@@ -51,9 +53,9 @@ Canonical models allow your choice of compatible encoder and decoder within thei
 
 ### Why separate model families?
 
-**Canonical models prioritize ease of use:** the family establishes how components interact, how losses receive their inputs, and other behavior that would otherwise require explicit configuration. They are implemented as conventional, subclassable AE/VAE classes, keeping their behavior directly readable and customizable without depending on the composite graph machinery.
+<strong class="highlight">Canonical models prioritize ease of use:</strong> the family establishes how components interact, how losses receive their inputs, and other behavior that would otherwise require explicit configuration. They are implemented as conventional, subclassable AE/VAE classes, keeping their behavior directly readable and customizable without depending on the composite graph machinery.
 
-**Composite models prioritize flexibility:** a general model implementation executes user-declared architectures and objectives. That generality requires more explicit contracts and wiring. Keeping the implementations separate lets canonical models remain straightforward while composite models accommodate structures beyond those predefined conventions.
+<strong class="highlight">Composite models prioritize flexibility:</strong> a general model implementation executes user-declared architectures and objectives. That generality requires more explicit contracts and wiring. Keeping the implementations separate lets canonical models remain straightforward while composite models accommodate structures beyond those predefined conventions.
 
 ## Configuration does not own every implementation
 
