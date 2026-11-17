@@ -1,6 +1,8 @@
 # Datasets and sample structure
 
-A dataset connects a data source to BenchRep by returning one sample at a time. BenchRep uses dictionaries so that images, additional model inputs, labels, and identifiers can travel together without imposing one fixed tuple layout on every experiment.
+BenchRep datasets follow the standard PyTorch `Dataset` interface with `__len__()` and `__getitem__()` methods. [`BaseDataset`][benchrep.architecture.data.datasets.BaseDataset] subclasses PyTorch’s `Dataset` and requires dictionary samples, with a static [`validate_sample()`][benchrep.architecture.data.datasets.BaseDataset.validate_sample] helper to check this format.
+
+To use your own data through configuration, implement or adapt your dataset as a `BaseDataset` subclass, register it under a name of your choice, and select that name in your config. The built-in datasets use the same mechanism. See [Register external components](../../guides/register-components.md#adapt-an-external-dataset) for an example.
 
 ## Select a dataset
 
@@ -36,7 +38,7 @@ sample = {
 }
 ```
 
-The dataset returns an individual sample, without a batch dimension. With the default dataloader collation, image tensors of shape `(C, H, W)` become a tensor of shape `(B, C, H, W)`. Numeric labels become a batch of labels, strings are collected into lists, and nested dictionaries are collated by key.
+The dataset returns an individual sample, without a batch dimension. PyTorch’s default dataloader collation combines samples field by field: image tensors of shape `(C, H, W)` become a tensor of shape `(B, C, H, W)`, numeric labels become a tensor, and strings become a list. Dictionary keys are preserved, and nested dictionaries follow the same rules.
 
 Samples therefore need compatible fields and values for batching. Variable image sizes, missing fields, or arbitrary Python objects may require preprocessing or a custom collation function. A valid sample dictionary alone does not guarantee a valid batch.
 
@@ -45,16 +47,19 @@ Samples therefore need compatible fields and values for batching. Variable image
 | Consumer | Required input | Annotations and other fields |
 | --- | --- | --- |
 | Canonical AE/VAE | A tensor under `x`, used as the input and reconstruction target | `label`, `sample_id`, and a `metadata` mapping are supported by the standard prediction contract; custom objectives can access additional batch fields |
-| Composite model | Tensor fields named under `composite_model_declarations.expects` | Fields declared under `batch_metadata` are also required; their roles identify observation annotations for prediction |
+| Composite model | Tensor fields named under `composite_model_declarations.expects` |Optional `batch_metadata` declarations identify observation annotations for prediction. Any fields declared there must be present in each batch. |
 
-For canonical models, providing `label` does not automatically add a supervised objective. For composite models, a target used by a loss belongs among the declared inputs, with the appropriate role and loss wiring. Metadata declarations describe annotations rather than component inputs. See [Composite models](../models/composite.md) and [Losses and objectives](../models/losses.md).
+For composite models, distinguish values used for computation from annotations. For example, a class label used by a classification loss must be declared under `expects` with the appropriate target role and connected to that loss. A patient identifier retained for grouping or annotating predictions belongs under `batch_metadata`. See [Composite models](../models/composite.md) and [Losses and objectives](../models/losses.md).
 
-Composite input names describe the sample **after transforms**. A pipeline may create a required image field from another field, so the underlying dataset need not supply every derived view itself. All declared inputs and metadata must be present by the time the model receives the batch.
+!!! note "Roles also guide behavior"
+    Roles describe what a field represents, but can also affect validation, defaults, and exports. Some distinctions are descriptive for a particular operation; others change its behavior. For example, a unique `sample_image` input becomes the default transform input, while metadata with the `index` role supplies the AnnData observation index. See [Composite models](../models/composite.md) for the individual roles and their effects.
 
-Only fields carried into the prediction output are available for export. Adding an arbitrary field to the dataset does not automatically make it an AnnData observation column; see [Selecting prediction exports](../prediction/exports.md).
+The model receives samples **after transformation**. Your dataset therefore does not need to supply fields that a transform pipeline creates, such as a second augmented image derived from the original. By the time samples reach the model, however, all fields declared under `expects` and `batch_metadata` must be present.
+
+Prediction exports contain the fields supported by the model's prediction interface. For example, canonical models support `label`, `sample_id`, and `metadata` annotations. Adding another field to your dataset does not automatically include it in the exported AnnData; see [Selecting prediction exports](../prediction/exports.md).
 
 !!! note "Sample identity"
-    Built-in datasets use the sample's index within the selected dataset split as `sample_id`. These identifiers are not globally unique across datasets or splits. Custom datasets can provide identifiers that remain meaningful across your own runs and exports.
+    Built-in datasets number samples within each split. For example, MNIST's training and test sets both contain a sample with `sample_id=0`, but these are different images. When combining outputs, keep track of which dataset and split they came from. For your own dataset, you can use identifiers such as filenames or cell IDs instead.
 
 ## Where validation happens
 

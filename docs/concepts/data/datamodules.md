@@ -2,6 +2,8 @@
 
 A dataset supplies samples; a datamodule decides how they are divided, transformed, and loaded for a workflow. BenchRep's config-built path uses [`BenchRepDataModule`][benchrep.architecture.data.datamodule.BenchRepDataModule], a Lightning datamodule that prepares training and validation subsets and exposes the corresponding dataloaders.
 
+Lightning’s `LightningDataModule` defines the interface for organizing data preparation and dataloaders. [`BenchRepDataModule`][benchrep.architecture.data.datamodule.BenchRepDataModule] implements that interface with validation splitting, transform wrapping, and configurable dataloaders. You can use it directly with your own datasets, or supply another `LightningDataModule` implementation through a [datamodule override](../workflows/overrides.md#supply-an-implementation).
+
 ## Dataset splits and validation subsets
 
 The dataset's named split and BenchRep's validation partition are separate choices:
@@ -24,7 +26,7 @@ This selects MNIST's training set, then reserves 10% of that set for validation.
 
 During [`setup()`][benchrep.architecture.data.datamodule.BenchRepDataModule.setup], [`BenchRepDataModule`][benchrep.architecture.data.datamodule.BenchRepDataModule] creates random, disjoint index subsets using the workflow's `reproducibility.seed`. It then wraps each subset with its corresponding transform pipelines. The split is prepared once per datamodule instance; repeated [`setup()`][benchrep.architecture.data.datamodule.BenchRepDataModule.setup] calls do not repartition it.
 
-The default partitioning is not stratified by class or grouped by patient, slide, or acquisition. For predefined, stratified, or grouped partitions, construct the datasets yourself and supply a datamodule override.
+The default split is random; it does not preserve class proportions or keep related samples together. For predefined, stratified, or grouped partitions, construct the datasets yourself and supply a datamodule override.
 
 ??? note "Validation size and reproducibility"
     The validation size is `int(len(dataset) * val_fraction)`; the remainder is used for training. A positive fraction that produces 0 validation samples raises an error. Setting `val_fraction: 0` keeps the entire dataset for training without a validation subset.
@@ -42,7 +44,10 @@ The built-in datamodule uses the following loading policy:
 | Test | No | No | Validation |
 | Prediction | No | No | Prediction; falls back to validation pipelines when constructed directly without explicit prediction pipelines |
 
-Test and explicit validation datasets are available through the Python datamodule interface. The standard training config builds 1 dataset and optionally partitions it; it does not automatically construct a separate test dataset or run a test stage.
+When constructing [`BenchRepDataModule`][benchrep.architecture.data.datamodule.BenchRepDataModule] in Python, you can supply separate training, validation, and prediction datasets. The training config instead selects one dataset, which BenchRep optionally splits into training and validation subsets.
+
+!!! note "No test loop in BenchRep workflows"
+    Although the datamodule's `test_dataloader()` and the built-in models' `test_step()` are implemented, **BenchRep workflows do not currently call them.** To assess a test dataset through BenchRep, run prediction on it and then evaluate the exported outputs.
 
 Training's `datamodule` section controls batch size, worker processes, pinned memory, and prefetching. `num_workers: 0` loads data in the main process. `persistent_workers: true` and an explicit `prefetch_factor` require workers greater than 0. Configured `pin_memory: auto` enables pinned CPU memory when CUDA is available.
 
@@ -52,11 +57,11 @@ Training's `datamodule` section controls batch size, worker processes, pinned me
 
 Prediction constructs a dataset independently of the training datamodule. An explicit prediction `dataset` selects what to read; if omitted or null, its configuration is inherited from training when training used a config-built datamodule.
 
-**Inheriting the dataset config does not recover the validation subset.** If training selected MNIST's `train` split and held out 10%, prediction with an inherited dataset config reads the full MNIST training set. To predict on the test set, explicitly select `split: test`. To reuse the actual validation subset in the same process, supply [`training_result.datamodule.val_dataset`][benchrep.architecture.data.datamodule.BenchRepDataModule] through a prediction datamodule override, as in [Tune with Optuna](../../guides/optuna.md).
+**Inheriting the dataset config does not recover the validation subset.** If training used MNIST's `train` split and reserved part of it for validation, prediction with an inherited dataset config runs inference on the full `train` split, including the validation samples. To predict on the test set, explicitly select `split: test`. To reuse the actual validation subset in the same process, supply [`training_result.datamodule.val_dataset`][benchrep.architecture.data.datamodule.BenchRepDataModule] through a prediction datamodule override, as in [Tune with Optuna](../../guides/optuna.md).
 
 Prediction's `data.batch_size` and `data.num_workers` replace the corresponding training settings when supplied; otherwise they inherit them where available. Other loader settings come from the recorded training datamodule config, or defaults if training used an external datamodule. Prediction disables validation splitting and incomplete-batch dropping. With 0 workers, it also disables persistent workers and clears the prefetch factor.
 
-`data.max_batches` limits the number of prediction batches processed. It remains active with a datamodule override. Transform inheritance is handled separately, as described in [Transform pipelines](transforms.md#prediction-inherits-validation-processing).
+`data.max_batches` limits the number of prediction batches processed. **It remains active with a datamodule override.** Transform inheritance is handled separately, as described in [Transform pipelines](transforms.md#prediction-inherits-validation-processing).
 
 ## Supply your own partitions or loaders
 

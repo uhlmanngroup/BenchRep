@@ -307,3 +307,33 @@
 @media (prefers-reduced-motion: reduce) {
   .md-tabs__link { transition: none; }
 }
+
+:root {
+  --br-summary: #7546b5;
+  --br-summary-soft: #7546b50d;
+}
+
+[data-md-color-scheme="slate"] {
+  --br-summary: #bd9aee;
+  --br-summary-soft: #bd9aee0d;
+}
+
+.md-typeset :is(.admonition.abstract, details.abstract) {
+  border-color: var(--br-summary);
+  border-inline-start-width: 4px;
+  background: var(--br-summary-soft);
+}
+
+.md-typeset :is(
+  .admonition.abstract > .admonition-title,
+  details.abstract > summary
+) {
+  background: var(--br-summary-soft);
+}
+
+.md-typeset :is(
+  .admonition.abstract > .admonition-title,
+  details.abstract > summary
+)::before {
+  background-color: var(--br-summary);
+}
