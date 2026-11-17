@@ -1,6 +1,6 @@
 # Configuration wizards
 
-`configure_workflow()` opens a local browser editor, validates and resolves the draft during review, and returns to the calling script after saving. It requires the `gui` extra. For a walkthrough, see [Configure workflows](../guides/configure-workflows/index.md).
+[`configure_workflow()`][benchrep.configure_workflow] opens a local browser editor, validates and resolves the draft during review, and returns to the calling script after saving. It requires the `gui` extra. For a walkthrough, see [Configure workflows](../guides/configure-workflows/index.md).
 
 ## Launch a wizard
 
@@ -16,9 +16,9 @@ The return type follows the stage:
 
 | Stage | `config` | `overrides` |
 | --- | --- | --- |
-| Training | `TrainingConfig` | `TrainingOverrides` |
-| Prediction | `PredictionConfig` | `PredictionOverrides` |
-| Evaluation | `EvaluationConfig` | `EvaluationOverrides` |
+| Training | [`TrainingConfig`][benchrep.assembly.schemas.training_config_schema.TrainingConfig] | [`TrainingOverrides`][benchrep.TrainingOverrides] |
+| Prediction | [`PredictionConfig`][benchrep.assembly.schemas.prediction_config_schema.PredictionConfig] | [`PredictionOverrides`][benchrep.PredictionOverrides] |
+| Evaluation | [`EvaluationConfig`][benchrep.assembly.schemas.evaluation_config_schema.EvaluationConfig] | [`EvaluationOverrides`][benchrep.EvaluationOverrides] |
 
 Pass both returned objects to the matching [workflow entrypoint](workflows.md). Overrides already incorporated into the authored config are removed from the returned override bundle; runtime objects still needed for execution are retained.
 
@@ -43,4 +43,4 @@ if wizard_result is not None:
       heading_level: 3
 
 !!! note "Authored and resolved configs"
-    Use `config` or the saved authored YAML for subsequent runs. `resolved_config` records the settings derived during review; those settings may depend on the current environment or upstream artifacts. A new workflow resolves its inputs again.
+    Use [`config`][benchrep.gui.shared.results.ConfiguredWorkflow] or the saved authored YAML for subsequent runs. [`resolved_config`][benchrep.gui.shared.results.ConfiguredWorkflow] records the settings derived during review; those settings may depend on the current environment or upstream artifacts. A new workflow resolves its inputs again.

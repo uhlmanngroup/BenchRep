@@ -1,6 +1,6 @@
 # Overrides and config helpers
 
-Import these classes and functions from `benchrep`. Overrides can replace complete config sections, supply model or datamodule classes or instances where supported, and select upstream manifests. `update_config()` replaces individual existing fields in a config object. For examples, see [Configure workflows](../guides/configure-workflows/index.md).
+Import these classes and functions from `benchrep`. Overrides can replace complete config sections, supply model or datamodule classes or instances where supported, and select upstream manifests. [`update_config()`][benchrep.update_config] replaces individual existing fields in a config object. For examples, see [Configure workflows](../guides/configure-workflows/index.md).
 
 ::: benchrep.TrainingOverrides
     options:
@@ -20,13 +20,13 @@ Import these classes and functions from `benchrep`. Overrides can replace comple
 
 ## Read and save YAML
 
-`load_yaml()` returns a mapping, not a workflow config object. To obtain one, pass that mapping to the matching schema's `model_validate()` method. Workflow entrypoints can also read a YAML path directly.
+[`load_yaml()`][benchrep.assembly.config.load_yaml] returns a mapping, not a workflow config object. To obtain one, pass that mapping to the matching schema's `model_validate()` method. Workflow entrypoints can also read a YAML path directly.
 
 ::: benchrep.assembly.config.load_yaml
     options:
       heading_level: 3
 
-`save_config_yaml()` writes a config object or mapping to an existing directory. It serializes the supplied values; it does not preserve the original YAML's formatting or which default-valued fields were omitted. Unsupported runtime objects become descriptive markers, not reconstructible Python objects.
+[`save_config_yaml()`][benchrep.records.configs.save_config_yaml] writes a config object or mapping to an existing directory. It serializes the supplied values; it does not preserve the original YAML's formatting or which default-valued fields were omitted. Unsupported runtime objects become descriptive markers, not reconstructible Python objects.
 
 ::: benchrep.records.configs.save_config_yaml
     options:

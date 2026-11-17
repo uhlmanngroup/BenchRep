@@ -40,7 +40,7 @@ Use this helper when building a component browser or processing the discovery me
 
 ## Inspect configuration fields
 
-`inspect_config()` describes a schema class and its fields. Pass the class rather than an instance; nested schema types can be inspected in the same way. The [Configuration schemas](schemas/index.md) pages provide the corresponding browsable reference.
+[`inspect_config()`][benchrep.inspect_config] describes a schema class and its fields. Pass the class rather than an instance; nested schema types can be inspected in the same way. The [Configuration schemas](schemas/index.md) pages provide the corresponding browsable reference.
 
 ```python
 from benchrep import inspect_config
@@ -68,7 +68,7 @@ Import the objects below from `benchrep.assembly.registries`. The discovery name
 
 ## Registration and lookup methods
 
-Use methods on the existing registry objects; there is usually no need to construct a new `Registry`. Names and aliases are normalized by stripping surrounding whitespace, converting to lowercase, and replacing `-` with `_`. Registration rejects names already in use.
+Use methods on the existing registry objects; there is usually no need to construct a new [`Registry`][benchrep.assembly.registries.core.Registry]. Names and aliases are normalized by stripping surrounding whitespace, converting to lowercase, and replacing `-` with `_`. Registration rejects names already in use.
 
 ::: benchrep.assembly.registries.core.Registry
     options:
@@ -86,7 +86,7 @@ Use methods on the existing registry objects; there is usually no need to constr
 
 ### Loss registry policies
 
-Loss registries additionally define which runtime arguments are supplied automatically and which entry contracts are accepted. Their normal registration and lookup operations are inherited from `Registry`.
+Loss registries additionally define which runtime arguments are supplied automatically and which entry contracts are accepted. Their normal registration and lookup operations are inherited from [`Registry`][benchrep.assembly.registries.core.Registry].
 
 ::: benchrep.assembly.registries.core.LossRegistry
     options:

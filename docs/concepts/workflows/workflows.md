@@ -49,7 +49,7 @@ For a config-built model, the selected family must agree with the model named in
 
 Canonical models allow your choice of compatible encoder and decoder within their predefined topology. Composite models let you declare connections and loss inputs. For the architectural details, see [Canonical models](../models/canonical.md) and [Composite models](../models/composite.md).
 
-`evaluate()` has no model-family argument: it consumes artifacts rather than executing the model that produced them.
+[`evaluate()`][benchrep.evaluate] has no model-family argument: it consumes artifacts rather than executing the model that produced them.
 
 ### Why separate model families?
 

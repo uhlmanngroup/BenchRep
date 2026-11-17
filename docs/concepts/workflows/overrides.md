@@ -40,10 +40,10 @@ The supplied optimizer section **replaces the whole original section**. It is no
 
 Suppose the original optimizer parameters contain both `lr` and `weight_decay`:
 
-| Operation | Resulting optimizer parameters |
-| --- | --- |
-| Base config | `lr: 0.001`, `weight_decay: 0.01` |
-| `update_config()` changes `optimizer.params.lr` | `lr: 0.0003`, `weight_decay: 0.01` |
+| Operation                                             | Resulting optimizer parameters |
+|-------------------------------------------------------| --- |
+| Base config                                           | `lr: 0.001`, `weight_decay: 0.01` |
+| [`update_config()`][benchrep.update_config] changes `optimizer.params.lr`                        | `lr: 0.0003`, `weight_decay: 0.01` |
 | Section override supplies only `params={"lr": 0.0003}` | `lr: 0.0003`; the previous `weight_decay` is not carried over |
 
 Omitted fields use the section’s schema defaults or, for component parameters, constructor defaults where applicable. Required fields must still be supplied. Use [`update_config()`][benchrep.update_config] when your intent is to retain a section and change individual existing fields.
@@ -75,10 +75,10 @@ A supplied manifest path takes precedence over the source path in the effective 
 
 A runtime override changes **who provides the model or data-loading behavior**. This is broader than selecting another registered component.
 
-| Runtime override | Supported use                                | Required interface | Config sections bypassed                                                                                                                                    |
-| --- |----------------------------------------------| --- |-------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Model | Training and prediction for canonical AE/VAE | `BenchRepAutoencoderModel` or `BenchRepVAEModel` | **Training:** `model`, `encoder`, `decoder`, `losses`, `optimizer`<br><br>**Prediction:** The same sections from the recorded training config               |
-| Datamodule | Training and prediction for all 3 families   | `LightningDataModule` | **Training:** `dataset`, `transform_pipelines`, `datamodule`<br><br>**Prediction:** `dataset`, `transform_pipelines`, `data.batch_size`, `data.num_workers` |
+| Runtime override | Supported use                                | Required interface                                                                                                            | Config sections bypassed                                                                                                                                    |
+| --- |----------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Model | Training and prediction for canonical AE/VAE | [`BenchRepAutoencoderModel`][benchrep.interfaces.models.BenchRepAutoencoderModel] or [`BenchRepVAEModel`][benchrep.interfaces.models.BenchRepVAEModel]                                         | **Training:** `model`, `encoder`, `decoder`, `losses`, `optimizer`<br><br>**Prediction:** The same sections from the recorded training config               |
+| Datamodule | Training and prediction for all 3 families   | `LightningDataModule`                                                                                                         | **Training:** `dataset`, `transform_pipelines`, `datamodule`<br><br>**Prediction:** `dataset`, `transform_pipelines`, `data.batch_size`, `data.num_workers` |
 
 A whole-model override supplies the Lightning model, including its training and optimizer behavior where applicable. BenchRep does not rebuild that model's architecture or losses from the normal training sections. A datamodule override supplies the workflow's loaders and data preparation instead of the configured dataset/transform/datamodule construction.
 

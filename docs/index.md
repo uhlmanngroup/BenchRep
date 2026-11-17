@@ -78,7 +78,7 @@ For training, a [canonical autoencoder or VAE](concepts/models/canonical.md) giv
 <strong class="highlight">Want to compare two encoders?</strong>
 Change the encoder section in your canonical training YAML, keeping its interface compatible, and rerun the same workflow chain.
 
-<strong class="highlight">Want to tune architectures or hyperparameters?</strong> Use Optuna to choose what to try. For each trial, use `update_config()` to change individual fields or pass whole config sections through a workflow’s overrides object. To prune during training, pass Optuna’s Lightning callback via `runtime_callbacks`.
+<strong class="highlight">Want to tune architectures or hyperparameters?</strong> Use Optuna to choose what to try. For each trial, use [`update_config()`][benchrep.update_config] to change individual fields or pass whole config sections through a workflow’s overrides object. To prune during training, pass Optuna’s Lightning callback via `runtime_callbacks`.
 
 <strong class="highlight">Want more control over the model or training objective?</strong>
 Register your own components, wire them into a composite model, and define a custom loss with access to the full model context. You can also supply a model or datamodule instance or class through overrides where supported.

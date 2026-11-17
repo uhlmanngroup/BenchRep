@@ -1,6 +1,6 @@
 # Evaluation schemas
 
-Fields for `EvaluationConfig`, its evaluation steps, metrics, probes, and exports. The shared enablement and metric-selection contracts are documented under [Evaluation base schemas](shared.md#evaluation-base-schemas).
+Fields for [`EvaluationConfig`][benchrep.assembly.schemas.evaluation_config_schema.EvaluationConfig], its evaluation steps, metrics, probes, and exports. The shared enablement and metric-selection contracts are documented under [Evaluation base schemas](shared.md#evaluation-base-schemas).
 
 Expand a field to see its type, description, constraints, and omission/null behavior. Defaults shown here are schema declarations; workflow resolution can derive additional settings. See [Reading this reference](index.md#reading-this-reference).
 

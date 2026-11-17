@@ -4,20 +4,20 @@ These contracts define what an external component must accept or return. The [re
 
 | Extension | Registration or runtime interface |
 | --- | --- |
-| Dataset | Constructor or factory returning `BaseDataset` |
+| Dataset | Constructor or factory returning [`BaseDataset`][benchrep.architecture.data.datasets.BaseDataset] |
 | Transform | Constructor or factory returning a tensor-transform callable |
-| Encoder, decoder, or head | `ArchitectureComponent`; canonical encoders and decoders also implement their base interfaces |
-| Loss | `LossComponent`; custom objectives additionally inherit `BaseCustomObjectiveLoss` |
-| Loss-weight schedule | Constructor returning an object satisfying `LossWeightSchedule` |
-| Evaluation metric | `EvaluationMetric` |
+| Encoder, decoder, or head | [`ArchitectureComponent`][benchrep.architecture.composite_model_component_contracts.ArchitectureComponent]; canonical encoders and decoders also implement their base interfaces |
+| Loss | [`LossComponent`][benchrep.architecture.losses.composite_model_contracts.LossComponent]; custom objectives additionally inherit [`BaseCustomObjectiveLoss`][benchrep.architecture.losses.custom_objective.BaseCustomObjectiveLoss] |
+| Loss-weight schedule | Constructor returning an object satisfying [`LossWeightSchedule`][benchrep.architecture.losses.weight_schedules.LossWeightSchedule] |
+| Evaluation metric | [`EvaluationMetric`][benchrep.evaluation.metrics.contracts.EvaluationMetric] |
 | Whole canonical model | Runtime class or instance inheriting the matching model base |
-| Datamodule | Runtime `LightningDataModule` class or instance; `BenchRepDataModule` is the supplied implementation |
+| Datamodule | Runtime `LightningDataModule` class or instance; [`BenchRepDataModule`][benchrep.architecture.data.datamodule.BenchRepDataModule] is the supplied implementation |
 
 Optimizers, learning-rate schedulers, loggers, and callbacks follow the corresponding PyTorch or Lightning interfaces. Their registry-specific calling conventions appear in the [catalogue](components.md).
 
 ## Datasets and transforms
 
-Registered dataset factories must return a `BaseDataset`. Samples are dictionaries; required fields depend on the consuming model. A transform registration supplies a constructor or factory, whose result operates on a routed sample tensor. `TransformStep` and `TransformPipeline` are useful when assembling datamodules directly in Python.
+Registered dataset factories must return a [`BaseDataset`][benchrep.architecture.data.datasets.BaseDataset]. Samples are dictionaries; required fields depend on the consuming model. A transform registration supplies a constructor or factory, whose result operates on a routed sample tensor. [`TransformStep`][benchrep.architecture.data.transforms.TransformStep] and [`TransformPipeline`][benchrep.architecture.data.transforms.TransformPipeline] are useful when assembling datamodules directly in Python.
 
 ::: benchrep.architecture.data.datasets.BaseDataset
     options:
@@ -45,7 +45,7 @@ Registered dataset factories must return a `BaseDataset`. Samples are dictionari
 
 ## Datamodules
 
-A datamodule override supplies the data-loading implementation for training or prediction. It need not inherit `BenchRepDataModule`, but it must inherit `LightningDataModule` and provide the loaders required by that workflow. Constructor parameters for a class override belong in the config; an instance has already been constructed. See [Overrides and config helpers](configuration.md).
+A datamodule override supplies the data-loading implementation for training or prediction. It need not inherit [`BenchRepDataModule`][benchrep.architecture.data.datamodule.BenchRepDataModule], but it must inherit `LightningDataModule` and provide the loaders required by that workflow. Constructor parameters for a class override belong in the config; an instance has already been constructed. See [Overrides and config helpers](configuration.md).
 
 ::: benchrep.architecture.data.datamodule.BenchRepDataModule
     options:
@@ -59,7 +59,7 @@ A datamodule override supplies the data-loading implementation for training or p
 
 ## Architecture components
 
-`ArchitectureComponent` separates constructor parameters from the tensors passed to `forward()`. Input ports name forward arguments; result contracts describe either one tensor or a mapping of named tensors. The declared structures describe each sample, excluding the batch dimension.
+[`ArchitectureComponent`][benchrep.architecture.composite_model_component_contracts.ArchitectureComponent] separates constructor parameters from the tensors passed to `forward()`. Input ports name forward arguments; result contracts describe either one tensor or a mapping of named tensors. The declared structures describe each sample, excluding the batch dimension.
 
 ::: benchrep.architecture.composite_model_component_contracts.ArchitectureComponent
     options:
@@ -116,7 +116,7 @@ Ordinary composite losses declare semantic roles for each tensor argument. Canon
       members:
         - forward
 
-Register a custom objective as `LossComponent(MyObjective)` in `CUSTOM_OBJECTIVE_LOSSES`, with no `runtime_inputs`. The complete context consists of the batch and output mappings; it is not the model instance.
+Register a custom objective as [`LossComponent(MyObjective)`][benchrep.architecture.losses.composite_model_contracts.LossComponent] in [`CUSTOM_OBJECTIVE_LOSSES`](components.md#catalogue-custom_objective_loss), with no `runtime_inputs`. The complete context consists of the batch and output mappings; it is not the model instance.
 
 ::: benchrep.architecture.losses.weight_schedules.LossWeightSchedule
     options:
@@ -126,7 +126,7 @@ Register a custom objective as `LossComponent(MyObjective)` in `CUSTOM_OBJECTIVE
 
 ## Runtime loss terms
 
-[`LossComponent`][benchrep.architecture.losses.composite_model_contracts.LossComponent] describes a registry entry. `LossTerm` wraps an instantiated loss with its weight and optional schedule when constructing a [built-in model](components/models.md) directly. Config-driven workflows create these containers for you; an independent whole-model override does not have to use them.
+[`LossComponent`][benchrep.architecture.losses.composite_model_contracts.LossComponent] describes a registry entry. [`LossTerm`][benchrep.architecture.losses.base.LossTerm] wraps an instantiated loss with its weight and optional schedule when constructing a [built-in model](components/models.md) directly. Config-driven workflows create these containers for you; an independent whole-model override does not have to use them.
 
 ::: benchrep.architecture.losses.base.LossTerm
     options:
@@ -160,7 +160,7 @@ Whole-model overrides are supported by the canonical autoencoder and VAE trainin
 
 ## Batch and output contracts
 
-The canonical batch and forward contracts are dictionaries. Prediction contracts are dataclasses, with tensors and observation annotations aligned by sample. `PredictionObsValue` accepts a tensor, a list of integers, or a list of strings; `PredictionMetadata` maps annotation names to those values.
+The canonical batch and forward contracts are dictionaries. Prediction contracts are dataclasses, with tensors and observation annotations aligned by sample. [`PredictionObsValue`][benchrep.interfaces.contracts.PredictionObsValue] accepts a tensor, a list of integers, or a list of strings; [`PredictionMetadata`][benchrep.interfaces.contracts.PredictionMetadata] maps annotation names to those values.
 
 ::: benchrep.interfaces.contracts.AutoencoderBatch
     options:
@@ -192,8 +192,8 @@ Import these constants from `benchrep.interfaces.model_families`, for example wh
 
 | Constant | Name | Whole-model override base |
 | --- | --- | --- |
-| `AUTOENCODER_FAMILY` | `autoencoder` | `BenchRepAutoencoderModel` |
-| `VAE_FAMILY` | `vae` | `BenchRepVAEModel` |
+| `AUTOENCODER_FAMILY` | `autoencoder` | [`BenchRepAutoencoderModel`][benchrep.interfaces.models.BenchRepAutoencoderModel] |
+| `VAE_FAMILY` | `vae` | [`BenchRepVAEModel`][benchrep.interfaces.models.BenchRepVAEModel] |
 | `COMPOSITE_FAMILY` | `composite` | Not supported |
 
 ::: benchrep.interfaces.model_families.ModelFamilySpec

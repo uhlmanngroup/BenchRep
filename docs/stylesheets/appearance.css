@@ -182,7 +182,7 @@
 .md-typeset strong { font-weight: 650; }
 
 /* Prose links remain distinguishable from colored emphasis. */
-.md-typeset :is(p, li) > a:not(.md-button):not(:has(img)) {
+.md-typeset :is(p, li) > a:not(.md-button):not(:has(img)):not(:has(code)) {
   text-decoration-line: underline;
   text-decoration-color: color-mix(in srgb, var(--br-accent) 35%, transparent);
   text-underline-offset: 0.18em;

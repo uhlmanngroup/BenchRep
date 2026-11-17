@@ -1,6 +1,6 @@
 # Configure workflows
 
-There are several ways to configure a BenchRep workflow. You can edit a YAML, build or update a config object in Python, replace sections through overrides, or use the browser wizard. The workflow function you call, such as `train_vae()`, accepts a YAML path or a config object through its `config` argument.
+There are several ways to configure a BenchRep workflow. You can edit a YAML, build or update a config object in Python, replace sections through overrides, or use the browser wizard. The workflow function you call, such as [`train_vae()`][benchrep.train_vae], accepts a YAML path or a config object through its `config` argument.
 
 | Route | Configure the run by… |
 |---|---|
@@ -61,7 +61,7 @@ python -m benchrep.examples.usage.01_yaml_pipeline
 
 ## Python config objects
 
-`load_example_config()` reads a packaged YAML into its workflow config class. Use `update_config()` to replace individual fields and return a validated copy:
+[`load_example_config()`][benchrep.examples.load_example_config] reads a packaged YAML into its workflow config class. Use [`update_config()`][benchrep.update_config] to replace individual fields and return a validated copy:
 
 ```python
 from benchrep import train_vae, update_config
@@ -87,7 +87,7 @@ training_result = train_vae(config=config)
         base = TrainingConfig.model_validate(yaml.safe_load(stream))
     ```
 
-You can also construct `TrainingConfig`, `PredictionConfig`, or `EvaluationConfig` entirely in Python. For example, a typed model section is constructed as:
+You can also construct [`TrainingConfig`][benchrep.assembly.schemas.training_config_schema.TrainingConfig], [`PredictionConfig`][benchrep.assembly.schemas.prediction_config_schema.PredictionConfig], or [`EvaluationConfig`][benchrep.assembly.schemas.evaluation_config_schema.EvaluationConfig] entirely in Python. For example, a typed model section is constructed as:
 
 ```python
 from benchrep.assembly.schemas import TrainingModelConfig
@@ -95,7 +95,7 @@ from benchrep.assembly.schemas import TrainingModelConfig
 model = TrainingModelConfig(name="vae", params={"latent_dim": 64})
 ```
 
-Pass that section as `model=model` when constructing `TrainingConfig`, together with the other required sections. The [Python-only example](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/03_config_object_pipeline.py) constructs all 3 workflow configs in full, using its original 32-dimensional latent space:
+Pass that section as `model=model` when constructing [`TrainingConfig`][benchrep.assembly.schemas.training_config_schema.TrainingConfig], together with the other required sections. The [Python-only example](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/03_config_object_pipeline.py) constructs all 3 workflow configs in full, using its original 32-dimensional latent space:
 
 ```bash
 python -m benchrep.examples.usage.03_config_object_pipeline
@@ -123,7 +123,7 @@ training_result = train_vae(
 )
 ```
 
-The supplied section replaces the <strong class="highlight">entire `model` section</strong>. Omitted fields take their schema defaults; required fields still need values. Here, `gaussian_vae` is an alias for `vae`, so it matches the family expected by `train_vae()`.
+The supplied section replaces the <strong class="highlight">entire `model` section</strong>. Omitted fields take their schema defaults; required fields still need values. Here, `gaussian_vae` is an alias for `vae`, so it matches the family expected by [`train_vae()`][benchrep.train_vae].
 
 The base can also be a config object. You can omit `config` if `config_components`, together with defaults, supplies a valid workflow config. Manifest paths and supported runtime model/datamodule implementations can also be supplied through overrides; see [Python overrides](../../concepts/workflows/overrides.md).
 

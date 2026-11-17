@@ -1,6 +1,6 @@
 # Prediction schemas
 
-Fields for `PredictionConfig`, including checkpoint selection, inference, transforms, and exports. Prediction reuses the [dataset and runtime override schemas](shared.md).
+Fields for [`PredictionConfig`][benchrep.assembly.schemas.prediction_config_schema.PredictionConfig], including checkpoint selection, inference, transforms, and exports. Prediction reuses the [dataset and runtime override schemas](shared.md).
 
 Expand a field to see its type, description, constraints, and omission/null behavior. Defaults shown here are schema declarations; workflow resolution can derive additional settings. See [Reading this reference](index.md#reading-this-reference).
 

@@ -4,9 +4,9 @@ Import the packaged-example helpers below from `benchrep.examples`. They locate 
 
 | Helper | Returns | Use |
 | --- | --- | --- |
-| `example_config_path()` | `Path` | Pass a packaged YAML to a workflow or wizard, or copy it before editing |
-| `load_example_config()` | Workflow config object | Inspect settings or edit a validated copy with `update_config()` |
-| `example_asset_path()` | `Path` | Locate a packaged input file or directory |
+| [`example_config_path()`][benchrep.examples.example_config_path] | `Path` | Pass a packaged YAML to a workflow or wizard, or copy it before editing |
+| [`load_example_config()`][benchrep.examples.load_example_config] | Workflow config object | Inspect settings or edit a validated copy with [`update_config()`][benchrep.update_config] |
+| [`example_asset_path()`][benchrep.examples.example_asset_path] | `Path` | Locate a packaged input file or directory |
 
 Packaged resources should be treated as read-only. These helpers do not run an example, generate missing assets, or redirect output paths. Run example scripts with `python -m benchrep.examples.usage.<module>`.
 
@@ -39,7 +39,7 @@ The path helper leaves validation to its consumer. The object helper immediately
 
 ## AnnData artifacts
 
-Import these functions from `benchrep.records`. `package_matrix_as_anndata()` places a sample-by-feature matrix in `adata.X` and sample annotations in `adata.obs`, ready to save for [standalone evaluation](../guides/standalone-evaluation.md). It does not normalize the matrix or run evaluation.
+Import these functions from `benchrep.records`. [`package_matrix_as_anndata()`][benchrep.records.anndata_io.package_matrix_as_anndata] places a sample-by-feature matrix in `adata.X` and sample annotations in `adata.obs`, ready to save for [standalone evaluation](../guides/standalone-evaluation.md). It does not normalize the matrix or run evaluation.
 
 ::: benchrep.records.anndata_io.package_matrix_as_anndata
     options:

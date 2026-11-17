@@ -8,7 +8,7 @@ The wizard **authors and reviews** a configuration; it does not train, predict, 
 
 [`configure_workflow()`][benchrep.configure_workflow] accepts a stage, an optional base config, and an optional overrides object. A base YAML can be incomplete or contain invalid entries: opening it for editing does not require a successful workflow run or a fully valid draft.
 
-For training and prediction, the launcher's `model_family` controls which model sections are appropriate. It defaults to composite; use `AUTOENCODER_FAMILY` or `VAE_FAMILY` for a canonical model. The family is fixed for that wizard session, so an incompatible model name or section in the base YAML is flagged rather than silently changing families. Evaluation has no model family.
+For training and prediction, the launcher's `model_family` controls which model sections are appropriate. It defaults to composite; use [`AUTOENCODER_FAMILY`](../../reference/interfaces.md#model-families) or [`VAE_FAMILY`](../../reference/interfaces.md#model-families) for a canonical model. The family is fixed for that wizard session, so an incompatible model name or section in the base YAML is flagged rather than silently changing families. Evaluation has no model family.
 
 The launcher starts a local server and normally opens the browser at <http://127.0.0.1:8050>. The calling Python script waits until you finish or cancel; `port` and `open_browser` control the browser connection.
 
@@ -34,12 +34,12 @@ The sidebar marks local validity in green, issues in red, and valid omitted or n
 
 **Review & finish → Check configuration** evaluates the draft as a whole:
 
-| Check | What it establishes |
-| --- | --- |
-| Schema validation | The composed draft satisfies the workflow schema and its field compatibility rules (e.g. through `TrainingConfig.model_validate()`) |
+| Check | What it establishes                                                                                                                                    |
+| --- |--------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Schema validation | The composed draft satisfies the workflow schema and its field compatibility rules (e.g. through [`TrainingConfig.model_validate()`][benchrep.assembly.schemas.training_config_schema.TrainingConfig])                                                     |
 | Resolution | Sections, selected components, upstream settings, and runtime override requirements form a coherent workflow (e.g. through `resolve_training_config()`) |
-| Dependencies | Known dependencies for enabled features are available; missing dependencies are reported (e.g. Torchview and Graphviz for model graph export) |
-| Export destination | The authored and resolved YAMLs have valid save locations without overwriting existing files |
+| Dependencies | Known dependencies for enabled features are available; missing dependencies are reported (e.g. Torchview and Graphviz for model graph export)          |
+| Export destination | The authored and resolved YAMLs have valid save locations without overwriting existing files                                                           |
 
 A collection of locally valid sections can still fail here. Changes to the draft or export settings require another check before saving.
 
@@ -50,9 +50,8 @@ A collection of locally valid sections can still fail here. Changes to the draft
   <a class="br-image-dark" href="../../assets/guides/configuration-wizard/review-and-finish-dark.png">
     <img src="../../assets/guides/configuration-wizard/review-and-finish-dark.png" alt="Review and finish after checking a training configuration.">
   </a>
+<figcaption>Review separates the validation results from the authored and resolved YAML previews.</figcaption>
 </figure>
-
-<small class="br-caption">Review separates the validation results from the authored and resolved YAML previews.</small>
 
 The **Authored YAML** preserves the choices in the draft, including omissions and explicit nulls. The **Resolved YAML** shows the interpretation produced during review. For composite configurations, review can also preview the specification graph to inspect declared wiring without constructing or training the model; this requires Graphviz.
 
@@ -63,9 +62,13 @@ The **Authored YAML** preserves the choices in the draft, including omissions an
   <a class="br-image-dark" href="../../assets/configuration-wizard-composite-spec-graph-dark.png">
     <img src="../../assets/configuration-wizard-composite-spec-graph-dark.png" alt="Preview specification graph of composite models">
   </a>
-</figure>
 
-<small>Model specification preview for the [composite wizard example](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/08B_dual_input_multitask_composite_vae_wizard.py), available before training.</small>
+<figcaption>
+  Model specification preview for the
+  <a href="https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/08B_dual_input_multitask_composite_vae_wizard.py">composite wizard example</a>,
+  available before training.
+</figcaption>
+</figure>
 
 ??? note "What a successful review does not guarantee"
     Review does not instantiate and exercise every component. It cannot establish that all custom dependencies are available, that real batches satisfy every runtime expectation, or that the run will fit in memory. Some optional outputs, such as an unavailable graph preview, can produce a warning without blocking configuration export. Execution still performs its own checks.
@@ -98,8 +101,9 @@ if wizard_result is not None:
 
 ## Overrides enter and leave the wizard
 
-The wizard accepts the same workflow-specific override bundles described in [Python overrides](overrides.md). Supplying them upfront lets it account for runtime implementations and upstream runs when determining which sections need configuration and checking the draft. For example, pass `overrides=PredictionOverrides(training_manifest_path=training_result.manifest_path)` to review a prediction config against the run you just trained.
+The wizard accepts the same workflow-specific override bundles described in [Python overrides](overrides.md). Supplying them upfront lets it account for runtime implementations and upstream runs when determining which sections need configuration and checking the draft. For example, pass [`overrides=PredictionOverrides(training_manifest_path=training_result.manifest_path)`][benchrep.PredictionOverrides] to review a prediction config against the run you just trained.
 
-Section overrides become part of the editable draft and are removed from the returned override bundle. Other inputs needed at execution, like runtime objects and supplied manifest overrides, are retained. Forwarding both `wizard_result.config` and `wizard_result.overrides` preserves that combination without re-applying config replacements.
+Section overrides become part of the editable draft and are removed from the returned override bundle. Other inputs needed at execution, like runtime objects and supplied manifest overrides, are retained. Forwarding both [`wizard_result.config`][benchrep.gui.shared.results.ConfiguredWorkflow]
+ and [`wizard_result.overrides`][benchrep.gui.shared.results.ConfiguredWorkflow] preserves that combination without re-applying config replacements.
 
 For how the editor preserves draft state and manages review internally, see [How the wizard works](../internals/wizard-architecture.md).

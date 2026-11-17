@@ -22,7 +22,7 @@ A returned result is not a guarantee that every requested operation succeeded. I
 
 ## Run identity and directories
 
-`run_context` centralizes the run name and conventional output paths. Paths describe where outputs belong; use the workflow's export results to determine which artifacts were actually written. The `run_spec` field exposes the resolved execution plan for inspection, rather than a separate configuration interface.
+[`run_context`][benchrep.runtime.run_context.RunContext] centralizes the run name and conventional output paths. Paths describe where outputs belong; use the workflow's export results to determine which artifacts were actually written. The `run_spec` field exposes the resolved execution plan for inspection, rather than a separate configuration interface.
 
 ::: benchrep.runtime.run_context.RunContext
     options:
@@ -30,7 +30,7 @@ A returned result is not a guarantee that every requested operation succeeded. I
 
 ## Prediction export results
 
-Start with `prediction_result.export_result`. The AnnData branch exposes its path and outcome; the reconstruction branch exposes one result per input–reconstruction pair. Disabled, skipped, or unsuccessful exports may have no written file.
+Start with [`prediction_result.export_result`][benchrep.records.prediction_exports.PredictionExportResult]. The AnnData branch exposes its path and outcome; the reconstruction branch exposes one result per input–reconstruction pair. Disabled, skipped, or unsuccessful exports may have no written file.
 
 ::: benchrep.records.prediction_exports.PredictionExportResult
     options:
@@ -56,7 +56,7 @@ Start with `prediction_result.export_result`. The AnnData branch exposes its pat
 
 ## Evaluation export paths
 
-Use `evaluation_result.export_paths` for saved artifacts and `evaluation_result.get_metric(...)` for in-memory metrics. The latter follows the same nested keys shown in `metrics.json`.
+Use [`evaluation_result.export_paths`][benchrep.records.evaluation_exports.EvaluationExportPaths] for saved artifacts and [`evaluation_result.get_metric(...)`][benchrep.workflows.evaluate.EvaluationWorkflowResult.get_metric] for in-memory metrics. The latter follows the same nested keys shown in `metrics.json`.
 
 ::: benchrep.records.evaluation_exports.EvaluationExportPaths
     options:

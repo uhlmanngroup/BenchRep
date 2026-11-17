@@ -6,7 +6,7 @@ Expand a field to see its type, description, constraints, and omission/null beha
 
 ## Named components
 
-`NamedConfig` is defined in the module shown below rather than re-exported from `benchrep.assembly.schemas`.
+[`NamedConfig`][benchrep.assembly.schemas.training_config_schema.NamedConfig] is defined in the module shown below rather than re-exported from `benchrep.assembly.schemas`.
 
 ::: benchrep.assembly.schemas.training_config_schema.NamedConfig
     options:

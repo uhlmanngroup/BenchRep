@@ -27,7 +27,7 @@ The [full script](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/us
 
 ## Define the search space
 
-An Optuna **study** contains a set of **trials**. Each trial requests hyperparameter values, runs the workflows, and returns a scalar objective. The supplied model combines an MLP encoder, a Gaussian variational head, and an MLP decoder.
+An Optuna **study** contains a set of **trials**. Each trial requests hyperparameter values, runs the workflows, and returns a scalar objective. The supplied model combines an [MLP encoder][benchrep.architecture.encoders.mlp.MLPEncoder], a [Gaussian variational head][benchrep.architecture.heads.variational.GaussianVariationalHead], and an [MLP decoder][benchrep.architecture.decoders.mlp.MLPDecoder].
 
 | Hyperparameter | Search space | What changes |
 |---|---|---|
@@ -45,7 +45,7 @@ latent_dim = trial.suggest_categorical("latent_dim", [8, 16, 32, 64])
 hidden_width = trial.suggest_categorical("hidden_width", [64, 128, 256])
 ```
 
-The script applies those values with `update_config()`, which returns a validated copy of the base config. See [Python config objects](configure-workflows/index.md#python-config-objects). For this composite VAE, update the variational head’s latent dimension and the decoder’s input dimension together so they match.
+The script applies those values with [`update_config()`][benchrep.update_config], which returns a validated copy of the base config. See [Python config objects](configure-workflows/index.md#python-config-objects). For this composite VAE, update the variational head’s latent dimension and the decoder’s input dimension together so they match.
 
 ```python
 components = "composite_model_components"
@@ -84,7 +84,7 @@ In this training YAML checkpoints are also selected based on validation reconstr
 
 ## Evaluate on the validation split
 
-Since training-time pruning uses the validation split, we reuse that split for prediction so the final clustering objective assesses the same samples. We pass `training_result.datamodule.val_dataset` to a new datamodule supplied through `PredictionOverrides`, preserving the subset’s transforms and bypassing the prediction config’s dataset and transform settings. See [External models and datamodules](../concepts/extensibility/runtime-implementations.md) for the implementation contracts.
+Since training-time pruning uses the validation split, we reuse that split for prediction so the final clustering objective assesses the same samples. We pass [`training_result.datamodule.val_dataset`][benchrep.architecture.data.datamodule.BenchRepDataModule] to a new datamodule supplied through [`PredictionOverrides`][benchrep.PredictionOverrides], preserving the subset’s transforms and bypassing the prediction config’s dataset and transform settings. See [External models and datamodules](../concepts/extensibility/runtime-implementations.md) for the implementation contracts.
 
 ```python
 validation_dataset = training_result.datamodule.val_dataset

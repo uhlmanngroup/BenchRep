@@ -17,7 +17,7 @@ Look up the fields accepted by each workflow, including nested parameters, inher
 Each schema shows its defining Python module and a source link. Expand a field for its description, type, constraints, and notes. Links in types lead to nested schemas or type aliases; inherited fields are included in concrete schemas.
 
 - **Required** means the field has no schema default. The omission notes also describe conditional requirements enforced by validators or workflow resolution.
-- **Default** is the value used when you omit a field. **Default factory** creates that value when needed—for example, `TrainingRunConfig()` creates a run configuration with its default settings.
+- **Default** is the value used when you omit a field. **Default factory** creates that value when needed—for example, [`TrainingRunConfig()`][benchrep.assembly.schemas.training_config_schema.TrainingRunConfig] creates a run configuration with its default settings.
 - **If omitted** and **If null** describe separate cases. An empty mapping or list is also a supplied value; it is not automatically equivalent to either.
 - **Additional fields** describes the schema's handling of unknown keys. Acceptance by a schema does not guarantee acceptance by a downstream constructor or resolver.
 - **Field types** lists aliases used by these fields. Constraints inside `Annotated[...]` and named Pydantic types such as `PositiveInt` apply as well as the field-level settings shown in each entry.
@@ -35,6 +35,6 @@ from benchrep.assembly.schemas import TrainingConfig
 inspect_config(TrainingConfig)
 ```
 
-`TrainingConfig.model_json_schema()` provides a machine-readable JSON Schema. The same inspection methods work for prediction, evaluation, and nested schema classes.
+[`TrainingConfig.model_json_schema()`][benchrep.assembly.schemas.training_config_schema.TrainingConfig] provides a machine-readable JSON Schema. The same inspection methods work for prediction, evaluation, and nested schema classes.
 
 For configuration examples, see [Configure workflows](../../guides/configure-workflows/index.md).

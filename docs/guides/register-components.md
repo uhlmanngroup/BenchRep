@@ -6,12 +6,12 @@ Register an implementation under a name, then select it in a workflow config. Th
 
 The required entry depends on what you register:
 
-| Component | Registered entry | Selected through |
-|---|---|---|
-| Dataset, transform, optimizer, LR scheduler, logger, callback, or loss-weight schedule | A constructor or factory directly | The corresponding named config section or list entry |
-| Encoder, decoder, or head | `ArchitectureComponent` containing the module class and its port/result contract | A canonical architecture section or a composite component definition |
-| Loss | `LossComponent` containing the module class and any required input contract | A term within an existing loss role |
-| Evaluation metric | `EvaluationMetric` containing the executed function and its result contract | A metric group's `selected` list, with per-name `params` |
+| Component | Registered entry                                                                                                                                                                      | Selected through |
+|---|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---|
+| Dataset, transform, optimizer, LR scheduler, logger, callback, or loss-weight schedule | A constructor or factory directly                                                                                                                                                     | The corresponding named config section or list entry |
+| Encoder, decoder, or head | [`ArchitectureComponent`][benchrep.architecture.composite_model_component_contracts.ArchitectureComponent] containing the module class and its port/result contract                   | A canonical architecture section or a composite component definition |
+| Loss | [`LossComponent`][benchrep.architecture.losses.composite_model_contracts.LossComponent] containing the module class and any required input contract                                                                                                                          | A term within an existing loss role |
+| Evaluation metric | [`EvaluationMetric`][benchrep.evaluation.metrics.contracts.EvaluationMetric] containing the executed function and its result contract                                                                                                             | A metric group's `selected` list, with per-name `params` |
 
 See [Registering components](../concepts/extensibility/registration.md) for the complete registry map. Model families, reductions, clustering methods, and predictability probes currently do not accept custom registrations.
 
@@ -129,11 +129,11 @@ RECONSTRUCTION_LOSSES.register(
 )
 ```
 
-`gradient_difference` is the registered name; `gdl` is an optional alias. `LossComponent` wraps the loss module class. Canonical models supply its fixed inputs; composite use additionally requires a declared input contract. See [Losses and objectives](../concepts/models/losses.md).
+`gradient_difference` is the registered name; `gdl` is an optional alias. [`LossComponent`][benchrep.architecture.losses.composite_model_contracts.LossComponent] wraps the loss module class. Canonical models supply its fixed inputs; composite use additionally requires a declared input contract. See [Losses and objectives](../concepts/models/losses.md).
 
 ## Add a full-context objective
 
-A reconstruction loss receives only its reconstruction and target. For objectives that need labels or other model outputs, subclass `BaseCustomObjectiveLoss`. Its fixed interface receives the complete `batch` and `model_output` mappings:
+A reconstruction loss receives only its reconstruction and target. For objectives that need labels or other model outputs, subclass [`BaseCustomObjectiveLoss`][benchrep.architecture.losses.custom_objective.BaseCustomObjectiveLoss]. Its fixed interface receives the complete `batch` and `model_output` mappings:
 
 ```python
 from collections.abc import Mapping

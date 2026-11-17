@@ -1,6 +1,6 @@
 # Training schemas
 
-Fields for `TrainingConfig` and its training-specific sections. Dataset schemas, runtime override requirements, and composite declarations/components/assembly are documented under [Shared and composite schemas](shared.md).
+Fields for [`TrainingConfig`][benchrep.assembly.schemas.training_config_schema.TrainingConfig] and its training-specific sections. Dataset schemas, runtime override requirements, and composite declarations/components/assembly are documented under [Shared and composite schemas](shared.md).
 
 Expand a field to see its type, description, constraints, and omission/null behavior. Defaults shown here are schema declarations; workflow resolution can derive additional settings. See [Reading this reference](index.md#reading-this-reference).
 
