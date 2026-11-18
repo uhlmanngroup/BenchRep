@@ -19,7 +19,7 @@ from typing import (
 
 import yaml
 
-from pydantic import BaseModel
+from pydantic import BaseModel, RootModel
 
 from benchrep.utils.workflow_utils import (
     TrainingConfigInput,
@@ -28,6 +28,9 @@ from benchrep.utils.workflow_utils import (
     route_config_input,
 )
 from benchrep.assembly.schemas.training_config_schema import (
+    DatasetConfig,
+    OptimizerGradientNormConfig,
+    PerLossGradientNormConfig,
     TrainingConfig,
     TrainingRunConfig,
     TrainingReproducibilityConfig,
@@ -61,6 +64,8 @@ from benchrep.assembly.schemas.prediction_config_schema import (
     PredictionExportConfig,
 )
 from benchrep.assembly.schemas.evaluation_config_schema import (
+    EvaluationLogisticRegressionProbeConfig,
+    EvaluationRidgeProbeConfig,
     EvaluationConfig,
     EvaluationSourceConfig,
     EvaluationRunConfig,
@@ -233,6 +238,8 @@ def compose_effective_config(
     ``config_components`` replaces matching top-level sections of either
     base. Each component replaces its whole section, not individual fields.
     The combined config is validated before workflow-specific resolution.
+    Untouched sections retain the typed base config's explicit field choices.
+    Each replacement section retains its own explicit field choices.
 
     If no ``config`` is supplied, the components must provide enough sections
     to construct a valid config. A typed config object without components is
@@ -300,41 +307,27 @@ def compose_effective_config(
         config_components=config_components,
     )
 
-    if full_config_object is not None:
-        yaml_used_as_base = False
-
-        if component_raw:
-            config_source: ConfigSource = "config_object_with_components"
-            raw_config = full_config_object.model_dump(mode="python")
-            raw_config.update(component_raw)
-            effective_config = _parse_effective_config(
-                schema=schema,
-                raw_config=raw_config,
-                external_model=external_model,
-                external_datamodule=external_datamodule,
-                training_manifest_path_overridden=training_manifest_path_overridden,
-                prediction_manifest_path_overridden=prediction_manifest_path_overridden,
-            )
-            composition_messages.append(
-                "config_components replace matching top-level sections "
-                "of the config object."
-            )
-        else:
-            config_source = "config_object"
-            effective_config = full_config_object
-
+    if full_config_object is not None and not component_raw:
         return ConfigCompositionResult(
-            original_config_path=original_config_path,
-            original_config_raw=original_config_raw,
-            effective_config=effective_config,
-            effective_source=config_source,
-            yaml_supplied=yaml_supplied,
-            yaml_used_as_base=yaml_used_as_base,
-            composition_messages=tuple(composition_messages),
-            composition_warnings=tuple(composition_warnings),
+            original_config_path=None,
+            original_config_raw=None,
+            effective_config=full_config_object,
+            effective_source="config_object",
+            yaml_supplied=False,
+            yaml_used_as_base=False,
         )
 
-    if yaml_supplied and component_raw:
+    if full_config_object is not None:
+        config_source: ConfigSource = "config_object_with_components"
+        yaml_used_as_base = False
+        raw_config = full_config_object.model_dump(mode="python")
+        raw_config.update(component_raw)
+        composition_messages.append(
+            "config_components replace matching top-level sections "
+            "of the config object."
+        )
+
+    elif yaml_supplied and component_raw:
         assert original_config_raw is not None
 
         config_source = "yaml_with_components"
@@ -375,6 +368,14 @@ def compose_effective_config(
         training_manifest_path_overridden=training_manifest_path_overridden,
         prediction_manifest_path_overridden=prediction_manifest_path_overridden,
     )
+
+    if full_config_object is not None:
+        replacements = {
+            (name,): component for name, component in (config_components or {}).items()
+        }
+        _restore_unedited_field_presence(full_config_object, effective_config, replacements)
+    elif config_components:
+        _restore_unedited_field_presence(config_components, effective_config, {})
 
     return ConfigCompositionResult(
         original_config_path=original_config_path,
@@ -424,6 +425,79 @@ def load_yaml(yaml_path: str | Path) -> dict[str, Any]:
     return yaml_file
 
 
+# These fields identify which concrete config class to reconstruct from YAML.
+_DISCRIMINATOR_TYPES = {
+    "name": (DatasetConfig,),
+    "kind": (PerLossGradientNormConfig, OptimizerGradientNormConfig),
+    "model": (EvaluationLogisticRegressionProbeConfig, EvaluationRidgeProbeConfig),
+}
+
+
+def _accepts_any(annotation: Any) -> bool:
+    """Identify fields whose payload belongs to the caller, such as constructor kwargs."""
+    return annotation is Any or any(_accepts_any(arg) for arg in get_args(annotation))
+
+
+def prepare_authored(value: Any) -> tuple[Any, Any]:
+    """Prepare a config copy and field selection for authored serialization.
+
+    The copy supports dumping with ``exclude_unset=True``. The selection
+    identifies fields to retain when serializing originals or section overrides.
+    """
+    if isinstance(value, RootModel):
+        return value, True
+
+    if isinstance(value, BaseModel):
+        fields = type(value).model_fields
+        explicit = set(value.model_fields_set)
+        for tag, types in _DISCRIMINATOR_TYPES.items():
+            if isinstance(value, types):
+                explicit.add(tag)
+
+        updates = {}
+        included = {}
+        for name, item in value:
+            field = fields.get(name)
+            opaque = field is None or _accepts_any(field.annotation)
+            prepared, selection = (item, True) if opaque else prepare_authored(item)
+
+            if field is not None and name not in explicit and not field.is_required():
+                if not isinstance(item, (BaseModel, Mapping, list, tuple)):
+                    continue
+                default = field.get_default(call_default_factory=True)
+                if item == default and (opaque or selection == prepare_authored(default)[1]):
+                    continue
+
+            updates[name] = prepared
+            included[name] = selection
+
+        # A custom serializer owns the shape of its output.
+        serializers = type(value).__pydantic_decorators__
+        if serializers.model_serializers:
+            return value.model_copy(update=updates), True
+        for serializer in serializers.field_serializers.values():
+            names = serializer.info.fields
+            for name in included:
+                if name in names or "*" in names:
+                    included[name] = True
+        return value.model_copy(update=updates), included
+
+    if isinstance(value, Mapping):
+        values, included = {}, {}
+        for key, item in value.items():
+            values[key], included[key] = prepare_authored(item)
+        return values, included
+
+    if isinstance(value, (list, tuple)):
+        values, included = [], {}
+        for index, item in enumerate(value):
+            prepared, included[index] = prepare_authored(item)
+            values.append(prepared)
+        return (tuple(values) if isinstance(value, tuple) else values), included
+
+    return value, True
+
+
 def update_config(config: ConfigT, updates: Mapping[str, Any]) -> ConfigT:
     """Return a validated copy with the specified fields replaced.
     
@@ -460,6 +534,10 @@ def update_config(config: ConfigT, updates: Mapping[str, Any]) -> ConfigT:
     Paths refer to the dumped configuration structure. This helper does not
     add missing keys or append list items. It serializes and revalidates the
     config; it does not guarantee a deep copy of arbitrary Python objects.
+
+    Edited fields and their parents are marked as explicitly supplied.
+    Untouched fields retain their original supplied or omitted status.
+    Replacing a whole section uses the field presence of the replacement.
     """
     if not isinstance(config, SUPPORTED_CONFIG_SCHEMAS):
         raise TypeError("Expected a TrainingConfig, PredictionConfig, or EvaluationConfig.")
@@ -491,7 +569,51 @@ def update_config(config: ConfigT, updates: Mapping[str, Any]) -> ConfigT:
             else:
                 node = node[key]
 
-    return type(config).model_validate(data)
+    updated = type(config).model_validate(data)
+    replacements = {tuple(path.split(".")): value for path, value in updates.items()}
+    _restore_unedited_field_presence(config, updated, replacements)
+    return updated
+
+
+def _restore_unedited_field_presence(
+    original: Any,
+    validated: Any,
+    replacements: Mapping[tuple[str, ...], Any],
+) -> None:
+    """Restore which fields were supplied before full-config validation.
+
+    Paths are relative to the current node. At a replacement path, use the
+    caller's value as the source of field presence, including nested models.
+    """
+    if () in replacements:
+        original = replacements[()]
+        replacements = {}
+    if original is validated:
+        return
+
+    if isinstance(validated, BaseModel):
+        if isinstance(original, BaseModel):
+            explicitly_supplied = original.model_fields_set | {path[0] for path in replacements}
+            original = dict(iter(original))
+            validated.model_fields_set.difference_update(original.keys() - explicitly_supplied)
+        validated = dict(iter(validated))
+
+    if isinstance(original, Mapping) and isinstance(validated, Mapping):
+        children = (
+            (str(key), previous, validated[key])
+            for key, previous in original.items() if key in validated
+        )
+    elif isinstance(original, (list, tuple)) and isinstance(validated, (list, tuple)):
+        children = (
+            (str(index), previous, current)
+            for index, (previous, current) in enumerate(zip(original, validated))
+        )
+    else:
+        return
+
+    for key, previous, current in children:
+        child_edits = {path[1:]: value for path, value in replacements.items() if path[0] == key}
+        _restore_unedited_field_presence(previous, current, child_edits)
 
 
 def _strip_none_from_type(annotation: Any) -> Any:

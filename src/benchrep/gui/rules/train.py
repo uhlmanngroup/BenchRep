@@ -4,13 +4,9 @@ from copy import deepcopy
 from typing import Any
 
 import lightning as L
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
+from pydantic import BaseModel, ConfigDict, Field
 
 from benchrep.architecture.composite_model_roles import TENSOR_STRUCTURE_BY_ROLE
-from benchrep.assembly.config import (
-    load_yaml,
-    normalize_config_components,
-)
 from benchrep.assembly.registries.builtins import register_builtins
 from benchrep.assembly.registries.core import (
     CALLBACKS,
@@ -84,8 +80,9 @@ from benchrep.interfaces.model_families import (
     ModelFamilySpec,
 )
 from benchrep.utils.workflow_overrides import TrainingOverrides
-from benchrep.utils.workflow_utils import TrainingConfigInput, route_config_input
+from benchrep.utils.workflow_utils import TrainingConfigInput
 from benchrep.gui.shared.validation import validate_value
+from benchrep.gui.shared.draft_inputs import wizard_draft_inputs
 
 
 class TrainingModelEditor(BaseModel):
@@ -138,24 +135,10 @@ def prepare_training_draft(
         component_name="datamodule",
     )
 
-    path, typed = route_config_input(config, TrainingConfig)
-    data = (
-        load_yaml(path)
-        if path is not None
-        else typed.model_dump(mode="json", exclude_unset=True)
-        if typed is not None
-        else {}
-    )
-    if not isinstance(data, dict):
-        raise TypeError("Training configuration must be a mapping.")
-
-    components = normalize_config_components(
-        schema=TrainingConfig,
-        config_components=overrides.config_components,
-    )
-    data = deepcopy(data)
-    data.update(
-        TypeAdapter(dict[str, Any]).dump_python(components, mode="json")
+    data, supplied_sections = wizard_draft_inputs(
+        config,
+        TrainingConfig,
+        overrides.config_components,
     )
 
     if config is None:
@@ -197,7 +180,7 @@ def prepare_training_draft(
 
     return WizardDraft(
         initial_data=data,
-        supplied_sections=frozenset(components) - omitted_sections,
+        supplied_sections=supplied_sections - omitted_sections,
     )
 
 

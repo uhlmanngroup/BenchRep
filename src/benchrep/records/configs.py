@@ -17,6 +17,7 @@ import yaml
 from pydantic import BaseModel
 from pydantic_core import to_jsonable_python
 
+from benchrep.assembly.config import prepare_authored
 from benchrep.records.logs import get_run_logger
 from benchrep.runtime import RunContext
 from benchrep.assembly.schemas import TrainingConfig, PredictionConfig, EvaluationConfig
@@ -40,6 +41,7 @@ def save_config_records(
         Validated config object, or a plain config dictionary.
     original_config:
         Original YAML path or typed config object supplied to the workflow.
+        Typed originals preserve omitted fields and explicit defaults.
         None means no original config was supplied.
     """
     run_log = get_run_logger()
@@ -60,10 +62,12 @@ def save_config_records(
         original_config,
         (TrainingConfig, PredictionConfig, EvaluationConfig),
     ):
+        _, included = prepare_authored(original_config)
         save_config_yaml(
             config=original_config,
             out_dir=config_out_dir,
             filename="original_config.yaml",
+            include=None if included is True else included,
         )
         saved_original = True
     elif original_config is not None:
@@ -113,18 +117,21 @@ def save_config_yaml(
     config: BaseModel | dict[str, Any],
     out_dir: Path,
     filename: str,
+    include: dict[str, Any] | None = None,
 ) -> Path:
     """Save a config object or mapping as YAML and return the written path.
 
     Parameters
     ----------
     config
-        Pydantic config object or plain mapping to serialize. Default-valued
-        fields are included; this is not an omission-preserving YAML editor.
+        Pydantic config object or plain mapping to serialize.
     out_dir
         Existing destination directory. This function does not create it.
     filename
         Output filename. An existing file at this location is overwritten.
+    include
+        Optional Pydantic field selection. By default, all serializable
+        fields are included.
 
     Returns
     -------
@@ -138,7 +145,7 @@ def save_config_yaml(
     """
 
     output_path = out_dir / filename
-    config_dict = config_to_serializable_dict(config)
+    config_dict = config_to_serializable_dict(config, include=include)
 
     with output_path.open("w", encoding="utf-8") as file:
         yaml.safe_dump(config_dict, file, sort_keys=False)
@@ -164,8 +171,10 @@ def _unserializable_config_value(value: Any) -> dict[str, Any]:
 
 def config_to_serializable_dict(
     config: BaseModel | dict[str, Any],
+    *,
+    include: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Create a YAML-safe record, marking unsupported runtime objects."""
+    """Serialize the selected fields for YAML, marking unsupported runtime objects."""
     if not isinstance(config, (BaseModel, dict)):
         raise TypeError(
             "`resolved_config` must be a Pydantic model or a plain dictionary, "
@@ -174,6 +183,7 @@ def config_to_serializable_dict(
 
     return to_jsonable_python(
         config,
+        include=include,
         by_alias=False,
         fallback=_unserializable_config_value,
     )

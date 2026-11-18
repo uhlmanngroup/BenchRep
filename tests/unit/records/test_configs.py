@@ -6,6 +6,7 @@ import torch
 import yaml
 from pydantic import BaseModel
 
+from benchrep.assembly.schemas import TrainingConfig
 from benchrep.records.configs import (
     config_to_serializable_dict,
     save_config_yaml,
@@ -139,3 +140,34 @@ def test_config_object_record_preserves_input_before_overrides(
 
     assert original_raw["run"]["run_name_prefix"] == "overridden_project"
     assert resolved_raw["run"]["run_name_prefix"] == "resolved_project"
+
+
+@pytest.mark.parametrize(
+    "checkpointing",
+    [None, {}, {"monitor": None}, {"monitor": "losses/val/total_weighted_loss"}],
+    ids=["section-omitted", "monitor-omitted", "explicit-null", "explicit-default"],
+)
+def test_typed_original_preserves_checkpoint_monitor(tmp_path, checkpointing):
+    """Reloading a typed original preserves how its checkpoint monitor was supplied."""
+    raw = {"overrides": {"model": {}, "datamodule": {}}}
+    if checkpointing is not None:
+        raw["checkpointing"] = checkpointing
+    config = TrainingConfig.model_validate(raw)
+
+    save_config_records(
+        config_out_dir=tmp_path,
+        original_config=config,
+        resolved_config=config,
+    )
+
+    original = yaml.safe_load((tmp_path / "original_config.yaml").read_text(encoding="utf-8"))
+    resolved = yaml.safe_load((tmp_path / "resolved_config.yaml").read_text(encoding="utf-8"))
+
+    if checkpointing is None:
+        assert "checkpointing" not in original
+    else:
+        assert original["checkpointing"] == checkpointing
+
+    reloaded = TrainingConfig.model_validate(original)
+    assert reloaded.checkpointing.model_fields_set == set(checkpointing or {})
+    assert "monitor" in resolved["checkpointing"]

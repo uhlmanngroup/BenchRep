@@ -16,7 +16,6 @@ from dash.development.base_component import Component
 from pydantic import TypeAdapter
 
 from benchrep.architecture.composite_model_roles import TENSOR_STRUCTURE_BY_ROLE
-from benchrep.assembly.config import load_yaml, normalize_config_components
 from benchrep.assembly.registries.builtins import register_builtins
 from benchrep.assembly.resolvers.prediction_config_resolver import (
     _load_training_manifest,
@@ -60,13 +59,14 @@ from benchrep.gui.shared.fields import FieldPresentation, field_id
 from benchrep.gui.shared.forms import SectionSpec
 from benchrep.gui.shared.review import ReviewSession
 from benchrep.gui.shared.state import MISSING, WizardDraft
+from benchrep.gui.shared.draft_inputs import wizard_draft_inputs
 from benchrep.interfaces.model_families import (
     COMPOSITE_FAMILY,
     VAE_FAMILY,
     ModelFamilySpec,
 )
 from benchrep.utils.workflow_overrides import PredictionOverrides
-from benchrep.utils.workflow_utils import PredictionConfigInput, route_config_input
+from benchrep.utils.workflow_utils import PredictionConfigInput
 
 
 def _at(data: Any, path: tuple, default=None):
@@ -91,23 +91,11 @@ def prepare_prediction_draft(
     """Preserve authored presence; complete checks happen in the wizard."""
     register_builtins()
     overrides.validate_for(model_family)
-    path, typed = route_config_input(config, PredictionConfig)
-    data = (
-        load_yaml(path)
-        if path is not None
-        else (
-            typed.model_dump(mode="json", exclude_unset=True)
-            if typed is not None
-            else {}
-        )
+    data, supplied_sections = wizard_draft_inputs(
+        config,
+        PredictionConfig,
+        overrides.config_components,
     )
-    if not isinstance(data, dict):
-        raise TypeError("Prediction configuration must be a mapping.")
-    data = deepcopy(data)
-    components = normalize_config_components(
-        schema=PredictionConfig, config_components=overrides.config_components
-    )
-    data.update(TypeAdapter(dict[str, Any]).dump_python(components, mode="json"))
     if config is None:
         data.setdefault("stage", "prediction")
     omitted = set()
@@ -119,7 +107,7 @@ def prepare_prediction_draft(
     for name in omitted:
         data.pop(name, None)
     return WizardDraft(
-        initial_data=data, supplied_sections=frozenset(components) - omitted
+        initial_data=data, supplied_sections=supplied_sections - omitted
     )
 
 

@@ -16,7 +16,6 @@ from dash import html
 from dash.development.base_component import Component
 from pydantic import TypeAdapter, ValidationError
 
-from benchrep.assembly.config import load_yaml, normalize_config_components
 from benchrep.assembly.registries.builtins import register_builtins
 from benchrep.assembly.registries.core import (
     EVAL_EMBEDDING_METRICS,
@@ -44,8 +43,9 @@ from benchrep.gui.shared.fields import FieldPresentation, field_id
 from benchrep.gui.shared.forms import SectionSpec
 from benchrep.gui.shared.review import ReviewSession
 from benchrep.gui.shared.state import MISSING, WizardDraft
+from benchrep.gui.shared.draft_inputs import wizard_draft_inputs
 from benchrep.utils.workflow_overrides import EvaluationOverrides
-from benchrep.utils.workflow_utils import EvaluationConfigInput, route_config_input
+from benchrep.utils.workflow_utils import EvaluationConfigInput
 
 
 def prepare_evaluation_draft(
@@ -53,24 +53,14 @@ def prepare_evaluation_draft(
 ) -> WizardDraft:
     """Preserve supplied values and key presence without resolving an unfinished run."""
     register_builtins()
-    path, typed = route_config_input(config, EvaluationConfig)
-    data = (
-        load_yaml(path)
-        if path is not None
-        else typed.model_dump(mode="json", exclude_unset=True)
-        if typed is not None
-        else {}
+    data, supplied_sections = wizard_draft_inputs(
+        config,
+        EvaluationConfig,
+        overrides.config_components,
     )
-    if not isinstance(data, dict):
-        raise TypeError("Evaluation configuration must be a mapping.")
-    components = normalize_config_components(
-        schema=EvaluationConfig, config_components=overrides.config_components
-    )
-    data = deepcopy(data)
-    data.update(TypeAdapter(dict[str, Any]).dump_python(components, mode="json"))
     if config is None:
         data.setdefault("stage", "evaluation")
-    return WizardDraft(initial_data=data, supplied_sections=frozenset(components))
+    return WizardDraft(initial_data=data, supplied_sections=supplied_sections)
 
 
 def _value(data, *path):

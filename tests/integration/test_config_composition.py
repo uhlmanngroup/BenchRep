@@ -5,12 +5,17 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
-from benchrep.assembly.config import compose_effective_config
+from benchrep.assembly.config import compose_effective_config, update_config
 from benchrep.assembly.schemas import (
     EvaluationConfig,
     PredictionConfig,
     TrainingConfig,
+    LinearScheduleConfig,
+    MNISTDatasetConfig,
+    MNISTDatasetParams,
+    PredictionDataConfig,
 )
 from tests.fixtures.configs.configs import (
     make_evaluation_clustering_config,
@@ -409,3 +414,135 @@ def test_config_object_component_replaces_top_level_section(
     assert result.original_config_path is None
     assert result.original_config_raw is None
     assert result.composition_warnings == ()
+
+@pytest.mark.parametrize(
+    "checkpointing",
+    [{}, {"monitor": "losses/val/total_weighted_loss"}, {"monitor": None}],
+    ids=["omitted", "explicit-default-metric", "explicit-null"],
+)
+def test_update_config_preserves_checkpoint_monitor_presence(checkpointing):
+    """An unrelated trainer edit preserves exactly how the monitor was supplied."""
+    base = TrainingConfig.model_validate({
+        "overrides": {"model": {}, "datamodule": {}},
+        "checkpointing": checkpointing,
+    })
+
+    updated = update_config(base, {"trainer.max_epochs": 5})
+
+    assert updated.trainer.max_epochs == 5
+    assert updated.model_fields_set == {"overrides", "checkpointing", "trainer"}
+    assert updated.trainer.model_fields_set == {"max_epochs"}
+    assert updated.checkpointing.monitor == base.checkpointing.monitor
+    assert updated.checkpointing.model_fields_set == set(checkpointing)
+    assert "trainer" not in base.model_fields_set
+
+
+def test_update_config_preserves_presence_in_replacements_and_list_edits():
+    """A whole-section replacement owns its fields. A list edit affects one item."""
+    base = PredictionConfig.model_validate({
+        "source": {"training_manifest_path": "training.yaml"},
+        "data": {"batch_size": 32},
+        "transform_pipelines": [
+            {"steps": [{"name": "normalize"}, {"name": "normalize"}]},
+        ],
+    })
+
+    updated = update_config(base, {
+        "data": {"num_workers": 0},
+        "transform_pipelines.0.steps.1.random_apply": 1.0,
+    })
+
+    assert updated.data.num_workers == 0
+    assert updated.data.batch_size is None
+    assert updated.data.model_fields_set == {"num_workers"}
+
+    first, second = updated.transform_pipelines[0].steps
+    assert first.model_fields_set == {"name"}
+    assert second.model_fields_set == {"name", "random_apply"}
+    assert base.data.batch_size == 32
+    assert base.transform_pipelines[0].steps[1].model_fields_set == {"name"}
+
+
+@pytest.mark.parametrize("base_kind", ["typed", "yaml", "components-only"])
+def test_composition_preserves_base_and_replacement_field_presence(base_kind, tmp_path):
+    """Each composition path preserves explicit nulls and the selected dataset type."""
+    raw = {
+        "source": {"training_manifest_path": "training.yaml"},
+        "data": {"num_workers": 2},
+    }
+    typed = PredictionConfig.model_validate(raw)
+    components = {
+        "data": PredictionDataConfig(batch_size=None),
+        "dataset": MNISTDatasetConfig(params=MNISTDatasetParams(root=tmp_path)),
+    }
+
+    if base_kind == "typed":
+        base = typed
+    elif base_kind == "yaml":
+        base = tmp_path / "prediction.yaml"
+        base.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    else:
+        base = None
+        components["source"] = typed.source
+
+    effective = compose_effective_config(
+        schema=PredictionConfig,
+        config=base,
+        config_components=components,
+    ).effective_config
+
+    assert effective.model_fields_set == {"source", "data", "dataset"}
+    assert effective.source.model_fields_set == {"training_manifest_path"}
+    assert effective.data.model_fields_set == {"batch_size"}
+    assert effective.data.batch_size is None
+    assert effective.data.num_workers is None
+    assert isinstance(effective.dataset, MNISTDatasetConfig)
+    assert effective.dataset.model_fields_set == {"params"}
+    assert effective.dataset.params.model_fields_set == {"root"}
+
+
+def test_dataset_name_edit_preserves_omitted_params(tmp_path):
+    """Switching dataset class preserves the shared parameters' field presence."""
+    base = PredictionConfig.model_validate({
+        "source": {"training_manifest_path": "training.yaml"},
+        "dataset": MNISTDatasetConfig(params=MNISTDatasetParams(root=tmp_path)),
+    })
+
+    updated = update_config(base, {"dataset.name": "cifar10"})
+
+    assert updated.dataset.name == "cifar10"
+    assert updated.dataset.model_fields_set == {"name", "params"}
+    assert updated.dataset.params.model_fields_set == {"root"}
+
+
+def test_composition_preserves_omitted_monitor_on_training_config_subclass():
+    """A subclass used as a base keeps its checkpoint choices during composition."""
+    class ExperimentConfig(TrainingConfig):
+        pass
+
+    base = ExperimentConfig.model_validate({"overrides": {"model": {}, "datamodule": {}}})
+    effective = compose_effective_config(
+        schema=TrainingConfig,
+        config=base,
+        config_components={"run": make_training_run_config()},
+    ).effective_config
+
+    assert effective.model_fields_set == {"overrides", "run"}
+    assert "monitor" not in effective.checkpointing.model_fields_set
+
+
+def test_raw_loss_replacement_preserves_nested_typed_schedule_presence():
+    """The schedule's validator can reparse it while a whole loss term is replaced."""
+    base = TrainingConfig.model_validate({
+        "overrides": {"model": {}, "datamodule": {}},
+        "losses": {"reconstruction": [{"name": "mse"}]},
+    })
+    schedule = LinearScheduleConfig(name="linear", params={"end": 5})
+
+    updated = update_config(base, {
+        "losses.reconstruction.0": {"name": "mse", "weight_schedule": schedule},
+    })
+
+    result = updated.losses["reconstruction"][0].weight_schedule
+    assert result.model_fields_set == {"name", "params"}
+    assert result.params.model_fields_set == {"end"}
