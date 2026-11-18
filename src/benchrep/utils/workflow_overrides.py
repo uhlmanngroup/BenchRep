@@ -13,11 +13,10 @@ from benchrep.assembly.config import (
 )
 from benchrep.assembly.resolvers.utils import resolve_component_source
 from benchrep.interfaces.model_families import (
-    SupportedModel,
-    SupportedModelBaseClass,
     ModelFamilySpec,
     CanonicalModelFamilySpec,
     COMPOSITE_FAMILY,
+    YOYO_FAMILY,
 )
 
 
@@ -33,9 +32,9 @@ class TrainingOverrides:
         the supplied YAML or config object. With no base config, components
         and schema defaults must provide enough information for validation.
     model
-        Model instance or class compatible with the selected AE or VAE
-        entrypoint. Whole-model overrides are not supported for composite
-        models. None uses the configured model.
+        LightningModule instance or class. Required for YOYO, optional
+        for AE/VAE when compatible with the family, and unsupported
+        for composite.
     datamodule
         LightningDataModule instance or class. None uses the configured
         datamodule.
@@ -47,7 +46,7 @@ class TrainingOverrides:
     """
 
     config_components: Mapping[str, SupportedTrainingConfigComponent] | None = None
-    model: SupportedModel | SupportedModelBaseClass | None = None
+    model: L.LightningModule | type[L.LightningModule] | None = None
     datamodule: L.LightningDataModule | type[L.LightningDataModule] | None = None
 
     def validate_for(self, model_family: ModelFamilySpec) -> None:
@@ -67,9 +66,9 @@ class PredictionOverrides:
         the supplied YAML or config object. With no base config, components
         and schema defaults must provide enough information for validation.
     model
-        Model instance or class compatible with the selected AE or VAE
-        entrypoint. Whole-model overrides are not supported for composite
-        models. None follows the normal model reconstruction path.
+        LightningModule instance or class. Required for YOYO, optional
+        for AE/VAE when compatible with the family, and unsupported
+        for composite.
     datamodule
         LightningDataModule instance or class. None follows the normal
         datamodule construction path.
@@ -85,7 +84,7 @@ class PredictionOverrides:
     """
 
     config_components: Mapping[str, SupportedPredictionConfigComponent] | None = None
-    model: SupportedModel | SupportedModelBaseClass | None = None
+    model: L.LightningModule | type[L.LightningModule] | None = None
     datamodule: L.LightningDataModule | type[L.LightningDataModule] | None = None
     training_manifest_path: Path | str | None = None
 
@@ -116,21 +115,32 @@ class EvaluationOverrides:
 
 
 def _validate_model_override(
-    model: SupportedModel | SupportedModelBaseClass | None,
+    model: L.LightningModule | type[L.LightningModule] | None,
     model_family: ModelFamilySpec,
 ) -> None:
     if isinstance(model_family, CanonicalModelFamilySpec):
-        resolve_component_source(
-            model,
-            expected_base_class=model_family.model_base_class,
-            component_name="model",
-        )
+        expected_base_class = model_family.model_base_class
+
+    elif model_family == YOYO_FAMILY:
+        if model is None:
+            raise ValueError(
+                "YOYO requires a LightningModule class or instance "
+                "passed through `overrides.model`."
+            )
+        expected_base_class = L.LightningModule
+
     elif model_family == COMPOSITE_FAMILY:
         if model is not None:
             raise TypeError(
-                "Whole-model overrides are supported only for the canonical "
-                "`autoencoder` and `vae` model families; they are not supported "
-                "for `composite`."
+                "Whole-model overrides are unsupported for `composite`."
             )
+        return
+
     else:
         raise ValueError(f"Unsupported model family: {model_family!r}")
+
+    resolve_component_source(
+        model,
+        expected_base_class=expected_base_class,
+        component_name="model",
+    )

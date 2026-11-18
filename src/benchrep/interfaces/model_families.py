@@ -94,3 +94,7 @@ VAE_FAMILY = CanonicalModelFamilySpec(
 COMPOSITE_FAMILY = ModelFamilySpec(
     name="composite",
 )
+
+YOYO_FAMILY = ModelFamilySpec(
+    name="yoyo",
+)
