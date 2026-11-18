@@ -2386,6 +2386,9 @@ class TrainingTransformPipelineConfig(_TrainingConfigBaseModel):
     input name. Explicit names must reference image-valued declarations under
     `composite_model_declarations.expects`.
 
+    YOYO models require an explicit input sample field. An omitted output defaults
+    to that input.
+
     When `input` and `output` differ, BenchRep clones the input tensor before
     applying transforms so the source field remains unchanged. Existing output
     fields are overwritten.
@@ -2398,7 +2401,8 @@ class TrainingTransformPipelineConfig(_TrainingConfigBaseModel):
             "omit_behavior": (
                 "Canonical models use `x`. Composite models use the unique "
                 "declaration assigned role `sample_image`; omission raises "
-                "an error when multiple declarations have that role."
+                "an error when multiple declarations have that role. “YOYO "
+                "models require an explicit input."
             ),
             "null_behavior": "Equivalent to omission.",
         },
@@ -2460,9 +2464,9 @@ class TrainingConfig(_TrainingConfigBaseModel):
     execution graph through `composite_model_declarations`,
     `composite_model_components`, and `composite_model_assembly`.
 
-    Whole-model runtime overrides are supported only by the canonical
-    autoencoder and VAE entrypoints. Composite models must be assembled from
-    configuration.
+    The canonical autoencoder and VAE entrypoints accept optional family-compatible
+    overrides. Composite models are assembled from configuration only. YOYO models
+    require a whole-model runtime override.
 
     Use `benchrep.inspect_config(TrainingConfig)` to inspect this configuration.
     Nested configuration types shown in the output can be inspected the same
@@ -2529,8 +2533,9 @@ class TrainingConfig(_TrainingConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
             "notes": [
                 "Ignored when an external model object is supplied.",
-                "Whole-model overrides are supported only by the canonical autoencoder "
-                "and VAE entrypoints.",
+                "A whole-model override is optional for canonical autoencoders "
+                "and VAEs, unsupported for Composite, and required for "
+                "YOYO models.",
             ],
         },
     )

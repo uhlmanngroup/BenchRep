@@ -20,6 +20,7 @@ from benchrep.assembly.schemas import (
 from benchrep.interfaces.model_families import (
     CanonicalModelFamilySpec,
     ModelFamilySpec,
+    YOYO_FAMILY,
 )
 from benchrep.assembly.registries.core import MODELS
 from benchrep.assembly.registries.utils import normalize_name
@@ -89,22 +90,21 @@ def resolve_training_config(
     model_is_external = model_source != "config"
     datamodule_is_external = datamodule_source != "config"
 
+    if model_family == YOYO_FAMILY:
+        if not model_is_external:
+            raise ValueError("YOYO training requires a runtime model override.")
+
+    elif model_is_external and not isinstance(model_family, CanonicalModelFamilySpec):
+        raise ValueError(
+            f"Whole-model overrides are unsupported for `{model_family.name}`."
+        )
+
     resolved_transform_pipelines = _resolve_transform_pipelines(
         training_config.transform_pipelines,
         model_family=model_family,
         declarations_config=training_config.composite_model_declarations,
         datamodule_overridden=datamodule_is_external,
     )
-
-    if (
-        model_is_external
-        and not isinstance(model_family, CanonicalModelFamilySpec)
-    ):
-        raise ValueError(
-            "Whole-model overrides are supported only for the canonical "
-            "`autoencoder` and `vae` model families; they are not supported "
-            "for `composite`."
-        )
 
     resolved_datamodule = _resolve_datamodule_config(
         training_config.datamodule,
@@ -372,6 +372,24 @@ def _resolve_transform_pipelines(
 ) -> list[TrainingTransformPipelineConfig]:
     if datamodule_overridden or not config:
         return []
+
+    if model_family == YOYO_FAMILY:
+        resolved_pipelines = []
+
+        for index, pipeline in enumerate(config):
+            if pipeline.input is None:
+                raise ValueError(
+                    f"`transform_pipelines[{index}].input` is required for YOYO. "
+                    "Set it to the sample field this pipeline should transform."
+                )
+
+            resolved_pipelines.append(
+                pipeline.model_copy(
+                    update={"output": pipeline.output or pipeline.input}
+                )
+            )
+
+        return resolved_pipelines
 
     # For canonical models, only in-place augmentations are supported.
     if isinstance(model_family, CanonicalModelFamilySpec):
