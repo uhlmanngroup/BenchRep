@@ -113,6 +113,7 @@ def resolve_training_config(
 
     resolved_checkpointing = _resolve_checkpointing_config(
         training_config.checkpointing,
+        model_family=model_family,
     )
 
     resolved_model_override = resolve_runtime_override_config(
@@ -303,13 +304,19 @@ def _resolve_datamodule_config(
 
 def _resolve_checkpointing_config(
     config: TrainingCheckpointConfig,
+    *,
+    model_family: ModelFamilySpec,
 ) -> TrainingCheckpointConfig:
-    if config.monitor is not None or config.save_top_k == 0:
-        return config
+    """Resolve the family's checkpoint monitor and effective ranked checkpoint count."""
+    settings = config.model_dump(mode="python")
 
-    return config.model_copy(
-        update={"save_top_k": 0},
-    )
+    if model_family == YOYO_FAMILY and "monitor" not in config.model_fields_set:
+        settings["monitor"] = None
+
+    if settings["monitor"] is None:
+        settings["save_top_k"] = 0
+
+    return TrainingCheckpointConfig.model_validate(settings)
 
 
 def _resolve_training_model_name(

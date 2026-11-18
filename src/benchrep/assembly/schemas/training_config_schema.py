@@ -1302,6 +1302,10 @@ class TrainingCheckpointConfig(_TrainingConfigBaseModel):
     Checkpoint paths and ranking information are recorded in the training
     manifest for use by linked prediction runs.
 
+    When `monitor` is omitted, canonical autoencoders and VAEs, and Composite
+    models monitor `losses/val/total_weighted_loss`. YOYO models default
+    to last-only checkpointing. An explicit metric is used for any family.
+
     When `monitor` names a metric and `save_top_k` is nonzero, checkpoints
     are ranked using that metric. `mode`, `save_top_k`, and `filename`
     configure these ranked checkpoints.
@@ -1318,7 +1322,11 @@ class TrainingCheckpointConfig(_TrainingConfigBaseModel):
         min_length=1,
         description="Metric key used to rank checkpoints.",
         json_schema_extra={
-            "omit_behavior": "Monitors `losses/val/total_weighted_loss`.",
+            "omit_behavior": (
+                "Canonical autoencoders and VAEs, and Composite models monitor "
+                "`losses/val/total_weighted_loss`. YOYO models use last-only "
+                "checkpointing."
+            ),
             "null_behavior": (
                 "Disables metric-based ranking. BenchRep forces `save_top_k=0`, "
                 "ignores `mode` and `filename`, and requires `save_last=True`."
@@ -1347,7 +1355,7 @@ class TrainingCheckpointConfig(_TrainingConfigBaseModel):
         ge=-1,
         description="Number of metric-ranked checkpoints retained.",
         json_schema_extra={
-            "omit_behavior": "Retains the single best ranked checkpoint.",
+            "omit_behavior": "Retains the best checkpoint when metric ranking is enabled.",
             "null_behavior": "Not allowed.",
             "notes": [
                 "A positive value retains that many best checkpoints, `0` disables ranked "
