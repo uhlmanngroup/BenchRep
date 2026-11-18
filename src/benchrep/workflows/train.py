@@ -50,11 +50,11 @@ from benchrep.records import (
 )
 from benchrep.records.utils import now_isoformat
 from benchrep.interfaces.model_families import (
-    SupportedModel,
     ModelFamilySpec,
     AUTOENCODER_FAMILY,
     VAE_FAMILY,
     COMPOSITE_FAMILY,
+    YOYO_FAMILY,
 )
 from benchrep.assembly.config import (
     compose_effective_config,
@@ -93,8 +93,8 @@ class TrainingWorkflowResult:
         Path to this run's manifest, for provenance and downstream workflow inputs.
     status_report : TrainingStatusReport
         Overall status and workflow-specific outcomes or issues.
-    model : SupportedModel
-        Model instance used by the workflow.
+    model : L.LightningModule
+        Model instance used by the workflow. A supplied instance is trained in place.
     datamodule : L.LightningDataModule
         Datamodule instance used by the workflow.
     trainer : L.Trainer
@@ -111,7 +111,7 @@ class TrainingWorkflowResult:
     config: TrainingConfig
     run_spec: TrainingRunSpec
     run_context: RunContext
-    model: SupportedModel
+    model: L.LightningModule
     datamodule: L.LightningDataModule
     trainer: L.Trainer
     checkpoint_callback: ModelCheckpoint
@@ -140,9 +140,11 @@ def train_ae(
         configuration sections in `overrides`, together with schema defaults,
         must supply a valid training configuration.
     overrides : TrainingOverrides, optional
-        Whole configuration sections and supported runtime model/datamodule
-        classes or instances. Supplied sections replace the corresponding
-        sections in `config`.
+        Whole configuration sections and family-compatible runtime model or
+        datamodule overrides. Supplied sections replace the corresponding
+        sections in `config`. BenchRep constructs a supplied model class
+        using the configured constructor parameters. A supplied model
+        instance is trained in place from its current weights.
     runtime_callbacks : Sequence[Callback], optional
         Lightning callback instances appended after configured additional
         callbacks. Use this for callbacks requiring runtime objects, such as
@@ -206,9 +208,11 @@ def train_vae(
         configuration sections in `overrides`, together with schema defaults,
         must supply a valid training configuration.
     overrides : TrainingOverrides, optional
-        Whole configuration sections and supported runtime model/datamodule
-        classes or instances. Supplied sections replace the corresponding
-        sections in `config`.
+        Whole configuration sections and family-compatible runtime model or
+        datamodule overrides. Supplied sections replace the corresponding
+        sections in `config`. BenchRep constructs a supplied model class
+        using the configured constructor parameters. A supplied model
+        instance is trained in place from its current weights.
     runtime_callbacks : Sequence[Callback], optional
         Lightning callback instances appended after configured additional
         callbacks. Use this for callbacks requiring runtime objects, such as
@@ -307,6 +311,68 @@ def train_composite(
 
     return _train(
         model_family=COMPOSITE_FAMILY,
+        overrides=overrides,
+        config=config,
+        runtime_callbacks=runtime_callbacks,
+        capture_stdout=capture_stdout,
+    )
+
+
+def train_yoyo(
+        *,
+        config: TrainingConfigInput = None,
+        overrides: TrainingOverrides | None = None,
+        runtime_callbacks: Sequence[Callback] | None = None,
+        capture_stdout: bool = False,
+) -> TrainingWorkflowResult:
+    """Train a caller-supplied YOYO model and export checkpoints and run records.
+
+    Parameters
+    ----------
+    config : TrainingConfigInput, optional
+        Training YAML path or `TrainingConfig` object. If omitted, the
+        configuration sections in `overrides`, together with schema defaults,
+        must supply a valid training configuration.
+    overrides : TrainingOverrides
+        Supply a LightningModule class or instance through `overrides.model`.
+        BenchRep constructs a supplied class using the constructor parameters
+        in the training config. A supplied instance starts from its current
+        weights. Pass `overrides.datamodule` to use a runtime datamodule,
+        or configure the dataset and datamodule in `config`.
+    runtime_callbacks : Sequence[Callback], optional
+        Lightning callback instances appended after configured additional
+        callbacks. Use this for callbacks requiring runtime objects, such as
+        an Optuna trial. Callback class names are recorded before fitting;
+        the instances are not serialized for later reconstruction.
+    capture_stdout : bool, default=False
+        Also save stdout during the captured execution phase to the run's
+        log directory. Stderr is captured independently of this option;
+        both streams remain visible in the console.
+
+    Returns
+    -------
+    TrainingWorkflowResult
+        Resolved config, model, datamodule, trainer, callback references,
+        run paths, status report, and manifest path.
+
+    Raises
+    ------
+    RuntimeError
+        Post-training validation finalizes the run as failed, for example
+        when required checkpoint outputs are unavailable. Setup and execution
+        can also raise their own validation or runtime errors.
+
+    Notes
+    -----
+    Inspect `status_report` on the returned result, including
+    `interruption_signal` for a handled SIGINT or SIGTERM. Other execution
+    errors may propagate before final records are written.
+    """
+    overrides = overrides if overrides is not None else TrainingOverrides()
+    overrides.validate_for(YOYO_FAMILY)
+
+    return _train(
+        model_family=YOYO_FAMILY,
         overrides=overrides,
         config=config,
         runtime_callbacks=runtime_callbacks,
