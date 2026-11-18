@@ -1,0 +1,7 @@
+name: wandb
+params:
+  project: benchrep
+  name: 06_schedule_and_monitor_training
+  group: schedule-and-monitor-training
+  save_dir: outputs/06_schedule_and_monitor_training
+  log_model: false
