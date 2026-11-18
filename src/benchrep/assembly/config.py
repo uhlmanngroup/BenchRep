@@ -206,6 +206,7 @@ def compose_effective_config(
     external_datamodule: bool = False,
     training_manifest_path_overridden: bool = False,
     prediction_manifest_path_overridden: bool = False,
+    model_family_name: str | None = None,
 ) -> ConfigCompositionResult[PredictionConfig]: ...
 
 
@@ -231,6 +232,7 @@ def compose_effective_config(
     external_datamodule: bool = False,
     training_manifest_path_overridden: bool = False,
     prediction_manifest_path_overridden: bool = False,
+    model_family_name: str | None = None,
 ) -> ConfigCompositionResult[ConfigT]:
     """Compose a typed workflow config from a base and section overrides.
 
@@ -265,6 +267,8 @@ def compose_effective_config(
         Whether a training manifest path was supplied outside prediction config.
     prediction_manifest_path_overridden
         Whether a prediction manifest path was supplied outside evaluation config.
+    model_family_name
+        Prediction family name passed to schema validation.
 
     Returns
     -------
@@ -367,6 +371,7 @@ def compose_effective_config(
         external_datamodule=external_datamodule,
         training_manifest_path_overridden=training_manifest_path_overridden,
         prediction_manifest_path_overridden=prediction_manifest_path_overridden,
+        model_family_name=model_family_name,
     )
 
     if full_config_object is not None:
@@ -848,6 +853,7 @@ def _parse_effective_config(
     external_datamodule: bool,
     training_manifest_path_overridden: bool,
     prediction_manifest_path_overridden: bool,
+    model_family_name: str | None,
 ) -> ConfigT:
     if schema is TrainingConfig:
         return parse_training_config(
@@ -864,6 +870,7 @@ def _parse_effective_config(
             training_manifest_path_overridden=(
                 training_manifest_path_overridden
             ),
+            model_family_name=model_family_name,
         )
 
     if schema is EvaluationConfig:

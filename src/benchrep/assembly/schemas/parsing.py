@@ -56,6 +56,7 @@ def parse_prediction_config(
     model_overridden: bool = False,
     datamodule_overridden: bool = False,
     training_manifest_path_overridden: bool = False,
+    model_family_name: str | None = None,
 ) -> PredictionConfig:
     """Validate a raw prediction configuration with workflow-override context.
 
@@ -73,6 +74,9 @@ def parse_prediction_config(
         Whether a training-manifest path is supplied through
         `PredictionOverrides.training_manifest_path`. Allows omission of
         `source.training_manifest_path` from the configuration.
+    model_family_name:
+        Prediction family selected by the entrypoint. The YOYO family permits
+        omission of the training manifest.
 
     Returns
     -------
@@ -95,6 +99,7 @@ def parse_prediction_config(
             "training_manifest_path_overridden": (
                 training_manifest_path_overridden
             ),
+            "model_family_name": model_family_name,
         },
     )
 

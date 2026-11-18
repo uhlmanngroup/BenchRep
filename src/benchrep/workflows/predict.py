@@ -340,6 +340,7 @@ def _predict(
     # Compose, parse, and resolve config
     config_composition_result = compose_effective_config(
         schema=PredictionConfig,
+        model_family_name=model_family.name,
         config=config,
         config_components=config_components,
         external_model=model_is_external,

@@ -60,9 +60,8 @@ class PredictionSourceConfig(_PredictionConfigBaseModel):
 
     The checkpoint may be selected through the training manifest, by filename
     within the recorded training checkpoint directory, or through an absolute
-    path. An absolute checkpoint path may point outside the training run, but
-    the training manifest remains required and the selected checkpoint must be
-    compatible with the reconstructed or externally supplied model.
+    path. An absolute checkpoint path may point outside the training run.
+    YOYO models may also run without a linked training manifest.
     """
 
     training_manifest_path: PathInput | None = Field(
@@ -75,8 +74,10 @@ class PredictionSourceConfig(_PredictionConfigBaseModel):
         ),
         json_schema_extra={
             "omit_behavior": (
-                "Must be supplied through `PredictionOverrides.training_manifest_path`, "
-                "passed as `overrides` to the prediction entrypoint."
+                "Canonical autoencoders and VAEs, and Composite models require "
+                "`PredictionOverrides.training_manifest_path` when this field "
+                "is omitted. For YOYO models, omitting both selects standalone "
+                "prediction."
             ),
             "null_behavior": "Equivalent to omission.",
             "notes": [
@@ -1051,12 +1052,16 @@ class PredictionExportConfig(_PredictionConfigBaseModel):
 class PredictionConfig(_PredictionConfigBaseModel):
     """Complete configuration for a BenchRep prediction workflow.
 
-    Every prediction run must be linked through its training manifest to a
-    training run with an accepted status. BenchRep uses the manifest and
-    recorded resolved training config to locate the selected checkpoint,
-    reconstruct config-built components when possible, and inherit applicable
-    settings. Requirements for prediction data configuration depend on whether
-    an external datamodule is supplied at runtime.
+    Canonical autoencoders and VAEs require a linked training manifest, as
+    do Composite models. YOYO models require a runtime model and may use a
+    linked manifest or run standalone.
+
+    For linked runs, BenchRep uses the manifest to locate the selected
+    checkpoint and the recorded training configuration to reconstruct
+    config-built components when possible and inherit applicable settings.
+    A runtime datamodule supplies its own prediction data. Otherwise,
+    BenchRep needs a prediction dataset specified in the configuration
+    or inherited from training.
 
     Use `benchrep.inspect_config(PredictionConfig)` to inspect this configuration.
     Nested configuration types shown in the output can be inspected the same
@@ -1099,9 +1104,9 @@ class PredictionConfig(_PredictionConfigBaseModel):
         description="Training-manifest and checkpoint-selection settings.",
         json_schema_extra={
             "omit_behavior": (
-                "Uses the defaults defined by `PredictionSourceConfig`. Because "
-                "its default does not provide a training-manifest path, that path "
-                "must instead be supplied through the prediction entrypoint."
+                "Uses the defaults defined by `PredictionSourceConfig`. "
+                "A training-manifest override links the run to training. "
+                "YOYO models may also run standalone."
             ),
             "null_behavior": "Not allowed.",
         },
@@ -1208,6 +1213,7 @@ class PredictionConfig(_PredictionConfigBaseModel):
         if (
             self.source.training_manifest_path is None
             and not training_manifest_path_overridden
+            and ctx.get("model_family_name") != "yoyo"
         ):
             raise ValueError(
                 "`source.training_manifest_path` is required unless "
