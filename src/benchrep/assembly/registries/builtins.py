@@ -132,6 +132,7 @@ def register_builtins() -> None:
             MAEReconstructionLoss,
             GaussianKLDivergenceLoss,
             TripletMarginContrastiveLoss,
+            NTXentContrastiveLoss,
             CrossEntropyClassificationLoss,
             MSERegressionLoss,
         )
@@ -492,6 +493,17 @@ def register_builtins() -> None:
             ),
             "triplet",
             "triplet_margin_loss",
+        )
+        CONTRASTIVE_LOSSES._register_builtin(
+            "nt_xent",
+            LossComponent(
+                component=NTXentContrastiveLoss,
+                runtime_inputs=(
+                    LossTensorPort("view_a", ("embedding_vector", "projection_vector")),
+                    LossTensorPort("view_b", ("embedding_vector", "projection_vector")),
+                ),
+            ),
+            "ntxent",
         )
 
         CLASSIFICATION_LOSSES._register_builtin(

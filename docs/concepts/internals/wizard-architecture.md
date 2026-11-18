@@ -1,1 +1,0 @@
-# How the wizard works
