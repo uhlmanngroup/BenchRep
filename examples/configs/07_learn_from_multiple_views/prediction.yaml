@@ -1,0 +1,83 @@
+stage: prediction
+
+source:
+  checkpoint: best
+
+dataset:
+  name: stl10
+  params:
+    root: data/stl10
+    split: train
+    download: false
+
+# Evaluate a fixed view of each labeled image. Keep a second embedding for
+# comparing that image with an independently augmented version.
+transform_pipelines:
+  - input: x
+    output: view_a
+    steps:
+      - name: resize
+        params:
+          size: [96, 96]
+      - name: to_dtype
+        params:
+          dtype: float32
+          scale: true
+      - name: normalize
+        params:
+          mean: [0.485, 0.456, 0.406]
+          std: [0.229, 0.224, 0.225]
+  - input: x
+    output: view_b
+    steps:
+      - name: random_resized_crop
+        params:
+          size: [96, 96]
+          scale: [0.2, 1.0]
+          ratio: [0.75, 1.3333333333333333]
+      - name: random_horizontal_flip
+        params:
+          p: 0.5
+      - name: color_jitter
+        random_apply: 0.8
+        params:
+          brightness: 0.4
+          contrast: 0.4
+          saturation: 0.4
+          hue: 0.1
+      - name: random_grayscale
+        params:
+          p: 0.2
+      - name: gaussian_blur
+        random_apply: 0.5
+        params:
+          kernel_size: 7
+          sigma: [0.1, 2.0]
+      - name: to_dtype
+        params:
+          dtype: float32
+          scale: true
+      - name: normalize
+        params:
+          mean: [0.485, 0.456, 0.406]
+          std: [0.229, 0.224, 0.225]
+
+data:
+  batch_size: 128
+  num_workers: 0
+
+inference:
+  seed: 137
+  seed_workers: true
+
+exports:
+  anndata:
+    enabled: true
+    mode: custom
+    keys:
+      - embedding_a
+      - embedding_b
+    primary_key: embedding_a
+  # The encoder and projector produce vectors. Both image views are inputs.
+  reconstructions:
+    enabled: false

@@ -1,0 +1,126 @@
+stage: evaluation
+
+run:
+  output_root: null
+  run_name_stem: stl10_embedding_evaluation
+
+# AnnData.X contains the fixed-view encoder embedding, before the projection head.
+reductions:
+  pca:
+    enabled: true
+    params:
+      n_components: 50
+      key_added: X_pca
+      random_state: 137
+  umap:
+    enabled: true
+    params:
+      use_rep: X
+      metric: cosine
+      n_neighbors: 20
+      min_dist: 0.2
+      key_added: X_umap
+      neighbors_key: umap_neighbors
+      random_state: 137
+  tsne:
+    enabled: true
+    params:
+      use_rep: X_pca
+      n_pcs: 50
+      perplexity: 30.0
+      learning_rate: 200.0
+      key_added: X_tsne
+      random_state: 137
+
+clustering:
+  kmeans:
+    enabled: true
+    params:
+      n_clusters: 10
+      n_init: 10
+      key_added: kmeans
+      random_state: 137
+  leiden:
+    enabled: true
+    params:
+      use_rep: X
+      metric: cosine
+      n_neighbors: 20
+      resolution: 1.0
+      key_added: leiden
+      neighbors_key: leiden_neighbors
+      leiden_kwargs:
+        flavor: igraph
+        n_iterations: 2
+        directed: false
+      random_state: 137
+  hdbscan:
+    enabled: false
+
+metrics:
+  embedding:
+    enabled: true
+    selected:
+      - standard_deviation
+      - quantiles
+  clustering:
+    internal:
+      enabled: true
+      selected:
+        - silhouette
+        - calinski_harabasz
+        - davies_bouldin
+    external:
+      enabled: true
+      label_key: label
+      selected:
+        - adjusted_mutual_info
+        - adjusted_rand_index
+  predictability:
+    enabled: true
+    targets:
+      label:
+        task: classification
+        selected:
+          - dummy
+          - linear
+          - knn
+          - random_forest
+        cv:
+          method: stratified_kfold
+          n_splits: 5
+          shuffle: true
+          random_state: 137
+          scoring: balanced_accuracy
+        params:
+          dummy:
+            strategy: most_frequent
+          linear:
+            model: logistic_regression
+            standardize: true
+            max_iter: 2000
+          knn:
+            standardize: false
+            n_neighbors: 15
+            weights: distance
+            metric: cosine
+          random_forest:
+            n_estimators: 300
+            max_features: sqrt
+            min_samples_leaf: 2
+            random_state: 137
+            n_jobs: 2
+  reconstruction:
+    enabled: false
+
+plots:
+  enabled: true
+  params:
+    color_by:
+      - key: label
+        kind: categorical
+        cmap: tab10
+    dpi: 200
+    formats:
+      - png
+      - svg

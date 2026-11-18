@@ -1,0 +1,6 @@
+name: wandb
+params:
+  project: benchrep
+  group: learn-from-multiple-views
+  save_dir: outputs/07_learn_from_multiple_views
+  log_model: false
