@@ -231,6 +231,21 @@ def register_builtins() -> None:
             v2.GaussianNoise,
             "gaussiannoise",
         )
+        TRANSFORMS._register_builtin(
+            "random_resized_crop",
+            v2.RandomResizedCrop,
+            "randomresizedcrop",
+        )
+        TRANSFORMS._register_builtin(
+            "color_jitter",
+            v2.ColorJitter,
+            "colorjitter",
+        )
+        TRANSFORMS._register_builtin(
+            "random_grayscale",
+            v2.RandomGrayscale,
+            "randomgrayscale",
+        )
 
         # --- Architecture and training ---
         ENCODERS._register_builtin(
