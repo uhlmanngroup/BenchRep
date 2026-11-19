@@ -155,24 +155,30 @@ class _TorchvisionClassificationDataset(BaseDataset):
 class MNISTDataset(_TorchvisionClassificationDataset):
     """Adapt torchvision MNIST to the BenchRep sample contract.
 
-    Each item contains the image under ``"x"``, the digit class under
-    ``"label"``, and the split-local integer index under ``"sample_id"``.
+    Each sample is a dictionary containing a grayscale image under ``"x"``,
+    its digit label (0–9) under ``"label"``, and its index within the selected
+    split under ``"sample_id"``. The image tensor has shape ``(1, 28, 28)``
+    in channels-first order, dtype ``torch.uint8``, and values in ``[0, 255]``.
 
     Parameters
     ----------
     root:
         Directory containing or receiving the MNIST files.
     split:
-        Dataset split to load. ``"train"`` selects the training set and
-        ``"test"`` selects the test set.
+        Dataset split to load: ``"train"`` contains 60,000 labeled images;
+        ``"test"`` contains 10,000 labeled images.
     download:
         Whether torchvision should download the dataset when it is unavailable
         under ``root``.
 
     Notes
     -----
-    Images are converted from PIL images to tensor images without scaling their
-    original uint8 values. Configured transforms are applied later.
+    Configured transform pipelines run afterward and may change the image's
+    shape, dtype, and value range. Set the model's ``input_shape`` to match
+    the transformed image, excluding the batch dimension.
+
+    Split sizes refer to the original dataset, before any datamodule
+    partitioning into training and validation subsets.
     """
 
     def __init__(
@@ -194,24 +200,30 @@ class MNISTDataset(_TorchvisionClassificationDataset):
 class CIFAR10Dataset(_TorchvisionClassificationDataset):
     """Adapt torchvision CIFAR-10 to the BenchRep sample contract.
 
-    Each item contains the RGB image under ``"x"``, the object class under
-    ``"label"``, and the split-local integer index under ``"sample_id"``.
+    Each sample is a dictionary containing an RGB image under ``"x"``,
+    its class index (0–9) under ``"label"``, and its index within the selected
+    split under ``"sample_id"``. The image tensor has shape ``(3, 32, 32)``
+    in channels-first order, dtype ``torch.uint8``, and values in ``[0, 255]``.
 
     Parameters
     ----------
     root:
         Directory containing or receiving the CIFAR-10 files.
     split:
-        Dataset split to load. ``"train"`` selects the training set and
-        ``"test"`` selects the test set.
+        Dataset split to load: ``"train"`` contains 50,000 labeled images;
+        ``"test"`` contains 10,000 labeled images. Both cover 10 classes.
     download:
         Whether torchvision should download the dataset when it is unavailable
         under ``root``.
 
     Notes
     -----
-    Images are converted from PIL images to tensor images without scaling their
-    original uint8 values. Configured transforms are applied later.
+    Configured transform pipelines run afterward and may change the image's
+    shape, dtype, and value range. Set the model's ``input_shape`` to match
+    the transformed image, excluding the batch dimension.
+
+    Split sizes refer to the original dataset, before any datamodule
+    partitioning into training and validation subsets.
     """
 
     def __init__(
@@ -233,27 +245,34 @@ class CIFAR10Dataset(_TorchvisionClassificationDataset):
 class STL10Dataset(_TorchvisionClassificationDataset):
     """Adapt torchvision STL-10 to the BenchRep sample contract.
 
-    Each item contains the RGB image under ``"x"``, the object class under
-    ``"label"``, and the split-local integer index under ``"sample_id"``.
-    Samples from the unlabeled set use ``-1`` as their label.
+    Each sample is a dictionary containing an RGB image under ``"x"``,
+    its class index under ``"label"``, and its index within the selected
+    split under ``"sample_id"``. The image tensor has shape ``(3, 96, 96)``
+    in channels-first order, dtype ``torch.uint8``, and values in ``[0, 255]``.
+    Labeled samples use class indices 0–9; unlabeled samples use ``-1``.
 
     Parameters
     ----------
     root:
         Directory containing or receiving the STL-10 files.
     split:
-        Dataset split to load. ``"train"`` and ``"test"`` select the labeled
-        splits, ``"unlabeled"`` selects the unlabeled set, and
-        ``"train+unlabeled"`` combines the training and unlabeled sets.
+        Dataset split to load: ``"train"`` contains 5,000 labeled images;
+        ``"test"`` contains 8,000 labeled images; ``"unlabeled"`` contains
+        100,000 unlabeled images; ``"train+unlabeled"`` combines the training
+        and unlabeled splits into 105,000 images.
     download:
         Whether torchvision should download the dataset when it is unavailable
         under ``root``.
 
     Notes
     -----
-    Images are converted from PIL images to tensor images without scaling their
-    original uint8 values. Configured transforms are applied later. Unlabeled
-    samples retain torchvision's ``-1`` target.
+    Configured transform pipelines run afterward and may change the image's
+    shape, dtype, and value range. Set the model's ``input_shape`` to match
+    the transformed image, excluding the batch dimension.
+
+    Split sizes refer to the original dataset, before any datamodule
+    partitioning into training and validation subsets. The unlabeled split
+    comes from a broader distribution than the 10 labeled classes.
     """
 
     def __init__(

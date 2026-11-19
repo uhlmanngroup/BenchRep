@@ -1949,7 +1949,11 @@ class MNISTDatasetParams(_TrainingConfigBaseModel):
 
     split: Literal["train", "test"] = Field(
         default="train",
-        description="MNIST split to load.",
+        description=(
+            "MNIST split to load: `train` contains 60,000 labeled images; "
+            "`test` contains 10,000 labeled images. Counts are before "
+            "any datamodule partitioning."
+        ),
         json_schema_extra={
             "omit_behavior": "Uses the training split.",
             "null_behavior": "Not allowed.",
@@ -2003,7 +2007,11 @@ class CIFAR10DatasetParams(_TrainingConfigBaseModel):
 
     split: Literal["train", "test"] = Field(
         default="train",
-        description="CIFAR-10 split to load.",
+        description=(
+            "CIFAR-10 split to load: `train` contains 50,000 labeled images; "
+            "`test` contains 10,000 labeled images. Both cover 10 classes. "
+            "Counts are before any datamodule partitioning."
+        ),
         json_schema_extra={
             "omit_behavior": "Uses the training split.",
             "null_behavior": "Not allowed.",
@@ -2066,8 +2074,12 @@ class STL10DatasetParams(_TrainingConfigBaseModel):
     ] = Field(
         default="train",
         description=(
-            "STL-10 split to load. Unlabeled samples have the label `-1`; "
-            "`train+unlabeled` combines the training and unlabeled splits."
+            "STL-10 split to load: `train` contains 5,000 labeled images; "
+            "`test` contains 8,000 labeled images; `unlabeled` contains "
+            "100,000 unlabeled images; `train+unlabeled` combines the "
+            "training and unlabeled splits into 105,000 images. Unlabeled "
+            "samples have label `-1`. Counts are before any datamodule "
+            "partitioning."
         ),
         json_schema_extra={
             "omit_behavior": "Uses the training split.",
