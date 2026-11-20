@@ -34,7 +34,7 @@ Prediction requires a training manifest even when you supply a model override. E
 
 ## Model families
 
-Training and prediction support 3 model families: autoencoder and VAE, collectively called **canonical models**, and composite. Each family defines how a model is constructed and which interfaces its components and runtime overrides must satisfy.
+Training and prediction support 3 model families. Autoencoder and VAE are the **canonical families**. Composite is the non-canonical family. Each family defines how a model is constructed and which interfaces its components and runtime overrides must satisfy.
 
 <figure>
   <a class="br-image-light" href="../../assets/model-families-concise-light.svg">

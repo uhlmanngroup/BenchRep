@@ -10,6 +10,7 @@ extra_css:
 - stylesheets/home.css
 - stylesheets/schemas.css
 - stylesheets/reference-navigation.css
+- stylesheets/codebase-map.css
 extra_javascript:
 - javascripts/reference-navigation.js
 theme:
@@ -52,12 +53,12 @@ nav:
   - Configure workflows: guides/configure-workflows/index.md
   - Register external components: guides/register-components.md
   - Build a composite model: guides/multitask-composite.md
+  - Learn from multiple views: guides/learn-from-multiple-views.md
+  - Schedule and monitor training: guides/schedule-and-monitor-training.md
+  - Bring your own model or datamodule: guides/bring-your-own-model-or-datamodule.md
   - Evaluate external outputs: guides/standalone-evaluation.md
-  - Assess predictability: guides/predictability.md
-  - Balance learning objectives: guides/balance-objectives.md
-  - Control prediction exports: guides/prediction-exports.md
-  - Use custom models and datamodules: guides/runtime-implementations.md
   - Tune with Optuna: guides/optuna.md
+  - Trace an evaluation result: guides/trace-an-evaluation-result.md
 - Concepts & design:
   - concepts/index.md
   - Workflows & configuration:
@@ -66,6 +67,8 @@ nav:
     - Configuration semantics: concepts/workflows/configuration.md
     - Python overrides: concepts/workflows/overrides.md
     - Configuration wizards: concepts/workflows/wizards.md
+    - Workflow implementation: concepts/workflows/workflow-anatomy.md
+    - Wizard implementation: concepts/workflows/wizard-architecture.md
   - Data:
     - concepts/data/index.md
     - Datasets and sample structure: concepts/data/datasets.md
@@ -107,11 +110,7 @@ nav:
     - Registries and discovery: concepts/extensibility/discovery.md
     - Registering components: concepts/extensibility/registration.md
     - External models and datamodules: concepts/extensibility/runtime-implementations.md
-  - Execution internals:
-    - concepts/internals/index.md
-    - Anatomy of a workflow: concepts/internals/workflow-anatomy.md
-    - How the wizard works: concepts/internals/wizard-architecture.md
-    - Codebase map: concepts/internals/codebase.md
+  - Codebase map: concepts/codebase-map.md
 - Reference:
   - reference/index.md
   - Workflow entrypoints: reference/workflows.md
@@ -141,6 +140,12 @@ markdown_extensions:
 - pymdownx.details
 - pymdownx.highlight
 - pymdownx.superfences
+- pymdownx.tabbed:
+    alternate_style: true
+- pymdownx.emoji:
+    emoji_generator: !!python/name:zensical.extensions.emoji.to_svg
+    emoji_index: !!python/name:zensical.extensions.emoji.twemoji
+- attr_list
 plugins:
   - mkdocstrings:
       custom_templates: docs_templates

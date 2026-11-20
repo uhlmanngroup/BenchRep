@@ -32,6 +32,12 @@ These modules compute raw losses. Weighting and scheduling are handled separatel
       members:
         - forward
 
+::: benchrep.architecture.losses.contrastive.NTXentContrastiveLoss
+    options:
+      heading_level: 3
+      members:
+        - forward
+
 ## Classification
 
 ::: benchrep.architecture.losses.classification.CrossEntropyClassificationLoss

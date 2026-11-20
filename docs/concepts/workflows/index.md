@@ -8,5 +8,7 @@ These pages explain how those inputs fit together and which rules govern their i
 - **[Configuration semantics](configuration.md):** how fields, defaults, component names, and paths become an executable configuration.
 - **[Python overrides](overrides.md):** reuse a base experiment while replacing sections, connecting runs, or supplying runtime implementations.
 - **[Configuration wizards](wizards.md):** edit and inspect a configuration interactively, understand its validation, and continue execution in Python.
+- **[Workflow implementation](workflow-anatomy.md):** follow a configuration through resolution, construction, execution, and run records.
+- **[Wizard implementation](wizard-architecture.md):** how the editor preserves the draft and checks exactly what you save.
 
-For runnable examples of the different configuration routes, see [Configure workflows](../../guides/configure-workflows/index.md). For the internal sequence of resolvers, builders, and execution, see [Anatomy of a workflow](../internals/workflow-anatomy.md).
+For runnable examples of the different configuration routes, see [Configure workflows](../../guides/configure-workflows/index.md).

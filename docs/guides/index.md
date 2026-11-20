@@ -11,9 +11,9 @@ Run a first workflow chain, then explore a specific task. Each tutorial focuses 
 - [Configure workflows](configure-workflows/index.md) through YAML, Python config objects, overrides, or the browser wizard.
 - [Register external components](register-components.md) and select them in a workflow config.
 - [Build a composite model](multitask-composite.md).
-- [Evaluate external outputs](standalone-evaluation.md).
-- [Assess predictability](predictability.md).
-- [Balance learning objectives](balance-objectives.md).
-- [Control prediction exports](prediction-exports.md).
-- [Use custom models and datamodules](runtime-implementations.md).
+- [Learn from multiple views](learn-from-multiple-views.md) and compare representations learned from random or pretrained initialization, with guidance for naturally paired images.
+- [Schedule and monitor training](schedule-and-monitor-training.md) with loss-weight and learning-rate schedules, gradient norms, and experiment tracking.
+- [Bring your own model or datamodule](bring-your-own-model-or-datamodule.md), including a model initialized with pretrained weights.
+- [Evaluate external outputs](standalone-evaluation.md) and probe what their embeddings can predict.
 - [Tune with Optuna](optuna.md).
+- [Trace an evaluation result](trace-an-evaluation-result.md) through linked manifests, status reports, and runtime environment records.

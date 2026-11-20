@@ -27,6 +27,24 @@
   --br-note-soft: #287d7208;
   --br-tip: #886617;
   --br-tip-soft: #88661708;
+  --br-info: #396e8c;
+  --br-info-soft: #396e8c08;
+  --br-question: #78548e;
+  --br-question-soft: #78548e08;
+  --br-warning: #a05b21;
+  --br-warning-soft: #a05b2108;
+  --br-success: #3e7858;
+  --br-success-soft: #3e785808;
+  --br-failure: #a24761;
+  --br-failure-soft: #a2476108;
+  --br-danger: #a13742;
+  --br-danger-soft: #a1374208;
+  --br-bug: #974a75;
+  --br-bug-soft: #974a7508;
+  --br-example: #7456a1;
+  --br-example-soft: #7456a108;
+  --br-quote: #6b6575;
+  --br-quote-soft: #6b657508;
   --br-header-bg: #f8f7fa;
   --br-header-text: #332b40;
   --br-header-muted: #6a6174;
@@ -62,6 +80,24 @@
   --br-note-soft: #8bcbbd08;
   --br-tip: #d8bb79;
   --br-tip-soft: #d8bb7908;
+  --br-info: #9fc6dd;
+  --br-info-soft: #9fc6dd08;
+  --br-question: #c8adda;
+  --br-question-soft: #c8adda08;
+  --br-warning: #e3ad76;
+  --br-warning-soft: #e3ad7608;
+  --br-success: #9bc6a9;
+  --br-success-soft: #9bc6a908;
+  --br-failure: #de9dae;
+  --br-failure-soft: #de9dae08;
+  --br-danger: #ec929e;
+  --br-danger-soft: #ec929e08;
+  --br-bug: #d7a0be;
+  --br-bug-soft: #d7a0be08;
+  --br-example: #baa3dd;
+  --br-example-soft: #baa3dd08;
+  --br-quote: #ada7b8;
+  --br-quote-soft: #ada7b808;
   --br-header-bg: #16141b;
   --br-header-text: #f0eaf7;
   --br-header-muted: #b1a7c0;
@@ -265,9 +301,17 @@
   font-style: normal;
   text-align: start;
 }
-.br-image-dark { display: none; }
-[data-md-color-scheme="slate"] .br-image-light { display: none; }
-[data-md-color-scheme="slate"] .br-image-dark { display: block; }
+.md-typeset .br-image-dark {
+  display: none;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .br-image-light {
+  display: none;
+}
+
+[data-md-color-scheme="slate"] .md-typeset .br-image-dark {
+  display: block;
+}
 
 /* Subdued admonitions retain their familiar icons and semantic colors. */
 .md-typeset :is(.admonition, details) { border-radius: 0.4rem; box-shadow: none; }
@@ -292,6 +336,69 @@
 }
 .md-typeset :is(.admonition.tip > .admonition-title, details.tip > summary)::before {
   background-color: var(--br-tip);
+}
+
+.md-typeset :is(.admonition.info, details.info) {
+  --br-callout-color: var(--br-info);
+  --br-callout-soft: var(--br-info-soft);
+}
+
+.md-typeset :is(.admonition.question, details.question) {
+  --br-callout-color: var(--br-question);
+  --br-callout-soft: var(--br-question-soft);
+}
+
+.md-typeset :is(.admonition.warning, details.warning) {
+  --br-callout-color: var(--br-warning);
+  --br-callout-soft: var(--br-warning-soft);
+}
+
+.md-typeset :is(.admonition.success, details.success) {
+  --br-callout-color: var(--br-success);
+  --br-callout-soft: var(--br-success-soft);
+}
+
+.md-typeset :is(.admonition.failure, details.failure) {
+  --br-callout-color: var(--br-failure);
+  --br-callout-soft: var(--br-failure-soft);
+}
+
+.md-typeset :is(.admonition.danger, details.danger) {
+  --br-callout-color: var(--br-danger);
+  --br-callout-soft: var(--br-danger-soft);
+}
+
+.md-typeset :is(.admonition.bug, details.bug) {
+  --br-callout-color: var(--br-bug);
+  --br-callout-soft: var(--br-bug-soft);
+}
+
+.md-typeset :is(.admonition.example, details.example) {
+  --br-callout-color: var(--br-example);
+  --br-callout-soft: var(--br-example-soft);
+}
+
+.md-typeset :is(.admonition.quote, details.quote) {
+  --br-callout-color: var(--br-quote);
+  --br-callout-soft: var(--br-quote-soft);
+}
+
+.md-typeset :is(.admonition, details):is(.info, .question, .warning, .success, .failure, .danger, .bug, .example, .quote) {
+  border-color: var(--br-callout-color);
+  border-inline-start-width: 3px;
+  background: var(--br-callout-soft);
+}
+
+.md-typeset :is(.admonition, details):is(.info, .question, .warning, .success, .failure, .danger, .bug, .example, .quote) > :is(.admonition-title, summary) {
+  background: var(--br-callout-soft);
+}
+
+.md-typeset :is(.admonition, details):is(.info, .question, .warning, .success, .failure, .danger, .bug, .example, .quote) > :is(.admonition-title, summary)::before {
+  background-color: var(--br-callout-color);
+}
+
+.md-typeset details:is(.info, .question, .warning, .success, .failure, .danger, .bug, .example, .quote) > summary::after {
+  background-color: var(--br-callout-color);
 }
 
 .md-footer,

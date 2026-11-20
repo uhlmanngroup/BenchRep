@@ -42,5 +42,5 @@ if wizard_result is not None:
     options:
       heading_level: 3
 
-!!! note "Authored and resolved configs"
+!!! tip "Authored and resolved configs"
     Use [`config`][benchrep.gui.shared.results.ConfiguredWorkflow] or the saved authored YAML for subsequent runs. [`resolved_config`][benchrep.gui.shared.results.ConfiguredWorkflow] records the settings derived during review; those settings may depend on the current environment or upstream artifacts. A new workflow resolves its inputs again.

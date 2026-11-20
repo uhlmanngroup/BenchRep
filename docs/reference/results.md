@@ -2,7 +2,8 @@
 
 Each [workflow entrypoint](workflows.md) returns a result containing its resolved config, run context, status report, and manifest path, together with stage-specific objects and outputs. These are returned objects to inspect; you normally do not construct them yourself.
 
-A returned result is not a guarantee that every requested operation succeeded. Inspect `status_report` for warnings, interruptions, and incomplete exports. Errors raised before a result can be assembled still propagate to the caller.
+!!! warning "Check the status report"
+    A returned result is not a guarantee that every requested operation succeeded. Inspect `status_report` for warnings, interruptions, and incomplete exports. Errors raised before a result can be assembled still propagate to the caller.
 
 ## Workflow results
 

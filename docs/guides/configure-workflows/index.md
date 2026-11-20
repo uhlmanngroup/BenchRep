@@ -48,7 +48,7 @@ from benchrep import train_vae
 training_result = train_vae(config=training_yaml)
 ```
 
-!!! note "Encoder output and latent dimensions"
+??? note "Encoder output and latent dimensions"
     Keep `encoder.params.output_dim` at `32`. The variational head maps those 32 features to the mean and log variance of the 64-dimensional latent distribution. BenchRep sets the decoder input dimension to `64` automatically.
 
 For the complete YAML-based chain with its original 32-dimensional latent space, run:
@@ -57,18 +57,19 @@ For the complete YAML-based chain with its original 32-dimensional latent space,
 python -m benchrep.examples.usage.01_yaml_pipeline
 ```
 
-[View the script](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/01_yaml_pipeline.py).
+[:material-script-text-outline: View the script](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/01_yaml_pipeline.py).
 
 ## Python config objects
 
 [`load_example_config()`][benchrep.examples.load_example_config] reads a packaged YAML into its workflow config class. Use [`update_config()`][benchrep.update_config] to replace individual fields and return a validated copy:
 
 ```python
-from benchrep import train_vae, update_config
+from benchrep import TrainingConfigContext, train_vae, update_config
 from benchrep.examples import load_example_config
 
 base = load_example_config("01_yaml_pipeline", stage="training")
-config = update_config(base, {"model.params.latent_dim": 64})
+context = TrainingConfigContext(external_model=False, external_datamodule=False)
+config = update_config(base, {"model.params.latent_dim": 64}, context=context)
 
 print(base.model.params["latent_dim"])    # 32
 print(config.model.params["latent_dim"])  # 64
@@ -76,7 +77,13 @@ print(config.model.params["latent_dim"])  # 64
 training_result = train_vae(config=config)
 ```
 
-!!! note "Local YAML?"
+`update_config()` requires the matching stage-specific context even for a
+self-contained config. Both flags are false here because the model and
+datamodule are built from configuration. Reuse the same context when making
+further edits. Prediction and evaluation have their own context classes; see
+[Validation context](../../reference/configuration.md#validation-context).
+
+??? tip "Local YAML?"
     To start from your own training YAML, replace the `base = load_example_config(...)` line with:
 
     ```python
@@ -95,7 +102,7 @@ from benchrep.assembly.schemas import TrainingModelConfig
 model = TrainingModelConfig(name="vae", params={"latent_dim": 64})
 ```
 
-Pass that section as `model=model` when constructing [`TrainingConfig`][benchrep.assembly.schemas.training_config_schema.TrainingConfig], together with the other required sections. The [Python-only example](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/03_config_object_pipeline.py) constructs all 3 workflow configs in full, using its original 32-dimensional latent space:
+Pass that section as `model=model` when constructing [`TrainingConfig`][benchrep.assembly.schemas.training_config_schema.TrainingConfig], together with the other required sections. The [:material-script-text-outline: Python-only example](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/03_config_object_pipeline.py) constructs all 3 workflow configs in full, using its original 32-dimensional latent space:
 
 ```bash
 python -m benchrep.examples.usage.03_config_object_pipeline
@@ -133,7 +140,7 @@ The complete overrides example adapts the MNIST pipeline to CIFAR-10 by replacin
 python -m benchrep.examples.usage.02_yaml_override_pipeline
 ```
 
-[View the script](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/02_yaml_override_pipeline.py).
+[:material-script-text-outline: View the script](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/02_yaml_override_pipeline.py).
 
 ## Browser wizard
 
@@ -159,7 +166,7 @@ if wizard_result is not None:
     )
 ```
 
-!!! note "Starting without a base config"
+??? tip "Starting without a base config"
     Omit `config` to start from scratch. You only need to specify `stage`. For training and prediction, the wizard assumes a composite model unless you choose a different `model_family`. Set it explicitly to choose another family and show its compatible configuration sections.
 
 The launcher opens your browser at <http://127.0.0.1:8050> by default; pass `port=...` to change it. The Python call waits while you edit and returns when you save or cancel. The launcher's `model_family` fixes the family, even if the base YAML names another one.
@@ -186,7 +193,7 @@ For a complete chain configured through 3 wizard sessions, run the composite exa
 python -m benchrep.examples.usage.08B_dual_input_multitask_composite_vae_wizard
 ```
 
-[View the script](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/08B_dual_input_multitask_composite_vae_wizard.py).
+[:material-script-text-outline: View the script](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/08B_dual_input_multitask_composite_vae_wizard.py).
 
 ## Check the effective settings
 

@@ -35,9 +35,9 @@ The schema determines which sections and fields are allowed; the component contr
 
 Composition determines **which settings are supplied**. Schema validation checks their types, allowed values, and schema-level relationships. Resolution checks broader compatibility and determines **how those settings will be used**.
 
-For example, a VAE latent dimension must be positive at schema validation. Resolution can then set the config-built canonical decoder's input dimension from it. Prediction can resolve `checkpoint: best` to a particular checkpoint using the training manifest.
+For example, a VAE latent dimension must be positive at schema validation. During construction, the model builder uses that dimension for the canonical decoder. Prediction can resolve `checkpoint: best` to a particular checkpoint using the training manifest.
 
-A resolved config remains configuration data. A **run specification** contains the resulting execution instructions; a **run context** identifies the run and its output directories. Builders and workflow execution use these objects to construct components and perform the work. Their implementation belongs in [Anatomy of a workflow](../internals/workflow-anatomy.md).
+A resolved config remains configuration data. A **run specification** contains the resulting execution instructions; a **run context** identifies the run and its output directories. Builders and workflow execution use these objects to construct components and perform the work. Follow one configuration through these steps in [Workflow implementation](workflow-anatomy.md).
 
 ## Omitted, null, and empty are different inputs
 
@@ -67,17 +67,26 @@ To check what took effect, inspect the saved `resolved_config.yaml`. Prediction 
 [`update_config()`][benchrep.update_config] returns a validated copy after changing existing field paths:
 
 ```python
-from benchrep import update_config
+from benchrep import TrainingConfigContext, update_config
 from benchrep.examples import load_example_config
 
 base_config = load_example_config("01_yaml_pipeline", stage="training")
+context = TrainingConfigContext(external_model=False, external_datamodule=False)
 training_config = update_config(
     base_config,
     {"model.params.latent_dim": 64},
+    context=context,
 )
 ```
 
 The base remains reusable. This updates a field within the existing configuration; [section overrides](overrides.md#replace-a-config-section) instead replace a complete section.
+
+The required context supplies information about runtime overrides and, for
+prediction, the selected model family. It can be reused between parsing and
+updating a config. See [Validation context](../../reference/configuration.md#validation-context)
+for the fields required by each workflow stage. Validated objects contain schema
+defaults, but updates preserve which fields were explicitly supplied so those
+defaults do not become authored values in the original config record.
 
 ## Paths follow their source
 

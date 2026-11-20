@@ -51,14 +51,14 @@ Samples therefore need compatible fields and values for batching. Variable image
 
 For composite models, distinguish values used for computation from annotations. For example, a class label used by a classification loss must be declared under `expects` with the appropriate target role and connected to that loss. A patient identifier retained for grouping or annotating predictions belongs under `batch_metadata`. See [Composite models](../models/composite.md) and [Losses and objectives](../models/losses.md).
 
-!!! note "Roles also guide behavior"
+!!! info "Roles also guide behavior"
     Roles describe what a field represents, but can also affect validation, defaults, and exports. Some distinctions are descriptive for a particular operation; others change its behavior. For example, a unique `sample_image` input becomes the default transform input, while metadata with the `index` role supplies the AnnData observation index. See [Composite models](../models/composite.md) for the individual roles and their effects.
 
 The model receives samples **after transformation**. Your dataset therefore does not need to supply fields that a transform pipeline creates, such as a second augmented image derived from the original. By the time samples reach the model, however, all fields declared under `expects` and `batch_metadata` must be present.
 
 Prediction exports contain the fields supported by the model's prediction interface. For example, canonical models support `label`, `sample_id`, and `metadata` annotations. Adding another field to your dataset does not automatically include it in the exported AnnData; see [Selecting prediction exports](../prediction/exports.md).
 
-!!! note "Sample identity"
+!!! warning "Sample identity"
     Built-in datasets number samples within each split. For example, MNIST's training and test sets both contain a sample with `sample_id=0`, but these are different images. When combining outputs, keep track of which dataset and split they came from. For your own dataset, you can use identifiers such as filenames or cell IDs instead.
 
 ## Where validation happens

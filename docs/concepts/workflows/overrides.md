@@ -48,7 +48,7 @@ Suppose the original optimizer parameters contain both `lr` and `weight_decay`:
 
 Omitted fields use the section’s schema defaults or, for component parameters, constructor defaults where applicable. Required fields must still be supplied. Use [`update_config()`][benchrep.update_config] when your intent is to retain a section and change individual existing fields.
 
-!!! note "A base config is optional"
+!!! tip "A base config is optional"
     The base `config` can be omitted when `config_components` and schema defaults provide enough information to construct a valid workflow config.
 
 ## Connect runs without rewriting paths
@@ -90,7 +90,7 @@ The surrounding workflow still handles tasks such as trainer setup, prediction e
 
 See [External models and datamodules](../extensibility/runtime-implementations.md) for their runtime responsibilities, and [Extension interfaces](../../reference/interfaces.md) for the base classes and contracts.
 
-??? note "What stays active with a prediction datamodule override?"
+??? question "What stays active with a prediction datamodule override?"
     The supplied datamodule owns its dataset, transforms, batch size, and worker settings. Prediction's inference and export settings still apply, and `data.max_batches` still limits execution. Treat the override as replacing data construction, not the entire prediction configuration.
 
 ## Runtime callbacks are separate

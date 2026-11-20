@@ -65,7 +65,7 @@ The **Authored YAML** preserves the choices in the draft, including omissions an
 
 <figcaption>
   Model specification preview for the
-  <a href="https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/08B_dual_input_multitask_composite_vae_wizard.py">composite wizard example</a>,
+  <a href="https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/08B_dual_input_multitask_composite_vae_wizard.py"><span class="twemoji"><svg aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M15 20a1 1 0 0 0 1-1V4H8a1 1 0 0 0-1 1v11H5V5a3 3 0 0 1 3-3h11a3 3 0 0 1 3 3v1h-2V5a1 1 0 0 0-1-1 1 1 0 0 0-1 1v14a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3v-1h11a2 2 0 0 0 2 2M9 6h5v2H9zm0 4h5v2H9zm0 4h5v2H9z"/></svg></span> composite wizard example</a>,
   available before training.
 </figcaption>
 </figure>
@@ -103,7 +103,7 @@ if wizard_result is not None:
 
 The wizard accepts the same workflow-specific override bundles described in [Python overrides](overrides.md). Supplying them upfront lets it account for runtime implementations and upstream runs when determining which sections need configuration and checking the draft. For example, pass [`overrides=PredictionOverrides(training_manifest_path=training_result.manifest_path)`][benchrep.PredictionOverrides] to review a prediction config against the run you just trained.
 
-Section overrides become part of the editable draft and are removed from the returned override bundle. Other inputs needed at execution, like runtime objects and supplied manifest overrides, are retained. Forwarding both [`wizard_result.config`][benchrep.gui.shared.results.ConfiguredWorkflow]
+Supplied section overrides appear as read-only sections in the draft. On save, their values become part of the authored config and are removed from the returned override bundle. Other inputs needed at execution, like runtime objects and supplied manifest overrides, are retained. Forwarding both [`wizard_result.config`][benchrep.gui.shared.results.ConfiguredWorkflow]
  and [`wizard_result.overrides`][benchrep.gui.shared.results.ConfiguredWorkflow] preserves that combination without re-applying config replacements.
 
-For how the editor preserves draft state and manages review internally, see [How the wizard works](../internals/wizard-architecture.md).
+For how the editor preserves draft state and manages review internally, see [Wizard implementation](wizard-architecture.md).

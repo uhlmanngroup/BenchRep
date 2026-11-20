@@ -46,7 +46,7 @@ The built-in datamodule uses the following loading policy:
 
 When constructing [`BenchRepDataModule`][benchrep.architecture.data.datamodule.BenchRepDataModule] in Python, you can supply separate training, validation, and prediction datasets. The training config instead selects one dataset, which BenchRep optionally splits into training and validation subsets.
 
-!!! note "No test loop in BenchRep workflows"
+!!! info "No test loop in BenchRep workflows"
     Although the datamodule's `test_dataloader()` and the built-in models' `test_step()` are implemented, **BenchRep workflows do not currently call them.** To assess a test dataset through BenchRep, run prediction on it and then evaluate the exported outputs.
 
 Training's `datamodule` section controls batch size, worker processes, pinned memory, and prefetching. `num_workers: 0` loads data in the main process. `persistent_workers: true` and an explicit `prefetch_factor` require workers greater than 0. Configured `pin_memory: auto` enables pinned CPU memory when CUDA is available.
@@ -57,7 +57,8 @@ Training's `datamodule` section controls batch size, worker processes, pinned me
 
 Prediction constructs a dataset independently of the training datamodule. An explicit prediction `dataset` selects what to read; if omitted or null, its configuration is inherited from training when training used a config-built datamodule.
 
-**Inheriting the dataset config does not recover the validation subset.** If training used MNIST's `train` split and reserved part of it for validation, prediction with an inherited dataset config runs inference on the full `train` split, including the validation samples. To predict on the test set, explicitly select `split: test`. To reuse the actual validation subset in the same process, supply [`training_result.datamodule.val_dataset`][benchrep.architecture.data.datamodule.BenchRepDataModule] through a prediction datamodule override, as in [Tune with Optuna](../../guides/optuna.md).
+!!! warning "Check the prediction split"
+    **Inheriting the dataset config does not recover the validation subset.** If training used MNIST's `train` split and reserved part of it for validation, prediction with an inherited dataset config runs inference on the full `train` split, including the validation samples. To predict on the test set, explicitly select `split: test`. To reuse the actual validation subset in the same process, supply [`training_result.datamodule.val_dataset`][benchrep.architecture.data.datamodule.BenchRepDataModule] through a prediction datamodule override, as in [Tune with Optuna](../../guides/optuna.md).
 
 Prediction's `data.batch_size` and `data.num_workers` replace the corresponding training settings when supplied; otherwise they inherit them where available. Other loader settings come from the recorded training datamodule config, or defaults if training used an external datamodule. Prediction disables validation splitting and incomplete-batch dropping. With 0 workers, it also disables persistent workers and clears the prefetch factor.
 

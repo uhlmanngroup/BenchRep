@@ -20,10 +20,10 @@ python -m benchrep.examples.usage.10_optuna_composite_vae
 
 The example attempts 10 trials and writes to `outputs/optuna_composite_vae/<timestamp>/`. Open <http://127.0.0.1:8080> to follow the study in the live dashboard.
 
-!!! note "Trial 0 fails deliberately"
+!!! info "Trial 0 fails deliberately"
     The example gives trial 0 incompatible datamodule settings to demonstrate error capture. It records the failure and proceeds to the next trial. 
 
-The [full script](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/10_optuna_composite_vae.py) contains the complete implementation. The snippets below explain the key logic.
+The [:material-script-text-outline: full script](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/10_optuna_composite_vae.py) contains the complete implementation. The snippets below explain the key logic.
 
 ## Define the search space
 
@@ -45,9 +45,12 @@ latent_dim = trial.suggest_categorical("latent_dim", [8, 16, 32, 64])
 hidden_width = trial.suggest_categorical("hidden_width", [64, 128, 256])
 ```
 
-The script applies those values with [`update_config()`][benchrep.update_config], which returns a validated copy of the base config. See [Python config objects](configure-workflows/index.md#python-config-objects). For this composite VAE, update the variational head’s latent dimension and the decoder’s input dimension together so they match.
+The script applies those values with [`update_config()`][benchrep.update_config], which returns a validated copy of the base config. Its required `TrainingConfigContext` describes runtime component overrides; both flags are false here because the model and datamodule are built from configuration. See [Python config objects](configure-workflows/index.md#python-config-objects). For this composite VAE, update the variational head’s latent dimension and the decoder’s input dimension together so they match.
 
 ```python
+from benchrep import TrainingConfigContext
+
+CONFIG_CONTEXT = TrainingConfigContext(external_model=False, external_datamodule=False)
 components = "composite_model_components"
 config = update_config(BASE_CONFIG, {
     "run.output_root": OUTPUT_DIR / f"trial_{trial.number:04d}",
@@ -57,7 +60,7 @@ config = update_config(BASE_CONFIG, {
     f"{components}.image_decoder.params.hidden_dims": [hidden_width],
     f"{components}.variational_head.params.latent_dim": latent_dim,
     f"{components}.image_decoder.params.input_dim": latent_dim,
-})
+}, context=CONFIG_CONTEXT)
 ```
 
 ## Prune during training
@@ -75,7 +78,7 @@ training_result = train_composite(
 )
 ```
 
-!!! note "Runtime and configured callbacks"
+??? info "Runtime and configured callbacks"
     `runtime_callbacks` accepts callback instances created in Python, such as this pruning callback bound to the current Optuna trial. These are added alongside callbacks configured through `additional_callbacks`, `checkpointing`, and `early_stopping`. See [Callbacks and checkpoints](../concepts/training/callbacks.md) for details.
 
 At each validation epoch, the callback reports reconstruction MSE to Optuna and raises `TrialPruned` if the study’s pruner decides to stop the trial. See the [Lightning callback reference](https://optuna-integration.readthedocs.io/en/stable/reference/generated/optuna_integration.PyTorchLightningPruningCallback.html).
@@ -138,7 +141,7 @@ study = optuna.create_study(
 
 These settings allow pruning after 5 completed trials, starting at epoch index 5 of each subsequent trial. See Optuna’s [median pruner reference](https://optuna.readthedocs.io/en/stable/reference/generated/optuna.pruners.MedianPruner.html) for details.
 
-!!! note "A longer study for adaptive sampling"
+!!! tip "A longer study for adaptive sampling"
     TPE starts with random sampling, then uses trial results to guide suggestions. We use 10 trials to keep the example fast, but TPE’s default `n_startup_trials=10` keeps them all in the random phase. Increase `N_TRIALS` or lower the sampler’s `n_startup_trials` to enable adaptive sampling. Sampler and pruner startup settings are independent. See the [TPE reference](https://optuna.readthedocs.io/en/stable/reference/samplers/generated/optuna.samplers.TPESampler.html).
 
 ## Handle failed trials
@@ -167,7 +170,7 @@ optuna-dashboard "sqlite:///outputs/optuna_composite_vae/<timestamp>/optuna.db"
 
 See the [dashboard documentation](https://optuna-dashboard.readthedocs.io/en/latest/getting-started.html) for more information.
 
-!!! note "Parallel trials"
+???+ warning "Parallel trials"
     Keep `n_jobs=1`: Optuna uses threads for higher values, while BenchRep requires separate processes for concurrent trials.
 
     Create a named study shared by all workers, each running `study.optimize(..., n_jobs=1)`. Replace SQLite with `JournalStorage` and `JournalFileBackend` on one machine, or PostgreSQL/MySQL across machines. See Optuna’s [multiprocessing guide](https://optuna.readthedocs.io/en/stable/tutorial/10_key_features/004_distributed.html#multi-process-optimization) and [SQLite guidance](https://optuna.readthedocs.io/en/stable/faq.html#how-can-i-solve-the-error-that-occurs-when-performing-parallel-optimization-with-sqlite3).

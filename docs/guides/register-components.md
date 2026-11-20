@@ -21,7 +21,7 @@ See [Registering components](../concepts/extensibility/registration.md) for the 
 python -m pip install "benchrep[scverse] @ git+https://github.com/uhlmanngroup/BenchRep.git"
 ```
 
-!!! note "Register before running"
+!!! warning "Register before running"
     Registration applies to the current Python process. Define or import your implementation and register it before resolving a config that uses it. Repeat the registration in another process, including when reconstructing a model for prediction.
 
 ## Adapt an external dataset
@@ -83,7 +83,7 @@ Run the complete dataset example, which trains, predicts, and evaluates:
 python -m benchrep.examples.usage.04_custom_dataset_pipeline
 ```
 
-[View the script](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/04_custom_dataset_pipeline.py).
+[:material-script-text-outline: View the script](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/04_custom_dataset_pipeline.py).
 
 ## Extend a loss role
 
@@ -221,9 +221,101 @@ Run the complete loss example, including registration, training, prediction, and
 python -m benchrep.examples.usage.05_custom_loss_pipeline
 ```
 
-[View the script](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/05_custom_loss_pipeline.py). It combines the 2 custom terms with MSE reconstruction and Gaussian KL regularization. The auxiliary classifier uses labels during training, so this is a supervised extension of the VAE objective.
+[:material-script-text-outline: View the script](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/05_custom_loss_pipeline.py). It combines the 2 custom terms with MSE reconstruction and Gaussian KL regularization. The auxiliary classifier uses labels during training, so this is a supervised extension of the VAE objective.
 
 Training logs the raw and weighted terms separately. Evaluation still uses its own metrics: registering a training loss does not add an evaluation metric.
+
+## Register a pretrained encoder
+
+Pretrained components use the same registration mechanism as other components: their constructor loads the weights, and the workflow config supplies its arguments. BenchRep already supports pretrained ResNets through its built-in encoder; see [Learn from multiple views](learn-from-multiple-views.md). ConvNeXt and transformer encoders are not currently built in, but you can register adapters for them.
+
+This example wraps [Torchvision's pretrained ConvNeXt-Tiny](https://docs.pytorch.org/vision/stable/models/generated/torchvision.models.convnext_tiny.html) as an encoder, pairs it with a built-in decoder, and fine-tunes a canonical autoencoder on STL-10. It requires no additional dependencies.
+
+### Adapt the encoder interface
+
+The example's `PretrainedConvNeXtEncoder` subclasses [`BaseEncoder`][benchrep.architecture.encoders.BaseEncoder]. It implements the required `forward()` method and `output_dim` property, and supplies `input_shape` and `feature_shape` for shape checks and decoder construction.
+
+The wrapper loads the ImageNet weights and removes only the final classification layer:
+
+```python
+self.backbone = convnext_tiny(weights=weights)
+self._output_dim = self.backbone.classifier[-1].in_features
+self.backbone.classifier[-1] = nn.Identity()
+```
+
+Pooling and output normalization remain, producing a 768-feature vector per image. **All remaining encoder parameters are fine-tuned alongside the newly initialized decoder.**
+
+!!! note "Two different normalization steps"
+    The transform pipeline scales pixel values from `[0, 255]` to `[0, 1]`. These images serve as reconstruction targets, matching the decoder's sigmoid output range.
+
+    The pretrained encoder additionally expects channel-wise standardization using ImageNet statistics. This produces values outside `[0, 1]`, so we apply it inside the encoder's `forward()` to leave the reconstruction targets unchanged.
+
+### Register and configure it
+
+Register the wrapper with an [`ArchitectureComponent`][benchrep.architecture.composite_model_component_contracts.ArchitectureComponent] describing its image input and vector output:
+
+```python
+from benchrep.architecture.composite_model_component_contracts import (
+    ArchitectureComponent,
+    ComponentPort,
+    ComponentTensorResult,
+)
+from benchrep.assembly.registries import ENCODERS
+
+ENCODERS.register(
+    "pretrained_convnext",
+    ArchitectureComponent(
+        component=PretrainedConvNeXtEncoder,
+        runtime_inputs=(
+            ComponentPort(name="x", supported_structures=("image",)),
+        ),
+        runtime_result=ComponentTensorResult(
+            supported_structures=("vector",),
+        ),
+    ),
+)
+```
+
+Canonical models use the `BaseEncoder` interface, while composite models use the declared input and output ports to validate assembly wiring. This registration supports both:
+
+=== "Canonical AE / VAE"
+
+    ```yaml
+    encoder:
+      name: pretrained_convnext
+      params:
+        input_shape: [3, 96, 96]
+        weights: IMAGENET1K_V1
+    ```
+
+=== "Composite"
+
+    ```yaml
+    composite_model_components:
+      my_encoder:
+        kind: encoder
+        name: pretrained_convnext
+        params:
+          input_shape: [3, 96, 96]
+          weights: IMAGENET1K_V1
+    ```
+
+For composite use, connect the component's `x` port to a declared image input and its result to a declared vector output through the assembly configuration. See [Composite models](../concepts/models/composite.md).
+
+### Run the example
+
+```bash
+python -m benchrep.examples.usage.11_pretrained_encoder_pipeline
+```
+
+[:material-script-text-outline: View the script](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/11_pretrained_encoder_pipeline.py) and [YAMLs](https://github.com/uhlmanngroup/BenchRep/tree/main/examples/configs/11_pretrained_encoder_pipeline).
+
+The script registers the encoder, trains the autoencoder, then reconstructs it from the training checkpoint for prediction. Evaluation exports PCA plots, clustering metrics, reconstruction metrics, and input/reconstruction/error grids for each RGB channel.
+
+???+ warning "Runtime and resource requirements"
+    Dataset disk usage is **~5.4 GiB**; deleting the .tar.gz after extraction frees ~2.6 GiB.
+
+    The example fine-tunes ConvNeXt-Tiny and a decoder for 10 epochs with batch size 32. Reduce `trainer.max_epochs` to shorten training or `datamodule.batch_size` to reduce GPU memory use. Prediction has a separate `data.batch_size`.
 
 ## Register other component types
 

@@ -1,0 +1,46 @@
+.md-typeset .br-code-map {
+  padding: .4rem .7rem;
+  border: 1px solid var(--br-rule);
+  border-radius: .4rem;
+  background: var(--br-surface);
+  line-height: 1.45;
+}
+.md-typeset .br-code-map details {
+  margin: .2rem 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: inherit;
+}
+.md-typeset .br-code-map summary {
+  display: list-item;
+  list-style: revert;
+  cursor: pointer;
+  margin: 0;
+  padding: .35rem .2rem;
+  border: 0;
+  background: transparent;
+  font-weight: inherit;
+}
+.md-typeset .br-code-map summary::marker { color: var(--br-accent); }
+.md-typeset .br-code-map summary::before,
+.md-typeset .br-code-map summary::after { content: none; }
+.md-typeset .br-code-map summary:hover { background: var(--br-accent-soft); }
+.md-typeset .br-code-map .br-branch {
+  border-inline-start: 1px solid var(--br-rule);
+  padding-inline-start: clamp(.4rem, 1.6vw, .95rem);
+  margin-inline-start: .23rem;
+}
+.md-typeset .br-code-map .br-leaf {
+  margin: 0;
+  padding: .26rem .25rem;
+  text-align: start;
+}
+.md-typeset .br-code-map code {
+  background: transparent;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+  padding: 0;
+}
+.md-typeset .br-code-map .br-browse { font-size: .75em; }

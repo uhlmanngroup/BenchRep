@@ -4,17 +4,21 @@ BenchRep requires <strong class="highlight">Python 3.11 or newer</strong>. Activ
 
 ## Install BenchRep
 
-For the <strong class="highlight">core</strong> package, run:
+=== "Core"
 
-```bash
-python -m pip install "benchrep @ git+https://github.com/uhlmanngroup/BenchRep.git"
-```
+    Install the core package, then add optional features as needed:
 
-To install <strong class="highlight">all user-facing features</strong> and the dependencies used across the tutorials, use the `full` extra:
+    ```bash
+    python -m pip install "benchrep @ git+https://github.com/uhlmanngroup/BenchRep.git"
+    ```
 
-```bash
-python -m pip install "benchrep[full] @ git+https://github.com/uhlmanngroup/BenchRep.git"
-```
+=== "All features"
+
+    Install all user-facing features and the dependencies used across the tutorials with the `full` extra:
+
+    ```bash
+    python -m pip install "benchrep[full] @ git+https://github.com/uhlmanngroup/BenchRep.git"
+    ```
 
 Both options include the example scripts and configs, so you can run them from your own working directory.
 
@@ -31,6 +35,9 @@ Choose extras for the features you need, e.g. `benchrep[gui,scverse,optuna]`.
 | Model graph export with Torchview | `model_graph` |
 | XGBoost predictability probes | `xgboost` |
 | Example data preparation that uses scikit-image | `artifact_generation` |
+
+!!! info "Graphviz installation"
+    The `model_graph` extra installs the Python packages for architecture diagrams, but rendering also needs the [Graphviz system executable](https://graphviz.org/download/). Without it, workflows still run but skip diagram exports with warnings.
 
 ## Install for development
 

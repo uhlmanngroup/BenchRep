@@ -13,15 +13,20 @@ Packaged resources should be treated as read-only. These helpers do not run an e
 ## Configuration resources
 
 ```python
-from benchrep import update_config
+from benchrep import TrainingConfigContext, update_config
 from benchrep.examples import example_config_path, load_example_config
 
 training_path = example_config_path("01_yaml_pipeline", stage="training")
 base = load_example_config("01_yaml_pipeline", stage="training")
-training_config = update_config(base, {"model.params.latent_dim": 64})
+context = TrainingConfigContext(external_model=False, external_datamodule=False)
+training_config = update_config(base, {"model.params.latent_dim": 64}, context=context)
 ```
 
 The path helper leaves validation to its consumer. The object helper immediately validates against the selected workflow schema; it does not run the workflow resolver. Use the path helper for templates that require overrides before schema validation.
+
+The matching [validation context](configuration.md#validation-context) is required
+when editing a loaded config with `update_config()`. For this example, both
+training components are built from configuration, so both context flags are false.
 
 ::: benchrep.examples.example_config_path
     options:

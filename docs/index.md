@@ -26,6 +26,10 @@ hide:
   </div>
 </div>
 
+## Design philosophy
+
+> BenchRep provides infrastructure for representation-learning experiments, supporting both beginners and experienced researchers. It offers structure through extensive configurability and multiple layers of validation, while still leaving room for users to define or bring their own methods and bypass some guardrails when needed. Its design prioritizes flexibility, reproducibility, and traceability, to make experiments easier to design, run, understand, compare, and reproduce.
+
 ## Get started
 
 <nav class="br-start" aria-label="Getting started">
@@ -68,21 +72,19 @@ Each run also saves its resolved configuration, runtime environment, logs, and s
 
 ## Configure your experiment
 
-Each workflow has its own configuration, describing the components and settings it needs. You can write a workflow config in <strong class="highlight">YAML</strong>, build it in <strong class="highlight">Python</strong>, or use the <strong class="highlight">browser wizard</strong> to explore the available fields and export a YAML. 
+Each workflow has its own configuration, describing the components and settings it needs. You can write a workflow config in **YAML**, build it in **Python**, or use the **browser wizard** to explore the available fields and export a YAML. 
 
 Configs refer to registered components by name. You can inspect registries and, where supported, register your own classes or factories. Once registered, custom components such as datasets and losses can be selected by name just like built-in ones.
 
-For training, a [canonical autoencoder or VAE](concepts/models/canonical.md) gives you a predefined architecture with your choice of encoder and decoder. With a [composite model](concepts/models/composite.md), you specify which components to use, how they connect, and which values feed each loss. This lets you build multi-input and multitask models directly in config.
-
+The **canonical families**, [autoencoder (AE)](concepts/models/canonical.md#autoencoder) and [variational autoencoder (VAE)](concepts/models/canonical.md#variational-autoencoder), provide predefined model structures with configurable encoders and decoders. Among the The **non-canonical families**, the [Composite family](concepts/models/composite.md) lets you declare components, connections, and loss inputs to build multi-input and multitask models directly in config. The [YOYO family](concepts/models/yoyo.md) accepts a complete LightningModule class or instance through Python, including already-trained models; you take responsibility for compatibility with the data and selected outputs.
 
 <strong class="highlight">Want to compare two encoders?</strong>
 Change the encoder section in your canonical training YAML, keeping its interface compatible, and rerun the same workflow chain.
 
 <strong class="highlight">Want to tune architectures or hyperparameters?</strong> Use Optuna to choose what to try. For each trial, use [`update_config()`][benchrep.update_config] to change individual fields or pass whole config sections through a workflow’s overrides object. To prune during training, pass Optuna’s Lightning callback via `runtime_callbacks`.
 
-<strong class="highlight">Want more control over the model or training objective?</strong>
-Register your own components, wire them into a composite model, and define a custom loss with access to the full model context. You can also supply a model or datamodule instance or class through overrides where supported.
-
+<strong class="highlight">Want more control and flexibility?</strong>
+Explore custom architectures and learning objectives, combine built-in and external components, or bring your own complete model and data pipeline. Train from scratch, build on pretrained weights, or benchmark an existing model without retraining it.
 
 ## Explore the docs
 
@@ -94,7 +96,7 @@ Register your own components, wire them into a composite model, and define a cus
   </a>
   <a class="br-doc-route" href="concepts/index.md">
     <svg class="br-icon " aria-hidden="true"><use href="assets/interface-icons.svg#gear"></use></svg>
-    <span><strong>Concepts &amp; design</strong><small>Configuration rules, model and data interfaces, workflow behavior, provenance, and execution internals.</small></span>
+    <span><strong>Concepts &amp; design</strong><small>How BenchRep builds models, runs workflows, and records results, with a map of the code behind each feature.</small></span>
     <svg class="br-icon br-route-arrow" aria-hidden="true"><use href="assets/interface-icons.svg#arrow"></use></svg>
   </a>
   <a class="br-doc-route" href="reference/index.md">
