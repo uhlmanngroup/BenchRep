@@ -1,0 +1,76 @@
+stage: evaluation
+
+reductions:
+  pca:
+    enabled: true
+    params:
+      n_components: 30
+      random_state: 137
+  umap:
+    enabled: false
+  tsne:
+    enabled: false
+
+clustering:
+  kmeans:
+    enabled: true
+    params:
+      n_clusters: 10
+      n_init: 10
+      random_state: 137
+  leiden:
+    enabled: false
+  hdbscan:
+    enabled: false
+
+metrics:
+  embedding:
+    enabled: true
+    selected:
+      - standard_deviation
+  clustering:
+    internal:
+      enabled: true
+      selected:
+        - calinski_harabasz
+        - davies_bouldin
+    external:
+      enabled: true
+      label_key: label
+      selected:
+        - adjusted_rand_index
+        - adjusted_mutual_info
+  # Keep this example focused on component registration and reconstruction.
+  predictability:
+    enabled: false
+  reconstruction:
+    enabled: true
+    selected:
+      - mse
+      - mae
+    reduction: global
+
+reconstruction:
+  export_tiffs: false
+  error_maps:
+    kinds:
+      - absolute
+
+plots:
+  enabled: true
+  params:
+    color_by:
+      - key: label
+        kind: categorical
+        cmap: tab10
+      - key: kmeans
+        kind: categorical
+        cmap: tab10
+    formats:
+      - png
+    dpi: 150
+    reconstruction_grid:
+      include_error_maps: true
+      stratify_by: label
+      # BenchRep exports a separate input/reconstruction/error grid per channel.
+      channel_selection: all

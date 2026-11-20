@@ -1,0 +1,82 @@
+stage: training
+
+run:
+  output_root: outputs/11_pretrained_encoder_pipeline
+  run_name_prefix: convnext_autoencoder
+
+reproducibility:
+  seed: 137
+  seed_workers: true
+
+model:
+  name: autoencoder
+
+encoder:
+  name: pretrained_convnext
+  params:
+    input_shape: [3, 96, 96]
+    weights: IMAGENET1K_V1
+
+# The builder takes input_dim and initial_shape from the registered encoder.
+# Five upsampling blocks expand its 3 x 3 feature-map shape to 96 x 96.
+decoder:
+  name: upsample_conv2d
+  params:
+    output_shape: [3, 96, 96]
+    channels: [256, 128, 64, 32, 16]
+    normalization: batchnorm
+    output_activation: sigmoid
+
+losses:
+  reconstruction:
+    - name: mse
+      weight: 1.0
+
+optimizer:
+  name: adamw
+  params:
+    lr: 0.0001
+    weight_decay: 0.0001
+
+# Unlike example 07, this uses the small labeled split, not the unlabeled set.
+# Labels are retained for evaluation but are not used by the training loss.
+dataset:
+  name: stl10
+  params:
+    root: data/stl10
+    split: train
+    download: true
+
+# ImageNet normalization happens inside the encoder, not on the loss targets.
+transform_pipelines:
+  - steps:
+      - name: to_dtype
+        apply_to: [training, validation]
+        params:
+          dtype: float32
+          scale: true
+
+datamodule:
+  batch_size: 32
+  val_fraction: 0.1
+  num_workers: 0
+  pin_memory: auto
+
+trainer:
+  max_epochs: 10
+  accelerator: auto
+  devices: 1
+  log_every_n_steps: 20
+  precision: 32-true
+
+checkpointing:
+  monitor: losses/val/total_weighted_loss
+  mode: min
+  save_top_k: 1
+  save_last: true
+
+logger:
+  name: csv
+  params:
+    save_dir: outputs/11_pretrained_encoder_pipeline
+    name: csv

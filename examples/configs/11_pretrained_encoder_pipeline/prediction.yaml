@@ -1,0 +1,34 @@
+stage: prediction
+
+source:
+  checkpoint: best
+
+dataset:
+  name: stl10
+  params:
+    root: data/stl10
+    split: test
+    download: true
+
+# Reuse the training validation transforms and the encoder's normalization.
+transform_pipelines: null
+
+data:
+  batch_size: 32
+  num_workers: 0
+
+exports:
+  anndata:
+    enabled: true
+    mode: custom
+    keys:
+      - embedding
+    primary_key: embedding
+  reconstructions:
+    enabled: true
+    mode: all
+    n_examples: 30
+    selection: random
+    stratify_by: label
+    include_input: true
+    include_reconstruction: true
