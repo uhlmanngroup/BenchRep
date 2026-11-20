@@ -15,10 +15,13 @@ from benchrep.assembly.schemas import (
     PredictionReconstructionsExportConfig,
     PredictionExportConfig,
     parse_training_config,
+    TrainingConfigContext,
     SupportedDatasetConfig,
     TrainingDataModuleConfig,
     TrainingTrainerConfig,
     CompositeModelDeclarationsConfig,
+    TrainingReproducibilityConfig,
+    TrainingRunConfig,
 )
 from benchrep.assembly.schemas.training_config_schema import Float32MatmulPrecision
 from benchrep.assembly.schemas.composite_model_config_schema import (
@@ -43,6 +46,7 @@ from benchrep.assembly.resolvers.utils import (
     ComponentSource,
     RunIdentitySpec,
     resolve_runtime_override_config,
+    get_optional_nested_value,
 )
 from benchrep.architecture.data.datamodule import validate_dataloader_kwargs
 from benchrep.architecture.composite_model_roles import (
@@ -53,6 +57,7 @@ from benchrep.interfaces.model_families import (
     ModelFamilySpec,
     VAE_FAMILY,
     COMPOSITE_FAMILY,
+    YOYO_FAMILY,
 )
 from benchrep.runtime.status.training import ACCEPTABLE_TRAINING_STATUSES
 
@@ -64,6 +69,7 @@ PredictionCheckpointSource = Literal[
     "training_manifest_last",
     "training_checkpoint_filename",
     "explicit_path",
+    "runtime_model"
 ]
 
 PredictionTransformPipelineSource = Literal[
@@ -116,6 +122,11 @@ class PredictionReconstructionObservationSpec:
 
 @dataclass(frozen=True)
 class PredictionAnnDataExportSpec:
+    """Resolved AnnData selections and any declared output structures.
+
+    Enabled YOYO exports leave ``output_structures_by_key`` empty here.
+    Their scalar/vector structures are determined from returned tensors.
+    """
     enabled: bool
     mode: Literal["all", "custom"]
     keys: tuple[str, ...]
@@ -164,19 +175,19 @@ class PredictionRunSpec:
     run_identity: RunIdentitySpec
     inherited_config_fields: frozenset[PredictionInheritableField]
     prediction_config: PredictionConfig
-    training_config: TrainingConfig
+    training_config: TrainingConfig | None
     loss_specs: tuple[LossSpec, ...]
     composite_model_spec: CompositeModelSpec | None
-    training_manifest: dict[str, Any]
+    training_manifest: dict[str, Any] | None
 
-    training_manifest_path: Path
-    resolved_training_config_path: Path
-    checkpoint_selection: Literal["best", "last"] | Path
-    checkpoint_path: Path
+    training_manifest_path: Path | None
+    resolved_training_config_path: Path | None
+    checkpoint_selection: Literal["best", "last"] | Path | None
+    checkpoint_path: Path | None
     checkpoint_source: PredictionCheckpointSource
 
-    training_run_name: str
-    training_output_dir: Path
+    training_run_name: str | None
+    training_output_dir: Path | None
 
     dataset_config: SupportedDatasetConfig | None
     transform_pipeline_configs: tuple[PredictionTransformPipelineConfig, ...] | None
@@ -204,12 +215,15 @@ def resolve_prediction_config(
     model_override_name: str | None = None,
     compatibility_policy: Literal["error", "warn"] = "error",
 ) -> PredictionRunSpec:
-    """Resolve prediction configuration against its linked training run.
+    """Resolve the model, weights, data, and runtime settings for prediction.
 
-    Loads and validates the training manifest and its embedded resolved training
-    config, verifies model construction and family compatibility, resolves the
-    checkpoint and prediction data settings, inherits applicable runtime settings,
-    and returns the complete runtime specification used by the prediction workflow.
+    Linked runs validate the training manifest and inherit applicable settings
+    from its recorded configuration. Standalone prediction for YOYO models uses
+    a supplied model and resolves settings without a training record.
+
+    Without a training record, run, Trainer, and reproducibility fallbacks use
+    their standard training-schema defaults. These defaults are not recorded
+    as inherited settings.
     """
 
     if compatibility_policy not in {"error", "warn"}:
@@ -220,87 +234,122 @@ def resolve_prediction_config(
     model_is_external = model_source != "config"
     datamodule_is_external = datamodule_source != "config"
 
+    if model_family == YOYO_FAMILY and not model_is_external:
+        raise ValueError(
+            "YOYO models require a model class or instance supplied through "
+            "`PredictionOverrides.model`."
+        )
+
+    if prediction_config.source.checkpoint is None and model_family != YOYO_FAMILY:
+        raise ValueError(
+            "`source.checkpoint` may be null only for YOYO models."
+        )
+
     # Record inheritance before materialization replaces omitted config values.
     inherited_config_fields: set[PredictionInheritableField] = set()
 
     prediction_config, training_manifest_path = _resolve_training_manifest_path(
         prediction_config=prediction_config,
         training_manifest_path_override=training_manifest_path_override,
-    )
-
-    training_manifest = _load_training_manifest(training_manifest_path)
-
-    training_construction = training_manifest.get("construction")
-
-    if not isinstance(training_construction, dict):
-        raise TypeError(
-            "Training manifest field `construction` must be a mapping."
-        )
-
-    training_model_construction = training_construction.get("model")
-    training_datamodule_construction = training_construction.get(
-        "datamodule"
-    )
-
-    if not isinstance(training_model_construction, dict):
-        raise TypeError(
-            "Training manifest field `construction.model` must be a mapping."
-        )
-
-    if not isinstance(training_datamodule_construction, dict):
-        raise TypeError(
-            "Training manifest field `construction.datamodule` must be a "
-            "mapping."
-        )
-
-    training_model_external = (
-        training_model_construction.get("source") != "config"
-    )
-    training_datamodule_external = (
-        training_datamodule_construction.get("source") != "config"
-    )
-
-    _validate_prediction_model_source(
-        training_model_external=training_model_external,
-        model_is_external=model_is_external,
-    )
-
-    # Retained only as an informational record path. The embedded configuration
-    # below is the source consumed by prediction.
-    resolved_training_config_path = get_required_nested_path(
-        training_manifest,
-        "records",
-        "resolved_config_path",
-        base_dir=training_manifest_path.parent,
-    )
-
-    training_appendix = training_manifest.get("appendix")
-
-    if not isinstance(training_appendix, dict):
-        raise TypeError(
-            "Training manifest field `appendix` must be a mapping."
-        )
-
-    raw_training_config = training_appendix.get("resolved_config")
-
-    if not isinstance(raw_training_config, dict):
-        raise TypeError(
-            "Training manifest field `appendix.resolved_config` must be a "
-            "mapping."
-        )
-
-    training_config = parse_training_config(
-        raw_training_config,
-        model_overridden=training_model_external,
-        datamodule_overridden=training_datamodule_external,
-    )
-
-    _validate_prediction_model_family(
-        training_model_construction=training_model_construction,
-        training_config=training_config,
         model_family=model_family,
-        model_is_external=model_is_external,
     )
+
+    if training_manifest_path is None:
+        training_manifest = None
+        training_config = None
+        resolved_training_config_path = None
+        training_run_name = None
+        training_output_dir = None
+        training_datamodule_external = False
+    else:
+        training_manifest = _load_training_manifest(training_manifest_path)
+
+        training_construction = training_manifest.get("construction")
+
+        if not isinstance(training_construction, dict):
+            raise TypeError(
+                "Training manifest field `construction` must be a mapping."
+            )
+
+        training_model_construction = training_construction.get("model")
+        training_datamodule_construction = training_construction.get(
+            "datamodule"
+        )
+
+        if not isinstance(training_model_construction, dict):
+            raise TypeError(
+                "Training manifest field `construction.model` must be a mapping."
+            )
+
+        if not isinstance(training_datamodule_construction, dict):
+            raise TypeError(
+                "Training manifest field `construction.datamodule` must be a "
+                "mapping."
+            )
+
+        training_model_external = (
+            training_model_construction.get("source") != "config"
+        )
+        training_datamodule_external = (
+            training_datamodule_construction.get("source") != "config"
+        )
+
+        _validate_prediction_model_source(
+            training_model_external=training_model_external,
+            model_is_external=model_is_external,
+        )
+
+        # Retained only as an informational record path. The embedded configuration
+        # below is the source consumed by prediction.
+        resolved_training_config_path = get_required_nested_path(
+            training_manifest,
+            "records",
+            "resolved_config_path",
+            base_dir=training_manifest_path.parent,
+        )
+
+        training_appendix = training_manifest.get("appendix")
+
+        if not isinstance(training_appendix, dict):
+            raise TypeError(
+                "Training manifest field `appendix` must be a mapping."
+            )
+
+        raw_training_config = training_appendix.get("resolved_config")
+
+        if not isinstance(raw_training_config, dict):
+            raise TypeError(
+                "Training manifest field `appendix.resolved_config` must be a "
+                "mapping."
+            )
+
+        training_config = parse_training_config(
+            raw_training_config,
+            context=TrainingConfigContext(
+                external_model=training_model_external,
+                external_datamodule=training_datamodule_external,
+            ),
+        )
+
+        _validate_prediction_model_family(
+            training_model_construction=training_model_construction,
+            training_config=training_config,
+            model_family=model_family,
+            model_is_external=model_is_external,
+        )
+
+        training_run_name = get_required_nested_str(
+            training_manifest,
+            "run",
+            "run_name",
+        )
+
+        training_output_dir = get_required_nested_path(
+            training_manifest,
+            "run",
+            "output_dir",
+            base_dir=training_manifest_path.parent,
+        )
 
     composite_model_spec = _resolve_prediction_composite_model_spec(
         prediction_config=prediction_config,
@@ -312,6 +361,7 @@ def resolve_prediction_config(
     loss_specs: tuple[LossSpec, ...] = ()
 
     if not model_is_external:
+        assert training_config is not None
         assert training_config.losses is not None
 
         if composite_model_spec is not None:
@@ -332,7 +382,16 @@ def resolve_prediction_config(
                 training_config.losses
             )
 
-    checkpoint_selection = prediction_config.source.checkpoint
+    source = prediction_config.source
+    checkpoint_selection = source.checkpoint
+
+    if model_family == YOYO_FAMILY and "checkpoint" not in source.model_fields_set:
+        if training_manifest is None:
+            checkpoint_selection = None
+        elif get_optional_nested_value(
+                training_manifest, "checkpoints", "best_checkpoint_path"
+        ) is None:
+            checkpoint_selection = "last"
 
     checkpoint_path, checkpoint_source = _resolve_checkpoint_path(
         checkpoint=checkpoint_selection,
@@ -340,26 +399,13 @@ def resolve_prediction_config(
         manifest_path=training_manifest_path,
     )
 
-    # Materialize the actual checkpoint path resolved for this run.
+    # Record the resolved checkpoint path, or None when using runtime weights.
     prediction_config = prediction_config.model_copy(
         update={
             "source": prediction_config.source.model_copy(
                 update={"checkpoint": checkpoint_path},
             ),
         },
-    )
-
-    training_run_name = get_required_nested_str(
-        training_manifest,
-        "run",
-        "run_name",
-    )
-
-    training_output_dir = get_required_nested_path(
-        training_manifest,
-        "run",
-        "output_dir",
-        base_dir=training_manifest_path.parent,
     )
 
     if datamodule_is_external:
@@ -375,7 +421,7 @@ def resolve_prediction_config(
     else:
         if prediction_config.dataset is not None:
             dataset_config = prediction_config.dataset
-        elif training_datamodule_external:
+        elif training_config is None or training_datamodule_external:
             dataset_config = None
         else:
             dataset_config = training_config.dataset
@@ -403,7 +449,8 @@ def resolve_prediction_config(
             inherited_config_fields.add("transform_pipelines")
 
         if (
-            not training_datamodule_external
+            training_config is not None
+            and not training_datamodule_external
             and training_config.datamodule is not None
         ):
             base_datamodule_config = training_config.datamodule
@@ -453,56 +500,71 @@ def resolve_prediction_config(
             num_workers=datamodule_config.num_workers,
         )
 
+    base_reproducibility = (
+        training_config.reproducibility
+        if training_config is not None
+        else TrainingReproducibilityConfig()
+    )
+    base_trainer = (
+        training_config.trainer
+        if training_config is not None
+        else TrainingTrainerConfig()
+    )
+
     seed = resolve_optional(
         prediction_config.inference.seed,
-        training_config.reproducibility.seed,
+        base_reproducibility.seed,
         field_name="inference.seed",
     )
 
     seed_workers = resolve_optional(
         prediction_config.inference.seed_workers,
-        training_config.reproducibility.seed_workers,
+        base_reproducibility.seed_workers,
         field_name="inference.seed_workers",
     )
 
     deterministic = (
         prediction_config.inference.deterministic
         if prediction_config.inference.deterministic is not None
-        else training_config.trainer.deterministic
+        else base_trainer.deterministic
     )
 
-    trainer_config = training_config.trainer.model_copy(
-        update={
-            "deterministic": deterministic,
-        }
+    trainer_config = base_trainer.model_copy(
+        update={"deterministic": deterministic},
     )
 
     float32_matmul_precision: Float32MatmulPrecision = resolve_optional(
         prediction_config.inference.float32_matmul_precision,
-        training_config.reproducibility.float32_matmul_precision,
+        base_reproducibility.float32_matmul_precision,
         field_name="inference.float32_matmul_precision",
     )
 
-    seed_inherited_from_training = prediction_config.inference.seed is None
+    seed_inherited_from_training = (
+            training_config is not None
+            and prediction_config.inference.seed is None
+    )
 
     if seed_inherited_from_training:
         inherited_config_fields.add("inference.seed")
 
-    if prediction_config.inference.seed_workers is None:
-        inherited_config_fields.add("inference.seed_workers")
+    if training_config is not None:
+        if prediction_config.inference.seed_workers is None:
+            inherited_config_fields.add("inference.seed_workers")
 
-    if prediction_config.inference.float32_matmul_precision is None:
-        inherited_config_fields.add("inference.float32_matmul_precision")
+        if prediction_config.inference.float32_matmul_precision is None:
+            inherited_config_fields.add("inference.float32_matmul_precision")
 
-    if prediction_config.inference.deterministic is None:
-        inherited_config_fields.add("inference.deterministic")
+        if prediction_config.inference.deterministic is None:
+            inherited_config_fields.add("inference.deterministic")
 
-    canonical_vae_reconstruction_latent_source = _resolve_canonical_vae_reconstruction_latent_source(
-        configured_source=(
-            prediction_config.inference.canonical_vae_reconstruction_latent_source
-        ),
-        model_family=model_family,
-        model_is_external=model_is_external,
+    canonical_vae_reconstruction_latent_source = (
+        _resolve_canonical_vae_reconstruction_latent_source(
+            configured_source=(
+                prediction_config.inference.canonical_vae_reconstruction_latent_source
+            ),
+            model_family=model_family,
+            model_is_external=model_is_external,
+        )
     )
 
     export_spec = resolve_prediction_exports(
@@ -523,7 +585,7 @@ def resolve_prediction_config(
     ):
         inherited_config_fields.add("exports.reconstructions.seed")
 
-    # Materialize only values inherited from the linked training workflow.
+    # Materialize effective inference settings, whether inherited or defaulted.
     resolved_config_updates: dict[str, Any] = {
         "inference": prediction_config.inference.model_copy(
             update={
@@ -578,6 +640,7 @@ def resolve_prediction_config(
     if (
         model_source == "external_class"
         and model_override_config is None
+        and training_config is not None
     ):
         model_override_config = training_config.overrides.model
 
@@ -631,12 +694,19 @@ def resolve_prediction_config(
             f"{model_family.name}_external_{model_override_name}"
         )
     else:
+        assert training_config is not None
         assert training_config.model is not None
         model_name = training_config.model.name
 
+    run_config = (
+        training_config.run
+        if training_config is not None
+        else TrainingRunConfig()
+    )
+
     run_identity = RunIdentitySpec(
-        output_root=Path(training_config.run.output_root),
-        run_name_prefix=training_config.run.run_name_prefix,
+        output_root=Path(run_config.output_root),
+        run_name_prefix=run_config.run_name_prefix,
         model_name=model_name,
     )
 
@@ -683,7 +753,7 @@ def _resolve_prediction_reconstruction_export(
     reconstruction_config: PredictionReconstructionsExportConfig,
     seed: int | None,
     model_family: ModelFamilySpec,
-    training_config: TrainingConfig,
+    training_config: TrainingConfig | None,
 ) -> PredictionReconstructionsExportSpec:
     mode = reconstruction_config.mode or "all"
 
@@ -699,6 +769,7 @@ def _resolve_prediction_reconstruction_export(
     ] = ()
 
     if reconstruction_config.enabled and model_family == COMPOSITE_FAMILY:
+        assert training_config is not None
         declarations = training_config.composite_model_declarations
 
         if declarations is None:
@@ -768,9 +839,14 @@ def resolve_prediction_exports(
     export_config: PredictionExportConfig,
     seed: int | None,
     model_family: ModelFamilySpec,
-    training_config: TrainingConfig,
+    training_config: TrainingConfig | None,
 ) -> PredictionExportSpec:
-    """Resolve prediction export configuration against the trained model."""
+    """Resolve exports against family contracts or explicit YOYO selections.
+
+    Canonical models use their fixed contracts; Composite models use their
+    declarations. YOYO models require explicit keys and pairs, whose fields
+    and tensor structures are checked during export.
+    """
 
     anndata_spec = _resolve_prediction_anndata_export(
         anndata_config=export_config.anndata,
@@ -793,46 +869,47 @@ def resolve_prediction_exports(
 
 def _resolve_checkpoint_path(
     *,
-    checkpoint: Literal["best", "last"] | Path,
-    training_manifest: dict[str, Any],
-    manifest_path: Path,
-) -> tuple[Path, PredictionCheckpointSource]:
-    """Resolve a checkpoint selection and record how it was selected.
+    checkpoint: Literal["best", "last"] | Path | None,
+    training_manifest: dict[str, Any] | None,
+    manifest_path: Path | None,
+) -> tuple[Path | None, PredictionCheckpointSource]:
+    """Resolve the selected checkpoint, or use the runtime model's current weights.
 
-    Supports the training run's best or last checkpoint, a bare filename within
-    its checkpoint directory, or an explicit absolute checkpoint path.
+    An absolute path selects a file directly. The best and last selectors and
+    bare filenames are resolved against the linked training manifest.
     """
+    if checkpoint is None:
+        return None, "runtime_model"
 
-    if checkpoint == "best":
-        checkpoint_path = get_required_nested_path(
-            training_manifest,
-            "checkpoints",
-            "best_checkpoint_path",
-            base_dir=manifest_path.parent,
-        )
-        checkpoint_source: PredictionCheckpointSource = (
-            "training_manifest_best"
-        )
-
-    elif checkpoint == "last":
-        checkpoint_path = get_required_nested_path(
-            training_manifest,
-            "checkpoints",
-            "last_checkpoint_path",
-            base_dir=manifest_path.parent,
-        )
-        checkpoint_source = "training_manifest_last"
-
-    else:
-        assert isinstance(checkpoint, Path)
-
+    if isinstance(checkpoint, Path):
         checkpoint = checkpoint.expanduser()
 
-        if checkpoint.is_absolute():
-            checkpoint_path = checkpoint.resolve()
-            checkpoint_source = "explicit_path"
+    if isinstance(checkpoint, Path) and checkpoint.is_absolute():
+        checkpoint_path = checkpoint.resolve()
+        checkpoint_source: PredictionCheckpointSource = "explicit_path"
+    else:
+        if training_manifest is None or manifest_path is None:
+            raise ValueError(
+                f"Checkpoint selection {str(checkpoint)!r} requires a training "
+                "manifest. For standalone YOYO prediction, omit `source.checkpoint` "
+                "or set it to null to use the supplied model's current weights, "
+                "or provide an absolute .ckpt path."
+            )
 
+        if checkpoint in ("best", "last"):
+            checkpoint_path = get_required_nested_path(
+                training_manifest,
+                "checkpoints",
+                f"{checkpoint}_checkpoint_path",
+                base_dir=manifest_path.parent,
+            )
+            checkpoint_source = (
+                "training_manifest_best"
+                if checkpoint == "best"
+                else "training_manifest_last"
+            )
         else:
+            assert isinstance(checkpoint, Path)
             if checkpoint.parent != Path("."):
                 raise ValueError(
                     "Relative checkpoint selections must be bare filenames, "
@@ -870,11 +947,13 @@ def _resolve_training_manifest_path(
     *,
     prediction_config: PredictionConfig,
     training_manifest_path_override: Path | str | None,
-) -> tuple[PredictionConfig, Path]:
+    model_family: ModelFamilySpec,
+) -> tuple[PredictionConfig, Path | None]:
     """Resolve and validate the effective training-manifest path.
 
-    An entrypoint-provided path overrides the path stored in the prediction
-    config and is written into the returned config copy.
+    An entrypoint-provided path overrides the configured path and is written
+    into the returned config copy. YOYO models may omit both paths to run
+    standalone.
     """
 
     if training_manifest_path_override is not None:
@@ -892,6 +971,8 @@ def _resolve_training_manifest_path(
             prediction_config.source.training_manifest_path
         )
         if training_manifest_path is None:
+            if model_family == YOYO_FAMILY:
+                return prediction_config, None
             raise ValueError(
                 "A training manifest path must be provided either through "
                 "`training_manifest_path_override` or `source.training_manifest_path`."
@@ -993,7 +1074,7 @@ def _validate_prediction_model_family(
 def _resolve_prediction_composite_model_spec(
     *,
     prediction_config: PredictionConfig,
-    training_config: TrainingConfig,
+    training_config: TrainingConfig | None,
     model_family: ModelFamilySpec,
     model_is_external: bool,
 ) -> CompositeModelSpec | None:
@@ -1025,6 +1106,7 @@ def _resolve_prediction_composite_model_spec(
             "the linked training configuration."
         )
 
+    assert training_config is not None
     assert training_config.composite_model_declarations is not None
     assert training_config.composite_model_components is not None
     assert training_config.composite_model_assembly is not None
@@ -1189,14 +1271,18 @@ def _resolve_canonical_vae_reconstruction_latent_source(
 def _resolve_prediction_transform_pipelines(
     *,
     prediction_config: PredictionConfig,
-    training_config: TrainingConfig,
+    training_config: TrainingConfig | None,
     training_datamodule_external: bool,
     model_family: ModelFamilySpec,
 ) -> tuple[
     tuple[PredictionTransformPipelineConfig, ...],
     PredictionTransformPipelineSource,
 ]:
-    """Resolve the effective prediction transform pipelines."""
+    """Resolve configured transforms or inherit validation transforms from training.
+
+    An explicit list replaces inherited pipelines. Without one, standalone runs
+    and runs whose training datamodule was external use no transforms.
+    """
 
     if prediction_config.transform_pipelines is not None:
         resolved_pipelines = _resolve_explicit_prediction_transform_routes(
@@ -1204,12 +1290,14 @@ def _resolve_prediction_transform_pipelines(
             model_family=model_family,
             declarations_config=(
                 training_config.composite_model_declarations
+                if training_config is not None
+                else None
             ),
         )
 
         return resolved_pipelines, "prediction_config"
 
-    if training_datamodule_external:
+    if training_config is None or training_datamodule_external:
         return (), "default_identity"
 
     inherited_pipelines: list[PredictionTransformPipelineConfig] = []
@@ -1252,7 +1340,11 @@ def _resolve_explicit_prediction_transform_routes(
     model_family: ModelFamilySpec,
     declarations_config: CompositeModelDeclarationsConfig | None,
 ) -> tuple[PredictionTransformPipelineConfig, ...]:
-    """Validate and materialize explicitly configured prediction routes."""
+    """Validate and materialize prediction routes for the selected model family.
+
+    YOYO models require explicit input names; omitted outputs reuse those inputs.
+    For these models, field availability and compatibility are checked at runtime.
+    """
 
     if isinstance(model_family, CanonicalModelFamilySpec):
         for index, pipeline in enumerate(configs):
@@ -1277,6 +1369,24 @@ def _resolve_explicit_prediction_transform_routes(
             )
             for pipeline in configs
         )
+
+    if model_family == YOYO_FAMILY:
+        resolved_pipelines = []
+
+        for index, pipeline in enumerate(configs):
+            if pipeline.input is None:
+                raise ValueError(
+                    f"`transform_pipelines[{index}].input` is required for YOYO models. "
+                    "Set it to the sample field this pipeline should transform."
+                )
+
+            resolved_pipelines.append(
+                pipeline.model_copy(
+                    update={"output": pipeline.output or pipeline.input},
+                )
+            )
+
+        return tuple(resolved_pipelines)
 
     assert declarations_config is not None
 
@@ -1478,7 +1588,7 @@ def _resolve_prediction_anndata_export(
     *,
     anndata_config: PredictionAnnDataExportConfig,
     model_family: ModelFamilySpec,
-    training_config: TrainingConfig,
+    training_config: TrainingConfig | None,
 ) -> PredictionAnnDataExportSpec:
     mode = anndata_config.mode or "all"
 
@@ -1539,6 +1649,7 @@ def _resolve_prediction_anndata_export(
         primary_key = anndata_config.primary_key or "embedding"
 
     elif model_family == COMPOSITE_FAMILY:
+        assert training_config is not None
         declarations = training_config.composite_model_declarations
 
         if declarations is None:
@@ -1631,6 +1742,25 @@ def _resolve_prediction_anndata_export(
                 f"output, but {primary_key!r} has role {primary_role!r}."
             )
 
+    elif model_family == YOYO_FAMILY:
+        if mode != "custom":
+            raise ValueError(
+                "AnnData export for YOYO models requires "
+                "`exports.anndata.mode='custom'` and explicit "
+                "`exports.anndata.keys`."
+            )
+        assert anndata_config.keys is not None
+        selected_keys = tuple(anndata_config.keys)
+        primary_key = anndata_config.primary_key
+        if primary_key is None:
+            raise ValueError(
+                "AnnData export for YOYO models requires an explicit "
+                "`exports.anndata.primary_key`."
+            )
+        # YOYO output structures are determined from returned tensors at runtime.
+        output_structures_by_key = {}
+        observation_specs = ()
+
     else:
         raise TypeError(
             f"Unsupported model family: {model_family.name!r}."
@@ -1661,12 +1791,30 @@ def _resolve_prediction_reconstruction_pairs(
     *,
     reconstruction_config: PredictionReconstructionsExportConfig,
     model_family: ModelFamilySpec,
-    training_config: TrainingConfig,
+    training_config: TrainingConfig | None,
 ) -> tuple[PredictionReconstructionPairSpec, ...]:
+    """Resolve declared pairs or explicit YOYO fields checked during export."""
     if not reconstruction_config.enabled:
         return ()
 
     mode = reconstruction_config.mode or "all"
+
+    if model_family == YOYO_FAMILY:
+        if mode != "custom":
+            raise ValueError(
+                "Reconstruction export for YOYO models requires "
+                "`exports.reconstructions.mode='custom'` and explicit "
+                "`exports.reconstructions.pairs`."
+            )
+        assert reconstruction_config.pairs is not None
+        return tuple(
+            PredictionReconstructionPairSpec(
+                id=pair_id,
+                input=pair.input,
+                reconstruction=pair.reconstruction,
+            )
+            for pair_id, pair in reconstruction_config.pairs.items()
+        )
 
     if mode == "custom":
         assert reconstruction_config.pairs is not None
@@ -1705,6 +1853,7 @@ def _resolve_prediction_reconstruction_pairs(
                 f"Unsupported model family: {model_family.name!r}."
             )
 
+        assert training_config is not None
         declarations = training_config.composite_model_declarations
 
         if declarations is None:
@@ -1779,6 +1928,7 @@ def _resolve_prediction_reconstruction_pairs(
             f"Unsupported model family: {model_family.name!r}."
         )
 
+    assert training_config is not None
     declarations = training_config.composite_model_declarations
 
     if declarations is None:

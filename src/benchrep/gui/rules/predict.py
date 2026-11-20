@@ -29,6 +29,8 @@ from benchrep.assembly.resolvers.utils import (
     resolve_component_source,
 )
 from benchrep.assembly.schemas.parsing import (
+    TrainingConfigContext,
+    PredictionConfigContext,
     parse_prediction_config,
     parse_training_config,
 )
@@ -62,6 +64,7 @@ from benchrep.gui.shared.state import MISSING, WizardDraft
 from benchrep.gui.shared.draft_inputs import wizard_draft_inputs
 from benchrep.interfaces.model_families import (
     COMPOSITE_FAMILY,
+    YOYO_FAMILY,
     VAE_FAMILY,
     ModelFamilySpec,
 )
@@ -142,6 +145,8 @@ class PredictionSourceContext:
         self.attempted_path = str(path) if path else None
         try:
             if path is None:
+                if self.model_family == YOYO_FAMILY:
+                    return
                 raise ValueError("Enter a training manifest path first.")
             if path.suffix.lower() not in {".yaml", ".yml"}:
                 raise ValueError("The training manifest must be a YAML file.")
@@ -156,8 +161,10 @@ class PredictionSourceContext:
             external_dm = dm.get("source") != "config"
             training = parse_training_config(
                 manifest.get("appendix", {}).get("resolved_config"),
-                model_overridden=external_model,
-                datamodule_overridden=external_dm,
+                context=TrainingConfigContext(
+                    external_model=external_model,
+                    external_datamodule=external_dm,
+                ),
             )
             _validate_prediction_model_source(
                 training_model_external=external_model,
@@ -206,7 +213,18 @@ class PredictionSourceContext:
             self.error = str(error)
 
     def validate_source(self, data: Any) -> dict[tuple, str]:
-        """Require a manifest locally unless the launcher supplies its path."""
+        """Validate family-specific source requirements without loading weights."""
+        if (
+            self.model_family != YOYO_FAMILY
+            and isinstance(data, dict)
+            and "checkpoint" in data
+            and data["checkpoint"] is None
+        ):
+            return {
+                ("checkpoint",): "A null checkpoint is supported only for YOYO models."
+            }
+        if self.model_family == YOYO_FAMILY:
+            return {}
         if self.overrides.training_manifest_path is not None:
             return {}
 
@@ -225,6 +243,27 @@ class PredictionSourceContext:
 
         return {}
 
+    def validate_exports(self, data: Any) -> dict[tuple, str]:
+        """Explain YOYO selection requirements before final resolver validation."""
+        if self.model_family != YOYO_FAMILY or not isinstance(data, dict):
+            return {}
+        errors = {}
+        for name, default_enabled in (("anndata", True), ("reconstructions", False)):
+            selection = data.get(name, {})
+            if not isinstance(selection, dict) or not selection.get(
+                "enabled", default_enabled
+            ):
+                continue
+            if selection.get("mode") != "custom":
+                errors[(name, "mode")] = (
+                    "YOYO models require custom mode and explicit field selections."
+                )
+            if name == "anndata" and selection.get("primary_key") is None:
+                errors[(name, "primary_key")] = (
+                    "YOYO models require an explicit primary output."
+                )
+        return errors
+
     def panel(self, draft: dict, node: dict):
         current, path = self.current(draft), self.path(draft)
         title = "Manifest not loaded"
@@ -234,7 +273,14 @@ class PredictionSourceContext:
         )
         failed = False
 
-        if current:
+        if self.model_family == YOYO_FAMILY and path is None:
+            title = "Standalone prediction"
+            message = (
+                "No training manifest is needed. Supply prediction data or a runtime "
+                "datamodule. Omit the checkpoint or select null to use current model "
+                "weights, or specify an absolute checkpoint path."
+            )
+        elif current:
             title = "Manifest loaded"
             run_name = self.manifest.get("run", {}).get("run_name", "unnamed")
             message = html.Ul(
@@ -323,6 +369,8 @@ class PredictionSourceContext:
                                     "source", node, "load_source", button=True
                                 ),
                                 color="purple",
+                                disabled=self.model_family == YOYO_FAMILY
+                                and path is None,
                             ),
                             label=(
                                 "Read the training manifest again to refresh "
@@ -437,6 +485,7 @@ class PredictionSourceContext:
     def presentation(self, path: tuple, value: Any, draft: dict) -> FieldPresentation:
         guide = FieldPresentation()
         composite = self.model_family == COMPOSITE_FAMILY
+        yoyo = self.model_family == YOYO_FAMILY
         training = self.training if self.current(draft) else None
         declarations = training.composite_model_declarations if training else None
         expects = declarations.expects if declarations else {}
@@ -452,6 +501,17 @@ class PredictionSourceContext:
             guide = replace(
                 guide,
                 branch_labels=("From manifest", "Filename or path"),
+                note=(
+                    "Standalone YOYO models use current weights when the checkpoint "
+                    "is omitted or null. A checkpoint path must be absolute."
+                    if yoyo and self.path(draft) is None
+                    else (
+                        "Linked YOYO models default to the best checkpoint, or last "
+                        "when no best is recorded. Null uses current model weights."
+                        if yoyo
+                        else None
+                    )
+                ),
             )
         elif path == ("data",) and self.overrides.datamodule is not None:
             guide = replace(guide, excluded_fields=("batch_size", "num_workers"))
@@ -487,7 +547,16 @@ class PredictionSourceContext:
                             if TENSOR_STRUCTURE_BY_ROLE[r] == "image"
                         )
                         if composite
-                        else ("x",)
+                        else None if yoyo else ("x",)
+                    ),
+                    note=(
+                        "YOYO models require an explicit input sample field."
+                        if yoyo and path[-1] == "input"
+                        else (
+                            "Omission reuses this pipeline's input field."
+                            if yoyo
+                            else None
+                        )
                     ),
                 )
         prefix = ("inference", "composite_model_assembly_input_overrides")
@@ -557,15 +626,19 @@ class PredictionSourceContext:
                 )
                 if composite
                 else (
-                    ("embedding", "z_mu", "z_logvar", "z_sample")
-                    if self.model_family == VAE_FAMILY
-                    else ("embedding",)
+                    ()
+                    if yoyo
+                    else (
+                        ("embedding", "z_mu", "z_logvar", "z_sample")
+                        if self.model_family == VAE_FAMILY
+                        else ("embedding",)
+                    )
                 )
             )
             if path == ("exports", "anndata", "keys"):
                 guide = replace(guide, item_label="Output key")
             elif len(path) == 4 and path[2] == "keys":
-                guide = replace(guide, suggestions=available)
+                guide = replace(guide, suggestions=None if yoyo else available)
             elif path == ("exports", "anndata", "primary_key"):
                 vectors = tuple(
                     n
@@ -575,14 +648,22 @@ class PredictionSourceContext:
                 )
                 if _at(draft, ("exports", "anndata", "mode")) == "custom":
                     selected = _at(draft, ("exports", "anndata", "keys"), []) or []
-                    vectors = tuple(n for n in vectors if n in selected)
+                    vectors = (
+                        tuple(selected)
+                        if yoyo
+                        else tuple(n for n in vectors if n in selected)
+                    )
                 guide = replace(
                     guide,
                     suggestions=vectors,
                     note=(
                         "Composite AnnData export requires an explicit vector-valued primary key."
                         if composite
-                        else None
+                        else (
+                            "YOYO models require an explicit primary output with shape [samples, features]."
+                            if yoyo
+                            else None
+                        )
                     ),
                 )
         if path[:2] == ("exports", "reconstructions"):
@@ -601,7 +682,7 @@ class PredictionSourceContext:
                                 if TENSOR_STRUCTURE_BY_ROLE[r] == "image"
                             )
                             if composite
-                            else ("input",)
+                            else None if yoyo else ("input",)
                         ),
                     )
                 elif path[-1] == "reconstruction":
@@ -614,7 +695,7 @@ class PredictionSourceContext:
                                 if r == "reconstruction_image"
                             )
                             if composite
-                            else ("reconstruction",)
+                            else None if yoyo else ("reconstruction",)
                         ),
                     )
             elif path[-1] == "stratify_by":
@@ -628,6 +709,25 @@ class PredictionSourceContext:
                 elif not composite and self.overrides.model is None:
                     suggestions = ("sample_id", "label")
                 guide = replace(guide, suggestions=suggestions)
+        if yoyo and path in {
+            ("exports", "anndata", "mode"),
+            ("exports", "reconstructions", "mode"),
+        }:
+            guide = replace(
+                guide,
+                note="YOYO models require custom mode and explicit field selections when this export is enabled.",
+            )
+        if yoyo and self.path(draft) is None:
+            if path == ("dataset",) and self.overrides.datamodule is None:
+                guide = replace(
+                    guide,
+                    note="Standalone prediction requires an explicit dataset or a runtime datamodule.",
+                )
+            elif path == ("transform_pipelines",) and self.overrides.datamodule is None:
+                guide = replace(
+                    guide,
+                    note="No training transforms are inherited. Omission, null, or an empty list uses no transforms.",
+                )
         return self.inheritance(path, draft, guide)
 
 
@@ -674,6 +774,22 @@ def prediction_sections(*, context: PredictionSourceContext) -> list[SectionSpec
             "Select AnnData outputs and optional reconstruction bundles. Model-dependent compatibility is checked at final review.",
         ),
     }
+    if context.model_family == YOYO_FAMILY:
+        descriptions["source"] = (
+            "Source",
+            "Optionally link a YOYO training manifest. Standalone runs use "
+            "current model weights unless an absolute checkpoint path is selected.",
+        )
+        descriptions["dataset"] = (
+            "Dataset",
+            "Configure prediction data, or inherit a reconstructable dataset "
+            "from a linked training run. Standalone runs require explicit data.",
+        )
+        descriptions["exports"] = (
+            "Exports",
+            "Enabled exports require custom mode and explicit keys or pairs. "
+            "Fields and tensor shapes are checked against prediction outputs at runtime.",
+        )
     keys = ["source"]
     if any(
         isinstance(getattr(context.overrides, name), type)
@@ -704,7 +820,11 @@ def prediction_sections(*, context: PredictionSourceContext) -> list[SectionSpec
                 options=(
                     transform_name_options if key == "transform_pipelines" else None
                 ),
-                validate_context=context.validate_source if key == "source" else None,
+                validate_context=(
+                    context.validate_source
+                    if key == "source"
+                    else context.validate_exports if key == "exports" else None
+                ),
                 validate_local={
                     "dataset": validate_dataset_name,
                     "transform_pipelines": validate_transform_names,
@@ -748,10 +868,10 @@ def prediction_review_session(
     def parse(raw):
         return parse_prediction_config(
             raw,
-            model_overridden=overrides.model is not None,
-            datamodule_overridden=overrides.datamodule is not None,
-            training_manifest_path_overridden=overrides.training_manifest_path
-            is not None,
+            context=PredictionConfigContext(
+                model_family=family,
+                training_manifest_path_overridden=overrides.training_manifest_path is not None,
+            ),
         )
 
     def resolve(config):
@@ -801,7 +921,9 @@ def prediction_review_session(
 
     def summary(spec):
         return {
-            "checkpoint": str(spec.checkpoint_path),
+            "checkpoint": (
+                str(spec.checkpoint_path) if spec.checkpoint_path is not None else None
+            ),
             "checkpoint_source": spec.checkpoint_source,
             "inherited_fields": sorted(spec.inherited_config_fields),
             "data": {

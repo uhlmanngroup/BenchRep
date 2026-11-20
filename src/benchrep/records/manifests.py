@@ -283,14 +283,27 @@ def write_prediction_manifest(
     n_observations: int | None,
     capture_stdout: bool,
 ) -> dict[str, Any]:
+    """Write prediction records with optional training and checkpoint provenance.
+
+    Standalone YOYO runs record absent training lineage as null. Runs using
+    current model weights record a null checkpoint selection and path, with
+    checkpoint_source set to runtime_model.
+    """
     config = run_spec.prediction_config
+    training_config = run_spec.training_config
     training_manifest = run_spec.training_manifest
 
     model_is_external = run_spec.model_source != "config"
     datamodule_is_external = run_spec.datamodule_source != "config"
 
-    training_status = training_manifest.get("status")
-    training_status_report = training_manifest.get("status_report")
+    training_status = (
+        training_manifest.get("status") if training_manifest is not None else None
+    )
+    training_status_report = (
+        training_manifest.get("status_report")
+        if training_manifest is not None
+        else None
+    )
     training_status_record = (
         training_status_report.get("training")
         if isinstance(training_status_report, Mapping)
@@ -303,8 +316,8 @@ def write_prediction_manifest(
     )
 
     configured_model = (
-        run_spec.training_config.model.name
-        if run_spec.training_config.model is not None
+        training_config.model.name
+        if training_config is not None and training_config.model is not None
         else None
     )
 
@@ -323,7 +336,7 @@ def write_prediction_manifest(
     )
 
     model_architecture_summary = _build_model_architecture_summary(
-        config=run_spec.training_config,
+        config=training_config,
         model_family=run_spec.model_family,
         model_is_external=model_is_external,
     )
@@ -469,7 +482,7 @@ def write_prediction_manifest(
         ),
         "max_batches": run_spec.max_batches,
         "checkpoint": {
-            "selection": str(run_spec.checkpoint_selection),
+            "selection": paths_to_strings(run_spec.checkpoint_selection),
             "source": run_spec.checkpoint_source,
         },
         "seed": run_spec.seed,
@@ -542,22 +555,14 @@ def write_prediction_manifest(
             "output_dir": str(run_context.output_dir),
         },
         "source": {
-            "training_manifest_path": str(
-                run_spec.training_manifest_path
-            ),
+            "training_manifest_path": paths_to_strings(run_spec.training_manifest_path),
             "training_run_name": run_spec.training_run_name,
-            "training_output_dir": str(
-                run_spec.training_output_dir
-            ),
+            "training_output_dir": paths_to_strings(run_spec.training_output_dir),
             "training_status": training_status,
-            "training_interruption_signal": (
-                training_interruption_signal
-            ),
-            "checkpoint_selection": str(
-                run_spec.checkpoint_selection
-            ),
+            "training_interruption_signal": (training_interruption_signal),
+            "checkpoint_selection": paths_to_strings(run_spec.checkpoint_selection),
             "checkpoint_source": run_spec.checkpoint_source,
-            "checkpoint_path": str(run_spec.checkpoint_path),
+            "checkpoint_path": paths_to_strings(run_spec.checkpoint_path),
         },
         "config_inheritance": {
             "inherited_from_training": sorted(
@@ -1345,13 +1350,15 @@ def _collect_paths(value: Any) -> list[Path]:
 
 def _build_model_architecture_summary(
     *,
-    config: TrainingConfig,
+    config: TrainingConfig | None,
     model_family: Any,
     model_is_external: bool,
 ) -> dict[str, Any] | None:
-    """Build a concise architecture summary for a trained model."""
+    """Summarize a configuration-built model; external models have no summary."""
     if model_is_external:
         return None
+
+    assert config is not None
 
     if isinstance(model_family, CanonicalModelFamilySpec):
         assert config.model is not None

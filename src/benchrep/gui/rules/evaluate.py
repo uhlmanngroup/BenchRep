@@ -37,7 +37,10 @@ from benchrep.assembly.schemas.evaluation_config_schema import (
     EvaluationRunConfig,
     EvaluationSourceConfig,
 )
-from benchrep.assembly.schemas.parsing import parse_evaluation_config
+from benchrep.assembly.schemas.parsing import (
+    EvaluationConfigContext,
+    parse_evaluation_config,
+)
 from benchrep.evaluation.reconstructions.data import _load_pt
 from benchrep.gui.shared.fields import FieldPresentation, field_id
 from benchrep.gui.shared.forms import SectionSpec
@@ -168,8 +171,11 @@ class EvaluationSourceContext:
         try:
             parse_evaluation_config(
                 {"source": source},
-                prediction_manifest_path_overridden=self.overrides.prediction_manifest_path
-                is not None,
+                context=EvaluationConfigContext(
+                    prediction_manifest_path_overridden=(
+                        self.overrides.prediction_manifest_path is not None
+                    ),
+                ),
             )
         except ValidationError as error:
             return {
@@ -563,8 +569,11 @@ def evaluation_review_session(*, context: EvaluationSourceContext) -> ReviewSess
     def parse(raw):
         return parse_evaluation_config(
             raw,
-            prediction_manifest_path_overridden=context.overrides.prediction_manifest_path
-            is not None,
+            context=EvaluationConfigContext(
+                prediction_manifest_path_overridden=(
+                    context.overrides.prediction_manifest_path is not None
+                ),
+            ),
         )
 
     def resolve(config):

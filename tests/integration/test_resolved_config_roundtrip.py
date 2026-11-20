@@ -13,6 +13,9 @@ from benchrep.assembly.resolvers import (
     resolve_training_config,
 )
 from benchrep.assembly.schemas import (
+    TrainingConfigContext,
+    PredictionConfigContext,
+    EvaluationConfigContext,
     parse_evaluation_config,
     parse_prediction_config,
     parse_training_config,
@@ -23,6 +26,12 @@ from benchrep.records.configs import save_config_yaml
 
 
 CONFIG_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "configs"
+TRAINING_CONTEXT = TrainingConfigContext(external_model=False, external_datamodule=False)
+PREDICTION_CONTEXT = PredictionConfigContext(
+    model_family=VAE_FAMILY,
+    training_manifest_path_overridden=False,
+)
+EVALUATION_CONTEXT = EvaluationConfigContext(prediction_manifest_path_overridden=False)
 
 
 def test_training_resolved_config_roundtrip_materializes_benchrep_decisions(
@@ -34,7 +43,7 @@ def test_training_resolved_config_roundtrip_materializes_benchrep_decisions(
     raw_config["checkpointing"]["monitor"] = None
     raw_config["checkpointing"]["save_top_k"] = 3
 
-    config = parse_training_config(raw_config)
+    config = parse_training_config(raw_config, context=TRAINING_CONTEXT)
 
     first = resolve_training_config(
         config,
@@ -52,7 +61,7 @@ def test_training_resolved_config_roundtrip_materializes_benchrep_decisions(
         tmp_path / "training",
         first.training_config,
     )
-    replay_config = parse_training_config(load_yaml(resolved_path))
+    replay_config = parse_training_config(load_yaml(resolved_path), context=TRAINING_CONTEXT)
 
     second = resolve_training_config(
         replay_config,
@@ -93,7 +102,7 @@ def test_prediction_resolved_config_roundtrip_materializes_inheritance(
     raw_config["inference"]["canonical_vae_reconstruction_latent_source"] = None
     raw_config["exports"]["reconstructions"]["seed"] = None
 
-    config = parse_prediction_config(raw_config)
+    config = parse_prediction_config(raw_config, context=PREDICTION_CONTEXT)
 
     first = resolve_prediction_config(
         config,
@@ -119,7 +128,7 @@ def test_prediction_resolved_config_roundtrip_materializes_inheritance(
         tmp_path / "prediction",
         first.prediction_config,
     )
-    replay_config = parse_prediction_config(load_yaml(resolved_path))
+    replay_config = parse_prediction_config(load_yaml(resolved_path), context=PREDICTION_CONTEXT)
 
     second = resolve_prediction_config(
         replay_config,
@@ -183,7 +192,7 @@ def test_evaluation_resolved_config_roundtrip_materializes_inputs_and_inheritanc
     ] = None
     raw_config["plots"]["params"]["color_by"] = None
 
-    config = parse_evaluation_config(raw_config)
+    config = parse_evaluation_config(raw_config, context=EVALUATION_CONTEXT)
 
     first = resolve_evaluation_config(config)
 
@@ -206,7 +215,7 @@ def test_evaluation_resolved_config_roundtrip_materializes_inputs_and_inheritanc
         tmp_path / "evaluation",
         first.evaluation_config,
     )
-    replay_config = parse_evaluation_config(load_yaml(resolved_path))
+    replay_config = parse_evaluation_config(load_yaml(resolved_path), context=EVALUATION_CONTEXT)
 
     second = resolve_evaluation_config(replay_config)
 
@@ -280,7 +289,7 @@ def _resolved_vae_training_config():
         },
     ]
 
-    config = parse_training_config(raw_config)
+    config = parse_training_config(raw_config, context=TRAINING_CONTEXT)
     run_spec = resolve_training_config(
         config,
         model_family=VAE_FAMILY,
@@ -502,7 +511,7 @@ def test_prediction_inherits_loader_options_and_adjusts_prefetch(
     raw["data"]["num_workers"] = prediction_workers
 
     run_spec = resolve_prediction_config(
-        parse_prediction_config(raw),
+        parse_prediction_config(raw, context=PREDICTION_CONTEXT),
         model_family=VAE_FAMILY,
     )
 
@@ -553,6 +562,6 @@ def test_prediction_revalidates_inherited_worker_only_kwargs(
 
     with pytest.raises(ValueError, match="num_workers"):
         resolve_prediction_config(
-            parse_prediction_config(raw),
+            parse_prediction_config(raw, context=PREDICTION_CONTEXT),
             model_family=VAE_FAMILY,
         )

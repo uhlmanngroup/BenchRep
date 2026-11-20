@@ -7,7 +7,12 @@ except PackageNotFoundError:
     __version__ = "0+unknown"
 
 from benchrep.workflows.train import train_ae, train_vae, train_composite, train_yoyo
-from benchrep.workflows.predict import predict_ae, predict_vae, predict_composite
+from benchrep.workflows.predict import (
+    predict_ae,
+    predict_vae,
+    predict_composite,
+    predict_yoyo,
+)
 from benchrep.workflows.evaluate import evaluate
 from benchrep.discovery.registry import (
     list_registries,
@@ -21,6 +26,12 @@ from benchrep.utils.workflow_overrides import (
     EvaluationOverrides,
 )
 from benchrep.assembly.config import update_config
+from benchrep.assembly.schemas.parsing import (
+    ConfigContext,
+    TrainingConfigContext,
+    PredictionConfigContext,
+    EvaluationConfigContext,
+)
 from benchrep.gui import configure_workflow
 
 
@@ -33,6 +44,7 @@ __all__ = [
     "predict_ae",
     "predict_vae",
     "predict_composite",
+    "predict_yoyo",
     "evaluate",
     "list_registries",
     "list_registered_components",
@@ -42,5 +54,9 @@ __all__ = [
     "PredictionOverrides",
     "EvaluationOverrides",
     "update_config",
+    "ConfigContext",
+    "TrainingConfigContext",
+    "PredictionConfigContext",
+    "EvaluationConfigContext",
     "configure_workflow",
 ]

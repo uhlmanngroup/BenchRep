@@ -11,7 +11,7 @@ pytest.importorskip("dash_mantine_components")
 from benchrep.assembly.config import load_yaml
 from benchrep.assembly.registries.builtins import register_builtins
 from benchrep.assembly.resolvers.training_config_resolver import resolve_training_config
-from benchrep.assembly.schemas.parsing import parse_training_config
+from benchrep.assembly.schemas.parsing import TrainingConfigContext, parse_training_config
 from benchrep.assembly.schemas.prediction_config_schema import (
     PredictionDataConfig,
 )
@@ -61,7 +61,13 @@ def source_factory(tmp_path):
         if external_dm:
             for key in ("dataset", "transform_pipelines", "datamodule"):
                 raw.pop(key, None)
-        config = parse_training_config(raw, datamodule_overridden=external_dm)
+        config = parse_training_config(
+            raw,
+            context=TrainingConfigContext(
+                external_model=False,
+                external_datamodule=external_dm,
+            ),
+        )
         spec = resolve_training_config(
             config,
             model_family=family,

@@ -7,6 +7,7 @@ from typing import Any
 import lightning as L
 import torch
 
+from benchrep.assembly.schemas.parsing import PredictionConfigContext
 from benchrep.utils.workflow_utils import PredictionConfigInput
 from benchrep.utils.workflow_overrides import PredictionOverrides
 from benchrep.assembly.config import (
@@ -21,11 +22,11 @@ from benchrep.assembly.builders import (
     build_runtime_component,
 )
 from benchrep.interfaces.model_families import (
-    SupportedModel,
     ModelFamilySpec,
     AUTOENCODER_FAMILY,
     VAE_FAMILY,
     COMPOSITE_FAMILY,
+    YOYO_FAMILY,
 )
 from benchrep.assembly.resolvers import resolve_prediction_config, PredictionRunSpec
 from benchrep.assembly.resolvers.utils import (
@@ -91,7 +92,7 @@ class PredictionWorkflowResult:
         Path to this run's manifest, for provenance and downstream workflow inputs.
     status_report : PredictionStatusReport
         Overall status and workflow-specific outcomes or issues.
-    model : SupportedModel
+    model : L.LightningModule
         Model instance used by the workflow.
     datamodule : L.LightningDataModule
         Datamodule instance used by the workflow.
@@ -108,7 +109,7 @@ class PredictionWorkflowResult:
     run_spec: PredictionRunSpec
     run_context: RunContext
     datamodule: L.LightningDataModule
-    model: SupportedModel
+    model: L.LightningModule
     trainer: L.Trainer
     predictions: list[Any]
     export_result: PredictionExportResult
@@ -292,6 +293,67 @@ def predict_composite(
     )
 
 
+def predict_yoyo(
+    *,
+    config: PredictionConfigInput = None,
+    overrides: PredictionOverrides | None = None,
+    capture_stdout: bool = False,
+) -> PredictionWorkflowResult:
+    """Run prediction with a caller-supplied YOYO model and export selected outputs.
+
+    Parameters
+    ----------
+    config : PredictionConfigInput, optional
+        Prediction YAML path or `PredictionConfig` object. If omitted,
+        overrides and defaults must supply a valid prediction configuration.
+        A linked training manifest is optional and must belong to the
+        YOYO family when supplied.
+    overrides : PredictionOverrides
+        Supply a LightningModule class or instance through `overrides.model`.
+        BenchRep constructs a supplied class using the effective config's
+        `overrides.model.params`. A supplied instance is used directly.
+        Pass `overrides.datamodule` to use a runtime datamodule; otherwise,
+        prediction data must be configured or inherited.
+    capture_stdout : bool, default=False
+        Also save stdout during the captured execution phase to the run's
+        log directory. Stderr is captured independently of this option;
+        both streams remain visible in the console.
+
+    Returns
+    -------
+    PredictionWorkflowResult
+        Resolved config, model, datamodule, trainer, collected predictions,
+        export results, run paths, status report, and manifest path.
+
+    Raises
+    ------
+    RuntimeError
+        Prediction finalizes with a partially completed or failed status.
+        In that case, the manifest is written before this error is raised.
+        Setup and execution errors can also propagate earlier.
+
+    Notes
+    -----
+    An omitted checkpoint selects the recorded best checkpoint, falling
+    back to the last checkpoint, when a training manifest is linked.
+    Without a linked manifest, omission uses the model's current weights.
+    Explicit `source.checkpoint=None` uses current weights even with a
+    linked manifest. An explicit checkpoint replaces the model's weights.
+
+    YOYO models have no BenchRep prediction-output contract. Enabled
+    exports check the requested fields and tensor shapes at runtime.
+    """
+    overrides = overrides if overrides is not None else PredictionOverrides()
+    overrides.validate_for(YOYO_FAMILY)
+
+    return _predict(
+        model_family=YOYO_FAMILY,
+        overrides=overrides,
+        config=config,
+        capture_stdout=capture_stdout,
+    )
+
+
 def _predict(
         model_family: ModelFamilySpec,
         overrides: PredictionOverrides,
@@ -340,12 +402,12 @@ def _predict(
     # Compose, parse, and resolve config
     config_composition_result = compose_effective_config(
         schema=PredictionConfig,
-        model_family_name=model_family.name,
         config=config,
         config_components=config_components,
-        external_model=model_is_external,
-        external_datamodule=datamodule_is_external,
-        training_manifest_path_overridden=training_manifest_path_overridden,
+        context=PredictionConfigContext(
+            model_family=model_family,
+            training_manifest_path_overridden=training_manifest_path_overridden,
+        ),
     )
 
     pred_config = config_composition_result.effective_config
@@ -558,6 +620,7 @@ def _predict(
     )
 
     if not model_is_external:
+        assert run_spec.training_config is not None
         assert run_spec.training_config.model is not None
         assert run_spec.training_config.optimizer is not None
 
@@ -624,11 +687,15 @@ def _predict(
     inference_warnings.extend(precondition_result.warnings)
     inference_warning_issues = tuple(inference_warnings)
 
-    predict_inputs = prepare_predict_source_inputs(run_spec=run_spec)
-    model.load_state_dict(predict_inputs.state_dict)
+    if run_spec.checkpoint_path is not None:
+        predict_inputs = prepare_predict_source_inputs(run_spec=run_spec)
+        model.load_state_dict(predict_inputs.state_dict)
+        run_log.info("Loaded checkpoint weights into prediction model.")
+    else:
+        run_log.info(
+            "Using prediction model's current weights; no checkpoint was loaded."
+        )
     model.eval()
-
-    run_log.info("Loaded checkpoint weights into prediction model.")
 
     # Build trainer and predict
     trainer, _, _ = build_trainer(

@@ -95,9 +95,10 @@ def configure_workflow(
         Workflow to configure; defaults to training.
     model_family
         Family contract for training or prediction. Use ``AUTOENCODER_FAMILY``,
-        ``VAE_FAMILY``, or ``COMPOSITE_FAMILY`` from
+        ``VAE_FAMILY``, ``COMPOSITE_FAMILY``, or ``YOYO_FAMILY`` from
         ``benchrep.interfaces.model_families``. ``None`` selects composite for
-        these stages. Evaluation requires ``None`` because it uses artifacts.
+        these stages. YOYO models require a runtime model in ``overrides``.
+        Evaluation requires ``None`` because it uses artifacts.
     config
         Base YAML path or matching workflow config object. ``None`` starts a new
         draft. A YAML draft can contain incomplete or invalid entries for editing.

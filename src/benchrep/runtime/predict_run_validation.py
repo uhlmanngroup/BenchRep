@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -17,7 +17,7 @@ from benchrep.architecture.composite_model_roles import (
     TensorStructure,
     CompositeModelTensorRole,
 )
-from benchrep.interfaces.model_families import CanonicalModelFamilySpec
+from benchrep.interfaces.model_families import CanonicalModelFamilySpec, YOYO_FAMILY
 from benchrep.interfaces.compatibility import (
     validate_external_model,
     sanity_check_predict_step_batch_annotation,
@@ -136,6 +136,11 @@ def validate_predict_contract_compatibility(
 def prepare_predict_source_inputs(
     run_spec: PredictionRunSpec,
 ) -> PredictSourceInputsResult:
+    """Load and validate a checkpoint selected for prediction."""
+    if run_spec.checkpoint_path is None:
+        raise ValueError(
+            "No checkpoint was selected; use the runtime model weights directly."
+        )
 
     try:
         checkpoint = torch.load(run_spec.checkpoint_path, map_location="cpu")
@@ -175,8 +180,16 @@ def validate_prediction_outputs(
     predictions: Sequence[Any],
     run_spec: PredictionRunSpec,
 ) -> None:
+    """Require returned batches and validate family-specific output contracts.
+
+    YOYO models have no declared output contract. Their selected export
+    fields and tensor shapes are checked by the exporters.
+    """
     if not predictions:
         raise ValueError("Prediction returned no batches.")
+
+    if run_spec.model_family == YOYO_FAMILY:
+        return
 
     if isinstance(run_spec.model_family, CanonicalModelFamilySpec):
         for batch_idx, prediction in enumerate(predictions):
@@ -205,17 +218,69 @@ def validate_prediction_outputs(
 
 def infer_prediction_observation_count(
     *,
-    predictions: Sequence[Any],
+    predictions: Sequence[object],
     run_spec: PredictionRunSpec,
 ) -> int | None:
+    """Count samples from a known or explicitly selected prediction field.
+
+    YOYO models use the enabled AnnData primary output, otherwise the first
+    enabled reconstruction pair's input or reconstruction. If no such field
+    is selected or its sample count cannot be read, return None. Counting is
+    informational; exporters report problems with the selected fields.
+    """
     if not predictions:
         return None
+
+    batch_size_source: Iterable[object]
 
     if isinstance(run_spec.model_family, CanonicalModelFamilySpec):
         batch_size_source = (
             getattr(prediction, "embedding", None)
             for prediction in predictions
         )
+
+    elif run_spec.model_family == YOYO_FAMILY:
+        anndata_spec = run_spec.export_spec.anndata
+        reconstruction_spec = run_spec.export_spec.reconstructions
+        use_model_inputs = False
+
+        if anndata_spec.enabled:
+            key = anndata_spec.primary_key
+        elif reconstruction_spec.enabled and reconstruction_spec.pairs:
+            pair = reconstruction_spec.pairs[0]
+            if reconstruction_spec.include_input:
+                key = pair.input
+                use_model_inputs = True
+            elif reconstruction_spec.include_reconstruction:
+                key = pair.reconstruction
+            else:
+                return None
+        else:
+            return None
+
+        if key is None:
+            return None
+
+        values: list[object] = []
+        try:
+            for prediction in predictions:
+                if isinstance(prediction, CompositePredictionOutput):
+                    namespace = (
+                        prediction.model_inputs
+                        if use_model_inputs
+                        else prediction.model_outputs
+                    )
+                    value = namespace.get(key)
+                elif isinstance(prediction, Mapping):
+                    value = prediction.get(key)
+                else:
+                    value = getattr(prediction, key, None)
+                values.append(value)
+        except Exception:
+            # An unreadable field must not prevent export failure reporting.
+            return None
+
+        batch_size_source = values
 
     else:
         model_spec = run_spec.composite_model_spec

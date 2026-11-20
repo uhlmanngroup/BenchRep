@@ -26,6 +26,7 @@ except ImportError as exc:
     ) from exc
 
 from benchrep import (
+    TrainingConfigContext,
     EvaluationOverrides,
     PredictionOverrides,
     evaluate,
@@ -45,6 +46,7 @@ SEED = 137
 N_TRIALS = 10
 
 BASE_CONFIG = load_example_config(EXAMPLE, stage="training")
+CONFIG_CONTEXT = TrainingConfigContext(external_model=False, external_datamodule=False)
 
 
 def run_trial(trial: optuna.Trial) -> float:
@@ -70,7 +72,7 @@ def run_trial(trial: optuna.Trial) -> float:
         "datamodule.persistent_workers": (
             True if trial.number == 0 else BASE_CONFIG.datamodule.persistent_workers
         ),
-    })
+    }, context=CONFIG_CONTEXT)
 
     # Optuna can prune during training based on validation reconstruction MSE.
     training_result = train_composite(

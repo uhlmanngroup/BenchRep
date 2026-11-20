@@ -12,7 +12,7 @@ import lightning as L
 from lightning.pytorch.callbacks import Callback
 
 from benchrep.assembly.registries.core import DATASETS, CALLBACKS
-from benchrep.assembly.schemas import parse_training_config
+from benchrep.assembly.schemas import TrainingConfigContext, parse_training_config
 from benchrep.workflows import train_ae
 from tests.fixtures.datasets import TinySyntheticDataset
 
@@ -82,7 +82,10 @@ def main() -> None:
     )
 
     result = train_ae(
-        config=parse_training_config(raw_config),
+        config=parse_training_config(
+            raw_config,
+            context=TrainingConfigContext(external_model=False, external_datamodule=False),
+        ),
     )
 
     # Written only after the workflow returns through all current finalization.

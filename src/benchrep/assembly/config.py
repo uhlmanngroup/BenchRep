@@ -76,6 +76,11 @@ from benchrep.assembly.schemas.evaluation_config_schema import (
     EvaluationPlotsConfig,
 )
 from benchrep.assembly.schemas.parsing import (
+    ConfigContext,
+    TrainingConfigContext,
+    PredictionConfigContext,
+    EvaluationConfigContext,
+    _validation_context,
     parse_training_config,
     parse_prediction_config,
     parse_evaluation_config,
@@ -89,6 +94,9 @@ from benchrep.assembly.registries.utils import normalize_path
 SUPPORTED_CONFIG_SCHEMAS = (TrainingConfig, PredictionConfig, EvaluationConfig)
 SupportedConfigType: TypeAlias = TrainingConfig | PredictionConfig | EvaluationConfig
 ConfigT = TypeVar("ConfigT", bound=SupportedConfigType)
+TrainingConfigT = TypeVar("TrainingConfigT", bound=TrainingConfig)
+PredictionConfigT = TypeVar("PredictionConfigT", bound=PredictionConfig)
+EvaluationConfigT = TypeVar("EvaluationConfigT", bound=EvaluationConfig)
 
 ConfigSource: TypeAlias = Literal[
     "yaml",
@@ -187,12 +195,9 @@ class ConfigCompositionResult(Generic[ConfigT]):
 def compose_effective_config(
     *,
     schema: type[TrainingConfig],
+    context: TrainingConfigContext,
     config: TrainingConfigInput = None,
     config_components: Mapping[str, SupportedTrainingConfigComponent] | None = None,
-    external_model: bool = False,
-    external_datamodule: bool = False,
-    training_manifest_path_overridden: bool = False,
-    prediction_manifest_path_overridden: bool = False,
 ) -> ConfigCompositionResult[TrainingConfig]: ...
 
 
@@ -200,13 +205,9 @@ def compose_effective_config(
 def compose_effective_config(
     *,
     schema: type[PredictionConfig],
+    context: PredictionConfigContext,
     config: PredictionConfigInput = None,
     config_components: Mapping[str, SupportedPredictionConfigComponent] | None = None,
-    external_model: bool = False,
-    external_datamodule: bool = False,
-    training_manifest_path_overridden: bool = False,
-    prediction_manifest_path_overridden: bool = False,
-    model_family_name: str | None = None,
 ) -> ConfigCompositionResult[PredictionConfig]: ...
 
 
@@ -214,25 +215,18 @@ def compose_effective_config(
 def compose_effective_config(
     *,
     schema: type[EvaluationConfig],
+    context: EvaluationConfigContext,
     config: EvaluationConfigInput = None,
     config_components: Mapping[str, SupportedEvaluationConfigComponent] | None = None,
-    external_model: bool = False,
-    external_datamodule: bool = False,
-    training_manifest_path_overridden: bool = False,
-    prediction_manifest_path_overridden: bool = False,
 ) -> ConfigCompositionResult[EvaluationConfig]: ...
 
 
 def compose_effective_config(
     *,
     schema: type[ConfigT],
+    context: ConfigContext,
     config: ConfigT | Path | str | None = None,
     config_components: Mapping[str, Any] | None = None,
-    external_model: bool = False,
-    external_datamodule: bool = False,
-    training_manifest_path_overridden: bool = False,
-    prediction_manifest_path_overridden: bool = False,
-    model_family_name: str | None = None,
 ) -> ConfigCompositionResult[ConfigT]:
     """Compose a typed workflow config from a base and section overrides.
 
@@ -248,27 +242,21 @@ def compose_effective_config(
     returned directly. For YAML input, the original path and payload are
     retained for provenance.
 
-    Runtime model, datamodule, and manifest override flags provide validation
-    context for the relevant workflow schema.
+    The required stage-specific context describes runtime information needed
+    for schema validation. It is separate from the configuration and its records.
 
     Parameters
     ----------
     schema
         TrainingConfig, PredictionConfig, or EvaluationConfig.
+    context
+        Matching TrainingConfigContext, PredictionConfigContext, or
+        EvaluationConfigContext. Workflow entrypoints construct this from
+        their actual family and runtime overrides.
     config
         Optional YAML path or complete typed config object used as the base.
     config_components
         Optional mapping from top-level section names to typed section objects.
-    external_model
-        Whether a runtime model object was supplied.
-    external_datamodule
-        Whether a runtime datamodule object was supplied.
-    training_manifest_path_overridden
-        Whether a training manifest path was supplied outside prediction config.
-    prediction_manifest_path_overridden
-        Whether a prediction manifest path was supplied outside evaluation config.
-    model_family_name
-        Prediction family name passed to schema validation.
 
     Returns
     -------
@@ -281,13 +269,16 @@ def compose_effective_config(
     ValueError
         If no config source is supplied or a component key is unsupported.
     TypeError
-        If the schema, config input, or a component type is unsupported.
+        If the schema, config input, or a component type is unsupported,
+        or the context does not match the schema.
     """
     composition_messages: list[str] = []
     composition_warnings: list[str] = []
 
     if schema not in SUPPORTED_CONFIG_SCHEMAS:
         raise TypeError(f"Unsupported config schema: {schema.__name__}")
+
+    _validation_context(schema, context)
 
     config_path, full_config_object = route_config_input(config, schema)
 
@@ -367,11 +358,7 @@ def compose_effective_config(
     effective_config = _parse_effective_config(
         schema=schema,
         raw_config=raw_config,
-        external_model=external_model,
-        external_datamodule=external_datamodule,
-        training_manifest_path_overridden=training_manifest_path_overridden,
-        prediction_manifest_path_overridden=prediction_manifest_path_overridden,
-        model_family_name=model_family_name,
+        context=context,
     )
 
     if full_config_object is not None:
@@ -503,7 +490,39 @@ def prepare_authored(value: Any) -> tuple[Any, Any]:
     return value, True
 
 
-def update_config(config: ConfigT, updates: Mapping[str, Any]) -> ConfigT:
+@overload
+def update_config(
+    config: TrainingConfigT,
+    updates: Mapping[str, Any],
+    *,
+    context: TrainingConfigContext,
+) -> TrainingConfigT: ...
+
+
+@overload
+def update_config(
+    config: PredictionConfigT,
+    updates: Mapping[str, Any],
+    *,
+    context: PredictionConfigContext,
+) -> PredictionConfigT: ...
+
+
+@overload
+def update_config(
+    config: EvaluationConfigT,
+    updates: Mapping[str, Any],
+    *,
+    context: EvaluationConfigContext,
+) -> EvaluationConfigT: ...
+
+
+def update_config(
+    config: ConfigT,
+    updates: Mapping[str, Any],
+    *,
+    context: ConfigContext,
+) -> ConfigT:
     """Return a validated copy with the specified fields replaced.
     
     Parameters
@@ -514,6 +533,12 @@ def update_config(config: ConfigT, updates: Mapping[str, Any]) -> ConfigT:
         Existing dotted paths and their replacement values. Use a zero-based
         numeric index for a list item, e.g. `losses.regularization.0.weight`.
         A parent path and one of its descendants cannot both be updated.
+    context : ConfigContext
+        Required context matching the config type: TrainingConfigContext,
+        PredictionConfigContext, or EvaluationConfigContext. It describes
+        runtime information needed for validation. Reuse the context passed
+        to the matching parser, or construct one for the intended workflow.
+        Pydantic does not retain context from the original validation.
     
     Returns
     -------
@@ -525,7 +550,8 @@ def update_config(config: ConfigT, updates: Mapping[str, Any]) -> ConfigT:
     Raises
     ------
     TypeError
-        `config` is not one of the supported workflow config classes.
+        `config` is not a supported workflow config, or `context` does not
+        match its type.
     KeyError
         A path does not exist, traverses a non-container, or uses an invalid
         or out-of-range list index.
@@ -546,6 +572,8 @@ def update_config(config: ConfigT, updates: Mapping[str, Any]) -> ConfigT:
     """
     if not isinstance(config, SUPPORTED_CONFIG_SCHEMAS):
         raise TypeError("Expected a TrainingConfig, PredictionConfig, or EvaluationConfig.")
+
+    validation_context = _validation_context(type(config), context)
 
     data = config.model_dump(mode="python", round_trip=True)
 
@@ -574,7 +602,7 @@ def update_config(config: ConfigT, updates: Mapping[str, Any]) -> ConfigT:
             else:
                 node = node[key]
 
-    updated = type(config).model_validate(data)
+    updated = type(config).model_validate(data, context=validation_context)
     replacements = {tuple(path.split(".")): value for path, value in updates.items()}
     _restore_unedited_field_presence(config, updated, replacements)
     return updated
@@ -849,34 +877,27 @@ def _parse_effective_config(
     *,
     schema: type[ConfigT],
     raw_config: dict[str, Any],
-    external_model: bool,
-    external_datamodule: bool,
-    training_manifest_path_overridden: bool,
-    prediction_manifest_path_overridden: bool,
-    model_family_name: str | None,
+    context: ConfigContext,
 ) -> ConfigT:
     if schema is TrainingConfig:
+        assert isinstance(context, TrainingConfigContext)
         return parse_training_config(
             raw_config=raw_config,
-            model_overridden=external_model,
-            datamodule_overridden=external_datamodule,
+            context=context,
         )
 
     if schema is PredictionConfig:
+        assert isinstance(context, PredictionConfigContext)
         return parse_prediction_config(
             raw_config=raw_config,
-            model_overridden=external_model,
-            datamodule_overridden=external_datamodule,
-            training_manifest_path_overridden=(
-                training_manifest_path_overridden
-            ),
-            model_family_name=model_family_name,
+            context=context,
         )
 
     if schema is EvaluationConfig:
+        assert isinstance(context, EvaluationConfigContext)
         return parse_evaluation_config(
             raw_config=raw_config,
-            prediction_manifest_path_overridden=prediction_manifest_path_overridden,
+            context=context,
         )
 
     raise TypeError(f"Unsupported config schema: {schema.__name__}")

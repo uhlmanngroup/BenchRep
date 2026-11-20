@@ -129,7 +129,8 @@ def load_example_config(
     Notes
     -----
     This performs schema validation, not workflow resolution. Use
-    ``update_config()`` to create edited copies. For an incomplete YAML that needs
+    ``update_config()`` with the matching stage-specific config context to create
+    edited copies. For an incomplete YAML that needs
     config overrides before validation, use ``example_config_path()`` instead.
     """
     path = example_config_path(name, stage=stage)

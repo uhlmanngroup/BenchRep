@@ -58,10 +58,11 @@ class PredictionSourceConfig(_PredictionConfigBaseModel):
     the prediction entrypoint. The override takes precedence when both
     are provided.
 
-    The checkpoint may be selected through the training manifest, by filename
-    within the recorded training checkpoint directory, or through an absolute
-    path. An absolute checkpoint path may point outside the training run.
-    YOYO models may also run without a linked training manifest.
+    A linked run can select the recorded best or last checkpoint, or a filename
+    within the training checkpoint directory. An absolute path selects a
+    compatible checkpoint directly. For YOYO models, explicitly setting
+    `checkpoint` to `None` uses the supplied model's current weights even
+    when a training manifest is linked.
     """
 
     training_manifest_path: PathInput | None = Field(
@@ -87,7 +88,7 @@ class PredictionSourceConfig(_PredictionConfigBaseModel):
         },
     )
 
-    checkpoint: Literal["best", "last"] | Path = Field(
+    checkpoint: Literal["best", "last"] | Path | None = Field(
         default="best",
         description=(
             "Checkpoint selection for prediction. `best` uses the best-checkpoint "
@@ -98,8 +99,17 @@ class PredictionSourceConfig(_PredictionConfigBaseModel):
             "directly. Directory-containing relative paths are not supported."
         ),
         json_schema_extra={
-            "omit_behavior": "Selects the recorded best checkpoint.",
-            "null_behavior": "Not allowed.",
+            "omit_behavior": (
+                "Canonical autoencoders and VAEs and Composite models select the "
+                "recorded best checkpoint. Linked YOYO models select the best "
+                "checkpoint when recorded, otherwise the last. Standalone YOYO "
+                "models use the supplied model's current weights."
+            ),
+            "null_behavior": (
+                "YOYO models use the supplied model's current weights, "
+                "including when a training manifest is linked. All other "
+                "families reject null."
+            ),
             "notes": [
                 "Selecting `best` or `last` requires the corresponding checkpoint "
                 "path to be present in the training manifest.",
@@ -134,9 +144,9 @@ class PredictionSourceConfig(_PredictionConfigBaseModel):
     @classmethod
     def validate_checkpoint(
         cls,
-        value: Literal["best", "last"] | Path,
-    ) -> Literal["best", "last"] | Path:
-        if value in {"best", "last"}:
+        value: Literal["best", "last"] | Path | None,
+    ) -> Literal["best", "last"] | Path | None:
+        if value is None or value in {"best", "last"}:
             return value
 
         assert isinstance(value, Path)
@@ -278,11 +288,14 @@ class CompositeModelAssemblyInputOverrideConfig(
 class PredictionInferenceConfig(_PredictionConfigBaseModel):
     """Controls prediction reproducibility and model-specific inference behavior.
 
-    Randomness and matrix-multiplication settings inherit their corresponding
-    training values unless explicitly overridden. The resolved seed and worker
-    seeding settings are passed to `lightning.seed_everything()` before
-    prediction, while deterministic execution is configured through the
-    prediction Lightning Trainer.
+    Linked prediction inherits randomness and matrix-multiplication settings
+    from training unless explicitly overridden. Standalone prediction for YOYO
+    models instead uses `TrainingReproducibilityConfig` defaults and the
+    `TrainingTrainerConfig` deterministic default.
+
+    The resolved seed and worker-seeding settings are passed to
+    `lightning.seed_everything()` before prediction. Deterministic execution
+    is configured through the prediction Lightning Trainer.
 
     `canonical_vae_reconstruction_latent_source` applies only to internally assembled
     canonical VAE models. Composite models instead support prediction-only
@@ -295,7 +308,10 @@ class PredictionInferenceConfig(_PredictionConfigBaseModel):
         default=None,
         description="Global random seed used for prediction.",
         json_schema_extra={
-            "omit_behavior": "Inherits the training reproducibility seed.",
+            "omit_behavior": (
+                "Inherits the training reproducibility seed when linked; "
+                "otherwise uses the default seed, 137."
+            ),
             "null_behavior": "Equivalent to omission.",
             "notes": [
                 "Passed to `lightning.seed_everything()` before prediction.",
@@ -310,7 +326,8 @@ class PredictionInferenceConfig(_PredictionConfigBaseModel):
         description="Whether DataLoader worker processes receive reproducible seeds.",
         json_schema_extra={
             "omit_behavior": (
-                "Inherits the training DataLoader-worker seeding setting."
+                "Inherits the training DataLoader-worker seeding setting "
+                "when linked; otherwise enables worker seeding."
             ),
             "null_behavior": "Equivalent to omission.",
             "notes": [
@@ -324,7 +341,8 @@ class PredictionInferenceConfig(_PredictionConfigBaseModel):
         description="Whether deterministic algorithms are requested during prediction.",
         json_schema_extra={
             "omit_behavior": (
-                "Inherits the training Trainer's deterministic setting."
+                "Inherits the training Trainer's deterministic setting "
+                "when linked; otherwise leaves Lightning's default unchanged."
             ),
             "null_behavior": "Equivalent to omission.",
             "notes": [
@@ -344,7 +362,8 @@ class PredictionInferenceConfig(_PredictionConfigBaseModel):
         description="Internal precision used for float32 matrix multiplications.",
         json_schema_extra={
             "omit_behavior": (
-                "Inherits the training float32 matrix-multiplication precision."
+                "Inherits the training float32 matrix-multiplication precision "
+                "when linked; otherwise uses `highest`."
             ),
             "null_behavior": "Equivalent to omission.",
             "notes": [
@@ -488,6 +507,9 @@ class PredictionTransformPipelineConfig(_PredictionConfigBaseModel):
     omitted, exactly one declaration must have role `sample_image`.
     An omitted `output` uses the resolved input name.
 
+    YOYO models require an explicit input sample field. An omitted output
+    defaults to that input.
+
     When input and output differ, the input tensor is cloned before
     transformation so that the source field remains unchanged. Existing
     output fields are overwritten.
@@ -500,7 +522,8 @@ class PredictionTransformPipelineConfig(_PredictionConfigBaseModel):
             "omit_behavior": (
                 "Canonical models use `x`. Composite models use the unique "
                 "input declaration with role `sample_image`; an explicit "
-                "input is required when that role is ambiguous."
+                "input is required when that role is ambiguous. "
+                "YOYO models require an explicit input sample field."
             ),
             "null_behavior": "Equivalent to omission.",
             "notes": [
@@ -522,7 +545,8 @@ class PredictionTransformPipelineConfig(_PredictionConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
             "notes": [
                 "Composite outputs must name an image-valued declaration "
-                "under `composite_model_declarations.expects`.",
+                "under `composite_model_declarations.expects`. YOYO models may name "
+                "arbitrary sample fields.",
                 "Use a bare field name, without an `expects.` prefix.",
                 "An existing field with this name is overwritten.",
             ],
@@ -572,14 +596,22 @@ class PredictionAnnDataExportConfig(_PredictionConfigBaseModel):
     Canonical autoencoders support `embedding`. Canonical VAEs also support
     `z_mu`, `z_logvar`, and `z_sample`. In `all` mode, VAEs export `embedding`,
     `z_logvar`, and `z_sample`, omitting the redundant `z_mu` representation.
-    Custom selection may explicitly include `z_mu`.
+    Custom selection may explicitly include `z_mu`. Canonical models default
+    the primary key to `embedding`, which must also be selected.
 
     Composite models select outputs declared under
     `composite_model_declarations.produces`. Their primary key must be
     explicitly configured and must identify a selected vector-valued output.
-    Canonical models default to `embedding`, which must also be selected.
 
-    Output selection does not control contextual observation annotations.
+    YOYO models require `mode='custom'`, explicit `keys`, and an explicit
+    `primary_key`. Selected fields are read from prediction mapping keys or
+    object attributes. A [samples] tensor is scalar; [samples, features] is
+    vector-valued, including [samples, 1]. The primary output must be a vector.
+    Optional `sample_id`, `label`, and `metadata` annotations follow the
+    canonical conventions unless explicitly selected as tensor outputs.
+
+    For canonical and Composite models, output selection does not control
+    contextual observation annotations.
     Canonical annotations come from available `sample_id`, `label`, and
     `metadata` fields. Composite annotations include declared scalar inputs
     and group metadata. An optional metadata declaration with role `index`
@@ -587,7 +619,8 @@ class PredictionAnnDataExportConfig(_PredictionConfigBaseModel):
     are rejected.
 
     Key availability and primary-key compatibility are checked during
-    prediction configuration resolution using the linked training model.
+    prediction configuration resolution for canonical and Composite models.
+    YOYO field availability and tensor compatibility are checked during export.
 
     When export is disabled, selection settings have no runtime effect,
     but supplied values must still satisfy their field types and constraints.
@@ -613,7 +646,9 @@ class PredictionAnnDataExportConfig(_PredictionConfigBaseModel):
             "`custom` selects the outputs listed in `keys`."
         ),
         json_schema_extra={
-            "omit_behavior": "Equivalent to `all`.",
+            "omit_behavior": (
+                "Equivalent to `all`. YOYO models require `custom` when this export is enabled."
+            ),
             "null_behavior": "Equivalent to omission.",
             "notes": [
                 "When AnnData export is disabled, this field has no effect.",
@@ -634,8 +669,8 @@ class PredictionAnnDataExportConfig(_PredictionConfigBaseModel):
             "null_behavior": "Equivalent to omission.",
             "notes": [
                 "Custom key lists must be non-empty and contain no duplicates.",
-                "Keys are validated against the linked model during prediction "
-                "configuration resolution.",
+                "Keys are validated against canonical contracts or Composite declarations "
+                "during resolution. YOYO keys are checked during export.",
                 "Composite keys are bare names from "
                 "`composite_model_declarations.produces`, without a "
                 "`produces.` prefix.",
@@ -649,13 +684,13 @@ class PredictionAnnDataExportConfig(_PredictionConfigBaseModel):
         default=None,
         description=(
             "Selected vector-valued output stored in `adata.X`. For canonical "
-            "models, omission selects `embedding`. Composite models require an "
+            "models, omission selects `embedding`. Composite and YOYO models require an "
             "explicit primary key."
         ),
         json_schema_extra={
             "omit_behavior": (
                 "Selects `embedding` for canonical models; rejected for "
-                "composite models."
+                "Composite and YOYO models."
             ),
             "null_behavior": "Equivalent to omission.",
             "notes": [
@@ -730,13 +765,16 @@ class PredictionReconstructionPairConfig(_PredictionConfigBaseModel):
 
     The enclosing `pairs` mapping supplies the bundle's identifier.
     References use bare names rather than graph-wiring expressions.
+    For YOYO models, both names identify fields returned by `predict_step()`.
+    Include the input tensor in those outputs when exporting inputs.
     """
 
     input: PredictionReconstructionFieldName = Field(
         description=(
             "Input field exported for this pair. Canonical models require "
             "`input`. Composite models require an image-valued declaration "
-            "under `composite_model_declarations.expects`."
+            "under `composite_model_declarations.expects`. YOYO models select a "
+            "named tensor from their prediction outputs."
         ),
         json_schema_extra={
             "omit_behavior": "Required; omission raises a validation error.",
@@ -752,7 +790,8 @@ class PredictionReconstructionPairConfig(_PredictionConfigBaseModel):
             "Reconstruction field exported for this pair. Canonical models "
             "require `reconstruction`. Composite models require a declaration "
             "with role `reconstruction_image` under "
-            "`composite_model_declarations.produces`."
+            "`composite_model_declarations.produces`. YOYO models select a named "
+            "tensor from their prediction outputs."
         ),
         json_schema_extra={
             "omit_behavior": "Required; omission raises a validation error.",
@@ -780,6 +819,8 @@ class PredictionReconstructionsExportConfig(_PredictionConfigBaseModel):
     Use `custom` mode to select pairs explicitly, including when a Composite
     model has no reconstruction losses or its loss wiring is ambiguous.
     Pair fields use bare names, without `expects.` or `produces.` prefixes.
+    YOYO models require custom mode and explicit pairs. Their selected tensor
+    fields and per-batch sample alignment are checked during export.
 
     Each pair is exported into a separate bundle. Depending on the include
     flags, a bundle contains `input.pt`, `reconstruction.pt`, or both.
@@ -816,7 +857,9 @@ class PredictionReconstructionsExportConfig(_PredictionConfigBaseModel):
             "`custom` uses the explicitly configured `pairs`."
         ),
         json_schema_extra={
-            "omit_behavior": "Equivalent to `all`.",
+            "omit_behavior": (
+                "Equivalent to `all`. YOYO models require `custom` when this export is enabled."
+            ),
             "null_behavior": "Equivalent to omission.",
             "notes": [
                 "When reconstruction export is disabled, this field has no effect.",
@@ -1063,6 +1106,10 @@ class PredictionConfig(_PredictionConfigBaseModel):
     BenchRep needs a prediction dataset specified in the configuration
     or inherited from training.
 
+    Linked prediction runs reuse the training output root and run-name prefix.
+    Standalone prediction for YOYO models uses `outputs/` relative to the
+    working directory, with no run-name prefix.
+
     Use `benchrep.inspect_config(PredictionConfig)` to inspect this configuration.
     Nested configuration types shown in the output can be inspected the same
     way, for example `benchrep.inspect_config(PredictionSourceConfig)` or
@@ -1203,6 +1250,11 @@ class PredictionConfig(_PredictionConfigBaseModel):
         info: ValidationInfo,
     ) -> PredictionConfig:
         ctx = info.context or {}
+
+        if self.source.checkpoint is None and ctx.get("model_family_name") != "yoyo":
+            raise ValueError(
+                "`source.checkpoint` may be null only for YOYO models."
+            )
 
         # Runtime override requirements are checked by the resolver.
         training_manifest_path_overridden = ctx.get(

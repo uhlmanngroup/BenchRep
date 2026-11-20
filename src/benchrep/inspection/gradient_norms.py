@@ -65,7 +65,7 @@ class GradientNormInspector:
         self,
         model: L.LightningModule,
         *,
-        model_family: Literal["autoencoder", "vae", "composite"],
+        model_family: Literal["autoencoder", "vae", "composite", "yoyo"],
         gradient_norm_specs: tuple[GradientNormSpec, ...],
     ) -> None:
         self.gradient_norm_specs = gradient_norm_specs
@@ -294,7 +294,7 @@ class GradientNormInspectionCallback(L.Callback):
     def __init__(
         self,
         *,
-        model_family: Literal["autoencoder", "vae", "composite"],
+        model_family: Literal["autoencoder", "vae", "composite", "yoyo"],
         gradient_norm_specs: tuple[GradientNormSpec, ...],
     ) -> None:
         super().__init__()
@@ -373,12 +373,13 @@ def select_gradient_norm_parameters(
     model: nn.Module,
     target: str,
     *,
-    model_family: Literal["autoencoder", "vae", "composite"],
+    model_family: Literal["autoencoder", "vae", "composite", "yoyo"],
 ) -> tuple[nn.Parameter, ...]:
     """Select parameters using the model family's component structure.
 
     Include frozen parameters; measurement helpers check requires_grad
-    each time to respect subsequent freezing or unfreezing.
+    each time to respect subsequent freezing or unfreezing. YOYO models
+    support the whole-model target; component targets require a known family.
     """
     if target == "whole_model":
         target_module = model

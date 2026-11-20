@@ -56,8 +56,9 @@ class RuntimeOverridesConfig(BaseModel):
     `PredictionOverrides` objects passed to workflow entrypoints. Those
     objects carry actual Python components and configuration overrides.
 
-    Whole-model overrides are supported only by canonical autoencoder and
-    VAE workflows. Composite models are assembled from configuration.
+    Whole-model overrides are optional for canonical autoencoder and VAE
+    workflows. Composite models are assembled from configuration. YOYO models
+    require a whole-model runtime override; their datamodule override is optional.
     """
 
     model_config = ConfigDict(extra="forbid")

@@ -39,7 +39,10 @@ from benchrep.assembly.schemas.composite_model_config_schema import (
     CompositeModelComponentConfig,
     CompositeModelDeclarationsConfig,
 )
-from benchrep.assembly.schemas.parsing import parse_training_config
+from benchrep.assembly.schemas.parsing import (
+    TrainingConfigContext,
+    parse_training_config,
+)
 from benchrep.assembly.schemas.runtime_override_config_schema import (
     RuntimeOverridesConfig,
 )
@@ -76,6 +79,7 @@ from benchrep.gui.shared.state import (
 )
 from benchrep.interfaces.model_families import (
     COMPOSITE_FAMILY,
+    YOYO_FAMILY,
     CanonicalModelFamilySpec,
     ModelFamilySpec,
 )
@@ -540,7 +544,11 @@ def training_sections(
                     "route compatibility is checked during final validation.",
                     options=transform_name_options,
                     presentation=lambda path, value, draft: transform_presentation(
-                        path, value, draft, composite=model_family == COMPOSITE_FAMILY
+                        path,
+                        value,
+                        draft,
+                        composite=model_family == COMPOSITE_FAMILY,
+                        yoyo=model_family == YOYO_FAMILY,
                     ),
                     validate_local=validate_transform_names,
                 ),
@@ -578,6 +586,15 @@ def training_sections(
                 "Configure metric-ranked checkpoints and last.ckpt. A null monitor "
                 "disables ranking; resolution sets save_top_k to zero. At least one "
                 "checkpoint must be saved. Metric availability is checked during execution.",
+                presentation=lambda path, value, draft: FieldPresentation(
+                    note=(
+                        "YOYO models use last-only checkpointing when monitor is omitted. "
+                        "Set a metric explicitly to enable ranking."
+                        if model_family == YOYO_FAMILY
+                        and path in {("checkpointing",), ("checkpointing", "monitor")}
+                        else None
+                    )
+                ),
             ),
             standard(
                 "early_stopping",
@@ -926,8 +943,9 @@ def transform_name_options(
 
 
 def transform_presentation(
-    path: tuple, value: Any, draft: dict, *, composite: bool
+    path: tuple, value: Any, draft: dict, *, composite: bool, yoyo: bool = False
 ) -> FieldPresentation:
+    """Suggest declared routes; YOYO models author their sample field names."""
     if path == ("transform_pipelines",):
         return FieldPresentation(item_label="Pipeline")
     if len(path) == 3 and path[-1] == "steps":
@@ -935,6 +953,14 @@ def transform_presentation(
     if len(path) == 5 and path[2] == "steps" and path[-1] == "apply_to":
         return FieldPresentation(reorderable=False, item_label="Split")
     if len(path) == 3 and path[-1] in {"input", "output"}:
+        if yoyo:
+            return FieldPresentation(
+                note=(
+                    "YOYO models require an explicit input sample field."
+                    if path[-1] == "input"
+                    else "Omission reuses this pipeline's input field."
+                )
+            )
         suggestions = ("x",)
         if composite:
             declarations = _at(draft, ("composite_model_declarations", "expects"), {})
@@ -1095,8 +1121,10 @@ def training_review_session(
         overrides.validate_for(model_family)
         return parse_training_config(
             raw,
-            model_overridden=overrides.model is not None,
-            datamodule_overridden=overrides.datamodule is not None,
+            context=TrainingConfigContext(
+                external_model=overrides.model is not None,
+                external_datamodule=overrides.datamodule is not None,
+            ),
         )
 
     def resolve(config):
@@ -1105,11 +1133,13 @@ def training_review_session(
             model_family=model_family,
             model_source=resolve_component_source(
                 overrides.model,
-                expected_base_class=model_family.model_base_class,
+                expected_base_class=(
+                    model_family.model_base_class
+                    if isinstance(model_family, CanonicalModelFamilySpec)
+                    else L.LightningModule
+                ),
                 component_name="model",
-            )
-            if isinstance(model_family, CanonicalModelFamilySpec)
-            else "config",
+            ),
             datamodule_source=resolve_component_source(
                 overrides.datamodule,
                 expected_base_class=L.LightningDataModule,

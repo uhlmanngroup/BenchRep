@@ -730,7 +730,8 @@ def resolve_run_identity(
 
     Output root, run name prefix, and model identity are inferred from the linked
     prediction lineage when not configured directly. ``RunContext`` remains
-    responsible for constructing the final timestamped run name.
+    responsible for constructing the final timestamped run name. Without an
+    embedded training manifest, the inherited run name prefix remains unset.
     """
 
     if run_config.output_root is not None:
@@ -768,15 +769,29 @@ def resolve_run_identity(
         model_name = None
 
     else:
-        run_name_prefix_value = get_optional_nested_value(
+        training_manifest = get_optional_nested_value(
             prediction_manifest,
             "appendix",
             "training_manifest",
-            "appendix",
-            "resolved_config",
-            "run",
-            "run_name_prefix",
         )
+
+        if training_manifest is None:
+            run_name_prefix_value = None
+        else:
+            if not isinstance(training_manifest, dict):
+                raise TypeError(
+                    "Prediction manifest field 'appendix.training_manifest' "
+                    "must be a mapping/dictionary or null, "
+                    f"got {type(training_manifest).__name__}."
+                )
+            run_name_prefix_value = get_optional_nested_value(
+                training_manifest,
+                "appendix",
+                "resolved_config",
+                "run",
+                "run_name_prefix",
+            )
+
         run_name_prefix = (
             run_name_prefix_value
             if isinstance(run_name_prefix_value, str)

@@ -10,6 +10,7 @@ from lightning.pytorch.utilities.exceptions import SIGTERMException
 
 import torch
 
+from benchrep.assembly.schemas.parsing import TrainingConfigContext
 from benchrep.utils.workflow_utils import TrainingConfigInput
 from benchrep.utils.workflow_overrides import TrainingOverrides
 from benchrep.runtime.run_context import RunContext
@@ -419,8 +420,10 @@ def _train(
         schema=TrainingConfig,
         config=config,
         config_components=config_components,
-        external_model=model_is_external,
-        external_datamodule=datamodule_is_external,
+        context=TrainingConfigContext(
+            external_model=model_is_external,
+            external_datamodule=datamodule_is_external,
+        ),
     )
 
     run_spec = resolve_training_config(

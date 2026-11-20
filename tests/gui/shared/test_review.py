@@ -216,6 +216,7 @@ def test_training_review_uses_override_context_and_strips_components(monkeypatch
     from dataclasses import dataclass
 
     from benchrep.gui.rules import train as rules
+    from benchrep.assembly.schemas import TrainingConfigContext
 
     @dataclass
     class Overrides:
@@ -263,7 +264,9 @@ def test_training_review_uses_override_context_and_strips_components(monkeypatch
     source = Overrides(model=object, datamodule=object(), config_components={"run": {}})
     session = rules.training_review_session(model_family=Family(), overrides=source)
     session.resolve(session.parse({}))
-    assert calls["parse"] == {"model_overridden": True, "datamodule_overridden": True}
+    assert calls["parse"] == {
+        "context": TrainingConfigContext(external_model=True, external_datamodule=True),
+    }
     assert calls["resolve"]["model_source"] == "external_class"
     assert calls["resolve"]["datamodule_source"] == "external_instance"
     assert session.execution_overrides.config_components is None

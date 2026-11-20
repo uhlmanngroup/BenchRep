@@ -5,7 +5,13 @@ from benchrep.workflows.train import (
     train_composite,
     train_yoyo,
 )
-from benchrep.workflows.predict import PredictionWorkflowResult, predict_ae, predict_vae, predict_composite
+from benchrep.workflows.predict import (
+    PredictionWorkflowResult,
+    predict_ae,
+    predict_vae,
+    predict_composite,
+    predict_yoyo,
+)
 from benchrep.workflows.evaluate import EvaluationWorkflowResult, evaluate
 
 
@@ -19,6 +25,7 @@ __all__ = [
     "predict_ae",
     "predict_vae",
     "predict_composite",
+    "predict_yoyo",
     "EvaluationWorkflowResult",
     "evaluate",
 ]

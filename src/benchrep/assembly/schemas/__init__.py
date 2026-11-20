@@ -116,12 +116,20 @@ from benchrep.assembly.schemas.evaluation_config_schema import (
     EvaluationConfig,
 )
 from benchrep.assembly.schemas.parsing import (
+    ConfigContext,
+    TrainingConfigContext,
+    PredictionConfigContext,
+    EvaluationConfigContext,
     parse_training_config,
     parse_prediction_config,
     parse_evaluation_config,
 )
 
 __all__ = [
+    "ConfigContext",
+    "TrainingConfigContext",
+    "PredictionConfigContext",
+    "EvaluationConfigContext",
     "RuntimeComponentOverrideConfig",
     "RuntimeOverridesConfig",
     "TrainingConfig",

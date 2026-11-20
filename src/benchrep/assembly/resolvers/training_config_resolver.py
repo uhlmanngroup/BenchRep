@@ -92,7 +92,9 @@ def resolve_training_config(
 
     if model_family == YOYO_FAMILY:
         if not model_is_external:
-            raise ValueError("YOYO training requires a runtime model override.")
+            raise ValueError(
+                "YOYO models require a runtime model override for training."
+            )
 
     elif model_is_external and not isinstance(model_family, CanonicalModelFamilySpec):
         raise ValueError(
@@ -386,7 +388,7 @@ def _resolve_transform_pipelines(
         for index, pipeline in enumerate(config):
             if pipeline.input is None:
                 raise ValueError(
-                    f"`transform_pipelines[{index}].input` is required for YOYO. "
+                    f"`transform_pipelines[{index}].input` is required for YOYO models. "
                     "Set it to the sample field this pipeline should transform."
                 )
 

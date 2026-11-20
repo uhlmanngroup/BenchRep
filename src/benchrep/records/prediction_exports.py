@@ -1,15 +1,14 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, Sequence, TypeAlias, cast
+from typing import Any, Literal, Sequence, cast
 import warnings
 
 import torch
 
 from benchrep.interfaces.contracts import (
-    AutoencoderPredictionOutput,
-    VAEPredictionOutput,
     CompositePredictionOutput,
 )
 from benchrep.assembly.resolvers.prediction_config_resolver import (
@@ -27,11 +26,7 @@ from benchrep.records.anndata_io import (
 from benchrep.runtime.status import PredictionOutcome, PredictionOutcomeStatus
 
 
-PredictionOutputLike: TypeAlias = (
-    AutoencoderPredictionOutput
-    | VAEPredictionOutput
-    | CompositePredictionOutput
-)
+
 
 
 @dataclass(frozen=True)
@@ -152,12 +147,17 @@ class ReconstructionSelectionResult:
 
 def export_prediction_outputs(
     *,
-    predictions: Sequence[PredictionOutputLike],
+    predictions: Sequence[object],
     export_spec: PredictionExportSpec,
     anndata_dir: Path,
     reconstruction_dir: Path,
 ) -> PredictionExportResult:
     """Export all prediction artifacts requested by a resolved export spec.
+
+    YOYO exports read selected tensor fields from mapping keys or attributes
+    and check their shapes and per-batch alignment at runtime. Tensor fields
+    selected by any enabled export take precedence over optional annotation
+    names throughout the export plan, including across reconstruction pairs.
 
     AnnData export and reconstruction export are isolated branches: failure in
     one branch does not prevent the other from running. Reconstruction pairs
@@ -172,7 +172,7 @@ def export_prediction_outputs(
     Parameters
     ----------
     predictions:
-        Validated batch-level outputs returned by ``Trainer.predict()``.
+        Batch-level outputs returned by ``Trainer.predict()``.
     export_spec:
         Fully resolved export specification, including concrete AnnData keys,
         primary key, and reconstruction pairs.
@@ -188,6 +188,15 @@ def export_prediction_outputs(
         Nested AnnData and reconstruction results containing artifact paths,
         branch outcomes, and per-pair reconstruction outcomes.
     """
+
+    tensor_keys = set(export_spec.anndata.keys) if export_spec.anndata.enabled else set()
+    reconstruction_spec = export_spec.reconstructions
+    if reconstruction_spec.enabled:
+        for pair in reconstruction_spec.pairs:
+            if reconstruction_spec.include_input:
+                tensor_keys.add(pair.input)
+            if reconstruction_spec.include_reconstruction:
+                tensor_keys.add(pair.reconstruction)
 
     anndata_result = PredictionAnnDataExportResult(
         path=None,
@@ -209,6 +218,7 @@ def export_prediction_outputs(
                 anndata_path = _export_anndata(
                     predictions=predictions,
                     anndata_spec=export_spec.anndata,
+                    tensor_keys=tensor_keys,
                     output_dir=anndata_dir,
                 )
 
@@ -289,6 +299,7 @@ def export_prediction_outputs(
                             export_spec.reconstructions
                         ),
                         pair=pair,
+                        tensor_keys=tensor_keys,
                         output_dir=bundle_dir,
                     )
 
@@ -438,8 +449,9 @@ def _aggregate_reconstruction_pair_outcomes(
 
 def _export_anndata(
     *,
-    predictions: Sequence[PredictionOutputLike],
+    predictions: Sequence[object],
     anndata_spec: PredictionAnnDataExportSpec,
+    tensor_keys: set[str],
     output_dir: Path,
 ) -> Path:
     """Package resolved non-image prediction outputs as one AnnData artifact.
@@ -447,6 +459,10 @@ def _export_anndata(
     The resolved primary vector is stored in ``adata.X``. Additional selected
     vector outputs are stored in ``adata.obsm`` under their declared names,
     while selected scalar outputs are stored in ``adata.obs``.
+
+    For YOYO models, [samples] tensors are scalar and [samples, features]
+    tensors are vector-valued. The primary output must be a vector. Selected
+    fields must agree on per-batch sample counts.
 
     Canonical prediction annotations are collected from ``sample_id``, ``label``,
     and ``metadata``. Composite annotations follow the resolved observation
@@ -457,10 +473,14 @@ def _export_anndata(
     Parameters
     ----------
     predictions:
-        Validated prediction batches from one canonical or Composite model.
+        Prediction batches from one canonical, Composite, or YOYO model.
     anndata_spec:
         Resolved AnnData export plan containing selected output keys, their
-        scalar/vector structures, the primary key, and observation sources.
+        scalar/vector structures when declared, the primary key, and observation
+        sources. YOYO output structures are inferred here.
+    tensor_keys:
+        Tensor fields selected across all enabled exports; these names are not
+        interpreted as optional annotations.
     output_dir:
         Directory in which ``anndata.h5ad`` is written.
 
@@ -478,21 +498,24 @@ def _export_anndata(
     primary_key = anndata_spec.primary_key
     assert primary_key is not None
 
-    primary_matrix = _concat_prediction_model_output_batches(
+    primary_matrix, batch_sizes = _concat_prediction_tensor_batches(
         predictions=predictions,
         key=primary_key,
+        source="model_output",
     )
-
-    (
-        sample_ids,
-        labels,
-        metadata,
-        index_name,
-    ) = _collect_anndata_annotations(
+    if primary_matrix.ndim != 2:
+        raise ValueError(
+            f"AnnData primary key {primary_key!r} must provide a "
+            f"[samples, features] tensor; got {tuple(primary_matrix.shape)}."
+        )
+    output_structures = dict(anndata_spec.output_structures_by_key)
+    output_structures.setdefault(primary_key, "vector")
+    sample_ids, labels, metadata, index_name = _collect_anndata_annotations(
         predictions=predictions,
         anndata_spec=anndata_spec,
+        batch_sizes=batch_sizes,
+        tensor_keys=tensor_keys,
     )
-
     adata = package_matrix_as_anndata(
         primary_matrix,
         sample_ids=sample_ids,
@@ -504,27 +527,51 @@ def _export_anndata(
         adata.obs.index.name = index_name
 
     for key in anndata_spec.keys:
-        if (
-                key == primary_key
-                or anndata_spec.output_structures_by_key[key] == "scalar"
-        ):
+        if key == primary_key or output_structures.get(key) == "scalar":
+            # Declared Composite scalar outputs are already annotations.
             continue
-
-        matrix = _concat_prediction_model_output_batches(
+        values, value_batch_sizes = _concat_prediction_tensor_batches(
             predictions=predictions,
             key=key,
+            source="model_output",
         )
-
-        adata.obsm[key] = matrix.numpy()
+        if value_batch_sizes != batch_sizes:
+            raise ValueError(
+                f"AnnData output {key!r} has per-batch sizes {value_batch_sizes}; "
+                f"primary output {primary_key!r} has {batch_sizes}."
+            )
+        if values.ndim not in {1, 2}:
+            raise ValueError(
+                f"AnnData output {key!r} must provide [samples] or "
+                f"[samples, features]; got {tuple(values.shape)}."
+            )
+        structure = output_structures.get(key)
+        if structure is None:
+            structure = "scalar" if values.ndim == 1 else "vector"
+            output_structures[key] = structure
+        if structure == "scalar":
+            if key in adata.obs.columns:
+                raise ValueError(
+                    f"AnnData output {key!r} conflicts with an annotation "
+                    "column. Rename the output or annotation."
+                )
+            if adata.obs.index.name == key:
+                adata.obs.index.name = None
+            adata.obs[key] = values.numpy()
+        else:
+            if values.ndim != 2:
+                raise ValueError(
+                    f"AnnData vector output {key!r} must provide "
+                    f"[samples, features]; got {tuple(values.shape)}."
+                )
+            adata.obsm[key] = values.numpy()
 
     benchrep_uns = adata.uns.setdefault("benchrep", {})
     benchrep_uns["prediction_export"] = {
         "mode": anndata_spec.mode,
         "keys": list(anndata_spec.keys),
         "primary_key": primary_key,
-        "output_structures_by_key": dict(
-            anndata_spec.output_structures_by_key
-        ),
+        "output_structures_by_key": dict(output_structures),
         "observations": {
             observation.name: {
                 "source": observation.source,
@@ -547,35 +594,55 @@ def _export_anndata(
 
 def _collect_anndata_annotations(
     *,
-    predictions: Sequence[PredictionOutputLike],
+    predictions: Sequence[object],
     anndata_spec: PredictionAnnDataExportSpec,
+    batch_sizes: Sequence[int],
+    tensor_keys: set[str],
 ) -> tuple[
     list[Any] | None,
     list[Any] | None,
     dict[str, list[Any]] | None,
     str | None,
 ]:
-    """Collect canonical or Composite annotations for AnnData observations.
+    """Collect observation annotations aligned with exported tensor batches.
 
     Canonical outputs retain their established ``sample_id``, ``label``, and
     free-form ``metadata`` behavior. Composite outputs use only observation
-    sources explicitly resolved from their declarations.
+    sources explicitly resolved from their declarations. YOYO outputs may
+    use the same optional annotation names through mapping keys or attributes.
+    Tensor keys selected by any enabled export take precedence over annotation
+    names, including keys selected only by a reconstruction pair.
     """
 
     first_prediction = predictions[0]
 
     if not isinstance(first_prediction, CompositePredictionOutput):
         return (
-            _concat_optional_batch_values(
-                predictions=predictions,
-                key="sample_id",
+            (
+                None
+                if "sample_id" in tensor_keys
+                else _concat_optional_batch_values(
+                    predictions=predictions,
+                    key="sample_id",
+                    batch_sizes=batch_sizes,
+                )
             ),
-            _concat_optional_batch_values(
-                predictions=predictions,
-                key="label",
+            (
+                None
+                if "label" in tensor_keys
+                else _concat_optional_batch_values(
+                    predictions=predictions,
+                    key="label",
+                    batch_sizes=batch_sizes,
+                )
             ),
-            _concat_optional_metadata(
-                predictions=predictions,
+            (
+                None
+                if "metadata" in tensor_keys
+                else _concat_optional_metadata(
+                    predictions=predictions,
+                    batch_sizes=batch_sizes,
+                )
             ),
             None,
         )
@@ -605,45 +672,60 @@ def _collect_anndata_annotations(
     )
 
 
-def _concat_prediction_model_input_batches(
+def _get_prediction_field(prediction: object, key: str) -> Any:
+    """Read an optional field from a mapping or an object's attributes."""
+    if isinstance(prediction, Mapping):
+        return prediction.get(key)
+    return getattr(prediction, key, None)
+
+
+def _concat_prediction_tensor_batches(
     *,
-    predictions: Sequence[PredictionOutputLike],
+    predictions: Sequence[object],
     key: str,
-) -> torch.Tensor:
-    """Concatenate one resolved model input across prediction batches."""
-    tensors = [
-        (
-            prediction.model_inputs[key]
-            if isinstance(prediction, CompositePredictionOutput)
-            else getattr(prediction, key)
-        ).detach().cpu()
-        for prediction in predictions
-    ]
+    source: Literal["model_input", "model_output"],
+) -> tuple[torch.Tensor, tuple[int, ...]]:
+    """Collect a named tensor and retain batch sizes for alignment checks.
 
-    return torch.cat(tensors, dim=0)
-
-
-def _concat_prediction_model_output_batches(
-    *,
-    predictions: Sequence[PredictionOutputLike],
-    key: str,
-) -> torch.Tensor:
-    """Concatenate one resolved model output across prediction batches."""
-    tensors = [
-        (
-            prediction.model_outputs[key]
-            if isinstance(prediction, CompositePredictionOutput)
-            else getattr(prediction, key)
-        ).detach().cpu()
-        for prediction in predictions
-    ]
-
-    return torch.cat(tensors, dim=0)
+    Composite outputs retain their input/output namespaces. Other outputs
+    provide mapping keys or attributes. Every tensor needs a batch dimension.
+    """
+    tensors: list[torch.Tensor] = []
+    batch_sizes: list[int] = []
+    for batch_idx, prediction in enumerate(predictions):
+        if isinstance(prediction, CompositePredictionOutput):
+            namespace = (
+                prediction.model_inputs
+                if source == "model_input"
+                else prediction.model_outputs
+            )
+            value = namespace.get(key)
+        else:
+            value = _get_prediction_field(prediction, key)
+        if not isinstance(value, torch.Tensor):
+            raise TypeError(
+                f"Prediction batch {batch_idx} {source} field {key!r} "
+                f"must provide a tensor; got {type(value).__name__}."
+            )
+        if value.ndim == 0:
+            raise ValueError(
+                f"Prediction batch {batch_idx} field {key!r} "
+                "must have a batch dimension."
+            )
+        tensors.append(value.detach().cpu())
+        batch_sizes.append(int(value.shape[0]))
+    try:
+        combined = torch.cat(tensors, dim=0)
+    except RuntimeError as exc:
+        raise ValueError(
+            f"Could not concatenate prediction field {key!r}: {exc}"
+        ) from exc
+    return combined, tuple(batch_sizes)
 
 
 def _concat_prediction_observation_values(
     *,
-    predictions: Sequence[PredictionOutputLike],
+    predictions: Sequence[object],
     source: str,
     key: str,
 ) -> list[Any]:
@@ -678,46 +760,76 @@ def _concat_prediction_observation_values(
 
 def _concat_optional_batch_values(
     *,
-    predictions: Sequence[PredictionOutputLike],
+    predictions: Sequence[object],
     key: str,
+    batch_sizes: Sequence[int],
 ) -> list[Any] | None:
-    if getattr(predictions[0], key) is None:
+    """Collect optional annotations, requiring one value per sample in each batch."""
+    batches = [_get_prediction_field(prediction, key) for prediction in predictions]
+    if all(value is None for value in batches):
         return None
 
     values: list[Any] = []
-
-    for prediction in predictions:
-        value = getattr(prediction, key)
-
+    for batch_idx, (value, batch_size) in enumerate(
+        zip(batches, batch_sizes, strict=True)
+    ):
+        if value is None or isinstance(value, (str, bytes, Mapping)):
+            raise TypeError(
+                f"Prediction batch {batch_idx} annotation {key!r} "
+                "must provide a sequence of per-sample values."
+            )
         if isinstance(value, torch.Tensor):
-            values.extend(value.detach().cpu().tolist())
-        else:
-            values.extend(value)
-
+            value = value.detach().cpu().tolist()
+        try:
+            batch_values = list(value)
+        except TypeError as exc:
+            raise TypeError(
+                f"Prediction batch {batch_idx} annotation {key!r} "
+                "must provide a sequence of per-sample values."
+            ) from exc
+        if len(batch_values) != batch_size:
+            raise ValueError(
+                f"Prediction batch {batch_idx} annotation {key!r} has "
+                f"{len(batch_values)} values; expected {batch_size}."
+            )
+        values.extend(batch_values)
     return values
 
 
 def _concat_optional_metadata(
     *,
-    predictions: Sequence[PredictionOutputLike],
+    predictions: Sequence[object],
+    batch_sizes: Sequence[int],
 ) -> dict[str, list[Any]] | None:
-    if getattr(predictions[0], "metadata") is None:
+    """Collect optional metadata with consistent columns and aligned batch rows."""
+    batches = [
+        _get_prediction_field(prediction, "metadata") for prediction in predictions
+    ]
+    if all(metadata is None for metadata in batches):
         return None
-
-    merged_metadata: dict[str, list[Any]] = {}
-
-    for prediction in predictions:
-        metadata = getattr(prediction, "metadata")
-
-        for key, value in metadata.items():
-            values = (
-                value.detach().cpu().tolist()
-                if isinstance(value, torch.Tensor)
-                else value
+    keys: tuple[str, ...] = ()
+    for batch_idx, metadata in enumerate(batches):
+        if not isinstance(metadata, Mapping):
+            raise TypeError(f"Prediction batch {batch_idx} metadata must be a mapping.")
+        if batch_idx == 0:
+            keys = tuple(metadata)
+        elif set(metadata) != set(keys):
+            raise ValueError(
+                f"Prediction batch {batch_idx} metadata columns differ from the first batch."
             )
-            merged_metadata.setdefault(key, []).extend(values)
-
-    return merged_metadata
+    merged_metadata: dict[str, list[Any]] = {}
+    for key in keys:
+        values = _concat_optional_batch_values(
+            predictions=batches,
+            key=key,
+            batch_sizes=batch_sizes,
+        )
+        if values is None:
+            raise ValueError(
+                f"Prediction metadata field {key!r} must provide per-sample values."
+            )
+        merged_metadata[key] = values
+    return merged_metadata or None
 
 
 def _select_reconstruction_indices(
@@ -800,9 +912,10 @@ def _select_reconstruction_indices(
 
 def _export_reconstruction_pair(
     *,
-    predictions: Sequence[PredictionOutputLike],
+    predictions: Sequence[object],
     reconstruction_spec: PredictionReconstructionsExportSpec,
     pair: PredictionReconstructionPairSpec,
+    tensor_keys: set[str],
     output_dir: Path,
 ) -> PredictionReconstructionBundlePaths:
     """Export one resolved input/reconstruction pair as an artifact bundle.
@@ -811,16 +924,20 @@ def _export_reconstruction_pair(
     prediction namespaces, after which one shared selection is applied to every
     exported tensor and observation. The bundle contains optional input and
     reconstruction tensors, selected observations, and metadata describing the
-    pair and selection result.
+    pair and selection result. YOYO tensor fields are read from mapping
+    keys or attributes, and their per-batch sample counts must agree.
 
     Parameters
     ----------
     predictions:
-        Validated batch-level prediction outputs.
+        Batch-level prediction outputs; requested fields are checked here.
     reconstruction_spec:
         Resolved settings shared by every reconstruction pair.
     pair:
         Resolved pair identifying the model input and reconstruction output.
+    tensor_keys:
+        Tensor fields selected across all enabled exports; these names are not
+        interpreted as optional annotations.
     output_dir:
         Dedicated output directory for this pair.
 
@@ -834,36 +951,36 @@ def _export_reconstruction_pair(
             "Reconstruction export requires at least one prediction batch."
         )
 
-    input_tensor = (
-        _concat_prediction_model_input_batches(
+    input_tensor = None
+    reconstruction_tensor = None
+    batch_sizes: tuple[int, ...] | None = None
+    if reconstruction_spec.include_input:
+        input_tensor, batch_sizes = _concat_prediction_tensor_batches(
             predictions=predictions,
             key=pair.input,
+            source="model_input",
         )
-        if reconstruction_spec.include_input
-        else None
-    )
-
-    reconstruction_tensor = (
-        _concat_prediction_model_output_batches(
-            predictions=predictions,
-            key=pair.reconstruction,
+    if reconstruction_spec.include_reconstruction:
+        reconstruction_tensor, reconstruction_batch_sizes = (
+            _concat_prediction_tensor_batches(
+                predictions=predictions,
+                key=pair.reconstruction,
+                source="model_output",
+            )
         )
-        if reconstruction_spec.include_reconstruction
-        else None
-    )
-
-    reference_tensor = (
-        input_tensor
-        if input_tensor is not None
-        else reconstruction_tensor
-    )
-    assert reference_tensor is not None
-
-    n_samples = reference_tensor.shape[0]
-
+        if batch_sizes is not None and reconstruction_batch_sizes != batch_sizes:
+            raise ValueError(
+                f"Reconstruction pair {pair.id!r} has different per-batch "
+                f"sizes: input={batch_sizes}, reconstruction={reconstruction_batch_sizes}."
+            )
+        batch_sizes = reconstruction_batch_sizes
+    assert batch_sizes is not None
+    n_samples = sum(batch_sizes)
     observations = _collect_reconstruction_observations(
         predictions=predictions,
         observation_specs=reconstruction_spec.observations,
+        batch_sizes=batch_sizes,
+        tensor_keys=tensor_keys,
     )
 
     stratify_values = None
@@ -997,16 +1114,20 @@ def _export_reconstruction_pair(
 
 def _collect_reconstruction_observations(
     *,
-    predictions: Sequence[PredictionOutputLike],
-    observation_specs: Sequence[
-        PredictionReconstructionObservationSpec
-    ],
+    predictions: Sequence[object],
+    observation_specs: Sequence[PredictionReconstructionObservationSpec],
+    batch_sizes: Sequence[int],
+    tensor_keys: set[str],
 ) -> dict[str, list[Any]]:
     """Collect observations attached to reconstruction examples.
 
     Canonical outputs retain their optional ``sample_id``, ``label``, and
     free-form metadata fields. Composite outputs use the scalar model-input and
     batch-metadata sources resolved specifically for reconstruction export.
+    YOYO outputs may use the same optional annotation names through mapping
+    keys or attributes. Tensor keys selected by any enabled export take
+    precedence over annotations, including keys selected only by AnnData or
+    another reconstruction pair.
     """
     first_prediction = predictions[0]
 
@@ -1022,16 +1143,31 @@ def _collect_reconstruction_observations(
 
     observations: dict[str, list[Any]] = {}
 
-    sample_ids = _concat_optional_batch_values(
-        predictions=predictions,
-        key="sample_id",
+    sample_ids = (
+        None
+        if "sample_id" in tensor_keys
+        else _concat_optional_batch_values(
+            predictions=predictions,
+            key="sample_id",
+            batch_sizes=batch_sizes,
+        )
     )
-    labels = _concat_optional_batch_values(
-        predictions=predictions,
-        key="label",
+    labels = (
+        None
+        if "label" in tensor_keys
+        else _concat_optional_batch_values(
+            predictions=predictions,
+            key="label",
+            batch_sizes=batch_sizes,
+        )
     )
-    metadata = _concat_optional_metadata(
-        predictions=predictions,
+    metadata = (
+        None
+        if "metadata" in tensor_keys
+        else _concat_optional_metadata(
+            predictions=predictions,
+            batch_sizes=batch_sizes,
+        )
     )
 
     if sample_ids is not None:

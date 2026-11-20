@@ -7,6 +7,7 @@ import logging
 
 import anndata as ad
 
+from benchrep.assembly.schemas.parsing import EvaluationConfigContext
 from benchrep.utils.workflow_utils import EvaluationConfigInput
 from benchrep.utils.workflow_overrides import EvaluationOverrides
 from benchrep.assembly.config import compose_effective_config
@@ -179,7 +180,9 @@ def evaluate(
         schema=EvaluationConfig,
         config=config,
         config_components=config_components,
-        prediction_manifest_path_overridden=prediction_manifest_path is not None,
+        context=EvaluationConfigContext(
+            prediction_manifest_path_overridden=prediction_manifest_path is not None,
+        ),
     )
 
     eval_config = config_composition_result.effective_config

@@ -14,7 +14,8 @@ from typing import (
 
 from pydantic import (
     BaseModel,
-    BeforeValidator,
+    WrapValidator,
+    ValidatorFunctionWrapHandler,
     ConfigDict,
     Field,
     PositiveInt,
@@ -691,7 +692,7 @@ class CustomScheduleConfig(
 
 
 def _normalize_loss_weight_schedule_config(value: Any) -> Any:
-    # Revalidate supplied config objects through the same dispatch path.
+    """Normalize a schedule's name for tagged-union dispatch."""
     if isinstance(value, TrainingLossWeightScheduleConfig):
         value = value.model_dump()
 
@@ -711,6 +712,29 @@ def _normalize_loss_weight_schedule_config(value: Any) -> Any:
         pass
 
     return {**value, "name": name}
+
+
+def _validate_loss_weight_schedule_config(
+    value: Any, handler: ValidatorFunctionWrapHandler,
+) -> Any:
+    """Revalidate schedules without turning defaults into authored fields.
+
+    Validate all values, including custom parameter payloads. Restore field
+    presence on typed schedules and their typed params/cycle afterwards.
+    """
+    original = value if isinstance(value, TrainingLossWeightScheduleConfig) else None
+
+    validated = handler(_normalize_loss_weight_schedule_config(value))
+    if original is not None:
+        validated.model_fields_set.intersection_update(original.model_fields_set)
+        for name in ("params", "cycle"):
+            previous = getattr(original, name)
+            current = getattr(validated, name)
+            if isinstance(previous, _TrainingConfigBaseModel) and isinstance(
+                current, _TrainingConfigBaseModel
+            ):
+                current.model_fields_set.intersection_update(previous.model_fields_set)
+    return validated
 
 
 def _loss_weight_schedule_discriminator(value: Any) -> str:
@@ -733,7 +757,7 @@ SupportedLossWeightScheduleConfig: TypeAlias = Annotated[
     | Annotated[PiecewiseConstantScheduleConfig, Tag("piecewise_constant")]
     | Annotated[CustomScheduleConfig, Tag("custom")],
     Discriminator(_loss_weight_schedule_discriminator),
-    BeforeValidator(_normalize_loss_weight_schedule_config),
+    WrapValidator(_validate_loss_weight_schedule_config),
 ]
 
 
@@ -2421,7 +2445,7 @@ class TrainingTransformPipelineConfig(_TrainingConfigBaseModel):
             "omit_behavior": (
                 "Canonical models use `x`. Composite models use the unique "
                 "declaration assigned role `sample_image`; omission raises "
-                "an error when multiple declarations have that role. “YOYO "
+                "an error when multiple declarations have that role. YOYO "
                 "models require an explicit input."
             ),
             "null_behavior": "Equivalent to omission.",

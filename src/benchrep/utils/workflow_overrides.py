@@ -32,9 +32,9 @@ class TrainingOverrides:
         the supplied YAML or config object. With no base config, components
         and schema defaults must provide enough information for validation.
     model
-        LightningModule instance or class. Required for YOYO, optional
-        for AE/VAE when compatible with the family, and unsupported
-        for composite.
+        LightningModule instance or class. Optional for canonical autoencoders
+        and VAEs when family-compatible, unsupported for Composite models,
+        and required for YOYO models.
     datamodule
         LightningDataModule instance or class. None uses the configured
         datamodule.
@@ -66,9 +66,9 @@ class PredictionOverrides:
         the supplied YAML or config object. With no base config, components
         and schema defaults must provide enough information for validation.
     model
-        LightningModule instance or class. Required for YOYO, optional
-        for AE/VAE when compatible with the family, and unsupported
-        for composite.
+        LightningModule instance or class. Optional for canonical autoencoders
+        and VAEs when family-compatible, unsupported for Composite models,
+        and required for YOYO models.
     datamodule
         LightningDataModule instance or class. None follows the normal
         datamodule construction path.
@@ -124,7 +124,7 @@ def _validate_model_override(
     elif model_family == YOYO_FAMILY:
         if model is None:
             raise ValueError(
-                "YOYO requires a LightningModule class or instance "
+                "YOYO models require a LightningModule class or instance "
                 "passed through `overrides.model`."
             )
         expected_base_class = L.LightningModule

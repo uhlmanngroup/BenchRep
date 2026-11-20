@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import NotRequired
 from typing_extensions import TypedDict
 
+import lightning as L
 import torch
 from torch import nn
 
@@ -239,3 +240,104 @@ class MissingReconstructionExternalAutoencoder(
             embedding=representation,
             input=image,
         )
+
+
+class TinyYOYOModel(L.LightningModule):
+    """Small trainable model with private output names and deliberate export faults.
+
+    Used by workflow integration tests; no canonical base class or prediction
+    annotation is supplied. All computations use the existing synthetic data.
+    """
+
+    def __init__(
+        self,
+        initial_gain: float | None = 0.25,
+        input_key: str = "x",
+        output_kind: str = "mapping",
+        fault: str | None = None,
+        emit_metadata: bool = True,
+    ) -> None:
+        super().__init__()
+        value = torch.rand(()) if initial_gain is None else torch.tensor(initial_gain)
+        self.gain = nn.Parameter(value)
+        self.input_key = input_key
+        self.output_kind = output_kind
+        self.fault = fault
+        self.emit_metadata = emit_metadata
+        self.initial_weight_seen: float | None = None
+
+    def forward(self, image):
+        return image * self.gain
+
+    def training_step(self, batch, batch_idx):
+        if self.initial_weight_seen is None:
+            self.initial_weight_seen = float(self.gain.detach())
+        image = batch[self.input_key]
+        return (self(image) - image).square().mean()
+
+    def validation_step(self, batch, batch_idx):
+        image = batch[self.input_key]
+        self.log(
+            "val/custom", (self(image) - image).square().mean(), batch_size=len(image)
+        )
+
+    def configure_optimizers(self):
+        return torch.optim.SGD(self.parameters(), lr=0.1)
+
+    def predict_step(self, batch, batch_idx):
+        from types import SimpleNamespace
+
+        image = batch[self.input_key]
+        score = image.flatten(1).mean(1) * self.gain
+        features = torch.stack((score, self.gain.expand_as(score)), dim=1)
+        if self.output_kind == "tensor":
+            return features
+        result = {
+            "features": features,
+            "score": score,
+            "column": score[:, None],
+            "image": image,
+            "decoded": self(image),
+        }
+        if self.emit_metadata:
+            result["sample_id"] = batch.get("sample_id", batch.get("identifier"))
+            result["label"] = batch.get("label")
+            result["metadata"] = batch.get("metadata", batch.get("attributes"))
+        if self.fault == "missing_primary":
+            result.pop("features")
+        elif self.fault == "scalar_primary":
+            result["features"] = score
+        elif self.fault == "image_vector":
+            result["column"] = image
+        elif self.fault == "batch_alignment":
+            # Total row counts still match across the first two batches.
+            result["score"] = (
+                torch.cat((score, score[:1]))
+                if batch_idx == 0
+                else score[1:] if batch_idx == 1 else score
+            )
+        elif self.fault == "metadata_alignment":
+            result["label"] = (
+                list(batch["label"]) + [0]
+                if batch_idx == 0
+                else (
+                    list(batch["label"])[1:] if batch_idx == 1 else list(batch["label"])
+                )
+            )
+        elif self.fault == "metadata_keys" and batch_idx == 1:
+            result["metadata"] = {"different": [1] * len(image)}
+        elif self.fault == "reconstruction_alignment":
+            result["decoded"] = (
+                torch.cat((image, image[:1]))
+                if batch_idx == 0
+                else image[1:] if batch_idx == 1 else image
+            )
+        elif self.fault == "missing_input":
+            result.pop("image")
+        elif self.fault == "runtime":
+            raise RuntimeError("deliberate YOYO predict_step failure")
+        elif self.fault == "reserved_names":
+            result = {"label": features, "sample_id": score, "metadata": score[:, None]}
+        elif self.fault == "annotation_collision":
+            result["metadata"] = {"score": score}
+        return SimpleNamespace(**result) if self.output_kind == "attributes" else result
