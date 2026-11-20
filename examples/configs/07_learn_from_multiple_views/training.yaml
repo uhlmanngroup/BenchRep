@@ -172,3 +172,7 @@ logger:
   params:
     save_dir: outputs/07_learn_from_multiple_views
     name: csv
+
+inspection:
+  torchview:
+    enabled: true
