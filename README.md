@@ -38,10 +38,12 @@ A **model family** defines how models are constructed or supplied and the interf
 - **Canonical families — Autoencoder and VAE:** predefined component connections and model behavior, with configurable encoders, decoders, and objectives.
 - **Non-canonical families — Composite and YOYO:** Composite builds models from selected components and explicitly declared connections and objectives. YOYO ("You're On Your Own") accepts a supplied LightningModule implementation for maximum modeling flexibility.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/model-families-vconcise-dark.svg">
-  <img src="docs/assets/model-families-vconcise-light.svg" alt="BenchRep model families">
-</picture>
+<p>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/model-families-vconcise-dark.svg">
+    <img src="docs/assets/model-families-vconcise-light.svg" alt="BenchRep model families">
+  </picture>
+</p>
 
 Think of the families as different ways to lay the tracks: **canonical families** provide a predefined route with configurable parts; **Composite** lets you lay the tracks and checks their connections; **YOYO** leaves you to drive off-road, with control and responsibility for your model's behavior.
 
