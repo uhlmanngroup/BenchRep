@@ -1,30 +1,28 @@
-# BenchRep
+<h1>
+  <img src="docs/assets/logo.svg" alt="" width="56" align="absmiddle">
+  BenchRep
+</h1>
 
 BenchRep is a configuration-driven, Lightning-based, extensible **Python workbench for representation learning**. It connects model training, representation export, and standardized evaluation through reproducible, linked workflows.
 
 > [!NOTE]
-> BenchRep is an early, pre-1.0 research project under active development. APIs, schemas, contracts, and supported components may still change. BenchRep currently supports canonical autoencoder and VAE workflows alongside highly customizable composite models built from a fully user-declared computation graph, supporting supervised, self-supervised, unsupervised, and multitask architectures.
+> BenchRep is an early, pre-1.0 research project under active development. APIs, schemas, contracts, and supported components may still change.
 
 ## Why BenchRep?
 
-### Benchmarking
-- Standardize your benchmarking with reusable pipelines.
-- Evaluate external outputs.
-- Publish traceable results.
+**Benchmarking.** Compare representations from different models using shared evaluation settings, including outputs produced outside BenchRep. Export metrics and figures with records that trace results back to their inputs and configuration.
 
-### Experimentation
-- Build custom multi-input, multitask architectures.
-- Experiment with interchangeable components.
-- Diagnose issues with runtime inspection and provenance.
-- Automate hyperparameter tuning with Optuna.
+**Experimentation.** Swap components and objectives, assemble multi-input or multitask architectures, or bring your own model implementation. Use pretrained weights, inspect training behavior, and automate hyperparameter tuning with Optuna.
 
-### Education
-- Teach representation learning with less coding overhead.
-- Configure through YAML, Python, or GUI wizards.
-- Visualize architectures.
+**Education.** Explore representation learning with less coding overhead. Configure experiments through YAML, Python, or browser wizards, and inspect model structure through architecture diagrams.
 
 ## How it works
-BenchRep separates training, prediction, and evaluation into configurable workflows linked through manifests that record comprehensive run settings. Configure each workflow through YAML, Python, or a GUI wizard. Evaluation can also run independently on external embeddings and reconstructions.
+
+### Workflows
+
+**Training** fits a model and saves checkpoints. **Prediction** exports representations and reconstructions. **Evaluation** measures reconstruction quality, clustering, predictability, and batch effects, producing metrics, figures, and AnnData-integrated outputs.
+
+Connect workflows by passing their manifest paths, or evaluate external embeddings and reconstructions directly. Each workflow returns a Python result object and records its configuration, runtime environment, and status, including warnings and failures.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/workflow-chain-dark.svg">
@@ -33,38 +31,49 @@ BenchRep separates training, prediction, and evaluation into configurable workfl
 
 <sub>*Dash-dot arrows mark optional connections. Wands mark configuration wizards.*</sub>
 
-BenchRep provides canonical autoencoders and VAEs with swappable encoders and decoders, alongside composite models whose components and contracts, wiring, and learning objectives are user-defined.
+### Model families
+
+A **model family** defines how models are constructed or supplied and the interfaces they follow. Choosing a different encoder, for example, changes the model without changing its family.
+
+- **Canonical families — Autoencoder and VAE:** predefined component connections and model behavior, with configurable encoders, decoders, and objectives.
+- **Non-canonical families — Composite and YOYO:** Composite builds models from selected components and explicitly declared connections and objectives. YOYO ("You're On Your Own") accepts a supplied LightningModule implementation for maximum modeling flexibility.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/model-families-vconcise-dark.svg">
   <img src="docs/assets/model-families-vconcise-light.svg" alt="BenchRep model families">
 </picture>
 
-BenchRep uses a registry-based system to select built-in or user-registered classes and factories for components such as datasets, transforms, architectures, losses, and evaluation methods. Workflow-specific Overrides objects provide an escape hatch for supplying supported runtime objects or replacing configuration sections.
+Think of the families as different ways to lay the tracks: **canonical families** provide a predefined route with configurable parts; **Composite** lets you lay the tracks and checks their connections; **YOYO** leaves you to drive off-road, with control and responsibility for your model's behavior.
 
-Each workflow validates its inputs, exports artifacts and provenance records, and returns a Python result object for analysis or automation. Evaluation assesses reconstruction quality, clustering, predictability, and batch effects, producing consolidated metrics and AnnData-integrated outputs.
+Registries let you select built-in or externally registered components by name, including datasets, transforms, encoders, decoders, heads, and losses. All four families support training with pretrained weights; YOYO also supports prediction from supplied weights without a prior BenchRep training run.
 
 ## Installation
 
-BenchRep currently targets Python 3.11 or newer and is intended to be installed from source:
+BenchRep currently targets Python 3.11 or newer. Install directly from the repository:
 
 ```bash
-python -m pip install -e .
+python -m pip install "benchrep @ git+https://github.com/uhlmanngroup/BenchRep.git"
 ```
 
-Optional extras include GUI wizards, Optuna tuning, scverse evaluation, external loggers, model graphs, and XGBoost probes:
+To include all user-facing optional features, including browser wizards, Optuna, scverse evaluation, external loggers, model graphs, and XGBoost probes:
 
 ```bash
-python -m pip install -e ".[full]"
+python -m pip install "benchrep[full] @ git+https://github.com/uhlmanngroup/BenchRep.git"
 ```
+
+Architecture diagrams additionally need the [Graphviz system executable](https://graphviz.org/download/). For individual extras and editable installations, see the [installation guide](docs/guides/installation.md) in the draft documentation.
 
 ## Quick start
 
-Run a complete VAE training, prediction, and evaluation chain using the example configurations. Run from the repository root:
+Run a complete VAE training, prediction, and evaluation chain using the packaged example configurations. This example uses UMAP, so install the `scverse` extra if you have not already installed `full`:
+
+```bash
+python -m pip install "benchrep[scverse] @ git+https://github.com/uhlmanngroup/BenchRep.git"
+```
+
+Run from the directory where you want to keep downloaded data and outputs:
 
 ```python
-from pathlib import Path
-
 from benchrep import (
     train_vae,
     predict_vae,
@@ -72,55 +81,58 @@ from benchrep import (
     PredictionOverrides,
     EvaluationOverrides,
 )
+from benchrep.examples import example_config_path
 
-configs = Path("examples/configs/01_yaml_pipeline")
+example = "01_yaml_pipeline"
 
-training_result = train_vae(config=configs / "training.yaml")
+training_result = train_vae(
+    config=example_config_path(example, stage="training"),
+)
 
 prediction_result = predict_vae(
-    config=configs / "prediction.yaml",
+    config=example_config_path(example, stage="prediction"),
     overrides=PredictionOverrides(
         training_manifest_path=training_result.manifest_path,
     ),
 )
 
 evaluation_result = evaluate(
-    config=configs / "evaluation.yaml",
+    config=example_config_path(example, stage="evaluation"),
     overrides=EvaluationOverrides(
         prediction_manifest_path=prediction_result.manifest_path,
     ),
 )
 ```
 
-Edit the YAMLs to change the experiment settings. With the supplied YAMLs unchanged, outputs are saved under `outputs/<stage>/01_yaml_pipeline_vae_conv2d_upsample_conv2d_<timestamp>/`, where <stage> is training, prediction, or evaluation.
+Each result exposes its `manifest_path` and `run_context.output_dir`. To change the experiment, copy the [example YAMLs](examples/configs/01_yaml_pipeline/) into your working directory, edit them, and pass their paths as `config`.
 
 ## Configuration wizards
 
-Create or edit workflow configurations in your browser, with field documentation, component discovery, validation, and YAML export. Install the `gui` extra, then launch a wizard with an example base YAML:
+Create or edit workflow configurations in your browser, with field documentation, component discovery, validation, and YAML export. With the `gui` extra installed (also included in `full`), launch a wizard using a packaged configuration:
 
 ```python
 from benchrep import configure_workflow
+from benchrep.examples import example_config_path
 from benchrep.interfaces.model_families import VAE_FAMILY
 
 configured = configure_workflow(
     stage="training",
     model_family=VAE_FAMILY,
-    config="examples/configs/01_yaml_pipeline/training.yaml",
+    config=example_config_path("01_yaml_pipeline", stage="training"),
 )
 ```
 
-The wizard opens automatically in your browser at http://127.0.0.1:8050. Use `port=...` to choose a different port.
-
-Omit `config` to start fresh. Wizards are available for training, prediction, and evaluation; they configure workflows without running them.
+The wizard opens automatically in your browser. Omit `config` to start fresh. Wizards are available for training, prediction, and evaluation; they configure workflows without running them.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/configuration-wizard-dark.png">
   <img src="docs/assets/configuration-wizard-light.png" alt="BenchRep training configuration wizard">
 </picture>
 
-
 ## Documentation and examples
 
-- [Documentation](docs/index.md): currently being written. For now, refer to [Usage examples](examples/usage/). 
-- [Usage examples](examples/usage/): YAML and Python configuration, custom components, composite models, and Optuna tuning.
-- [Example configurations](examples/configs/): starting points for your own experiments.
+The documentation is **still being written and reviewed** and is not yet published as a website. For now, start with the runnable examples.
+
+- [Usage examples](examples/usage/): workflow configuration, external components, pretrained encoders, Composite assembly, training monitoring, contrastive learning, and Optuna tuning.
+- [Example configurations](examples/configs/): YAML settings accompanying the scripts and starting points for your own experiments.
+- [Draft documentation](docs/index.md): tutorials, Concepts & design, and API reference material under development.
