@@ -28,7 +28,7 @@ hide:
 
 ## Design philosophy
 
-> BenchRep provides infrastructure for representation-learning experiments, supporting both beginners and experienced researchers. It offers structure through extensive configurability and multiple layers of validation, while still leaving room for users to define or bring their own methods and bypass some guardrails when needed. Its design prioritizes flexibility, reproducibility, and traceability, to make experiments easier to design, run, understand, compare, and reproduce.
+> BenchRep provides infrastructure for representation-learning experiments, supporting beginners and experienced researchers. It offers structure through extensive configurability and multiple layers of validation, while leaving room for users to define or bring their own methods and bypass some guardrails when needed. Its design prioritizes flexibility, reproducibility, and traceability, to make experiments easier to design, run, understand, compare, and reproduce.
 
 ## Get started
 
