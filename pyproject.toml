@@ -99,7 +99,11 @@ filterwarnings = [
 
 [tool.setuptools.package-dir]
 "" = "src"
-"benchrep.examples" = "examples"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["benchrep*"]
+namespaces = false
 
 [tool.setuptools.package-data]
 "benchrep.examples" = ["configs/*.yaml", "configs/*/*.yaml", "assets/**/*"]

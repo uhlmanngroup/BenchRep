@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_every_usage_script_has_a_profile():
-    shipped = {p.stem for p in (ROOT / "examples/usage").glob("[0-9]*.py")}
+    shipped = {p.stem for p in (ROOT / "src/benchrep/examples/usage").glob("[0-9]*.py")}
     assert shipped == set(MODULES.values()), "Add a test profile for new usage scripts."
 
 
@@ -28,7 +28,7 @@ def leaves(node, prefix=()):
         yield prefix, node
 
 
-@pytest.mark.parametrize("path", sorted((ROOT / "examples/configs").glob("[0-9]*/*.yaml")),
+@pytest.mark.parametrize("path", sorted((ROOT / "src/benchrep/examples/configs").glob("[0-9]*/*.yaml")),
                          ids=lambda path: f"{path.parent.name}/{path.name}")
 def test_profiles_keep_features_and_original_yaml(path):
     original_bytes = path.read_bytes()
@@ -71,7 +71,7 @@ def test_schedule_budget_and_cosine_are_consistent():
         "name": "cosine_annealing", "params": {"T_max": 20}}}}
     edited = fast_config(scheduler, "07")
     assert edited["optimizer"]["lr_scheduler"]["params"]["T_max"] == edited["trainer"]["max_epochs"]
-    raw = yaml.safe_load((ROOT / "examples/configs/06_schedule_and_monitor_training/training.yaml").read_text())
+    raw = yaml.safe_load((ROOT / "src/benchrep/examples/configs/06_schedule_and_monitor_training/training.yaml").read_text())
     edited = fast_config(raw, "06")
     assert edited["trainer"]["max_epochs"] > max(raw["optimizer"]["lr_scheduler"]["params"]["milestones"])
     assert edited["losses"] == raw["losses"]

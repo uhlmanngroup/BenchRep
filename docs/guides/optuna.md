@@ -23,7 +23,7 @@ The example attempts 10 trials and writes to `outputs/optuna_composite_vae/<time
 !!! info "Trial 0 fails deliberately"
     The example gives trial 0 incompatible datamodule settings to demonstrate error capture. It records the failure and proceeds to the next trial. 
 
-The [:material-script-text-outline: full script](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/10_optuna_composite_vae.py) contains the complete implementation. The snippets below explain the key logic.
+The [:material-script-text-outline: full script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/10_optuna_composite_vae.py) contains the complete implementation. The snippets below explain the key logic.
 
 ## Define the search space
 

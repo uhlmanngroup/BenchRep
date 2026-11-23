@@ -29,7 +29,7 @@ reconstructions is retained for reconstruction metrics and visualizations,
 keeping the committed artifacts reasonably small.
 
 The dataset definition and artifact-generation workflow are available under
-``examples/artifact_generation/09_standalone_evaluation_workflow``.
+``src/benchrep/examples/artifact_generation/09_standalone_evaluation_workflow``.
 """
 
 

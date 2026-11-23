@@ -10,7 +10,7 @@ pytest.importorskip("griffe", reason="Schema reference tests require the docs ex
 
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location(
-    "schema_reference", ROOT / "docs_extensions/schema_reference.py"
+    "schema_reference", ROOT / "docs_support/extensions/schema_reference.py"
 )
 reference = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(reference)

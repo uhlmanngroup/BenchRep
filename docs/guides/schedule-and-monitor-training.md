@@ -4,7 +4,7 @@
 
 Here we train a small VAE on MNIST, gradually increase its KL-divergence weight, reduce the learning rate later, and inspect how reconstruction and regularization affect the encoder. CSV logging works locally without an account; Weights & Biases provides an interactive view of the same histories.
 
-The [:material-script-text-outline: complete script](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/06_schedule_and_monitor_training.py) uses a [training YAML and optional W&B logger YAML](https://github.com/uhlmanngroup/BenchRep/tree/main/examples/configs/06_schedule_and_monitor_training).
+The [:material-script-text-outline: complete script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/06_schedule_and_monitor_training.py) uses a [training YAML and optional W&B logger YAML](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/06_schedule_and_monitor_training).
 
 ## Run the example
 

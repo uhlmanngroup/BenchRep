@@ -40,7 +40,7 @@ def source_factory(tmp_path):
     def make(family=COMPOSITE_FAMILY, name="source", external_dm=False):
         raw = load_yaml(
             Path(__file__).parents[3]
-            / "examples/configs/training_mnist_composite_multitask.yaml"
+            / "src/benchrep/examples/configs/training_mnist_composite_multitask.yaml"
         )
         if family != COMPOSITE_FAMILY:
             for key in list(raw):

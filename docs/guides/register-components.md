@@ -83,7 +83,7 @@ Run the complete dataset example, which trains, predicts, and evaluates:
 python -m benchrep.examples.usage.04_custom_dataset_pipeline
 ```
 
-[:material-script-text-outline: View the script](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/04_custom_dataset_pipeline.py).
+[:material-script-text-outline: View the script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/04_custom_dataset_pipeline.py).
 
 ## Extend a loss role
 
@@ -221,7 +221,7 @@ Run the complete loss example, including registration, training, prediction, and
 python -m benchrep.examples.usage.05_custom_loss_pipeline
 ```
 
-[:material-script-text-outline: View the script](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/05_custom_loss_pipeline.py). It combines the 2 custom terms with MSE reconstruction and Gaussian KL regularization. The auxiliary classifier uses labels during training, so this is a supervised extension of the VAE objective.
+[:material-script-text-outline: View the script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/05_custom_loss_pipeline.py). It combines the 2 custom terms with MSE reconstruction and Gaussian KL regularization. The auxiliary classifier uses labels during training, so this is a supervised extension of the VAE objective.
 
 Training logs the raw and weighted terms separately. Evaluation still uses its own metrics: registering a training loss does not add an evaluation metric.
 
@@ -308,7 +308,7 @@ For composite use, connect the component's `x` port to a declared image input an
 python -m benchrep.examples.usage.11_pretrained_encoder_pipeline
 ```
 
-[:material-script-text-outline: View the script](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/11_pretrained_encoder_pipeline.py) and [YAMLs](https://github.com/uhlmanngroup/BenchRep/tree/main/examples/configs/11_pretrained_encoder_pipeline).
+[:material-script-text-outline: View the script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/11_pretrained_encoder_pipeline.py) and [YAMLs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/11_pretrained_encoder_pipeline).
 
 The script registers the encoder, trains the autoencoder, then reconstructs it from the training checkpoint for prediction. Evaluation exports PCA plots, clustering metrics, reconstruction metrics, and input/reconstruction/error grids for each RGB channel.
 

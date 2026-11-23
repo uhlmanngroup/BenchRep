@@ -1,7 +1,6 @@
 """Build public-reference metadata without importing BenchRep dependencies.
 
-Read registry declarations and registrations as syntax, and expose the packaged
-examples under the same name used by setuptools. No docstrings are synthesized.
+Read registry declarations and registrations as syntax. No docstrings are synthesized.
 """
 from __future__ import annotations
 
@@ -9,9 +8,9 @@ import ast
 import re
 from pathlib import Path
 
-from griffe import Extension, visit
+from griffe import Extension
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def normalize(name):
@@ -132,21 +131,7 @@ def read_catalogue(root=ROOT):
 
 
 class PublicReference(Extension):
-    """Read source metadata for the catalogue and packaged-example helpers."""
-
-    def on_module_members(self, *, mod, agent, **kwargs):
-        if mod.path != "benchrep":
-            return
-        # Mirror pyproject.toml's package-dir mapping in Griffe's static tree.
-        path = ROOT / "examples/__init__.py"
-        examples = visit(
-            "examples", path, path.read_text(encoding="utf-8"), parent=mod,
-            docstring_parser=agent.docstring_parser,
-            docstring_options=agent.docstring_options,
-            lines_collection=agent.lines_collection,
-            modules_collection=agent.modules_collection,
-        )
-        mod.set_member("examples", examples)
+    """Read source metadata for the component catalogue."""
 
     def on_module(self, *, mod, loader, **kwargs):
         if mod.path != "benchrep.assembly.registries.core":

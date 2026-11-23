@@ -102,7 +102,7 @@ evaluation_result = evaluate(
 )
 ```
 
-Each result exposes its `manifest_path` and `run_context.output_dir`. To change the experiment, copy the [example YAMLs](examples/configs/01_yaml_pipeline/) into your working directory, edit them, and pass their paths as `config`.
+Each result exposes its `manifest_path` and `run_context.output_dir`. To change the experiment, copy the [example YAMLs](src/benchrep/examples/configs/01_yaml_pipeline/) into your working directory, edit them, and pass their paths as `config`.
 
 ## Configuration wizards
 
@@ -129,6 +129,6 @@ The wizard opens automatically in your browser. Omit `config` to start fresh. Wi
 
 The documentation is **still being written and reviewed** and is not yet published as a website. For now, start with the runnable examples.
 
-- [Usage examples](examples/usage/): workflow configuration, external components, pretrained encoders, Composite assembly, training monitoring, contrastive learning, and Optuna tuning.
-- [Example configurations](examples/configs/): YAML settings accompanying the scripts and starting points for your own experiments.
+- [Usage examples](src/benchrep/examples/usage/): workflow configuration, external components, pretrained encoders, Composite assembly, training monitoring, contrastive learning, and Optuna tuning.
+- [Example configurations](src/benchrep/examples/configs/): YAML settings accompanying the scripts and starting points for your own experiments.
 - [Draft documentation](docs/index.md): tutorials, Concepts & design, and API reference material under development.

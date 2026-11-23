@@ -88,7 +88,7 @@ A custom objective is useful when a loss needs several parts of the batch or mod
 
 The `batch` mapping includes annotations and additional fields supplied by the dataloader. The `model_output` mapping contains the canonical forward outputs or, for composite models, the declared `produces` values. It is not the model instance itself.
 
-For example, a custom objective can contain a classifier that takes `model_output["embedding"]` and compares its logits with `batch["label"]`. This adds label supervision to a canonical model without changing its predefined forward graph. The [:material-script-text-outline: custom-loss example](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/05_custom_loss_pipeline.py) demonstrates this alongside an external reconstruction loss.
+For example, a custom objective can contain a classifier that takes `model_output["embedding"]` and compares its logits with `batch["label"]`. This adds label supervision to a canonical model without changing its predefined forward graph. The [:material-script-text-outline: custom-loss example](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/05_custom_loss_pipeline.py) demonstrates this alongside an external reconstruction loss.
 
 Register the class as a [`LossComponent`][benchrep.architecture.losses.composite_model_contracts.LossComponent] in `CUSTOM_OBJECTIVE_LOSSES`, then select it under `losses.custom_objective`. Custom objectives do not declare `runtime_inputs` or use `composite_wiring`; BenchRep supplies the 2 mappings automatically.
 

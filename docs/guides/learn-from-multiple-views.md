@@ -4,7 +4,7 @@
 
 This tutorial uses a composite model with a shared encoder and projection head. Two independently augmented views of each image form a positive pair, while views of other images in the batch serve as negatives. This follows the multiview contrastive approach used in [SimCLR](https://arxiv.org/abs/2002.05709).
 
-The [:material-script-text-outline: complete script](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/07_learn_from_multiple_views.py) and [YAMLs](https://github.com/uhlmanngroup/BenchRep/tree/main/examples/configs/07_learn_from_multiple_views) implement the comparison. The sections below explain the decisions behind them.
+The [:material-script-text-outline: complete script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/07_learn_from_multiple_views.py) and [YAMLs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/07_learn_from_multiple_views) implement the comparison. The sections below explain the decisions behind them.
 
 ## Define the comparison
 

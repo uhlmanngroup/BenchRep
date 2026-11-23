@@ -5,7 +5,7 @@ from pathlib import Path
 import sys
 from zipfile import ZipFile
 
-examples = Path(__file__).resolve().parents[2] / "examples"
+examples = Path(__file__).resolve().parents[2] / "src/benchrep/examples"
 files = {examples / "__init__.py"}
 for pattern in ("usage/*.py", "configs/*.yaml", "configs/*/*.yaml", "assets/**/*"):
     files.update(path for path in examples.glob(pattern) if path.is_file())

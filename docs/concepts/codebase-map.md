@@ -114,15 +114,15 @@ Expand a directory to see what it owns. File names and directory links open the 
           <p class="br-leaf"><a href="https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/gui/shared"><code>shared/</code></a> — Editor state, forms, validation, review, export, and the Python result.</p>
         </div>
       </details>
-    </div>
-  </details>
-  <details>
-    <summary><code>examples/</code> — Runnable scripts and their inputs. This directory is installed as benchrep.examples.</summary>
-    <div class="br-branch">
-      <a class="br-browse" href="https://github.com/uhlmanngroup/BenchRep/tree/main/examples" aria-label="Browse examples on GitHub">Browse directory</a>
-      <p class="br-leaf"><a href="https://github.com/uhlmanngroup/BenchRep/tree/main/examples/usage"><code>usage/</code></a> — Workflow scripts combining the public API with example configurations.</p>
-      <p class="br-leaf"><a href="https://github.com/uhlmanngroup/BenchRep/tree/main/examples/configs"><code>configs/</code></a> — YAML inputs for the shipped examples, organized by stage and task.</p>
-      <p class="br-leaf"><a href="https://github.com/uhlmanngroup/BenchRep/tree/main/examples/artifact_generation"><code>artifact_generation/</code></a> — Recipes for preparing the standalone evaluation example’s inputs.</p>
+      <details>
+        <summary><code>examples/</code> — Runnable scripts and their inputs, available through benchrep.examples.</summary>
+        <div class="br-branch">
+          <a class="br-browse" href="https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples" aria-label="Browse src/benchrep/examples on GitHub">Browse directory</a>
+          <p class="br-leaf"><a href="https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/usage"><code>usage/</code></a> — Workflow scripts combining the public API with example configurations.</p>
+          <p class="br-leaf"><a href="https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs"><code>configs/</code></a> — YAML inputs for the shipped examples, organized by stage and task.</p>
+          <p class="br-leaf"><a href="https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/artifact_generation"><code>artifact_generation/</code></a> — Recipes for preparing the standalone evaluation example’s inputs.</p>
+        </div>
+      </details>
     </div>
   </details>
   <details>
@@ -146,15 +146,21 @@ Expand a directory to see what it owns. File names and directory links open the 
       <p class="br-leaf"><a href="https://github.com/uhlmanngroup/BenchRep/tree/main/docs/reference"><code>reference/</code></a> — Selects and organizes the documented public API and schema entries.</p>
     </div>
   </details>
-  <p class="br-leaf"><a href="https://github.com/uhlmanngroup/BenchRep/tree/main/docs_extensions"><code>docs_extensions/</code></a> — Extracts schema metadata and the component catalogue from Python source for the Reference.</p>
-  <p class="br-leaf"><a href="https://github.com/uhlmanngroup/BenchRep/tree/main/docs_templates"><code>docs_templates/</code></a> — Templates controlling how API entries, signatures, and schema fields appear.</p>
+  <details>
+    <summary><code>docs_support/</code> — Documentation build extensions and templates.</summary>
+    <div class="br-branch">
+      <a class="br-browse" href="https://github.com/uhlmanngroup/BenchRep/tree/main/docs_support" aria-label="Browse docs_support on GitHub">Browse directory</a>
+      <p class="br-leaf"><a href="https://github.com/uhlmanngroup/BenchRep/tree/main/docs_support/extensions"><code>extensions/</code></a> — Extracts schema metadata and the component catalogue from Python source for the Reference.</p>
+      <p class="br-leaf"><a href="https://github.com/uhlmanngroup/BenchRep/tree/main/docs_support/templates"><code>templates/</code></a> — Templates controlling how API entries, signatures, and schema fields appear.</p>
+    </div>
+  </details>
   <p class="br-leaf"><a href="https://github.com/uhlmanngroup/BenchRep/blob/main/mkdocs.yml"><code>mkdocs.yml</code></a> — Documentation navigation, Markdown extensions, and Reference rendering settings.</p>
   <p class="br-leaf"><a href="https://github.com/uhlmanngroup/BenchRep/blob/main/pyproject.toml"><code>pyproject.toml</code></a> — Package metadata, dependencies, optional extras, and package-data rules.</p>
 </div>
 
 ## A training run across packages
 
-Consider the Gaussian KL term in the [Optuna example’s training config](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/configs/10_optuna_composite_vae/training.yaml). The configuration names the loss and connects its 2 arguments to values produced by a variational head. Following this one term shows how several packages share responsibility for the same setting.
+Consider the Gaussian KL term in the [Optuna example’s training config](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/configs/10_optuna_composite_vae/training.yaml). The configuration names the loss and connects its 2 arguments to values produced by a variational head. Following this one term shows how several packages share responsibility for the same setting.
 
 | Follow the term | What happens |
 | --- | --- |

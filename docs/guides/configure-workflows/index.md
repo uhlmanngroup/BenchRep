@@ -57,7 +57,7 @@ For the complete YAML-based chain with its original 32-dimensional latent space,
 python -m benchrep.examples.usage.01_yaml_pipeline
 ```
 
-[:material-script-text-outline: View the script](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/01_yaml_pipeline.py).
+[:material-script-text-outline: View the script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/01_yaml_pipeline.py).
 
 ## Python config objects
 
@@ -102,7 +102,7 @@ from benchrep.assembly.schemas import TrainingModelConfig
 model = TrainingModelConfig(name="vae", params={"latent_dim": 64})
 ```
 
-Pass that section as `model=model` when constructing [`TrainingConfig`][benchrep.assembly.schemas.training_config_schema.TrainingConfig], together with the other required sections. The [:material-script-text-outline: Python-only example](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/03_config_object_pipeline.py) constructs all 3 workflow configs in full, using its original 32-dimensional latent space:
+Pass that section as `model=model` when constructing [`TrainingConfig`][benchrep.assembly.schemas.training_config_schema.TrainingConfig], together with the other required sections. The [:material-script-text-outline: Python-only example](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/03_config_object_pipeline.py) constructs all 3 workflow configs in full, using its original 32-dimensional latent space:
 
 ```bash
 python -m benchrep.examples.usage.03_config_object_pipeline
@@ -140,7 +140,7 @@ The complete overrides example adapts the MNIST pipeline to CIFAR-10 by replacin
 python -m benchrep.examples.usage.02_yaml_override_pipeline
 ```
 
-[:material-script-text-outline: View the script](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/02_yaml_override_pipeline.py).
+[:material-script-text-outline: View the script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/02_yaml_override_pipeline.py).
 
 ## Browser wizard
 
@@ -193,7 +193,7 @@ For a complete chain configured through 3 wizard sessions, run the composite exa
 python -m benchrep.examples.usage.08B_dual_input_multitask_composite_vae_wizard
 ```
 
-[:material-script-text-outline: View the script](https://github.com/uhlmanngroup/BenchRep/blob/main/examples/usage/08B_dual_input_multitask_composite_vae_wizard.py).
+[:material-script-text-outline: View the script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/08B_dual_input_multitask_composite_vae_wizard.py).
 
 ## Check the effective settings
 

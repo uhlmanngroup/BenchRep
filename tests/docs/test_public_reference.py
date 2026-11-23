@@ -11,7 +11,7 @@ import pytest
 
 gr = pytest.importorskip("griffe", reason="Public reference tests require the docs extra.")
 ROOT = Path(__file__).resolve().parents[2]
-spec = importlib.util.spec_from_file_location("public_reference", ROOT / "docs_extensions/public_reference.py")
+spec = importlib.util.spec_from_file_location("public_reference", ROOT / "docs_support/extensions/public_reference.py")
 reference = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(reference)
 
@@ -21,7 +21,7 @@ def package():
     loader = gr.GriffeLoader(
         search_paths=[ROOT / "src"], allow_inspection=False,
         docstring_parser="numpy",
-        extensions=gr.load_extensions(str(ROOT / "docs_extensions/public_reference.py")),
+        extensions=gr.load_extensions(str(ROOT / "docs_support/extensions/public_reference.py")),
     )
     return loader.load("benchrep")
 
@@ -102,7 +102,7 @@ def test_example_helpers_keep_public_paths_and_repository_source(package):
     for name in ["example_config_path", "example_asset_path", "load_example_config"]:
         obj = package["examples." + name]
         assert obj.path == "benchrep.examples." + name
-        assert obj.filepath == ROOT / "examples/__init__.py"
+        assert obj.filepath == ROOT / "src/benchrep/examples/__init__.py"
     assert len(package["examples.load_example_config"].overloads) == 3
 
 
@@ -116,7 +116,7 @@ class BlockRuntimeImports:
             raise AssertionError('Runtime import attempted: ' + fullname)
 sys.meta_path.insert(0, BlockRuntimeImports())
 loader = GriffeLoader(search_paths=['src'], allow_inspection=False,
-    extensions=load_extensions('docs_extensions/public_reference.py'))
+    extensions=load_extensions('docs_support/extensions/public_reference.py'))
 package = loader.load('benchrep')
 assert package['examples.example_config_path'].docstring
 assert package['assembly.registries.core'].extra['benchrep_catalogue']

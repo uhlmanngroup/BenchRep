@@ -23,9 +23,9 @@ mlflow.db-*
 *.ckpt
 
 # Data and demos
-examples/data/
-examples/configs/DEMO/
-examples/usage/DEMO.py
+src/benchrep/examples/data/
+src/benchrep/examples/configs/DEMO/
+src/benchrep/examples/usage/DEMO.py
 temp_demo/
 
 # Datasets downloaded by examples run from the repo root

@@ -242,7 +242,7 @@ def test_local_source_requirement_reuses_backend(context, raw, valid):
 def test_all_sections_and_examples_roundtrip_without_resolution(context):
     sections = rules.evaluation_sections(context=context)
     assert {s.key for s in sections} == set(EvaluationConfig.model_fields) - {"stage"}
-    for path in (Path(__file__).parents[3] / "examples/configs").rglob(
+    for path in (Path(__file__).parents[3] / "src/benchrep/examples/configs").rglob(
         "evaluation.yaml"
     ):
         raw = load_yaml(path)

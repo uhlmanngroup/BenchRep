@@ -16,7 +16,6 @@ extra_javascript:
 theme:
   name: material
   variant: classic
-  custom_dir: docs_overrides
   logo: assets/logo.svg
   font:
     text: Instrument Sans
@@ -148,14 +147,14 @@ markdown_extensions:
 - attr_list
 plugins:
   - mkdocstrings:
-      custom_templates: docs_templates
+      custom_templates: docs_support/templates
       handlers:
         python:
           paths: [src]
           options:
             extensions:
-              - docs_extensions/schema_reference.py
-              - docs_extensions/public_reference.py
+              - docs_support/extensions/schema_reference.py
+              - docs_support/extensions/public_reference.py
             allow_inspection: false
             docstring_style: numpy
             members: false
