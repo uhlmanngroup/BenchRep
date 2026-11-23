@@ -222,13 +222,14 @@ def build_wizard_layout(
                                 html.Div(
                                     [
                                         html.Img(
-                                            src=get_asset_url("logo.svg"),
-                                            alt="",
-                                            className="br-logo",
+                                            src=get_asset_url("logo-wordmark-light.svg"),
+                                            alt="BenchRep",
+                                            className="br-logo br-logo-light",
                                         ),
-                                        html.Span(
-                                            "BenchRep",
-                                            className="br-brand-name",
+                                        html.Img(
+                                            src=get_asset_url("logo-wordmark-dark.svg"),
+                                            alt="BenchRep",
+                                            className="br-logo br-logo-dark",
                                         ),
                                     ],
                                     className="br-brand",

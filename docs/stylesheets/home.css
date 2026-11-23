@@ -9,10 +9,10 @@
   letter-spacing: -0.04em;
 }
 .md-typeset .br-home-title img {
-  width: 1.3em;
+  width: 7em;
+  max-width: 100%;
   height: auto;
   margin: 0;
-  flex-shrink: 0;
 }
 .md-content .md-typeset .br-home-lead {
   max-width: 55ch;

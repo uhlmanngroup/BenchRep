@@ -1,6 +1,8 @@
 <h1>
-  <img src="docs/assets/logo.svg" alt="" width="56" align="absmiddle">
-  BenchRep
+  <img src="docs/assets/logo-wordmark-light.svg#gh-light-mode-only"
+       alt="BenchRep" width="340">
+  <img src="docs/assets/logo-wordmark-dark.svg#gh-dark-mode-only"
+       alt="BenchRep" width="340">
 </h1>
 
 BenchRep is a configuration-driven, Lightning-based, extensible **Python workbench for representation learning**. It connects model training, representation export, and standardized evaluation through reproducible, linked workflows.

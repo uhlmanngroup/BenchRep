@@ -1,5 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=Sansation&display=swap");
-
 /* Shared color roles. Mantine sets the color-scheme attribute on <html>. */
 :root,
 [data-mantine-color-scheme="light"] {
@@ -78,14 +76,6 @@ body {
     align-items: center;
     gap: 12px;
     flex-shrink: 0;
-}
-
-.br-brand-name {
-    font-family: "Sansation", sans-serif;
-    font-size: 3.6rem;
-    font-weight: 400;
-    letter-spacing: normal;
-    transform: translateY(5px);
 }
 
 .br-header h1 {
@@ -767,8 +757,24 @@ body {
 #wizard-review-stale { color: var(--br-warning); }
 
 .br-logo {
-    height: 4.68rem;
+    height: 3.5rem;
     width: auto;
+}
+
+.br-logo-light {
+    display: block;
+}
+
+.br-logo-dark {
+    display: none;
+}
+
+[data-mantine-color-scheme="dark"] .br-logo-light {
+    display: none;
+}
+
+[data-mantine-color-scheme="dark"] .br-logo-dark {
+    display: block;
 }
 
 .br-header {
