@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Ubuntu / Python 3.11
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    env:
+      MPLBACKEND: Agg
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      OPENBLAS_NUM_THREADS: "2"
+      NUMBA_NUM_THREADS: "2"
+      PYTHONUNBUFFERED: "1"
+      COVERAGE_RCFILE: ${{ github.workspace }}/outputs/ci/coverage/coverage.ini
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install Graphviz
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y graphviz
+
+      - name: Install BenchRep and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Install CPU builds before installing BenchRep's dependencies.
+          python -m pip install "torch>=2.3,<3" "torchvision>=0.18,<1" \
+            --index-url https://download.pytorch.org/whl/cpu
+          python -m pip install \
+            -e ".[test,gui-test,docs,scverse,optuna,model_graph,artifact_generation,xgboost]" \
+            "coverage>=7.11,<8"
+          python -m pip check
+
+      - name: Install Chromium for wizard tests
+        run: python -m playwright install --with-deps chromium
+
+      - name: Configure coverage
+        run: |
+          mkdir -p outputs/ci/coverage
+          cat > "$COVERAGE_RCFILE" <<EOF
+          [run]
+          source = $GITHUB_WORKSPACE/src/benchrep
+          branch = true
+          parallel = true
+          patch = subprocess
+          concurrency = multiprocessing
+          sigterm = true
+          data_file = $GITHUB_WORKSPACE/outputs/ci/coverage/.coverage
+          EOF
+
+      - name: Run the full suite, including usage examples
+        id: tests
+        run: |
+          python -m coverage run -m pytest tests/*/ \
+            --run-usage-examples \
+            --usage-device cpu \
+            --usage-output "$GITHUB_WORKSPACE/outputs/ci/usage-runs" \
+            --junitxml=outputs/ci/pytest.xml \
+            --durations=15 -ra
+
+      - name: Generate coverage reports
+        if: ${{ !cancelled() && (steps.tests.outcome == 'success' || steps.tests.outcome == 'failure') }}
+        run: |
+          python -m coverage combine --keep
+          python -m coverage report --show-missing | tee outputs/ci/coverage/summary.txt
+          python -m coverage json -o outputs/ci/coverage/coverage.json
+          python -m coverage xml -o outputs/ci/coverage/coverage.xml
+          python -m coverage html -d outputs/ci/coverage/html
+
+      - name: Save reports and usage failure logs
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: test-results-ubuntu-py311
+          retention-days: 14
+          include-hidden-files: true
+          if-no-files-found: warn
+          path: |
+            outputs/ci/pytest.xml
+            outputs/ci/coverage/
+            outputs/ci/usage-runs/**/run.log
+            outputs/ci/usage-runs/**/report.json
+            outputs/ci/usage-runs/**/fast-configs/**
