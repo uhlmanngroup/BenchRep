@@ -16,15 +16,19 @@ def pytest_addoption(parser):
                     help="Only run these example IDs, e.g. 01 06 08A.")
     group.addoption("--usage-exclude", nargs="+", choices=tuple(MODULES), default=[],
                     help="Exclude these example IDs.")
-    group.addoption("--usage-device", choices=("cpu", "auto", "gpu"), default="cpu")
+    group.addoption("--usage-device", choices=("cpu", "auto", "gpu"), default="auto",
+                    help="Device for usage examples (default: auto).")
     group.addoption("--usage-data-dir", type=Path,
                     help="Shared dataset cache (default: repository/data).")
     group.addoption("--usage-output", type=Path,
                     help="New directory for logs/artifacts (default: pytest temporary directory).")
     group.addoption("--usage-timeout", type=float, default=1800,
                     help="Maximum seconds per example, including downloads (default: 1800).")
-    group.addoption("--usage-clean-on-success", action="store_true",
-                    help="Delete this session's usage outputs only if the entire pytest session succeeds.")
+    group.addoption("--usage-clean-on-success", action="store_true", default=True,
+                    help="Delete this session's usage outputs only if the entire pytest session succeeds (default).")
+    group.addoption("--no-usage-clean-on-success", action="store_false",
+                    dest="usage_clean_on_success",
+                    help="Keep this session's usage outputs even when the entire pytest session succeeds.")
     group.addoption("--usage-strict-warnings", action="store_true",
                     help="Also fail on recorded workflow warnings; warnings are always reported.")
 

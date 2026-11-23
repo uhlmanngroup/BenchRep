@@ -227,12 +227,13 @@ def test_all_noise_exception_rejects_other_problems(all_noise_evaluation, proble
     assert not report.get("expected_issues")
 
 
-@pytest.mark.parametrize("scenario,cleanup,removed", [
-    ("pass", True, True), ("pass", False, False),
-    ("fail", True, False), ("teardown", True, False), ("interrupt", True, False),
-    ("collection", True, False),
+@pytest.mark.parametrize("scenario,cleanup_flag,removed", [
+    ("pass", None, True), ("pass", "--no-usage-clean-on-success", False),
+    ("pass", "--usage-clean-on-success", True),
+    ("fail", None, False), ("teardown", None, False), ("interrupt", None, False),
+    ("collection", None, False),
 ])
-def test_cleanup_only_after_successful_session(tmp_path, scenario, cleanup, removed):
+def test_cleanup_only_after_successful_session(tmp_path, scenario, cleanup_flag, removed):
     import os
     import shutil
     import subprocess
@@ -250,7 +251,8 @@ def teardown_check():
     if SCENARIO == "teardown":
         raise RuntimeError("teardown failed")
 
-def test_example(usage_root, teardown_check):
+def test_example(usage_root, teardown_check, request):
+    assert request.config.getoption("--usage-device") == "auto"
     (usage_root / "run.log").write_text("diagnostics")
     if SCENARIO == "fail":
         assert False
@@ -264,8 +266,8 @@ def test_example(usage_root, teardown_check):
                "--usage-output", str(output)]
     if scenario == "collection":
         command.append("--continue-on-collection-errors")
-    if cleanup:
-        command.append("--usage-clean-on-success")
+    if cleanup_flag:
+        command.append(cleanup_flag)
     env = dict(os.environ, PYTEST_DISABLE_PLUGIN_AUTOLOAD="1", PYTEST_ADDOPTS="")
     completed = subprocess.run(command, cwd=tmp_path, env=env, capture_output=True, text=True, timeout=30)
     assert (completed.returncode == 0) == (scenario == "pass"), completed.stdout + completed.stderr
