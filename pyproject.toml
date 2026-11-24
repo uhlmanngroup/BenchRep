@@ -72,7 +72,7 @@ gui-test = [
     "playwright>=1.56,<2",
 ]
 artifact_generation = [
-    "scikit-image>=0.24,<1",
+    "scikit-image>=0.26,<1",
 ]
 docs = [
     "zensical",
