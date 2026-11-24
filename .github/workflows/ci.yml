@@ -1,4 +1,4 @@
-# Temporary diagnostic run. Revert this patch after investigating macOS 08A.
+# Temporary diagnostic run. Revert this patch after investigating macOS usage examples.
 name: CI
 
 on:
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   tests:
-    name: macos-15 / Python 3.12 / diagnose 08A
+    name: macos-15 / Python 3.12 / diagnose 09
     runs-on: macos-15
     timeout-minutes: 60
     defaults:
@@ -104,7 +104,7 @@ jobs:
           python tests/usage/ci_diagnostics.py standalone outputs/ci/diagnostics/standalone \
             2>&1 | tee outputs/ci/standalone.log
 
-      - name: Diagnose usage example 08A on CPU
+      - name: Diagnose usage example 09 on CPU
         id: tests
         # Still run after a standalone failure, without making either failure green.
         if: ${{ !cancelled() && steps.install.outcome == 'success' && steps.coverage.outcome == 'success' }}
@@ -113,7 +113,7 @@ jobs:
           BENCHREP_CI_DIAGNOSTICS: ${{ github.workspace }}/outputs/ci/diagnostics
         run: |
           python -m coverage run -m pytest tests/usage/test_examples.py \
-            --run-usage-examples --usage-include 08A --usage-device cpu \
+            --run-usage-examples --usage-include 09 --usage-device cpu \
             --usage-output outputs/ci/usage-runs --no-usage-clean-on-success \
             --usage-timeout 900 --junitxml=outputs/ci/pytest.xml \
             --durations=15 -ra -v
@@ -138,7 +138,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v5
         with:
-          name: macos-15-py3.12-08A-diagnostics
+          name: macos-15-py3.12-09-diagnostics
           retention-days: 14
           include-hidden-files: true
           if-no-files-found: warn
