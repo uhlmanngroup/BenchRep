@@ -471,6 +471,12 @@ def main():
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--strict-warnings", action="store_true")
     args = parser.parse_args()
+    if diagnostic_root := os.environ.get("BENCHREP_CI_DIAGNOSTICS"):
+        if __package__:
+            from .ci_diagnostics import enable
+        else:
+            from ci_diagnostics import enable
+        enable(Path(diagnostic_root) / args.example)
     report = {"example": args.example, "passed": False, "config_changes": [],
               "datasets": [], "workflows": [], "warnings": [], "check_failures": [], "wizards": []}
     started = time.monotonic()
