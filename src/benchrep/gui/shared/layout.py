@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import inspect
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
+from importlib.metadata import PackageNotFoundError, version
 from typing import cast
 
 import dash_mantine_components as dmc
@@ -693,6 +695,58 @@ def _support_text(value: bool | None) -> str:
     }[value]
 
 
+def _external_documentation_url(target: str) -> str | None:
+    """Link known external namespaces using their public documentation paths."""
+    routes = (
+        ("torch.optim.lr_scheduler.", "torch", "https://docs.pytorch.org/docs/{release}/generated/torch.optim.lr_scheduler.{name}.html"),
+        ("torch.optim.", "torch", "https://docs.pytorch.org/docs/{release}/generated/torch.optim.{name}.html"),
+        ("torchvision.transforms.v2.", "torchvision", "https://docs.pytorch.org/vision/{release}/generated/torchvision.transforms.v2.{name}.html"),
+        ("lightning.pytorch.callbacks.", "lightning", "https://lightning.ai/docs/pytorch/{release}/api/lightning.pytorch.callbacks.{name}.html"),
+        ("lightning.pytorch.loggers.", "lightning", "https://lightning.ai/docs/pytorch/{release}/api/{module}.html#{target}"),
+        ("sklearn.metrics.", "scikit-learn", "https://scikit-learn.org/{release}/modules/generated/sklearn.metrics.{name}.html"),
+    )
+    for prefix, distribution, template in routes:
+        if not target.startswith(prefix):
+            continue
+        # Release docs use major.minor, except Lightning's full release tags.
+        # Development builds or missing metadata fall back to the stable docs.
+        try:
+            installed = version(distribution).split("+", 1)[0]
+        except PackageNotFoundError:
+            installed = ""
+        release = "stable"
+        if re.fullmatch(r"\d+\.\d+\.\d+", installed):
+            release = installed if distribution == "lightning" else installed.rsplit(".", 1)[0]
+        module, _, name = target.rpartition(".")
+        return template.format(release=release, module=module, name=name, target=target)
+    return None
+
+
+def _component_documentation(component: dict) -> Component:
+    """Keep external Sphinx/reStructuredText out of the Markdown renderer."""
+    target = component["target"]
+    url = _external_documentation_url(target)
+    if url is not None:
+        return html.Div([
+            html.H4("Documentation"),
+            html.A(
+                "Open official documentation",
+                href=url,
+                target="_blank",
+                rel="noopener noreferrer",
+            ),
+        ])
+
+    description = component["description"] or "No docstring available."
+    if target.startswith("benchrep."):
+        content = dcc.Markdown(description)
+    else:
+        # Custom components may have no public docs. Preserve their docstrings
+        # literally rather than interpreting arbitrary markup as Markdown.
+        content = html.Pre(description, style={"whiteSpace": "pre-wrap", "overflowWrap": "anywhere"})
+    return html.Div([html.H4("Description"), content])
+
+
 def render_registry_documentation(
         registry_name: str | None,
         component_name: str | None,
@@ -808,8 +862,7 @@ def render_registry_documentation(
                     "this signature does not necessarily map directly "
                     "to configurable params."
                 ),
-                html.H4("Description"),
-                dcc.Markdown(component["description"] or "No docstring available."),
+                _component_documentation(component),
             ]
         )
 
