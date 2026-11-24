@@ -19,7 +19,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-2025, macos-15]
+        os:
+          - ubuntu-24.04
+          - ubuntu-26.04
+          - windows-2025
+          - macos-15
+          - macos-26
+          # macOS 27 is currently provided by the Xcode 27 preview runner.
+          - xcode-27
         python: ["3.12", "3.13", "3.14"]
     timeout-minutes: 90
 
