@@ -48,6 +48,7 @@ nav:
   - Getting started:
     - guides/getting-started/index.md
     - Installation: guides/installation.md
+    - Known issues: known-issues.md
     - Run your first workflow chain: guides/first-workflow-chain.md
   - Configure workflows: guides/configure-workflows/index.md
   - Register external components: guides/register-components.md

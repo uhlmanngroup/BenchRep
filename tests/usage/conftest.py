@@ -18,6 +18,8 @@ def pytest_addoption(parser):
                     help="Exclude these example IDs.")
     group.addoption("--usage-device", choices=("cpu", "auto", "gpu"), default="auto",
                     help="Device for usage examples (default: auto).")
+    group.addoption("--usage-skip-xgboost", action="store_true",
+                    help="Omit only XGBoost probes from temporary configs (macOS CI workaround).")
     group.addoption("--usage-data-dir", type=Path,
                     help="Shared dataset cache (default: repository/data).")
     group.addoption("--usage-output", type=Path,

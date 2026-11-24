@@ -24,6 +24,7 @@ Failures and interruptions preserve them. Shared dataset and weight caches remai
 | Option | Effect |
 | --- | --- |
 | `--usage-device cpu` | Force CPU execution |
+| `--usage-skip-xgboost` | Omit only XGBoost probes from temporary configs (macOS CI) |
 | `--no-usage-clean-on-success` | Keep outputs after success |
 | `--usage-include 01 06 08A` | Run only these examples |
 | `--usage-exclude 07 08B 11` | Skip these examples |
@@ -41,6 +42,9 @@ If dependencies are missing:
 pip install -e '.[test,scverse,optuna,model_graph,artifact_generation,xgboost,gui-test]'
 playwright install chromium
 ```
+
+On macOS, omit `xgboost` from the install command and pass `--usage-skip-xgboost`;
+see [Known issues](../../docs/known-issues.md#xgboost-on-macos).
 
 Also install Graphviz (`dot`). Linux CI may need Playwright's system dependencies.
 Example 09 needs its packaged data assets. The first run may download full datasets

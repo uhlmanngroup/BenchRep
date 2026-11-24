@@ -1,6 +1,9 @@
 # Installation
 
-BenchRep requires <strong class="highlight">Python 3.11 or newer</strong>. Activate the Python environment where you want to run it. The commands below install from GitHub.
+BenchRep requires <strong class="highlight">Python 3.12 or newer</strong>. Activate the Python environment where you want to run it. The commands below install from GitHub.
+
+!!! warning "XGBoost on macOS"
+    XGBoost evaluation can hang on macOS. Use the core package plus the extras you need, excluding `xgboost`; both `full` and `dev` include it. See [Known issues](../known-issues.md#xgboost-on-macos) for details and a development install command.
 
 ## Install BenchRep
 

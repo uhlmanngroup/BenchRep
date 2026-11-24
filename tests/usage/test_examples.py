@@ -30,6 +30,8 @@ def test_usage_example(example, request, usage_root, record_property):
                "--data-dir", str(data), "--device", config.getoption("--usage-device")]
     if config.getoption("--usage-strict-warnings"):
         command.append("--strict-warnings")
+    if config.getoption("--usage-skip-xgboost"):
+        command.append("--skip-xgboost")
     env = os.environ.copy()
     env.update(MPLBACKEND="Agg", OMP_NUM_THREADS="2", MKL_NUM_THREADS="2",
                OPENBLAS_NUM_THREADS="2", NUMBA_NUM_THREADS="2", PYTHONUNBUFFERED="1")
@@ -54,6 +56,8 @@ def test_usage_example(example, request, usage_root, record_property):
     reporter = config.pluginmanager.getplugin("terminalreporter")
     if reporter:
         reporter.write_line(f"Example {example}: {elapsed:.1f}s; {len(warnings)} workflow warning(s); {log}")
+        if report.get("excluded_probes"):
+            reporter.write_line(f"  Explicitly excluded probes: {', '.join(report['excluded_probes'])}")
         for issue in report.get("expected_issues", []):
             reporter.write_line(f"  Expected: {issue}")
         for warning in warnings:

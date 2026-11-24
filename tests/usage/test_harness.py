@@ -274,3 +274,55 @@ def test_example(usage_root, teardown_check, request):
     assert (not output.exists()) == removed, completed.stdout + completed.stderr
     if not removed:
         assert (output / "run.log").read_text() == "diagnostics"
+
+
+@pytest.mark.parametrize("example", ["08A", "08B", "09"])
+def test_xgboost_exclusion_preserves_other_probes_and_source(example):
+    folder = ("09_standalone_evaluation_workflow" if example == "09"
+              else "08_dual_input_multitask_composite_vae_pipeline")
+    path = ROOT / "src/benchrep/examples/configs" / folder / "evaluation.yaml"
+    original_bytes = path.read_bytes()
+    raw = yaml.safe_load(original_bytes)
+    before = deepcopy(raw)
+    normal = fast_config(raw, example)
+    excluded = fast_config(raw, example, skip_xgboost=True)
+    targets = normal["metrics"]["predictability"]["targets"]
+    assert any("xgboost" in target["selected"] for target in targets.values())
+    expected = deepcopy(normal)
+    for target in expected["metrics"]["predictability"]["targets"].values():
+        target["selected"] = [name for name in target["selected"] if name != "xgboost"]
+        assert target["selected"], "Keep testing every predictability target."
+    assert excluded == expected
+    assert raw == before
+    assert path.read_bytes() == original_bytes
+    assert all(change["field"].endswith(".selected") for change in changes(normal, excluded))
+
+
+@pytest.mark.parametrize("selected", ["all", ["xgboost"], ["xgb"]])
+def test_xgboost_exclusion_rejects_ambiguous_or_empty_probe_selection(selected):
+    raw = {"stage": "evaluation", "metrics": {"predictability": {
+        "targets": {"label": {"selected": selected}}}}}
+    with pytest.raises(ValueError, match="XGBoost exclusion"):
+        fast_config(raw, "09", skip_xgboost=True)
+
+
+def test_xgboost_exclusion_reaches_generated_yaml_and_change_report(tmp_path, monkeypatch):
+    pytest.importorskip("benchrep")
+    from contextlib import ExitStack
+    import benchrep.examples as resources
+    from .runner import patch_configs
+
+    monkeypatch.chdir(tmp_path)
+    report = {"config_changes": []}
+    with ExitStack() as stack:
+        patch_configs(stack, "09", "cpu", report, skip_xgboost=True)
+        path = resources.example_config_path("09_standalone_evaluation_workflow", stage="evaluation")
+        config = yaml.safe_load(path.read_text())
+    targets = config["metrics"]["predictability"]["targets"]
+    assert all("xgboost" not in target["selected"] for target in targets.values())
+    selection_changes = [change for change in report["config_changes"][0]["changes"]
+                         if change["field"].endswith(".selected")]
+    assert selection_changes
+    for change in selection_changes:
+        assert "xgboost" in change["before"]
+        assert change["after"] == [name for name in change["before"] if name != "xgboost"]

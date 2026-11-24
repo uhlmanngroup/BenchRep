@@ -79,13 +79,19 @@ jobs:
           python -m pip install "torch>=2.3,<3" "torchvision>=0.18,<1" \
             --index-url https://download.pytorch.org/whl/cpu
 
-      - name: Install PyTorch on macO
+      - name: Install PyTorch on macOS
         if: runner.os == 'macOS'
         run: python -m pip install "torch>=2.3,<3" "torchvision>=0.18,<1"
 
       - name: Install BenchRep with dev deps
         run: |
-          python -m pip install -e ".[dev]" "coverage>=7.11,<8"
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            # Same features as dev, except XGBoost (see docs/known-issues.md).
+            python -m pip install -e ".[scverse,logging,model_graph,optuna,gui-test,artifact_generation,docs]" "coverage>=7.11,<8"
+            python -c "import importlib.util; assert importlib.util.find_spec('xgboost') is None, 'XGBoost unexpectedly installed on macOS'"
+          else
+            python -m pip install -e ".[dev]" "coverage>=7.11,<8"
+          fi
           mkdir -p outputs/ci
           python -VV > outputs/ci/environment.txt
           python -m pip list --format=freeze >> outputs/ci/environment.txt
@@ -93,6 +99,18 @@ jobs:
 
       - name: Install Chromium for wizard tests
         run: python -m playwright install --with-deps chromium
+
+      - name: Restore datasets and pretrained weights
+        id: downloads
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            data/
+            ~/.cache/torch/hub/checkpoints/
+          key: ${{ runner.os }}-usage-downloads-v2-${{ hashFiles('src/benchrep/examples/configs/**', 'src/benchrep/examples/usage/*.py', 'tests/usage/runner.py') }}
+          restore-keys: |
+            ${{ runner.os }}-usage-downloads-v2-
+            ${{ runner.os }}-usage-downloads-v1-
 
       - name: Configure coverage
         shell: python
@@ -114,13 +132,31 @@ jobs:
               encoding="utf-8",
           )
 
-      - name: Run tests without usage examples
+      - name: Run full suite including usage examples
         id: tests
-        timeout-minutes: 30
+        # Leave time for saving downloads and uploading reports after a timeout.
+        timeout-minutes: 75
         run: |
+          usage_options=()
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            usage_options+=(--usage-skip-xgboost)
+          fi
           python -m coverage run -m pytest tests/*/ \
+            --run-usage-examples --usage-device cpu \
+            --usage-data-dir "$GITHUB_WORKSPACE/data" \
+            --usage-output outputs/ci/usage-runs \
+            --no-usage-clean-on-success "${usage_options[@]}" \
             --junitxml=outputs/ci/pytest.xml \
             --durations=15 -ra -v
+
+      - name: Save datasets and pretrained weights
+        if: ${{ !cancelled() && (steps.tests.outcome == 'success' || steps.tests.outcome == 'failure') && steps.downloads.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            data/
+            ~/.cache/torch/hub/checkpoints/
+          key: ${{ steps.downloads.outputs.cache-primary-key }}
 
       - name: Generate coverage reports
         if: ${{ !cancelled() && (steps.tests.outcome == 'success' || steps.tests.outcome == 'failure') }}
@@ -131,7 +167,7 @@ jobs:
           python -m coverage xml -o outputs/ci/coverage/coverage.xml
           python -m coverage html -d outputs/ci/coverage/html
 
-      - name: Save test reports
+      - name: Save test reports and usage logs
         if: always()
         uses: actions/upload-artifact@v5
         with:
@@ -143,3 +179,6 @@ jobs:
             outputs/ci/environment.txt
             outputs/ci/pytest.xml
             outputs/ci/coverage/
+            outputs/ci/usage-runs/**/run.log
+            outputs/ci/usage-runs/**/report.json
+            outputs/ci/usage-runs/**/fast-configs/**

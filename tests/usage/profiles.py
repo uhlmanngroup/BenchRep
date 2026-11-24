@@ -31,8 +31,8 @@ def training_budget(example):
     }
 
 
-def fast_config(original, example, *, device="cpu"):
-    """Return an edited copy; preserve omitted fields and all feature switches."""
+def fast_config(original, example, *, device="cpu", skip_xgboost=False):
+    """Return a budget-limited copy, with an optional explicit XGBoost exclusion."""
     raw = deepcopy(original)
     stage = raw.get("stage")
     batch_size = 8 if example == "11" else 16
@@ -58,6 +58,15 @@ def fast_config(original, example, *, device="cpu"):
     elif stage == "evaluation":
         targets = (raw.get("metrics", {}).get("predictability") or {}).get("targets", {})
         for target in targets.values():
+            if skip_xgboost:
+                selected = target.get("selected")
+                if selected == "all":
+                    raise ValueError("XGBoost exclusion requires an explicit predictability probe list.")
+                if isinstance(selected, list):
+                    kept = [name for name in selected if name not in {"xgboost", "xgb"}]
+                    if selected and not kept:
+                        raise ValueError("XGBoost exclusion would leave no predictability probes.")
+                    target["selected"] = kept
             target.setdefault("cv", {})["n_splits"] = 2
             tuning = target.get("tuning") or {}
             if tuning.get("enabled"):

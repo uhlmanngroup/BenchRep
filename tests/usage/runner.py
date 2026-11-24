@@ -94,7 +94,7 @@ def patch_datasets(stack, data_dir, report):
         stack.enter_context(patch.object(cls, "__init__", limited))
 
 
-def patch_configs(stack, example, device, report):
+def patch_configs(stack, example, device, report, *, skip_xgboost=False):
     import yaml
     import benchrep.examples as resources
 
@@ -105,7 +105,7 @@ def patch_configs(stack, example, device, report):
         source = original_path(name, stage=stage)
         if source not in generated:
             raw = yaml.safe_load(source.read_text(encoding="utf-8"))
-            edited = fast_config(raw, example, device=device)
+            edited = fast_config(raw, example, device=device, skip_xgboost=skip_xgboost)
             destination = Path("fast-configs") / source.relative_to(resources._ROOT / "configs")
             destination.parent.mkdir(parents=True, exist_ok=True)
             destination.write_text(yaml.safe_dump(edited, sort_keys=False), encoding="utf-8")
@@ -118,7 +118,7 @@ def patch_configs(stack, example, device, report):
     # original schema validation remains intact, including import-time loads.
 
 
-def fast_object(config, example, stage, device, report):
+def fast_object(config, example, stage, device, report, *, skip_xgboost=False):
     """Use BenchRep's updater to retain typed sections and field authorship."""
     from benchrep import update_config
     from benchrep.assembly.schemas.parsing import (
@@ -127,7 +127,7 @@ def fast_object(config, example, stage, device, report):
     from benchrep.interfaces.model_families import VAE_FAMILY
 
     raw = config.model_dump(mode="python")
-    edited = fast_config(raw, example, device=device)
+    edited = fast_config(raw, example, device=device, skip_xgboost=skip_xgboost)
     edits = changes(raw, edited)
     report["config_changes"].append({"source": f"Python {stage} config", "changes": edits})
     updates = {}
@@ -295,7 +295,7 @@ def check_result(result, stage, report):
                 require(bool(result.export_paths.reconstruction_grid_paths), "Missing reconstruction grids")
 
 
-def patch_workflows(stack, example, device, report):
+def patch_workflows(stack, example, device, report, *, skip_xgboost=False):
     import benchrep
 
     for name, stage in (("train_ae", "training"), ("train_vae", "training"),
@@ -307,7 +307,8 @@ def patch_workflows(stack, example, device, report):
         @wraps(original)
         def checked(*args, _original=original, _stage=stage, **kwargs):
             if example == "03":
-                kwargs["config"] = fast_object(kwargs["config"], example, _stage, device, report)
+                kwargs["config"] = fast_object(kwargs["config"], example, _stage, device, report,
+                                               skip_xgboost=skip_xgboost)
             result = _original(*args, **kwargs)
             # Optuna deliberately catches Exception; retain failed checks so they
             # cannot disappear inside its failed-trial handling.
@@ -470,9 +471,13 @@ def main():
     parser.add_argument("--data-dir", required=True, type=Path)
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--strict-warnings", action="store_true")
+    parser.add_argument("--skip-xgboost", action="store_true")
     args = parser.parse_args()
     report = {"example": args.example, "passed": False, "config_changes": [],
               "datasets": [], "workflows": [], "warnings": [], "check_failures": [], "wizards": []}
+    report["excluded_probes"] = ["xgboost"] if args.skip_xgboost else []
+    if args.skip_xgboost:
+        print("XGBoost excluded from temporary configs by --skip-xgboost.", flush=True)
     started = time.monotonic()
     try:
         import torch
@@ -480,9 +485,9 @@ def main():
         torch.set_num_threads(2)
         print(f"Testing installed BenchRep: {benchrep.__file__}", flush=True)
         with ExitStack() as stack:
-            patch_configs(stack, args.example, args.device, report)
+            patch_configs(stack, args.example, args.device, report, skip_xgboost=args.skip_xgboost)
             patch_datasets(stack, args.data_dir, report)
-            patch_workflows(stack, args.example, args.device, report)
+            patch_workflows(stack, args.example, args.device, report, skip_xgboost=args.skip_xgboost)
             studies = []
             if args.example == "09":
                 prepare_standalone(stack, report)
