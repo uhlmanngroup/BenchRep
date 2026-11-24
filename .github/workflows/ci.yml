@@ -150,6 +150,7 @@ jobs:
           fi
           python -m coverage run -m pytest tests/*/ \
             --run-usage-examples --usage-device cpu \
+            --usage-timeout 3600 \
             --usage-data-dir "$GITHUB_WORKSPACE/data" \
             --usage-output outputs/ci/usage-runs \
             --no-usage-clean-on-success "${usage_options[@]}" \
