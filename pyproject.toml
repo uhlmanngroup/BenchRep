@@ -7,7 +7,7 @@ name = "benchrep"
 version = "0.1.0.dev0"
 description = "Configuration-driven training, prediction, and evaluation for representation learning."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "torch>=2.3,<3",
     "torchvision>=0.18,<1",
@@ -33,7 +33,6 @@ optuna = [
 ]
 gui = [
     "dash==3.4.0",
-    "dash-pydantic-form==0.18.3",
     "dash-mantine-components==2.8.0",
     "pydantic>=2.13.4,<2.14",
 ]
