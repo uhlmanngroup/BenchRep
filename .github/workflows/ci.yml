@@ -1,9 +1,14 @@
 name: CI
+run-name: CI / ${{ inputs.run_usage && 'with usage examples' || 'regular tests only' }} / ${{ github.ref_name }}
 
 on:
-  push:
-  pull_request:
   workflow_dispatch:
+    inputs:
+      run_usage:
+        description: Include usage examples in the test suite
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -83,12 +88,12 @@ jobs:
       - name: Install CPU PyTorch on Linux and Windows
         if: runner.os != 'macOS'
         run: |
-          python -m pip install "torch>=2.3,<3" "torchvision>=0.18,<1" \
+          python -m pip install "torch>=2.4,<3" "torchvision>=0.19,<1" \
             --index-url https://download.pytorch.org/whl/cpu
 
       - name: Install PyTorch on macOS
         if: runner.os == 'macOS'
-        run: python -m pip install "torch>=2.3,<3" "torchvision>=0.18,<1"
+        run: python -m pip install "torch>=2.4,<3" "torchvision>=0.19,<1"
 
       - name: Install BenchRep with dev deps
         run: |
@@ -108,6 +113,7 @@ jobs:
         run: python -m playwright install --with-deps chromium
 
       - name: Restore datasets and pretrained weights
+        if: ${{ inputs.run_usage }}
         id: downloads
         uses: actions/cache/restore@v6
         with:
@@ -139,26 +145,33 @@ jobs:
               encoding="utf-8",
           )
 
-      - name: Run full suite including usage examples
+      - name: Run selected test suite
         id: tests
         # Leave time for saving downloads and uploading reports after a timeout.
         timeout-minutes: 75
+        env:
+          RUN_USAGE: ${{ inputs.run_usage }}
         run: |
           usage_options=()
-          if [[ "$RUNNER_OS" == "macOS" ]]; then
-            usage_options+=(--usage-skip-xgboost)
+          if [[ "$RUN_USAGE" == "true" ]]; then
+            usage_options+=(
+              --run-usage-examples --usage-device cpu
+              --usage-timeout 3600
+              --usage-data-dir "$GITHUB_WORKSPACE/data"
+              --usage-output outputs/ci/usage-runs
+              --no-usage-clean-on-success
+            )
+            if [[ "$RUNNER_OS" == "macOS" ]]; then
+              usage_options+=(--usage-skip-xgboost)
+            fi
           fi
           python -m coverage run -m pytest tests/*/ \
-            --run-usage-examples --usage-device cpu \
-            --usage-timeout 3600 \
-            --usage-data-dir "$GITHUB_WORKSPACE/data" \
-            --usage-output outputs/ci/usage-runs \
-            --no-usage-clean-on-success "${usage_options[@]}" \
+            "${usage_options[@]}" \
             --junitxml=outputs/ci/pytest.xml \
             --durations=15 -ra -v
 
       - name: Save datasets and pretrained weights
-        if: ${{ !cancelled() && (steps.tests.outcome == 'success' || steps.tests.outcome == 'failure') && steps.downloads.outputs.cache-hit != 'true' }}
+        if: ${{ !cancelled() && inputs.run_usage && (steps.tests.outcome == 'success' || steps.tests.outcome == 'failure') && steps.downloads.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v6
         with:
           path: |
@@ -179,7 +192,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v5
         with:
-          name: test-results-${{ matrix.os }}-py${{ matrix.python }}
+          name: test-results-${{ matrix.os }}-py${{ matrix.python }}-usage-${{ inputs.run_usage }}
           retention-days: 14
           include-hidden-files: true
           if-no-files-found: warn
