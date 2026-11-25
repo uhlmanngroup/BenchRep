@@ -1,6 +1,8 @@
 # Register external components
 
-Register an implementation under a name, then select it in a workflow config. This tutorial uses 2 existing examples: adapting Fashion-MNIST as a custom dataset, and adding reconstruction and full-context losses to a VAE on MNIST.
+<strong class="highlight">How can I bring my own components into BenchRep?</strong> Register an implementation under a name, then select it in a config alongside built-in components.
+
+Here we adapt [Fashion-MNIST](https://github.com/zalandoresearch/fashion-mnist) as a custom dataset, extend a VAE with custom losses, and register a pretrained ConvNeXt encoder for an autoencoder. Each example shows how to connect an external implementation to the interface BenchRep expects.
 
 ## Choose the registration interface
 
@@ -28,7 +30,7 @@ python -m pip install "benchrep[scverse] @ git+https://github.com/uhlmanngroup/B
 
 BenchRep datasets return sample dictionaries. For the canonical VAE, the image is supplied as `x`; optional `label` and `sample_id` fields support prediction exports and evaluation.
 
-The complete dataset example adapts torchvision's Fashion-MNIST. Its interface can be written as:
+The complete dataset example adapts [torchvision's Fashion-MNIST](https://docs.pytorch.org/vision/stable/generated/torchvision.datasets.FashionMNIST.html). Its interface can be written as:
 
 ```python
 from torchvision.datasets import FashionMNIST

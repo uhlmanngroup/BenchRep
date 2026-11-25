@@ -1,6 +1,8 @@
 # Run your first workflow chain
 
-Train a convolutional variational autoencoder (VAE) on MNIST, then examine its learned representation. <strong class="highlight">Do images of the same digit cluster together?</strong> You’ll run 3 workflows, each with its own YAML. Training fits the model, prediction exports embeddings and reconstructions, and evaluation scores them.
+<strong class="highlight">Do images of the same digit cluster together in a VAE’s learned representation?</strong> We’ll investigate this by training a convolutional variational autoencoder (VAE) on [MNIST](http://yann.lecun.com/exdb/mnist/) and examining its embeddings.
+
+This introduces BenchRep’s 3 workflows, each configured through its own YAML: training fits the model, prediction exports embeddings and reconstructions, and evaluation computes metrics and produces figures.
 
 <strong class="highlight">Requirements.</strong> This example uses the `scverse` extra for UMAP. If you installed the full or development dependencies, you’re ready. Otherwise, run:
 

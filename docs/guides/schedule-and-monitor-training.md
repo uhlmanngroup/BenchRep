@@ -1,8 +1,8 @@
 # Schedule and monitor training
 
-<strong class="highlight">When a model learns from several objectives, how can you tell whether changing their weights is having the intended effect?</strong> A falling total loss is not enough: its definition changes when the weights change, and equally sized losses can produce very different gradients.
+<strong class="highlight">How can I diagnose training problems, balance objectives, and adjust the learning process over time?</strong> BenchRep supports inspecting gradient norms, weighting individual loss terms, and scheduling both loss weights and learning rates.
 
-Here we train a small VAE on MNIST, gradually increase its KL-divergence weight, reduce the learning rate later, and inspect how reconstruction and regularization affect the encoder. CSV logging works locally without an account; Weights & Biases provides an interactive view of the same histories.
+Here we train a small VAE on [MNIST](http://yann.lecun.com/exdb/mnist/), inspect how reconstruction and regularization influence the encoder, gradually increase the KL-divergence weight, and reduce the learning rate later in training. We track these changes through CSV logs or interactive plots in Weights & Biases.
 
 The [:material-script-text-outline: complete script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/06_schedule_and_monitor_training.py) uses a [training YAML and optional W&B logger YAML](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/06_schedule_and_monitor_training).
 
@@ -30,7 +30,7 @@ With BenchRep installed, choose either logging option and run from the directory
 
 See [Choose a logger](#choose-a-logger) for logger configuration and other backends.
 
-The example downloads MNIST if needed and trains for 8 epochs, using an MLP encoder and decoder with a 16-dimensional latent space. It holds out 10% of the training split for validation and limits each epoch to 40 training batches and 8 validation batches, at batch size 128. This keeps the experiment short enough to inspect without a long training run.
+The example downloads [MNIST](http://yann.lecun.com/exdb/mnist/) if needed and trains for 8 epochs, using an MLP encoder and decoder with a 16-dimensional latent space. It holds out 10% of the training split for validation and limits each epoch to 40 training batches and 8 validation batches, at batch size 128. This keeps the experiment short enough to inspect without a long training run.
 
 The script prints the training manifest, the CSV metric-history path, and a compact summary of the last logged training step in each epoch. Outputs are written under `outputs/06_schedule_and_monitor_training/`. This example focuses on training; for a full training → prediction → evaluation chain, see [Run your first workflow chain](first-workflow-chain.md).
 

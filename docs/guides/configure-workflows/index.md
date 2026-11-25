@@ -1,6 +1,8 @@
 # Configure workflows
 
-There are several ways to configure a BenchRep workflow. You can edit a YAML, build or update a config object in Python, replace sections through overrides, or use the browser wizard. The workflow function you call, such as [`train_vae()`][benchrep.train_vae], accepts a YAML path or a config object through its `config` argument.
+<strong class="highlight">What are the different ways to create or edit a workflow configuration?</strong> BenchRep supports editing YAML, constructing configs in Python, replacing sections through overrides, and configuring workflows interactively in the browser.
+
+Here we use each route to change the [first tutorial’s](../first-workflow-chain.md) VAE latent dimension from 32 to 64:
 
 | Route | Configure the run by… |
 |---|---|
@@ -9,7 +11,7 @@ There are several ways to configure a BenchRep workflow. You can edit a YAML, bu
 | [Python overrides](#python-overrides) | Replacing whole sections alongside a base config |
 | [Browser wizard](#browser-wizard) | Editing fields interactively, reviewing, and saving |
 
-The snippets below are alternatives: each changes the [first tutorial’s](../first-workflow-chain.md) MNIST VAE latent dimension from 32 to 64. Each route also links to a complete runnable example demonstrating the logic, though each script uses its own settings.
+The workflow function, such as [`train_vae()`][benchrep.train_vae], accepts a YAML path or config object through its `config` argument. The snippets demonstrate alternative ways to make the same change; linked runnable examples illustrate each route with their own settings.
 
 <strong class="highlight">Requirements.</strong> The YAML and Python snippets need the core installation; the wizard needs `gui`. The complete example chains also use `scverse`. See [Installation](../installation.md) to choose extras. The composite wizard example additionally needs `artifact_generation` for its custom dataset.
 
@@ -134,7 +136,7 @@ The supplied section replaces the <strong class="highlight">entire `model` secti
 
 The base can also be a config object. You can omit `config` if `config_components`, together with defaults, supplies a valid workflow config. Manifest paths and supported runtime model/datamodule implementations can also be supplied through overrides; see [Python overrides](../../concepts/workflows/overrides.md).
 
-The complete overrides example adapts the MNIST pipeline to CIFAR-10 by replacing the dataset and architecture sections:
+The complete overrides example adapts the [MNIST](http://yann.lecun.com/exdb/mnist/) pipeline to [CIFAR-10](https://www.cs.toronto.edu/~kriz/cifar.html) by replacing the dataset and architecture sections:
 
 ```bash
 python -m benchrep.examples.usage.02_yaml_override_pipeline

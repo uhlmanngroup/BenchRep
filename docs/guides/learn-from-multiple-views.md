@@ -1,10 +1,10 @@
 # Learn from multiple views
 
-<strong class="highlight"> Under the same training budget, does an ImageNet-pretrained ResNet learn a better representation of [STL-10][benchrep.architecture.data.datasets.STL10Dataset] than if initialized randomly?</strong> We can test this by training both variants under a self-supervised contrastive learning paradigm, running prediction and evaluation on their embeddings with identical settings.
+<strong class="highlight">Under the same contrastive training budget, does an ImageNet-pretrained ResNet learn better representations than one initialized randomly?</strong> We’ll compare both initializations on [STL-10](https://cs.stanford.edu/~acoates/stl10/), using identical training settings and shared prediction and evaluation configurations.
 
-This tutorial uses a composite model with a shared encoder and projection head. Two independently augmented views of each image form a positive pair, while views of other images in the batch serve as negatives. This follows the multiview contrastive approach used in [SimCLR](https://arxiv.org/abs/2002.05709).
+The composite model uses a shared encoder and projection head. Two independently augmented views of each image form a positive pair, while views of other images in the batch serve as negatives, following the multiview contrastive approach used in [SimCLR](https://arxiv.org/abs/2002.05709).
 
-The [:material-script-text-outline: complete script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/07_learn_from_multiple_views.py) and [YAMLs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/07_learn_from_multiple_views) implement the comparison. The sections below explain the decisions behind them.
+The [:material-script-text-outline: complete script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/07_learn_from_multiple_views.py) and [YAMLs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/07_learn_from_multiple_views) implement the comparison. The sections below explain how it is configured and run.
 
 ## Define the comparison
 
@@ -18,7 +18,7 @@ Both variants are trained with [NT-Xent][benchrep.architecture.losses.contrastiv
 | `evaluation.yaml` | Apply the same analyses, probe settings, and cross-validation splits                  |
 | `wandb_logger.yaml` | Optional Weights & Biases configuration                                               |
 
-[STL-10](https://cs.stanford.edu/~acoates/stl10/) contains 96 × 96 RGB images: 100,000 unlabeled images, 5,000 labeled training images, and 8,000 labeled test images. The labeled sets cover 10 classes, though the unlabeled set also includes images from other classes (additional animals and vehicles). Here we learn representations from `unlabeled`, then run cross-validated probes on `train` (`test` split is unused).
+BenchRep’s [`STL10Dataset`][benchrep.architecture.data.datasets.STL10Dataset] provides access to 96 × 96 RGB images: 100,000 unlabeled images, 5,000 labeled training images, and 8,000 labeled test images. The labeled sets cover 10 classes, though the unlabeled set also includes images from other classes (additional animals and vehicles). Here we learn representations from `unlabeled`, then run cross-validated probes on `train` (`test` split is unused).
 
 ??? note "What this comparison establishes"
     This tests ImageNet initialization under a fixed fine-tuning budget. Prior training is unequal: the pretrained model received additional supervised training, and **STL-10 itself comes from ImageNet**.

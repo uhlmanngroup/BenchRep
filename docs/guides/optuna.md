@@ -1,8 +1,8 @@
 # Tune with Optuna
 
-Tune a composite VAE on MNIST to <strong class="highlight">improve clustering</strong> of its validation embeddings. Each Optuna trial runs a full workflow-chain with a different combination of training hyperparameters. <strong class="highlight">Training-time pruning</strong> uses validation reconstruction MSE to discourage poor reconstruction, while validation clustering AMI determines the best completed trial.
+<strong class="highlight">How can I automatically tune training hyperparameters to learn better representations?</strong> Here we use Optuna to tune a composite VAE on [MNIST](http://yann.lecun.com/exdb/mnist/), scoring each completed trial by how well its validation embeddings cluster by digit.
 
-This example combines [Python config updates](configure-workflows/index.md#python-config-objects), a Lightning callback, and a metric returned by evaluation. Optuna manages the study, and BenchRep runs the workflows.
+Optuna selects hyperparameters, and BenchRep runs training, prediction, and evaluation for each trial. We apply the suggested settings through [Python config updates](configure-workflows/index.md#python-config-objects) and return the evaluation score to the study. A training callback also lets Optuna stop trials early based on validation reconstruction error.
 
 <strong class="highlight">Requirements.</strong> Install the Optuna extra which includes its dashboard:
 
