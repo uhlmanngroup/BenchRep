@@ -40,6 +40,18 @@ jobs:
           enableCrossOsArchive: true
           lookup-only: true
 
+      # On an inventory change, reuse available inputs before fetching additions.
+      # Keep the lookup above separate: exact hits need no download in this job.
+      - name: Restore inputs to extend the cache
+        if: steps.downloads.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@v6
+        with:
+          path: data/
+          key: ${{ steps.downloads.outputs.cache-primary-key }}
+          restore-keys: |
+            usage-inputs-v3-
+          enableCrossOsArchive: true
+
       - name: Set up Python for downloads
         if: steps.downloads.outputs.cache-hit != 'true'
         uses: actions/setup-python@v6

@@ -248,7 +248,7 @@ def check_result(result, stage, report):
         require(result.trainer.global_step > 0, "Training performed no optimizer steps")
         if result.config.inspection.torchview.enabled:
             file_exists(result.torchview_graph_path)
-        if result.config.model.name == "composite":
+        if result.config.model is not None and result.config.model.name == "composite":
             file_exists(result.composite_model_spec_graph_path)
     elif stage == "prediction":
         require(bool(result.predictions), "Prediction returned no batches")
@@ -295,12 +295,73 @@ def check_result(result, stage, report):
                 require(bool(result.export_paths.reconstruction_grid_paths), "Missing reconstruction grids")
 
 
+def check_runtime_example(result, stage, example, overrides, report):
+    """Check the runtime overrides and exports demonstrated by examples 12–14."""
+    import anndata as ad
+    import numpy as np
+
+    if stage not in {"training", "prediction"}:
+        return
+    for name in ("model", "datamodule"):
+        supplied = getattr(overrides, name, None)
+        if supplied is not None:
+            actual = getattr(result, name)
+            require(isinstance(actual, supplied) if inspect.isclass(supplied) else actual is supplied,
+                    f"Runtime {name} override was not used")
+    if stage == "training":
+        report["best_checkpoint"] = str(result.checkpoint_callback.best_model_path)
+        return
+    spec = result.run_spec
+    if example == "14":
+        require(spec.training_manifest_path is None and spec.checkpoint_path is None,
+                "Standalone prediction unexpectedly used a training run/checkpoint")
+        require(not any(parameter.requires_grad for parameter in result.model.parameters()),
+                "Pretrained backbone is not frozen")
+    else:
+        training = next(item for item in report["workflows"] if item["stage"] == "training")
+        require(Path(spec.training_manifest_path) == Path(training["manifest"]),
+                "Prediction did not link to this run's training manifest")
+        require(Path(spec.checkpoint_path) == Path(report["best_checkpoint"]),
+                "Prediction did not select the best training checkpoint")
+
+    data = ad.read_h5ad(result.export_result.anndata.path)
+    width = {"12": 32, "13": 128, "14": 768}[example]
+    require(data.n_obs > 30 and data.n_vars == width and np.isfinite(data.X).all(),
+            f"Unexpected primary embedding export: {data.shape}")
+    require("label" in data.obs and data.obs["label"].nunique() == 10,
+            "Export lost labels or classes")
+    if example == "13":
+        require("logits" in data.obsm and data.obsm["logits"].shape == (data.n_obs, 10)
+                and np.isfinite(data.obsm["logits"]).all(), "Missing or invalid classifier logits")
+
+
+def patch_standalone_trainer(stack, device, report):
+    """Standalone prediction has no training config from which to inherit a device."""
+    from importlib import import_module
+
+    prediction = import_module("benchrep.workflows.predict")
+    original = prediction.build_trainer
+
+    @wraps(original)
+    def build(**kwargs):
+        config = kwargs["trainer_config"]
+        edited = config.model_copy(update={"accelerator": device, "devices": 1})
+        report["config_changes"].append({
+            "source": "Standalone prediction trainer",
+            "changes": changes(config.model_dump(), edited.model_dump()),
+        })
+        return original(**{**kwargs, "trainer_config": edited})
+
+    stack.enter_context(patch.object(prediction, "build_trainer", build))
+
+
 def patch_workflows(stack, example, device, report, *, skip_xgboost=False):
     import benchrep
 
     for name, stage in (("train_ae", "training"), ("train_vae", "training"),
                         ("train_composite", "training"), ("predict_ae", "prediction"),
                         ("predict_vae", "prediction"), ("predict_composite", "prediction"),
+                        ("train_yoyo", "training"), ("predict_yoyo", "prediction"),
                         ("evaluate", "evaluation")):
         original = getattr(benchrep, name)
 
@@ -314,6 +375,8 @@ def patch_workflows(stack, example, device, report, *, skip_xgboost=False):
             # cannot disappear inside its failed-trial handling.
             try:
                 check_result(result, _stage, report)
+                if example in {"12", "13", "14"}:
+                    check_runtime_example(result, _stage, example, kwargs.get("overrides"), report)
             except Exception as exc:
                 report["check_failures"].append(f"{_stage}: {exc}")
                 raise
@@ -434,6 +497,8 @@ def check_example_outputs(example, report, studies):
                     for name in columns), "Invalid gradient-norm logs")
     elif example == "09":
         require(stages == {"evaluation": 1}, f"Unexpected workflow calls: {stages}")
+    elif example == "14":
+        require(stages == {"prediction": 1, "evaluation": 1}, f"Unexpected workflow calls: {stages}")
     elif example == "10":
         require(len(studies) == 1, "Expected one Optuna study")
         trials = studies[0].trials
@@ -495,6 +560,8 @@ def main():
                 studies = patch_optuna(stack, report)
             if args.example == "08B":
                 patch_wizard(stack, report)
+            if args.example == "14":
+                patch_standalone_trainer(stack, args.device, report)
             sys.argv = [MODULES[args.example]]
             runpy.run_module(f"benchrep.examples.usage.{MODULES[args.example]}", run_name="__main__")
             require(not report["check_failures"], str(report["check_failures"]))

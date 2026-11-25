@@ -14,7 +14,7 @@ import time
 def prepare(data_dir: Path) -> None:
     import torch
     from torchvision.datasets import CIFAR10, FashionMNIST, MNIST, STL10
-    from torchvision.models import ConvNeXt_Tiny_Weights, ResNet18_Weights
+    from torchvision.models import ConvNeXt_Tiny_Weights, ResNet18_Weights, ViT_B_16_Weights
 
     data_dir = data_dir.resolve()
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -47,7 +47,8 @@ def prepare(data_dir: Path) -> None:
             archive.unlink(missing_ok=True)
         print(f"Prepared {dataset_class.__name__} in {time.monotonic() - start:.1f}s", flush=True)
 
-    for weights in (ResNet18_Weights.IMAGENET1K_V1, ConvNeXt_Tiny_Weights.IMAGENET1K_V1):
+    for weights in (ResNet18_Weights.IMAGENET1K_V1, ConvNeXt_Tiny_Weights.IMAGENET1K_V1,
+                    ViT_B_16_Weights.IMAGENET1K_V1):
         print(f"Preparing {weights}", flush=True)
         weights.get_state_dict(progress=True, check_hash=True)
 

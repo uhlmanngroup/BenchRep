@@ -82,6 +82,121 @@ def test_external_prediction_datamodule_keeps_ownership():
     assert fast_config(raw, "10")["data"] == {"max_batches": 4}
 
 
+def test_canonical_override_budget_uses_external_constructor():
+    folder = ROOT / "src/benchrep/examples/configs/12_canonical_runtime_overrides"
+    original = yaml.safe_load((folder / "training.yaml").read_text())
+    edited = fast_config(original, "12")
+    assert "datamodule" not in edited
+    expected = deepcopy(original["overrides"])
+    expected["datamodule"]["params"]["batch_size"] = 16
+    assert edited["overrides"] == expected
+    prediction = fast_config(yaml.safe_load((folder / "prediction.yaml").read_text()), "12")
+    assert prediction["data"] == {"max_batches": 32}
+    assert prediction["overrides"] == {"model": {}, "datamodule": {}}
+
+
+def test_pretrained_prediction_budget_preserves_standalone_inputs():
+    path = ROOT / "src/benchrep/examples/configs/14_pretrained_yoyo_prediction/prediction.yaml"
+    original = yaml.safe_load(path.read_text())
+    edited = fast_config(original, "14")
+    assert edited == {**original, "data": {"max_batches": 4}}
+
+
+@pytest.mark.parametrize("device", ["cpu", "auto", "gpu"])
+def test_standalone_prediction_honors_device_without_changing_defaults(device, monkeypatch):
+    from contextlib import ExitStack
+    from importlib import import_module
+    from benchrep.assembly.schemas.training_config_schema import TrainingTrainerConfig
+    from .runner import patch_standalone_trainer
+
+    module = import_module("benchrep.workflows.predict")
+    config = TrainingTrainerConfig()
+    before = config.model_dump()
+    calls = []
+
+    def build(**kwargs):
+        calls.append(kwargs)
+        return "trainer"
+
+    monkeypatch.setattr(module, "build_trainer", build)
+    report = {"config_changes": []}
+    with ExitStack() as stack:
+        patch_standalone_trainer(stack, device, report)
+        assert module.build_trainer(trainer_config=config, stage="prediction", max_batches=4) == "trainer"
+    assert module.build_trainer is build
+    assert config.model_dump() == before
+    assert calls[0]["trainer_config"].accelerator == device
+    assert calls[0]["trainer_config"].devices == 1
+    assert calls[0]["max_batches"] == 4
+    assert report["config_changes"][0]["source"] == "Standalone prediction trainer"
+
+
+@pytest.mark.parametrize("stages,valid", [
+    (["prediction", "evaluation"], True),
+    (["training", "prediction", "evaluation"], False),
+    (["evaluation"], False),
+    (["prediction"], False),
+])
+def test_standalone_example_requires_prediction_and_evaluation_only(stages, valid):
+    from .runner import check_example_outputs
+    report = {"workflows": [{"stage": stage} for stage in stages]}
+    if valid:
+        check_example_outputs("14", report, [])
+    else:
+        with pytest.raises(AssertionError, match="Unexpected workflow calls"):
+            check_example_outputs("14", report, [])
+
+
+@pytest.mark.parametrize("example,problem,message", [
+    ("12", None, None), ("13", None, None), ("14", None, None),
+    ("12", "different_model", "override was not used"),
+    ("12", "wrong_checkpoint", "best training checkpoint"),
+    ("13", "missing_logits", "classifier logits"),
+    ("13", "wrong_primary", "primary embedding"),
+    ("14", "missing_labels", "lost labels"),
+    ("14", "checkpoint", "Standalone prediction"),
+    ("14", "trainable", "not frozen"),
+])
+def test_runtime_example_checks_reject_broken_contracts(tmp_path, example, problem, message):
+    from types import SimpleNamespace
+    import anndata as ad
+    import numpy as np
+    import torch
+    from .runner import check_runtime_example
+
+    model = torch.nn.Linear(2, 2).requires_grad_(problem == "trainable")
+    datamodule = object()
+    supplied = SimpleNamespace(model=model, datamodule=datamodule)
+    data = ad.AnnData(np.ones((40, {"12": 32, "13": 128, "14": 768}[example])))
+    if problem != "missing_labels":
+        data.obs["label"] = np.arange(40) % 10
+    if example == "13" and problem != "missing_logits":
+        data.obsm["logits"] = np.ones((40, 10))
+    if problem == "wrong_primary":
+        data = data[:, :10].copy()
+    path = tmp_path / "prediction.h5ad"
+    data.write_h5ad(path)
+    manifest, best = tmp_path / "training.yaml", tmp_path / "best.ckpt"
+    spec = SimpleNamespace(
+        training_manifest_path=manifest if example != "14" else None,
+        checkpoint_path=best if example != "14" or problem == "checkpoint" else None,
+    )
+    if problem == "wrong_checkpoint":
+        spec.checkpoint_path = tmp_path / "last.ckpt"
+    result = SimpleNamespace(
+        model=object() if problem == "different_model" else model,
+        datamodule=datamodule, run_spec=spec,
+        export_result=SimpleNamespace(anndata=SimpleNamespace(path=path)),
+    )
+    report = {"best_checkpoint": str(best),
+              "workflows": [{"stage": "training", "manifest": str(manifest)}]}
+    if message is None:
+        check_runtime_example(result, "prediction", example, supplied, report)
+    else:
+        with pytest.raises(AssertionError, match=message):
+            check_runtime_example(result, "prediction", example, supplied, report)
+
+
 @pytest.mark.parametrize("status", ["failed", "skipped", "partially_completed", "pending", "running",
                                     "completed_after_interruption"])
 def test_nested_bad_outcome_cannot_hide_behind_success(status):

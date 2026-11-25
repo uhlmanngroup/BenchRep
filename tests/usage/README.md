@@ -1,6 +1,6 @@
 # Usage-example tests
 
-Run all 12 usage scripts with smaller workloads. Tests check workflow results and
+Run all 15 usage scripts with smaller workloads. Tests check workflow results and
 saved outputs, not model performance. Temporary configs come from the real
 examples; the original scripts and YAMLs are not edited.
 
@@ -49,6 +49,10 @@ see [Known issues](../../docs/known-issues.md#xgboost-on-macos).
 Also install Graphviz (`dot`). Linux CI may need Playwright's system dependencies.
 Example 09 needs its packaged data assets. The first run may download full datasets
 and pretrained weights.
+
+Examples 12–14 cover runtime overrides, YOYO training, and standalone pretrained
+ViT prediction. The ViT test keeps the pretrained model and preprocessing, using
+128 images; CI prepares its weights in the shared download cache.
 
 ## Results
 

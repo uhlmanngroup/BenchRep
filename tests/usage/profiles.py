@@ -15,6 +15,9 @@ MODULES = {
     "09": "09_standalone_evaluation_workflow",
     "10": "10_optuna_composite_vae",
     "11": "11_pretrained_encoder_pipeline",
+    "12": "12_canonical_runtime_overrides",
+    "13": "13_yoyo_classifier_pipeline",
+    "14": "14_pretrained_yoyo_prediction",
 }
 DATASET_LIMIT = 1024
 PREDICTION_SAMPLES = 512
@@ -40,18 +43,26 @@ def fast_config(original, example, *, device="cpu", skip_xgboost=False):
         trainer = raw.setdefault("trainer", {})
         trainer.update(training_budget(example))
         trainer.update(accelerator=device, devices=1, log_every_n_steps=1)
-        dm = raw.setdefault("datamodule", {})
-        dm.update(batch_size=batch_size, num_workers=0, persistent_workers=False)
-        if "prefetch_factor" in dm:
-            dm["prefetch_factor"] = None
+        if example == "12":
+            # This class owns its loaders; change its constructor arguments.
+            raw["overrides"]["datamodule"]["params"]["batch_size"] = batch_size
+        else:
+            dm = raw.setdefault("datamodule", {})
+            dm.update(batch_size=batch_size, num_workers=0, persistent_workers=False)
+            if "prefetch_factor" in dm:
+                dm["prefetch_factor"] = None
         scheduler = (raw.get("optimizer") or {}).get("lr_scheduler")
         if scheduler and scheduler["name"] == "cosine_annealing":
             scheduler.setdefault("params", {})["T_max"] = trainer["max_epochs"]
     elif stage == "prediction":
         data = raw.setdefault("data", {})
-        # Example 10 supplies a prediction datamodule with its own batch size.
-        if example == "10":
+        # External datamodules own their batch sizes. Example 12 reuses the
+        # training instance (16); example 14 keeps its real ViT transforms and
+        # 32-image batches, processing 128 images for PCA/t-SNE and CV probes.
+        if example in {"10", "14"}:
             data["max_batches"] = 4
+        elif example == "12":
+            data["max_batches"] = PREDICTION_SAMPLES // batch_size
         else:
             data.update(batch_size=batch_size, num_workers=0,
                         max_batches=PREDICTION_SAMPLES // batch_size)
