@@ -1,0 +1,93 @@
+stage: evaluation
+
+# AnnData.X contains the selected features, not class logits or patch tokens.
+reductions:
+  pca:
+    enabled: true
+    params:
+      n_components: 30
+      key_added: X_pca
+      random_state: 137
+  umap:
+    enabled: false
+  tsne:
+    enabled: true
+    params:
+      use_rep: X_pca
+      n_pcs: 30
+      perplexity: 30.0
+      key_added: X_tsne
+      random_state: 137
+
+clustering:
+  kmeans:
+    enabled: true
+    params:
+      n_clusters: 10
+      n_init: 10
+      key_added: kmeans
+      random_state: 137
+  leiden:
+    enabled: false
+  hdbscan:
+    enabled: false
+
+metrics:
+  embedding:
+    enabled: true
+    selected:
+      - standard_deviation
+      - quantiles
+  clustering:
+    internal:
+      enabled: true
+      selected:
+        - calinski_harabasz
+        - davies_bouldin
+    external:
+      enabled: true
+      label_key: label
+      selected:
+        - adjusted_rand_index
+        - adjusted_mutual_info
+  predictability:
+    enabled: true
+    targets:
+      label:
+        task: classification
+        selected:
+          - linear
+          - knn
+        cv:
+          method: stratified_kfold
+          n_splits: 5
+          shuffle: true
+          random_state: 137
+          scoring: balanced_accuracy
+        params:
+          linear:
+            model: logistic_regression
+            standardize: true
+            max_iter: 2000
+          knn:
+            standardize: false
+            n_neighbors: 15
+            weights: distance
+            metric: cosine
+  reconstruction:
+    enabled: false
+
+plots:
+  enabled: true
+  params:
+    color_by:
+      - key: label
+        kind: categorical
+        cmap: tab10
+      - key: kmeans
+        kind: categorical
+        cmap: tab10
+    formats:
+      - png
+      - svg
+    dpi: 150

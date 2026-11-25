@@ -1,0 +1,25 @@
+stage: prediction
+
+source:
+  checkpoint: best
+
+# The script supplies existing instances, so there are no constructor params.
+overrides:
+  model: {}
+  datamodule: {}
+
+exports:
+  anndata:
+    enabled: true
+    mode: custom
+    keys:
+      - embedding
+    primary_key: embedding
+  reconstructions:
+    enabled: true
+    mode: all
+    n_examples: 30
+    selection: random
+    stratify_by: label
+    include_input: true
+    include_reconstruction: true

@@ -1,0 +1,24 @@
+stage: prediction
+
+# Standalone YOYO prediction uses the supplied model's existing weights.
+source:
+  checkpoint: null
+
+overrides:
+  model: {}
+  datamodule: {}
+
+# Loading, preprocessing, and batch size belong to the supplied datamodule.
+inference:
+  seed: 137
+  seed_workers: true
+
+exports:
+  anndata:
+    enabled: true
+    mode: custom
+    keys:
+      - embedding
+    primary_key: embedding
+  reconstructions:
+    enabled: false

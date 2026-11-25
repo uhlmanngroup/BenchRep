@@ -1,0 +1,44 @@
+stage: training
+
+run:
+  output_root: outputs/12_canonical_runtime_overrides
+  run_name_prefix: fashion_mnist_external_ae
+
+reproducibility:
+  seed: 137
+  seed_workers: true
+
+# These are constructor arguments, not the Python classes themselves.
+# Pass those through TrainingOverrides in the script.
+overrides:
+  model:
+    params:
+      latent_dim: 32
+      learning_rate: 0.001
+  datamodule:
+    params:
+      root: data/fashion_mnist
+      batch_size: 128
+      val_fraction: 0.1
+      seed: 137
+
+# The supplied model owns its architecture, loss, and optimizer. The supplied
+# datamodule owns dataset construction, preprocessing, splitting, and loading.
+trainer:
+  max_epochs: 5
+  accelerator: auto
+  devices: 1
+  precision: 32-true
+  log_every_n_steps: 20
+
+checkpointing:
+  monitor: val/reconstruction_mse
+  mode: min
+  save_top_k: 1
+  save_last: true
+
+logger:
+  name: csv
+  params:
+    save_dir: outputs/12_canonical_runtime_overrides
+    name: csv

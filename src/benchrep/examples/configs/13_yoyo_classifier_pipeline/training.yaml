@@ -1,0 +1,67 @@
+stage: training
+
+run:
+  output_root: outputs/13_yoyo_classifier_pipeline
+  run_name_prefix: cifar10_yoyo_classifier
+
+reproducibility:
+  seed: 137
+  seed_workers: true
+
+# YOYO requires a Python model override. Its constructor owns these settings.
+overrides:
+  model:
+    params:
+      feature_dim: 128
+      learning_rate: 0.001
+      weight_decay: 0.0001
+
+dataset:
+  name: cifar10
+  params:
+    root: data/cifar10
+    split: train
+    download: true
+
+transform_pipelines:
+  - input: x
+    steps:
+      - name: random_horizontal_flip
+        apply_to: [training]
+        params:
+          p: 0.5
+      - name: to_dtype
+        apply_to: [training, validation]
+        params:
+          dtype: float32
+          scale: true
+      - name: normalize
+        apply_to: [training, validation]
+        params:
+          mean: [0.5, 0.5, 0.5]
+          std: [0.5, 0.5, 0.5]
+
+datamodule:
+  batch_size: 128
+  val_fraction: 0.1
+  num_workers: 0
+
+# Loss and optimizer implementation live in the supplied LightningModule.
+trainer:
+  max_epochs: 10
+  accelerator: auto
+  devices: 1
+  precision: 32-true
+  log_every_n_steps: 20
+
+checkpointing:
+  monitor: val/cross_entropy
+  mode: min
+  save_top_k: 1
+  save_last: true
+
+logger:
+  name: csv
+  params:
+    save_dir: outputs/13_yoyo_classifier_pipeline
+    name: csv
