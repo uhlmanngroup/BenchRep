@@ -18,7 +18,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  prepare_inputs:
+    name: Prepare shared usage inputs
+    if: ${{ inputs.run_usage }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    outputs:
+      cache_key: ${{ steps.downloads.outputs.cache-primary-key }}
+    env:
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v6
+
+      - name: Check shared input cache
+        id: downloads
+        uses: actions/cache/restore@v6
+        with:
+          path: data/
+          key: usage-inputs-v3-${{ hashFiles('.github/scripts/prepare_usage_cache.py') }}
+          enableCrossOsArchive: true
+          lookup-only: true
+
+      - name: Set up Python for downloads
+        if: steps.downloads.outputs.cache-hit != 'true'
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install download dependencies
+        if: steps.downloads.outputs.cache-hit != 'true'
+        run: |
+          python -m pip install "torch>=2.4,<3" "torchvision>=0.19,<1" \
+            --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Download and validate usage inputs
+        if: steps.downloads.outputs.cache-hit != 'true'
+        run: python .github/scripts/prepare_usage_cache.py --data-dir data
+
+      - name: Save shared datasets and weights
+        if: steps.downloads.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: data/
+          key: ${{ steps.downloads.outputs.cache-primary-key }}
+          enableCrossOsArchive: true
+
   tests:
+    needs: prepare_inputs
+    # Regular-only runs must still run when the preparation job is skipped.
+    if: ${{ !cancelled() && (!inputs.run_usage || needs.prepare_inputs.result == 'success') }}
     name: ${{ matrix.os }} / Python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -47,6 +96,7 @@ jobs:
       OPENBLAS_NUM_THREADS: "2"
       NUMBA_NUM_THREADS: "2"
       PYTHONUNBUFFERED: "1"
+      TORCH_HOME: ${{ github.workspace }}/data/torch
       COVERAGE_RCFILE: ${{ github.workspace }}/outputs/ci/coverage/coverage.ini
 
     steps:
@@ -57,8 +107,17 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
-          cache: pip
-          cache-dependency-path: pyproject.toml
+
+      - name: Restore shared datasets and weights
+        if: ${{ inputs.run_usage }}
+        uses: actions/cache/restore@v6
+        with:
+          path: data/
+          key: ${{ needs.prepare_inputs.outputs.cache_key }}
+          enableCrossOsArchive: true
+          # Fail clearly if the prepared cache disappears; do not silently
+          # download the datasets again inside every test job.
+          fail-on-cache-miss: true
 
       - name: Install Graphviz on Linux
         if: runner.os == 'Linux'
@@ -112,19 +171,6 @@ jobs:
       - name: Install Chromium for wizard tests
         run: python -m playwright install --with-deps chromium
 
-      - name: Restore datasets and pretrained weights
-        if: ${{ inputs.run_usage }}
-        id: downloads
-        uses: actions/cache/restore@v6
-        with:
-          path: |
-            data/
-            ~/.cache/torch/hub/checkpoints/
-          key: ${{ runner.os }}-usage-downloads-v2-${{ hashFiles('src/benchrep/examples/configs/**', 'src/benchrep/examples/usage/*.py', 'tests/usage/runner.py') }}
-          restore-keys: |
-            ${{ runner.os }}-usage-downloads-v2-
-            ${{ runner.os }}-usage-downloads-v1-
-
       - name: Configure coverage
         shell: python
         run: |
@@ -169,15 +215,6 @@ jobs:
             "${usage_options[@]}" \
             --junitxml=outputs/ci/pytest.xml \
             --durations=15 -ra -v
-
-      - name: Save datasets and pretrained weights
-        if: ${{ !cancelled() && inputs.run_usage && (steps.tests.outcome == 'success' || steps.tests.outcome == 'failure') && steps.downloads.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@v6
-        with:
-          path: |
-            data/
-            ~/.cache/torch/hub/checkpoints/
-          key: ${{ steps.downloads.outputs.cache-primary-key }}
 
       - name: Generate coverage reports
         if: ${{ !cancelled() && (steps.tests.outcome == 'success' || steps.tests.outcome == 'failure') }}
