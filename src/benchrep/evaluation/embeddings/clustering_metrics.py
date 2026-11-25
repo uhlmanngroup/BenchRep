@@ -7,6 +7,9 @@ import warnings
 import anndata as ad
 import numpy as np
 
+from sklearn.metrics import calinski_harabasz_score as sklearn_score
+from sklearn.utils.validation import check_array
+
 from benchrep.assembly.registries.core import (
     EVAL_EXTERNAL_CLUSTERING_METRICS,
     EVAL_INTERNAL_CLUSTERING_METRICS,
@@ -21,6 +24,16 @@ from benchrep.evaluation.utils import (
     validate_adata_x,
     validate_obs_key,
 )
+
+
+def calinski_harabasz_score(X: Any, labels: Any) -> float:
+    """Compute the Calinski–Harabasz score with float64 intermediates.
+
+    Older scikit-learn versions can overflow on finite float16 embeddings.
+    Validate and promote only this metric's input; leave stored embeddings and
+    inputs to other registered metrics unchanged.
+    """
+    return float(sklearn_score(check_array(X, dtype=np.float64), labels))
 
 
 def compute_external_clustering_metrics(

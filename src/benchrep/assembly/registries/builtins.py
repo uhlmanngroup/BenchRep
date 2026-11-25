@@ -64,7 +64,6 @@ def register_builtins() -> None:
 
         from sklearn.metrics import (
             silhouette_score,
-            calinski_harabasz_score,
             davies_bouldin_score,
             adjusted_mutual_info_score,
             adjusted_rand_score,
@@ -150,6 +149,7 @@ def register_builtins() -> None:
             CompositeModel,
         )
         from benchrep.evaluation.embeddings.clustering import run_kmeans, run_leiden, run_hdbscan
+        from benchrep.evaluation.embeddings.clustering_metrics import calinski_harabasz_score
         from benchrep.evaluation.embeddings.reductions import run_pca, run_tsne, run_umap
         from benchrep.evaluation.embeddings.embedding_metrics import (
             dimensionwise_mean,
