@@ -240,7 +240,7 @@ jobs:
 
       - name: Save test reports and usage logs
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: test-results-${{ matrix.os }}-py${{ matrix.python }}-usage-${{ inputs.run_usage }}
           retention-days: 14
