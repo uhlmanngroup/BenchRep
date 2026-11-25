@@ -32,7 +32,7 @@ class Settings(BaseModel):
 
 
 @pytest.fixture
-def page():
+def page(traced_page):
     app = Dash(
         __name__,
         assets_folder=str(Path(fields.__file__).parents[1] / "assets"),
@@ -64,13 +64,13 @@ def page():
                 executable_path=os.getenv("PLAYWRIGHT_CHROMIUM_EXECUTABLE") or None,
                 args=["--no-sandbox", "--disable-dev-shm-usage"],
             )
-            page = browser.new_page(viewport={"width": 1400, "height": 1000})
-            errors = []
-            page.on("pageerror", lambda error: errors.append(str(error)))
-            page.goto(f"http://127.0.0.1:{server.server_port}")
-            page.wait_for_function("window.brFieldInteractionsInstalled === true")
-            yield page
-            assert not errors
+            with traced_page(browser, viewport={"width": 1400, "height": 1000}) as page:
+                errors = []
+                page.on("pageerror", lambda error: errors.append(str(error)))
+                page.goto(f"http://127.0.0.1:{server.server_port}")
+                page.wait_for_function("window.brFieldInteractionsInstalled === true")
+                yield page
+                assert not errors
             browser.close()
     finally:
         server.shutdown()

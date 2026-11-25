@@ -302,7 +302,7 @@ def test_missing_runtime_model_is_rejected_when_launching_either_wizard():
 
 
 @pytest.mark.parametrize("stage", ["training", "prediction"])
-def test_browser_yoyo_review_export_and_execute(stage, tmp_path):
+def test_browser_yoyo_review_export_and_execute(stage, tmp_path, traced_page):
     """Exercise the real Dash form through saving and executing its authored YAML."""
     import os
     from threading import Thread
@@ -337,31 +337,31 @@ def test_browser_yoyo_review_export_and_execute(stage, tmp_path):
                 executable_path=os.getenv("PLAYWRIGHT_CHROMIUM_EXECUTABLE") or None,
                 args=["--no-sandbox", "--disable-dev-shm-usage"],
             )
-            page = browser.new_page(viewport={"width": 1600, "height": 1000})
-            errors = []
-            page.on("pageerror", lambda error: errors.append(str(error)))
-            page.goto(f"http://127.0.0.1:{server.server_port}")
-            page.wait_for_function("window.brFieldInteractionsInstalled === true")
-            if stage == "prediction":
-                playwright.expect(page.locator(".br-source-context")).to_contain_text(
-                    "Standalone prediction"
-                )
+            with traced_page(browser, viewport={"width": 1600, "height": 1000}) as page:
+                errors = []
+                page.on("pageerror", lambda error: errors.append(str(error)))
+                page.goto(f"http://127.0.0.1:{server.server_port}")
+                page.wait_for_function("window.brFieldInteractionsInstalled === true")
+                if stage == "prediction":
+                    playwright.expect(page.locator(".br-source-context")).to_contain_text(
+                        "Standalone prediction"
+                    )
+                    playwright.expect(
+                        page.get_by_role("button", name="Load source", exact=True)
+                    ).to_be_disabled()
                 playwright.expect(
-                    page.get_by_role("button", name="Load source", exact=True)
-                ).to_be_disabled()
-            playwright.expect(
-                page.get_by_role("tab", name="Dataset", exact=False)
-            ).to_have_count(0)
-            page.get_by_role("tab", name="Review & finish", exact=False).click()
-            page.get_by_role("button", name="Check configuration", exact=True).click()
-            playwright.expect(
-                page.get_by_role("button", name="Save & finish", exact=True)
-            ).to_be_enabled(timeout=15000)
-            page.get_by_role("button", name="Save & finish", exact=True).click()
-            playwright.expect(page.locator("#wizard-save-message")).to_contain_text(
-                "Authored configuration:"
-            )
-            assert not errors
+                    page.get_by_role("tab", name="Dataset", exact=False)
+                ).to_have_count(0)
+                page.get_by_role("tab", name="Review & finish", exact=False).click()
+                page.get_by_role("button", name="Check configuration", exact=True).click()
+                playwright.expect(
+                    page.get_by_role("button", name="Save & finish", exact=True)
+                ).to_be_enabled(timeout=15000)
+                page.get_by_role("button", name="Save & finish", exact=True).click()
+                playwright.expect(page.locator("#wizard-save-message")).to_contain_text(
+                    "Authored configuration:"
+                )
+                assert not errors
             browser.close()
     finally:
         server.shutdown()

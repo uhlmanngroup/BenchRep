@@ -349,7 +349,7 @@ def test_app_builds_without_source():
 
 
 @pytest.fixture
-def prediction_browser(source_factory, tmp_path, request):
+def prediction_browser(source_factory, tmp_path, request, traced_page):
     import os
     from threading import Thread
     from werkzeug.serving import make_server
@@ -379,13 +379,13 @@ def prediction_browser(source_factory, tmp_path, request):
                 executable_path=os.getenv("PLAYWRIGHT_CHROMIUM_EXECUTABLE") or None,
                 args=["--no-sandbox", "--disable-dev-shm-usage"],
             )
-            page = browser.new_page(viewport={"width": 1600, "height": 1000})
-            errors = []
-            page.on("pageerror", lambda error: errors.append(str(error)))
-            page.goto(f"http://127.0.0.1:{server.server_port}")
-            page.wait_for_function("window.brFieldInteractionsInstalled === true")
-            yield page, source, app
-            assert not errors
+            with traced_page(browser, viewport={"width": 1600, "height": 1000}) as page:
+                errors = []
+                page.on("pageerror", lambda error: errors.append(str(error)))
+                page.goto(f"http://127.0.0.1:{server.server_port}")
+                page.wait_for_function("window.brFieldInteractionsInstalled === true")
+                yield page, source, app
+                assert not errors
             browser.close()
     finally:
         server.shutdown()

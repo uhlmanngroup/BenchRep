@@ -109,6 +109,7 @@ jobs:
       NUMBA_NUM_THREADS: "2"
       PYTHONUNBUFFERED: "1"
       TORCH_HOME: ${{ github.workspace }}/data/torch
+      BENCHREP_GUI_TRACE_DIR: ${{ github.workspace }}/outputs/ci/gui-failures
       COVERAGE_RCFILE: ${{ github.workspace }}/outputs/ci/coverage/coverage.ini
 
     steps:
@@ -248,6 +249,7 @@ jobs:
           path: |
             outputs/ci/environment.txt
             outputs/ci/pytest.xml
+            outputs/ci/gui-failures/
             outputs/ci/coverage/
             outputs/ci/usage-runs/**/run.log
             outputs/ci/usage-runs/**/report.json
