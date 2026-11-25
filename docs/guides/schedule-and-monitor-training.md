@@ -93,8 +93,13 @@ optimizer:
 The registered scheduler wraps PyTorch's `MultiStepLR`. Lightning advances it at epoch boundaries; epoch index 5 is the sixth epoch. This changes the learning-rate setting, independently of the loss weights. See [Training and optimization](../concepts/training/optimization.md#schedule-the-learning-rate) and the [scheduler catalogue](../reference/components.md#catalogue-lr_scheduler).
 
 <figure>
-  <a href="../assets/guides/schedule-and-monitor-training/schedules.png">
-    <img src="../assets/guides/schedule-and-monitor-training/schedules.png" alt="Logged KL coefficient and learning rate on aligned epoch axes, showing a KL ramp over epochs zero to three and a learning-rate drop at epoch five">
+  <a class="br-image-light" href="../assets/guides/schedule-and-monitor-training/learning-rate-and-kl-coefficient-light.png">
+    <img src="../assets/guides/schedule-and-monitor-training/learning-rate-and-kl-coefficient-light.png"
+         alt="Logged KL coefficient and learning rate on aligned epoch axes, showing a KL ramp over epochs zero to three and a learning-rate drop at epoch five">
+  </a>
+  <a class="br-image-dark" href="../assets/guides/schedule-and-monitor-training/learning-rate-and-kl-coefficient-dark.png">
+    <img src="../assets/guides/schedule-and-monitor-training/learning-rate-and-kl-coefficient-dark.png"
+         alt="Logged KL coefficient and learning rate on aligned epoch axes, showing a KL ramp over epochs zero to three and a learning-rate drop at epoch five">
   </a>
   <figcaption>The KL coefficient changes the objective; the learning rate changes the optimizer's step-size setting. Plot their recorded values to check when each schedule takes effect.</figcaption>
 </figure>
@@ -128,10 +133,50 @@ inspection:
 The combined norm is generally **not the sum of the individual norms**: gradients can reinforce or oppose each other. Nor is it the size of Adam's eventual parameter update, which also depends on its learning rate and running statistics. Per-loss norms help identify a dominant contribution, but cannot establish whether objectives agree in direction.
 
 <figure>
-  <a href="../assets/guides/schedule-and-monitor-training/encoder-gradients.png">
-    <img src="../assets/guides/schedule-and-monitor-training/encoder-gradients.png" alt="Reconstruction and KL encoder-gradient histories, with raw and weighted per-loss norms and the combined optimizer-gradient norm">
-  </a>
-  <figcaption>Compare weighted contributions on the same encoder parameters, and use the raw norms to distinguish changes in loss sensitivity from changes in the scheduled coefficient.</figcaption>
+  <table>
+    <thead>
+      <tr>
+        <th>Raw per-loss</th>
+        <th>Weighted per-loss</th>
+        <th>Combined optimizer</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>
+          <a class="br-image-light" href="../assets/guides/schedule-and-monitor-training/raw-per-loss-grad-norm-comparison-light.png">
+            <img src="../assets/guides/schedule-and-monitor-training/raw-per-loss-grad-norm-comparison-light.png"
+                 alt="Comparison of raw per-loss gradient norms">
+          </a>
+          <a class="br-image-dark" href="../assets/guides/schedule-and-monitor-training/raw-per-loss-grad-norm-comparison-dark.png">
+            <img src="../assets/guides/schedule-and-monitor-training/raw-per-loss-grad-norm-comparison-dark.png"
+                 alt="Comparison of raw per-loss gradient norms">
+          </a>
+        </td>
+        <td>
+          <a class="br-image-light" href="../assets/guides/schedule-and-monitor-training/weighted-per-loss-grad-norm-comparison-light.png">
+            <img src="../assets/guides/schedule-and-monitor-training/weighted-per-loss-grad-norm-comparison-light.png"
+                 alt="Comparison of weighted per-loss gradient norms">
+          </a>
+          <a class="br-image-dark" href="../assets/guides/schedule-and-monitor-training/weighted-per-loss-grad-norm-comparison-dark.png">
+            <img src="../assets/guides/schedule-and-monitor-training/weighted-per-loss-grad-norm-comparison-dark.png"
+                 alt="Comparison of weighted per-loss gradient norms">
+          </a>
+        </td>
+        <td>
+          <a class="br-image-light" href="../assets/guides/schedule-and-monitor-training/combined-optimizer-grad-norm-comparison-light.png">
+            <img src="../assets/guides/schedule-and-monitor-training/combined-optimizer-grad-norm-comparison-light.png"
+                 alt="Comparison of combined optimizer gradient norms">
+          </a>
+          <a class="br-image-dark" href="../assets/guides/schedule-and-monitor-training/combined-optimizer-grad-norm-comparison-dark.png">
+            <img src="../assets/guides/schedule-and-monitor-training/combined-optimizer-grad-norm-comparison-dark.png"
+                 alt="Comparison of combined optimizer gradient norms">
+          </a>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+  <figcaption>Raw per-loss, weighted per-loss, and combined optimizer gradient norms, from left to right. Click a plot to view it at full resolution.</figcaption>
 </figure>
 
 The example samples every batch and logs every training step so these histories are easy to compare.
