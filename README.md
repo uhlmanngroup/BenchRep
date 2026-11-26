@@ -5,6 +5,10 @@
        alt="BenchRep" width="340">
 </h1>
 
+[![CI](https://github.com/uhlmanngroup/BenchRep/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/uhlmanngroup/BenchRep/actions/workflows/ci.yml)
+[![Python versions tested](https://img.shields.io/badge/Python_tested-3.12%E2%80%933.14-3776AB?logo=python&logoColor=white)](https://github.com/uhlmanngroup/BenchRep/blob/main/.github/workflows/ci.yml)
+[![Operating systems tested](https://img.shields.io/badge/OS_tested-Ubuntu%20%7C%20macOS%20%7C%20Windows-546E7A)](https://github.com/uhlmanngroup/BenchRep/blob/main/.github/workflows/ci.yml)
+
 BenchRep is a configuration-driven, Lightning-based, extensible **Python workbench for representation learning**. It connects model training, representation export, and standardized evaluation through reproducible, linked workflows.
 
 > [!NOTE]
@@ -47,7 +51,7 @@ Registries let you select built-in or externally registered components by name, 
 
 ## Installation
 
-BenchRep currently targets Python 3.11 or newer. Install directly from the repository:
+1. BenchRep requires Python 3.12 or newer. Install directly from GitHub using Git.
 
 ```bash
 python -m pip install "benchrep @ git+https://github.com/uhlmanngroup/BenchRep.git"

@@ -129,8 +129,12 @@ def test_catalogue_links_documented_implementations(package):
     entries = {entry["name"]: entry for registry in catalogue for entry in registry["entries"]}
     assert entries["conv2d"]["reference"] == "benchrep.architecture.encoders.conv2d.Conv2DEncoder"
     assert entries["vae"]["reference"] == "benchrep.architecture.models.vae.VAE"
+    assert entries["calinski_harabasz"]["reference"] == (
+        "benchrep.evaluation.embeddings.clustering_metrics.calinski_harabasz_score"
+    )
     assert entries["linear"]["source"]  # Schedule or probe implementation remains traceable.
     for registry in catalogue:
         for entry in registry["entries"]:
             if entry["reference"]:
-                assert package[entry["reference"].removeprefix("benchrep.")].is_class
+                implementation = package[entry["reference"].removeprefix("benchrep.")]
+                assert implementation.is_class or implementation.is_function

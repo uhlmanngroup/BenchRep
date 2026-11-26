@@ -1,7 +1,19 @@
 name: CI
-run-name: CI / ${{ inputs.run_usage && 'with usage examples' || 'regular tests only' }} / ${{ github.ref_name }}
+run-name: CI / ${{ (github.event_name == 'schedule' || inputs.run_usage) && 'with usage examples' || 'regular tests only' }} / ${{ github.ref_name }}
 
 on:
+  push:
+    branches: ["**"]
+    paths-ignore:
+      - 'docs/**'
+      - 'README.md'
+  pull_request:
+    paths-ignore:
+      - 'docs/**'
+      - 'README.md'
+  # Mondays at 03:23 UTC; full tests also catch changes in dependencies.
+  schedule:
+    - cron: '37 1 * * 1'
   workflow_dispatch:
     inputs:
       run_usage:
@@ -14,13 +26,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Ordinary pushes must not cancel a weekly/manual full run.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ (github.event_name == 'schedule' || inputs.run_usage) && 'full' || 'regular' }}
   cancel-in-progress: true
 
 jobs:
   prepare_inputs:
     name: Prepare shared usage inputs
-    if: ${{ inputs.run_usage }}
+    if: ${{ github.event_name == 'schedule' || inputs.run_usage }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     outputs:
@@ -79,7 +92,7 @@ jobs:
   tests:
     needs: prepare_inputs
     # Regular-only runs must still run when the preparation job is skipped.
-    if: ${{ !cancelled() && (!inputs.run_usage || needs.prepare_inputs.result == 'success') }}
+    if: ${{ !cancelled() && (!(github.event_name == 'schedule' || inputs.run_usage) || needs.prepare_inputs.result == 'success') }}
     name: ${{ matrix.os }} / Python ${{ matrix.python }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -122,7 +135,7 @@ jobs:
           python-version: ${{ matrix.python }}
 
       - name: Restore shared datasets and weights
-        if: ${{ inputs.run_usage }}
+        if: ${{ github.event_name == 'schedule' || inputs.run_usage }}
         uses: actions/cache/restore@v6
         with:
           path: data/
@@ -209,7 +222,7 @@ jobs:
         # Leave time for saving downloads and uploading reports after a timeout.
         timeout-minutes: 75
         env:
-          RUN_USAGE: ${{ inputs.run_usage }}
+          RUN_USAGE: ${{ github.event_name == 'schedule' || inputs.run_usage || false }}
         run: |
           usage_options=()
           if [[ "$RUN_USAGE" == "true" ]]; then
@@ -242,7 +255,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: test-results-${{ matrix.os }}-py${{ matrix.python }}-usage-${{ inputs.run_usage }}
+          name: test-results-${{ matrix.os }}-py${{ matrix.python }}-usage-${{ github.event_name == 'schedule' || inputs.run_usage || false }}
           retention-days: 14
           include-hidden-files: true
           if-no-files-found: warn
@@ -254,3 +267,68 @@ jobs:
             outputs/ci/usage-runs/**/run.log
             outputs/ci/usage-runs/**/report.json
             outputs/ci/usage-runs/**/fast-configs/**
+
+  packaging:
+    name: Wheel and sdist / Linux / Python 3.12
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      MPLBACKEND: Agg
+      OMP_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+      OPENBLAS_NUM_THREADS: "2"
+      NUMBA_NUM_THREADS: "2"
+      PYTHONUNBUFFERED: "1"
+      PIP_NO_CACHE_DIR: "1"
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Build and inspect distributions
+        run: |
+          python -m pip install --upgrade pip build twine
+          mkdir -p outputs/ci/packaging
+          python tests/packaging/check_installed_distribution.py record \
+            outputs/ci/packaging/resources.json
+          python -m build --outdir outputs/ci/packaging/dist
+          python -m twine check outputs/ci/packaging/dist/*
+          python tests/packaging/check_example_wheel.py outputs/ci/packaging/dist/*.whl
+
+      - name: Prepare isolated installation environment
+        run: |
+          python -m venv "$RUNNER_TEMP/benchrep-package-check"
+          py="$RUNNER_TEMP/benchrep-package-check/bin/python"
+          "$py" -m pip install --upgrade pip
+          "$py" -m pip install "torch>=2.4,<3" "torchvision>=0.19,<1" \
+            --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Check installed wheel and sdist outside the checkout
+        run: |
+          py="$RUNNER_TEMP/benchrep-package-check/bin/python"
+          reports="$GITHUB_WORKSPACE/outputs/ci/packaging"
+          checker="$GITHUB_WORKSPACE/tests/packaging/check_installed_distribution.py"
+          cd "$RUNNER_TEMP"
+          unset PYTHONPATH PYTHONHOME
+          # Reuse dependencies to avoid a second large environment. Remove
+          # BenchRep itself before each install so no package files carry over.
+          for distribution in "$reports"/dist/*.whl "$reports"/dist/*.tar.gz; do
+            "$py" -m pip uninstall -y benchrep
+            "$py" -m pip install "${distribution}[full]"
+            "$py" -m pip check
+            "$py" -I "$checker" check "$reports/resources.json"
+          done
+          "$py" -m pip freeze > "$reports/installed.txt"
+
+      - name: Save packaging reports and distributions
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: packaging-results
+          retention-days: 14
+          if-no-files-found: warn
+          path: outputs/ci/packaging/
