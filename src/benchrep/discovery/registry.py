@@ -147,8 +147,9 @@ _COMPONENT_REGISTRIES: Final[dict[str, ComponentRegistryInfo]] = {
             "Pass a compatible model instance or class through "
             "`TrainingOverrides(model=...)` or `PredictionOverrides(model=...)`, "
             "supplied as the workflow entrypoint's `overrides` argument. "
-            "Whole-model overrides are supported only for the canonical "
-            "autoencoder and VAE workflows."
+            "Whole-model overrides are optional for the canonical autoencoder "
+            "and VAE families, required for YOYO, and currently unsupported "
+            "for Composite."
         ),
     ),
     "reconstruction_loss": ComponentRegistryInfo(
