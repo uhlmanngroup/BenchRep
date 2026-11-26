@@ -4,16 +4,16 @@
 
 Here we use each route to change the [first tutorial’s](../first-workflow-chain.md) VAE latent dimension from 32 to 64:
 
-| Route | Configure the run by… |
-|---|---|
-| [YAML](#yaml-files) | Editing a file and passing its path |
-| [Python config objects](#python-config-objects) | Constructing a config or updating an existing one |
-| [Python overrides](#python-overrides) | Replacing whole sections alongside a base config |
+| Route | Configure the run by…                               |
+|---|-----------------------------------------------------|
+| [YAML](#yaml-files) | Editing a file and passing its path                 |
+| [Python config objects](#python-config-objects) | Constructing a config or updating an existing one   |
+| [Python overrides](#python-overrides) | Replacing whole sections in a base config           |
 | [Browser wizard](#browser-wizard) | Editing fields interactively, reviewing, and saving |
 
-The workflow function, such as [`train_vae()`][benchrep.train_vae], accepts a YAML path or config object through its `config` argument. The snippets demonstrate alternative ways to make the same change; linked runnable examples illustrate each route with their own settings.
+Workflow entrypoint functions, such as [`train_vae()`][benchrep.train_vae], accept a YAML path or config object through their `config` argument. The snippets demonstrate alternative ways to make the same change; linked runnable examples illustrate each route with their own settings.
 
-<strong class="highlight">Requirements.</strong> The YAML and Python snippets need the core installation; the wizard needs `gui`. The complete example chains also use `scverse`. See [Installation](../installation.md) to choose extras. The composite wizard example additionally needs `artifact_generation` for its custom dataset.
+<strong class="highlight">Requirements.</strong> The YAML and Python snippets need the core installation; the wizard needs `gui`. The complete example chains also use `scverse`. See [Installation](../installation.md) to choose extras. The full composite wizard example also needs `artifact_generation` for its custom dataset and `xgboost` for an evaluation probe. On macOS, see [Known issues](../../known-issues.md#xgboost-on-macos) for the workaround.
 
 ## YAML files
 
@@ -169,7 +169,7 @@ if wizard_result is not None:
 ```
 
 ??? tip "Starting without a base config"
-    Omit `config` to start from scratch. You only need to specify `stage`. For training and prediction, the wizard assumes a composite model unless you choose a different `model_family`. Set it explicitly to choose another family and show its compatible configuration sections.
+    Omit `config` to start from scratch. With no arguments, `configure_workflow()` opens the Composite training wizard. Set `stage` to configure prediction or evaluation, and use `model_family` to choose a model family for training or prediction.
 
 The launcher opens your browser at <http://127.0.0.1:8050> by default; pass `port=...` to change it. The Python call waits while you edit and returns when you save or cancel. The launcher's `model_family` fixes the family, even if the base YAML names another one.
 

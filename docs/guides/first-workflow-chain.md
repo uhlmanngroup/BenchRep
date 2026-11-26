@@ -61,6 +61,9 @@ evaluation_result = evaluate(
 )
 ```
 
+!!! note "Running BenchRep from a Python script"
+    When the data loader uses workers (`datamodule.num_workers` for training or `data.num_workers` for prediction), use a main guard (`if __name__ == "__main__":`) to prevent recursive process spawning.
+
 The prediction YAML specifies `checkpoint: best` and leaves the training manifest path open. Passing [`training_result.manifest_path`][benchrep.workflows.train.TrainingWorkflowResult] tells prediction **which training run** to load that checkpoint from. Evaluation uses [`prediction_result.manifest_path`][benchrep.workflows.predict.PredictionWorkflowResult] to locate the exported embeddings and reconstructions. This lets you reuse the same YAMLs across runs.
 
 ## Inspect the result
