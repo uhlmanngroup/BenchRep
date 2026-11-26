@@ -14,10 +14,12 @@ hide:
   </h1>
 </div>
 
+BenchRep is a configuration-driven, Lightning-based, extensible Python workbench for representation learning.
+
 <div class="br-intents">
   <div>
     <strong class="br-intent-title"><svg class="br-icon " aria-hidden="true"><use href="assets/interface-icons.svg#sliders"></use></svg> Experiment</strong>
-    <p>Explore architectures and learning objectives using configurations that simplify repeated runs with targeted changes.</p>
+    <p>Explore architectures and objectives using configurations that simplify repeated runs with targeted changes.</p>
   </div>
   <div>
     <strong class="br-intent-title"><svg class="br-icon " aria-hidden="true"><use href="assets/interface-icons.svg#chart"></use></svg> Benchmark</strong>
@@ -55,9 +57,9 @@ hide:
 
 ## How BenchRep works
 
-BenchRep organizes experiments into 3 configurable workflows: training, prediction, and evaluation. Run them as a linked chain, reuse earlier runs, or evaluate outputs produced outside BenchRep. 
+BenchRep organizes experiments into 3 configurable workflows: training, prediction, and evaluation. Run them as a linked chain, reuse earlier runs, or start directly from a supplied model or externally produced outputs.
 
-Training fits a model and saves checkpoints. Prediction uses a trained model to export embeddings, reconstructions, or both. Evaluation measures properties such as clustering quality, predictability, and reconstruction error.
+Training fits a model and saves checkpoints. Prediction runs a model to export embeddings, reconstructions, or both. Evaluation measures properties such as clustering quality, predictability, and reconstruction error.
 
 <figure>
   <a class="br-image-light" href="assets/workflow-chain-light.svg">
@@ -66,35 +68,53 @@ Training fits a model and saves checkpoints. Prediction uses a trained model to 
   <a class="br-image-dark" href="assets/workflow-chain-dark.svg">
     <img src="assets/workflow-chain-dark.svg" alt="BenchRep workflow chain">
   </a>
-  <figcaption>Dash-dot arrows mark optional connections. Wands mark configuration wizards.</figcaption>
+  <figcaption>Dash-dot arrows mark optional connections. Wands mark configuration wizards. Prediction can skip the training manifest for certain supplied models.</figcaption>
 </figure>
 
-Each workflow takes a config, runs independently, and writes a manifest. To chain the three, pass an upstream manifest path to a downstream workflow. This lets you trace an evaluation result back to its training and prediction settings.
+Each workflow takes a config, returns a Python result, and saves run records, including a manifest, resolved configuration, runtime environment, logs, and status information. To link runs, pass the previous run’s manifest path to the next workflow.
 
-Each run also saves its resolved configuration, runtime environment, logs, and status report, showing which settings took effect, which steps completed, and where warnings or failures occurred. In Python, each workflow also returns a result object for inspecting outputs or continuing programmatically.
+## Configure and customize
 
-## Configure your experiment
+Write a workflow config in **YAML**, build it in **Python**, or use the **browser wizard** to explore the available fields and export a YAML file.
 
-Each workflow has its own configuration, describing the components and settings it needs. You can write a workflow config in **YAML**, build it in **Python**, or use the **browser wizard** to explore the available fields and export a YAML. 
+Configs select registered components by name. Inspect the registries to see what’s available or, where supported, register your own datasets, losses, or other components and select them the same way.
 
-Configs refer to registered components by name. You can inspect registries and, where supported, register your own classes or factories. Once registered, custom components such as datasets and losses can be selected by name just like built-in ones.
+BenchRep has 4 model families. Each defines how you configure or supply a model, what interface it must follow, and how BenchRep interprets its outputs.
 
-The **canonical families**, [autoencoder (AE)](concepts/models/canonical.md#autoencoder) and [variational autoencoder (VAE)](concepts/models/canonical.md#variational-autoencoder), provide predefined model structures with configurable encoders and decoders. Among the The **non-canonical families**, the [Composite family](concepts/models/composite.md) lets you declare components, connections, and loss inputs to build multi-input and multitask models directly in config. The [YOYO family](concepts/models/yoyo.md) accepts a complete LightningModule class or instance through Python, including already-trained models; you take responsibility for compatibility with the data and selected outputs.
+<figure style="width: 640px; max-width: 100%; margin-inline: auto;">
+  <a class="br-image-light" href="assets/model-family-flexibility-light.svg">
+    <img src="assets/model-family-flexibility-light.svg"
+         style="width: 100%; height: auto;"
+         alt="Modeling flexibility across the Composite, AE, VAE, and YOYO families">
+  </a>
+  <a class="br-image-dark" href="assets/model-family-flexibility-dark.svg">
+    <img src="assets/model-family-flexibility-dark.svg"
+         style="width: 100%; height: auto;"
+         alt="Modeling flexibility across the Composite, AE, VAE, and YOYO families">
+  </a>
+  <figcaption style="width: 100%; max-width: none; margin-inline: auto; box-sizing: border-box;">
+  Composite offers the most control in config. YOYO gives you the most freedom to supply a model. AE and VAE support both routes within family contracts.
+</figcaption>
+</figure>
+
+- The **canonical families**, [autoencoder (AE)](concepts/models/canonical.md#autoencoder) and [variational autoencoder (VAE)](concepts/models/canonical.md#variational-autoencoder), provide predefined model structures with configurable encoders and decoders. They also accept compatible model implementations.
+- The **non-canonical families** offer two other routes. [Composite](concepts/models/composite.md) lets you choose components and wire their connections and losses in config. [YOYO (You're On Your Own)](concepts/models/yoyo.md) requires a complete `LightningModule` class or instance. You’re responsible for matching it to your data and chosen outputs.
 
 <strong class="highlight">Want to compare two encoders?</strong>
-Change the encoder section in your canonical training YAML, keeping its interface compatible, and rerun the same workflow chain.
+Swap the encoder in your AE or VAE config and rerun the workflow chain.
 
-<strong class="highlight">Want to tune architectures or hyperparameters?</strong> Use Optuna to choose what to try. For each trial, use [`update_config()`][benchrep.update_config] to change individual fields or pass whole config sections through a workflow’s overrides object. To prune during training, pass Optuna’s Lightning callback via `runtime_callbacks`.
+<strong class="highlight">Want to tune architectures or hyperparameters?</strong>
+[Use Optuna](guides/optuna.md) to vary settings across trials from a shared base config.
 
-<strong class="highlight">Want more control and flexibility?</strong>
-Explore custom architectures and learning objectives, combine built-in and external components, or bring your own complete model and data pipeline. Train from scratch, build on pretrained weights, or benchmark an existing model without retraining it.
+<strong class="highlight">Already have a trained model?</strong>
+Use it as a starting point for fine-tuning, or [use YOYO to benchmark it without retraining](guides/bring-your-own-model-or-datamodule.md#predict-with-a-pretrained-model).
 
 ## Explore the docs
 
 <nav class="br-doc-routes" aria-label="Documentation sections">
   <a class="br-doc-route" href="guides/index.md">
     <svg class="br-icon " aria-hidden="true"><use href="assets/interface-icons.svg#route"></use></svg>
-    <span><strong>Tutorials</strong><small>Configuration routes, external components, composite models, and hyperparameter tuning through concrete examples.</small></span>
+    <span><strong>Tutorials</strong><small>Worked examples for configuring workflows; building, tuning, and benchmarking models; and evaluating results.</small></span>
     <svg class="br-icon br-route-arrow" aria-hidden="true"><use href="assets/interface-icons.svg#arrow"></use></svg>
   </a>
   <a class="br-doc-route" href="concepts/index.md">
