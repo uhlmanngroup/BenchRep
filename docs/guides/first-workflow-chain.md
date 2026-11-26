@@ -18,13 +18,13 @@ From the directory where you want to keep your data and outputs, run:
 python -m benchrep.examples.usage.01_yaml_pipeline
 ```
 
-The first run downloads MNIST to `data/mnist/` (~64 MiB). The script prints each manifest path and all 3 output directories.
+The first run downloads MNIST to `data/mnist/` (~64 MiB on disk). The script prints each manifest path and all 3 output directories.
 
 | Workflow | What the supplied YAML does |
 | --- | --- |
 | Training | Trains a VAE with a 32-dimensional latent space for up to 5 epochs, holding out 10% of the training split for validation. Saves the checkpoint with the lowest total weighted validation loss. |
 | Prediction | Loads the best checkpoint and runs it on the test split. Exports embeddings as AnnData (`.h5ad`) and saves 32 input–reconstruction pairs. |
-| Evaluation | Runs PCA, UMAP, and k-means, compares the 10 clusters with the digit labels, and measures reconstruction error on the exported examples. |
+| Evaluation | Runs PCA, UMAP, and k-means with 10 clusters. Compares the clusters with digit labels, tests how well the embeddings predict those labels, and measures reconstruction error. |
 
 ## How the workflows connect
 
