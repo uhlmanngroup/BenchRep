@@ -2,7 +2,7 @@
 
 <strong class="highlight">What are the different ways to create or edit a workflow configuration?</strong> BenchRep supports editing YAML, constructing configs in Python, replacing sections through overrides, and configuring workflows interactively in the browser.
 
-Here we use each route to change the [first tutorial’s](../first-workflow-chain.md) VAE latent dimension from 32 to 64:
+The snippets show four ways to change the [first tutorial’s](../first-workflow-chain.md) VAE latent dimension from 32 to 64. Each route also links to a complete runnable example with its own settings.
 
 | Route | Configure the run by…                               |
 |---|-----------------------------------------------------|
@@ -11,11 +11,15 @@ Here we use each route to change the [first tutorial’s](../first-workflow-chai
 | [Python overrides](#python-overrides) | Replacing whole sections in a base config           |
 | [Browser wizard](#browser-wizard) | Editing fields interactively, reviewing, and saving |
 
-Workflow entrypoint functions, such as [`train_vae()`][benchrep.train_vae], accept a YAML path or config object through their `config` argument. The snippets demonstrate alternative ways to make the same change; linked runnable examples illustrate each route with their own settings.
+Workflow entrypoint functions, such as [`train_vae()`][benchrep.train_vae], accept a YAML path or config object through their `config` argument.
 
 <strong class="highlight">Requirements.</strong> The YAML and Python snippets need the core installation; the wizard needs `gui`. The complete example chains also use `scverse`. See [Installation](../installation.md) to choose extras. The full composite wizard example also needs `artifact_generation` for its custom dataset and `xgboost` for an evaluation probe. On macOS, see [Known issues](../../known-issues.md#xgboost-on-macos) for the workaround.
 
 ## YAML files
+
+The complete YAML-based example uses the original 32-dimensional latent space.
+
+[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/01_yaml_pipeline.py) · [View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/01_yaml_pipeline)
 
 Copy the packaged training YAML to your working directory:
 
@@ -53,15 +57,17 @@ training_result = train_vae(config=training_yaml)
 ??? note "Encoder output and latent dimensions"
     Keep `encoder.params.output_dim` at `32`. The variational head maps those 32 features to the mean and log variance of the 64-dimensional latent distribution. BenchRep sets the decoder input dimension to `64` automatically.
 
-For the complete YAML-based chain with its original 32-dimensional latent space, run:
+Run the complete example.
 
 ```bash
 python -m benchrep.examples.usage.01_yaml_pipeline
 ```
 
-[:material-script-text-outline: View the script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/01_yaml_pipeline.py).
-
 ## Python config objects
+
+The Python-only example constructs all 3 workflow configs in full, using its original 32-dimensional latent space.
+
+[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/03_config_object_pipeline.py) · [View configs](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/03_config_object_pipeline.py#L79-L374)
 
 [`load_example_config()`][benchrep.examples.load_example_config] reads a packaged YAML into its workflow config class. Use [`update_config()`][benchrep.update_config] to replace individual fields and return a validated copy:
 
@@ -104,7 +110,9 @@ from benchrep.assembly.schemas import TrainingModelConfig
 model = TrainingModelConfig(name="vae", params={"latent_dim": 64})
 ```
 
-Pass that section as `model=model` when constructing [`TrainingConfig`][benchrep.assembly.schemas.training_config_schema.TrainingConfig], together with the other required sections. The [:material-script-text-outline: Python-only example](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/03_config_object_pipeline.py) constructs all 3 workflow configs in full, using its original 32-dimensional latent space:
+Pass that section as `model=model` when constructing [`TrainingConfig`][benchrep.assembly.schemas.training_config_schema.TrainingConfig], together with the other required sections.
+
+Run the complete example.
 
 ```bash
 python -m benchrep.examples.usage.03_config_object_pipeline
@@ -113,6 +121,10 @@ python -m benchrep.examples.usage.03_config_object_pipeline
 See [Configuration semantics](../../concepts/workflows/configuration.md) for field updates, defaults, and validation.
 
 ## Python overrides
+
+The complete overrides example adapts the [MNIST](http://yann.lecun.com/exdb/mnist/) pipeline to [CIFAR-10](https://www.cs.toronto.edu/~kriz/cifar.html) by replacing the dataset and architecture sections.
+
+[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/02_yaml_override_pipeline.py) · [View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/01_yaml_pipeline)
 
 To replace an entire section while keeping the base YAML, pass a workflow-specific overrides object:
 
@@ -136,15 +148,17 @@ The supplied section replaces the <strong class="highlight">entire `model` secti
 
 The base can also be a config object. You can omit `config` if `config_components`, together with defaults, supplies a valid workflow config. Manifest paths and supported runtime model/datamodule implementations can also be supplied through overrides; see [Python overrides](../../concepts/workflows/overrides.md).
 
-The complete overrides example adapts the [MNIST](http://yann.lecun.com/exdb/mnist/) pipeline to [CIFAR-10](https://www.cs.toronto.edu/~kriz/cifar.html) by replacing the dataset and architecture sections:
+Run the complete example.
 
 ```bash
 python -m benchrep.examples.usage.02_yaml_override_pipeline
 ```
 
-[:material-script-text-outline: View the script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/02_yaml_override_pipeline.py).
-
 ## Browser wizard
+
+The complete composite example configures the workflow chain through 3 wizard sessions. It uses a multi-input model and a custom dataset.
+
+[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/08B_dual_input_multitask_composite_vae_wizard.py) · [View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/08_dual_input_multitask_composite_vae_pipeline)
 
 Launch the training wizard with the packaged YAML as a starting point:
 
@@ -189,13 +203,11 @@ Open **Review & finish**, click **Check configuration**, then **Save & finish**.
 
 The wizard accepts an `overrides` argument and returns the overrides still needed for execution. This also lets you pass upstream manifest paths when configuring prediction or evaluation. See [Configuration wizards](../../concepts/workflows/wizards.md) for editing states, local validation, review, and returned values.
 
-For a complete chain configured through 3 wizard sessions, run the composite example. It uses a different, multi-input model and a custom dataset:
+Run the complete example.
 
 ```bash
 python -m benchrep.examples.usage.08B_dual_input_multitask_composite_vae_wizard
 ```
-
-[:material-script-text-outline: View the script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/08B_dual_input_multitask_composite_vae_wizard.py).
 
 ## Check the effective settings
 

@@ -2,35 +2,35 @@
 
 <strong class="highlight">How can I bring my own components into BenchRep?</strong> Register an implementation under a name, then select it in a config alongside built-in components.
 
-Here we adapt [Fashion-MNIST](https://github.com/zalandoresearch/fashion-mnist) as a custom dataset, extend a VAE with custom losses, and register a pretrained ConvNeXt encoder for an autoencoder. Each example shows how to connect an external implementation to the interface BenchRep expects.
+This tutorial walks through three separate examples. We adapt Fashion-MNIST as a dataset, add two custom losses to a VAE on MNIST, and fine-tune a pretrained ConvNeXt encoder in an autoencoder on STL-10. The snippets show how each component is registered and selected in the config. Each example links to its runnable script and configs.
 
-## Choose the registration interface
-
-The required entry depends on what you register:
-
-| Component | Registered entry                                                                                                                                                                      | Selected through |
-|---|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---|
-| Dataset, transform, optimizer, LR scheduler, logger, callback, or loss-weight schedule | A constructor or factory directly                                                                                                                                                     | The corresponding named config section or list entry |
-| Encoder, decoder, or head | [`ArchitectureComponent`][benchrep.architecture.composite_model_component_contracts.ArchitectureComponent] containing the module class and its port/result contract                   | A canonical architecture section or a composite component definition |
-| Loss | [`LossComponent`][benchrep.architecture.losses.composite_model_contracts.LossComponent] containing the module class and any required input contract                                                                                                                          | A term within an existing loss role |
-| Evaluation metric | [`EvaluationMetric`][benchrep.evaluation.metrics.contracts.EvaluationMetric] containing the executed function and its result contract                                                                                                             | A metric group's `selected` list, with per-name `params` |
-
-See [Registering components](../concepts/extensibility/registration.md) for the complete registry map. Model families, reductions, clustering methods, and predictability probes currently do not accept custom registrations.
-
-<strong class="highlight">Requirements.</strong> The complete dataset and loss examples use `scverse` for evaluation:
+<strong class="highlight">Requirements.</strong> The dataset and loss examples use the `scverse` extra for UMAP. The pretrained encoder example needs only the core installation. If you need to add `scverse`, run the following command.
 
 ```bash
 python -m pip install "benchrep[scverse] @ git+https://github.com/uhlmanngroup/BenchRep.git"
 ```
 
+## Choose the registration interface
+
+| Component | Registered entry | Selected through |
+| --- | --- | --- |
+| Dataset, transform, optimizer, LR scheduler, logger, callback, or loss-weight schedule | Constructor or factory | The corresponding named config section or list entry |
+| Encoder, decoder, or head | [`ArchitectureComponent`][benchrep.architecture.composite_model_component_contracts.ArchitectureComponent] containing the module class and its input and result contracts | `encoder` or `decoder` for canonical models, or `composite_model_components` for encoders, decoders, and heads in composite models |
+| Loss | [`LossComponent`][benchrep.architecture.losses.composite_model_contracts.LossComponent] containing the loss class and any required input contract | A named term within a loss role, including [`custom_objective`](#add-a-full-context-objective) |
+| Evaluation metric | [`EvaluationMetric`][benchrep.evaluation.metrics.contracts.EvaluationMetric] containing the metric function and its result contract | A metric group's `selected` list, with per-metric `params` |
+
+See [Registering components](../concepts/extensibility/registration.md) for the full registry map and which registries accept external implementations.
+
 !!! warning "Register before running"
-    Registration applies to the current Python process. Define or import your implementation and register it before resolving a config that uses it. Repeat the registration in another process, including when reconstructing a model for prediction.
+    Register your implementation before resolving a config that refers to it. Registrations apply to the current Python process, so repeat the registration if you reconstruct the model for prediction in a separate process.
 
 ## Adapt an external dataset
 
-BenchRep datasets return sample dictionaries. For the canonical VAE, the image is supplied as `x`; optional `label` and `sample_id` fields support prediction exports and evaluation.
+BenchRep datasets return each sample as a dictionary. The [canonical VAE](../concepts/models/canonical.md#variational-autoencoder) expects the image tensor under `x` and uses it as the reconstruction target. Prediction can also export `label` and `sample_id` as annotations. See [Datasets and sample structure](../concepts/data/datasets.md#fields-have-different-roles) for the fields each model family expects.
 
-The complete dataset example adapts [torchvision's Fashion-MNIST](https://docs.pytorch.org/vision/stable/generated/torchvision.datasets.FashionMNIST.html). Its interface can be written as:
+The dataset example subclasses [`BaseDataset`][benchrep.architecture.data.datasets.BaseDataset] to adapt [torchvision’s Fashion-MNIST](https://docs.pytorch.org/vision/stable/generated/torchvision.datasets.FashionMNIST.html). It puts each image under `x`, its class under `label`, and its index within the split under `sample_id`.
+
+[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/04_custom_dataset_pipeline.py) · [View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/04_custom_dataset_pipeline)
 
 ```python
 from torchvision.datasets import FashionMNIST
@@ -41,6 +41,7 @@ from benchrep.architecture.data import BaseDataset
 
 class FashionMNISTDataset(BaseDataset):
     def __init__(self, root, split="train", download=False):
+        super().__init__()
         if split not in {"train", "test"}:
             raise ValueError("split must be 'train' or 'test'.")
         self.dataset = FashionMNIST(
@@ -55,12 +56,13 @@ class FashionMNISTDataset(BaseDataset):
 
     def __getitem__(self, index):
         image, label = self.dataset[index]
-        return {"x": image, "label": label, "sample_id": index}
+        sample = {"x": image, "label": label, "sample_id": index}
+        return self.validate_sample(sample)
 ```
 
-This adapter converts images to tensors; the example's configured transform pipeline handles conversion to scaled floating-point values. See [Datasets and sample structure](../concepts/data/datasets.md) and [Transform pipelines](../concepts/data/transforms.md) for the contracts.
+`ToImage()` converts the image to a tensor and preserves its pixel values. The configured [transform pipeline](../concepts/data/transforms.md) converts those values to floating point in `[0, 1]`.
 
-Register the class directly, with an optional alias:
+Register the dataset class as `fashion_mnist`, with `fashionmnist` as an optional alias.
 
 ```python
 from benchrep.assembly.registries import DATASETS
@@ -68,7 +70,7 @@ from benchrep.assembly.registries import DATASETS
 DATASETS.register("fashion_mnist", FashionMNISTDataset, "fashionmnist")
 ```
 
-The existing `dataset` section then selects it and supplies constructor arguments:
+Set `dataset.name` to the registered name and pass the constructor arguments in `dataset.params`.
 
 ```yaml
 dataset:
@@ -79,17 +81,23 @@ dataset:
     download: true
 ```
 
-Run the complete dataset example, which trains, predicts, and evaluates:
+Run the full training, prediction, and evaluation example.
 
 ```bash
 python -m benchrep.examples.usage.04_custom_dataset_pipeline
 ```
 
-[:material-script-text-outline: View the script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/04_custom_dataset_pipeline.py).
+## Add custom losses
 
-## Extend a loss role
+The loss example trains a canonical VAE on MNIST. It adds a reconstruction loss that compares neighboring-pixel differences and a custom objective that uses digit labels to supervise the latent representation.
 
-Canonical models pass `reconstruction` and `target` to reconstruction losses. Implement a `torch.nn.Module` whose `forward()` accepts those arguments and returns a scalar tensor:
+[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/05_custom_loss_pipeline.py) · [View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/05_custom_loss_pipeline)
+
+### Extend a loss role
+
+A canonical reconstruction loss is a `torch.nn.Module` whose `forward(reconstruction, target)` returns a scalar tensor. Here, `target` is the input image.
+
+The training config uses a built-in pixelwise MSE and an external `GradientDifferenceLoss` as separate reconstruction terms. The snippet below implements `GradientDifferenceLoss`, which penalizes differences in horizontal and vertical image gradients.
 
 ```python
 import torch
@@ -116,9 +124,7 @@ class GradientDifferenceLoss(torch.nn.Module):
         return horizontal_loss + vertical_loss
 ```
 
-This term compares neighboring-pixel changes along the last 2 dimensions. It complements MSE by penalizing discrepancies in local edge strength. The complete example includes the input checks.
-
-Register the class under a name that the config can select:
+Register the `LossComponent` in `RECONSTRUCTION_LOSSES`.
 
 ```python
 from benchrep.architecture.losses import LossComponent
@@ -131,15 +137,19 @@ RECONSTRUCTION_LOSSES.register(
 )
 ```
 
-`gradient_difference` is the registered name; `gdl` is an optional alias. [`LossComponent`][benchrep.architecture.losses.composite_model_contracts.LossComponent] wraps the loss module class. Canonical models supply its fixed inputs; composite use additionally requires a declared input contract. See [Losses and objectives](../concepts/models/losses.md).
+Here, the canonical VAE supplies both forward arguments automatically. To use this loss in a composite model, you would have to declare its input ports in `LossComponent.runtime_inputs` and connect them to model fields in `composite_wiring`. See [Wire composite losses](../concepts/models/losses.md#wire-composite-losses).
 
-## Add a full-context objective
+### Add a full-context objective
 
-A reconstruction loss receives only its reconstruction and target. For objectives that need labels or other model outputs, subclass [`BaseCustomObjectiveLoss`][benchrep.architecture.losses.custom_objective.BaseCustomObjectiveLoss]. Its fixed interface receives the complete `batch` and `model_output` mappings:
+Use the `custom_objective` role when a loss falls outside the standard roles your model family supports. For a canonical VAE, those roles are `reconstruction` and `regularization`. A custom objective receives the full `batch` and `model_output` mappings in `forward()`. See [Custom objectives](../concepts/models/losses.md#custom-objectives).
+
+Here we subclass [`BaseCustomObjectiveLoss`][benchrep.architecture.losses.custom_objective.BaseCustomObjectiveLoss] to predict digit labels from the VAE’s latent embeddings.
 
 ```python
 from collections.abc import Mapping
 from typing import Any
+
+import torch
 
 from benchrep.architecture.losses import BaseCustomObjectiveLoss
 
@@ -161,11 +171,12 @@ class AuxiliaryLatentClassificationLoss(BaseCustomObjectiveLoss):
         return torch.nn.functional.cross_entropy(logits, labels.long())
 ```
 
-For this VAE, `model_output["embedding"]` contains the latent means. The classifier learns to predict digit labels, and its gradients also update the encoder and variational head. BenchRep attaches loss modules to the model, so the classifier’s parameters are included in optimization and checkpoints.
+The classifier predicts digit labels from the VAE's latent means, exposed as `model_output["embedding"]`. Its gradients also update the encoder and the mean projection of the variational head. BenchRep attaches the loss module to the VAE, so its classifier parameters are optimized with the rest of the model and saved in checkpoints.
 
-Register it in the custom-objective registry:
+Register the loss in `CUSTOM_OBJECTIVE_LOSSES`, the registry for the `custom_objective` role. This registry has no built-in entries. BenchRep supplies both mappings automatically in canonical and composite models, so `LossComponent` only needs the loss class.
 
 ```python
+from benchrep.architecture.losses import LossComponent
 from benchrep.assembly.registries import CUSTOM_OBJECTIVE_LOSSES
 
 CUSTOM_OBJECTIVE_LOSSES.register(
@@ -175,11 +186,9 @@ CUSTOM_OBJECTIVE_LOSSES.register(
 )
 ```
 
-This existing loss role has no built-in entries. Its fixed interface needs no individual input-port declarations; this implementation expects `batch["label"]` and `model_output["embedding"]`.
+### Inspect and configure the losses
 
-## Inspect and configure the losses
-
-Once registered, both losses are available through the discovery interface:
+If you want to confirm that both losses were registered, you can look them up with `inspect_registry()`.
 
 ```python
 from benchrep import inspect_registry
@@ -188,7 +197,7 @@ inspect_registry("reconstruction_loss", "gradient_difference")
 inspect_registry("custom_objective_loss", "auxiliary_latent_classification")
 ```
 
-The supplied training YAML selects them by name alongside the built-in terms:
+The training config selects the registered names under `losses.reconstruction` and `losses.custom_objective`, alongside built-in MSE and Gaussian KL terms.
 
 ```yaml
 losses:
@@ -215,29 +224,25 @@ losses:
         n_classes: 10
 ```
 
-Each `params` mapping supplies constructor arguments; `weight` scales the returned scalar before BenchRep sums the terms. Here, `embedding_dim` must match the VAE’s latent dimension, and `n_classes` matches MNIST’s 10 digit classes. Loss weights do not need to sum to 1. See [Losses and objectives](../concepts/models/losses.md) for the weighting and wiring rules.
+Each `params` mapping supplies constructor arguments. Here, `embedding_dim` matches `model.params.latent_dim`, and `n_classes` matches MNIST's 10 digit classes. BenchRep scales each scalar loss by its `weight` before summing the terms. See [Losses and objectives](../concepts/models/losses.md) for weighting and logging.
 
-Run the complete loss example, including registration, training, prediction, and evaluation:
+Run the full example to train the VAE, export its latent representations, and evaluate them.
 
 ```bash
 python -m benchrep.examples.usage.05_custom_loss_pipeline
 ```
 
-[:material-script-text-outline: View the script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/05_custom_loss_pipeline.py). It combines the 2 custom terms with MSE reconstruction and Gaussian KL regularization. The auxiliary classifier uses labels during training, so this is a supervised extension of the VAE objective.
-
-Training logs the raw and weighted terms separately. Evaluation still uses its own metrics: registering a training loss does not add an evaluation metric.
-
 ## Register a pretrained encoder
 
-Pretrained components use the same registration mechanism as other components: their constructor loads the weights, and the workflow config supplies its arguments. BenchRep already supports pretrained ResNets through its built-in encoder; see [Learn from multiple views](learn-from-multiple-views.md). ConvNeXt and transformer encoders are not currently built in, but you can register adapters for them.
+The pretrained example wraps [torchvision’s ConvNeXt-Tiny](https://docs.pytorch.org/vision/stable/models/generated/torchvision.models.convnext_tiny.html) in a BenchRep encoder. Its constructor loads the weights specified in the config. The autoencoder fine-tunes the encoder alongside a newly initialized decoder on  [STL-10](https://cs.stanford.edu/~acoates/stl10/). For a built-in pretrained encoder, see the ResNet example in [Learn from multiple views](learn-from-multiple-views.md).
 
-This example wraps [Torchvision's pretrained ConvNeXt-Tiny](https://docs.pytorch.org/vision/stable/models/generated/torchvision.models.convnext_tiny.html) as an encoder, pairs it with a built-in decoder, and fine-tunes a canonical autoencoder on STL-10. It requires no additional dependencies.
+[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/11_pretrained_encoder_pipeline.py) · [View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/11_pretrained_encoder_pipeline)
 
 ### Adapt the encoder interface
 
-The example's `PretrainedConvNeXtEncoder` subclasses [`BaseEncoder`][benchrep.architecture.encoders.BaseEncoder]. It implements the required `forward()` method and `output_dim` property, and supplies `input_shape` and `feature_shape` for shape checks and decoder construction.
+`PretrainedConvNeXtEncoder` subclasses [`BaseEncoder`][benchrep.architecture.encoders.BaseEncoder] and implements `forward()` and `output_dim`. It also exposes `input_shape` for shape checks and `feature_shape` so BenchRep can infer the upsampling decoder's initial feature-map shape. See [Architecture component contracts](../concepts/models/component-contracts.md#canonical-components-also-expose-dimensions).
 
-The wrapper loads the ImageNet weights and removes only the final classification layer:
+The wrapper loads the ImageNet weights and replaces the final classification layer with an identity. ConvNeXt's pooling and output normalization yield a 768-element feature vector per image.
 
 ```python
 self.backbone = convnext_tiny(weights=weights)
@@ -245,16 +250,11 @@ self._output_dim = self.backbone.classifier[-1].in_features
 self.backbone.classifier[-1] = nn.Identity()
 ```
 
-Pooling and output normalization remain, producing a 768-feature vector per image. **All remaining encoder parameters are fine-tuned alongside the newly initialized decoder.**
-
-!!! note "Two different normalization steps"
-    The transform pipeline scales pixel values from `[0, 255]` to `[0, 1]`. These images serve as reconstruction targets, matching the decoder's sigmoid output range.
-
-    The pretrained encoder additionally expects channel-wise standardization using ImageNet statistics. This produces values outside `[0, 1]`, so we apply it inside the encoder's `forward()` to leave the reconstruction targets unchanged.
+The transform pipeline scales pixel values to `[0, 1]`, matching the sigmoid decoder's output range. The encoder then applies per-channel ImageNet normalization inside `forward()`. The reconstruction loss compares the decoder output with the `[0, 1]` input image.
 
 ### Register and configure it
 
-Register the wrapper with an [`ArchitectureComponent`][benchrep.architecture.composite_model_component_contracts.ArchitectureComponent] describing its image input and vector output:
+Register the encoder with an `ArchitectureComponent` that declares an image input named `x` and a vector result. This lets a composite model check the encoder's connections during assembly. Canonical models use the `BaseEncoder` interface.
 
 ```python
 from benchrep.architecture.composite_model_component_contracts import (
@@ -271,14 +271,12 @@ ENCODERS.register(
         runtime_inputs=(
             ComponentPort(name="x", supported_structures=("image",)),
         ),
-        runtime_result=ComponentTensorResult(
-            supported_structures=("vector",),
-        ),
+        runtime_result=ComponentTensorResult(supported_structures=("vector",)),
     ),
 )
 ```
 
-Canonical models use the `BaseEncoder` interface, while composite models use the declared input and output ports to validate assembly wiring. This registration supports both:
+Select the encoder by name in the corresponding training config section.
 
 === "Canonical AE / VAE"
 
@@ -302,29 +300,24 @@ Canonical models use the `BaseEncoder` interface, while composite models use the
           weights: IMAGENET1K_V1
     ```
 
-For composite use, connect the component's `x` port to a declared image input and its result to a declared vector output through the assembly configuration. See [Composite models](../concepts/models/composite.md).
+    In `composite_model_assembly`, connect the encoder's `x` argument to a declared image input and bind its result to a declared vector output. See [Describe values, components, and connections](../concepts/models/composite.md#describe-values-components-and-connections).
 
 ### Run the example
+
+The script fine-tunes the autoencoder on [STL-10](https://cs.stanford.edu/~acoates/stl10/) and loads the best checkpoint for test-set prediction. Evaluation produces PCA plots, clustering and reconstruction metrics, and input, reconstruction, and error grids for each RGB channel.
 
 ```bash
 python -m benchrep.examples.usage.11_pretrained_encoder_pipeline
 ```
 
-[:material-script-text-outline: View the script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/11_pretrained_encoder_pipeline.py) and [YAMLs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/11_pretrained_encoder_pipeline).
+???+ warning "Runtime and disk space"
+    The STL-10 archive and extracted files take about 5.4 GiB together. Removing the archive after extraction frees roughly half that space.
 
-The script registers the encoder, trains the autoencoder, then reconstructs it from the training checkpoint for prediction. Evaluation exports PCA plots, clustering metrics, reconstruction metrics, and input/reconstruction/error grids for each RGB channel.
-
-???+ warning "Runtime and resource requirements"
-    Dataset disk usage is **~5.4 GiB**; deleting the .tar.gz after extraction frees ~2.6 GiB.
-
-    The example fine-tunes ConvNeXt-Tiny and a decoder for 10 epochs with batch size 32. Reduce `trainer.max_epochs` to shorten training or `datamodule.batch_size` to reduce GPU memory use. Prediction has a separate `data.batch_size`.
+    The example trains for 10 epochs at batch size 32. Lower `trainer.max_epochs` for a shorter run or `datamodule.batch_size` to reduce GPU memory use during training. Prediction uses `data.batch_size`.
 
 ## Register other component types
 
-The same register-and-select pattern applies elsewhere, but the interface must match the component's role:
-
-- [Architecture component contracts](../concepts/models/component-contracts.md) describe input ports and tensor or mapping results.
-- [Metrics and their contracts](../concepts/evaluation/metrics.md) describe executed metric functions and scalar, vector, or mapping results.
-- [Registries and discovery](../concepts/extensibility/discovery.md) explains how to inspect names, aliases, parameters, and contracts before using a component.
-
-To vary the settings in either example, see [Configure workflows](configure-workflows/index.md).
+- [Registering components](../concepts/extensibility/registration.md) lists which registries accept external implementations and what each expects.
+- [Metrics and their contracts](../concepts/evaluation/metrics.md) explains how to select evaluation metrics and declare their result types.
+- [Registries and discovery](../concepts/extensibility/discovery.md) shows how to look up registered names, aliases, parameters, and contracts.
+- [Configure workflows](configure-workflows/index.md) shows how to use or override these settings from Python.

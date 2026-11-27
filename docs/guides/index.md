@@ -1,6 +1,8 @@
 # Tutorials
 
-Start with your first workflow chain or jump to a specific task. Each tutorial focuses on the code needed for that task and links to complete usage examples where available. For the underlying rules, interfaces, and implementation mechanics, see [Concepts & design](../concepts/index.md).
+Start with your first workflow chain or jump to a specific task. A tutorial may follow one runnable example, show variations on a main example, or walk through several separate examples. The opening explains how the snippets relate to the linked scripts and configs.
+
+For the underlying rules, interfaces, and implementation mechanics, see [Concepts & design](../concepts/index.md).
 
 ## Getting started
 
