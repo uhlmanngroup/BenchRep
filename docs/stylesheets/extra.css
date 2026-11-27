@@ -11,7 +11,7 @@
     font-weight: 900;
 }
 
-.md-typeset img[src*="mnist-reconstructions"] {
+.md-typeset img[src$="/first-workflow-chain/mnist-reconstructions-preview.png"] {
     display: block;
     width: 500px;
     max-width: 100%;
