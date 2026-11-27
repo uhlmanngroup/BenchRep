@@ -116,7 +116,7 @@ The panel below shows selected test inputs, their VAE reconstructions, and the c
     <img src="../assets/guides/first-workflow-chain/mnist-reconstructions-preview.png"
          alt="Selected MNIST inputs, VAE reconstructions, and absolute-error maps">
   </a>
-  <figcaption>Click the figure to view all 32 examples.</figcaption>
+  <figcaption>Click the figure to view the full panel.</figcaption>
 </figure>
 
 To change the experiment, see [Configure workflows](configure-workflows/index.md) for the YAML, Python, override, and wizard routes.
