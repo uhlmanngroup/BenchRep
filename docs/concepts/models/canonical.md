@@ -1,6 +1,8 @@
-# Canonical models
+# Canonical families
 
-Canonical models provide a predefined autoencoder or VAE implementation. You configure compatible encoders and decoders, choose losses, and let BenchRep connect them. Their standard batch input is an image tensor under `x`; reconstruction losses compare the reconstructed image with that same `x`.
+The canonical autoencoder and VAE families provide predefined model implementations. You configure compatible encoders and decoders, choose losses, and let BenchRep connect them. Their standard batch input is an image tensor under `x`; reconstruction losses compare the reconstructed image with that same `x`.
+
+For an external whole model, the required batch format depends on whether you also replace the datamodule. The prediction contract still applies in both cases. See the [contract comparison](../extensibility/runtime-implementations.md#compatibility-checks-and-runtime-checks) and [runtime-override tutorial](../../guides/bring-your-own-model-or-datamodule.md#custom-canonical-autoencoder-and-datamodule). Use [YOYO](yoyo.md) when your implementation does not fit the canonical model or output interfaces.
 
 ## Autoencoder
 
