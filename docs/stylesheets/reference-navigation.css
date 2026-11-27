@@ -91,7 +91,7 @@
 }
 
 .md-content .md-typeset code.br-inline-identifier .br-toc-word {
-  display: inline-block;
+  display: inline;
   max-width: 100%;
   white-space: normal;
   word-break: normal;
