@@ -17,7 +17,7 @@ python -m pip install "benchrep[artifact_generation,scverse,xgboost,model_graph]
 !!! warning "XGBoost on macOS"
     Omit the `xgboost` extra and remove `xgboost` from `metrics.predictability.targets.mean_stroke_width.selected` before evaluation. You can make that change in the [evaluation wizard](#configure-the-same-model-interactively). See [XGBoost on macOS](../known-issues.md#xgboost-on-macos).
 
-Diagrams also need the Graphviz system executable (see [Installation](installation.md)), though BenchRep catches missing graph dependency errors, logs the reason, and skips the optional graph export so the workflow can finish.
+Graph export also requires the Graphviz system executable. If a graph dependency is missing, BenchRep logs the reason and skips the export so the workflow can continue. See [Installation](installation.md) for Graphviz setup.
 
 From the directory where you want to keep your data and outputs, run:
 
