@@ -66,7 +66,7 @@ The built-in [`STL10Dataset`][benchrep.architecture.data.datasets.STL10Dataset] 
 Each pipeline independently applies random cropping and flipping, color jitter and grayscale, and Gaussian blur. It then converts the image to floating point and normalizes it.
 
 ??? note "Parameter choices"
-    Augmentation settings combine Torchvision defaults with choices for this example. Normalization matches the ImageNet-pretrained weights.
+    Augmentation settings combine torchvision defaults with choices for this example. Normalization matches the ImageNet-pretrained weights.
 
 ??? tip "Reuse YAML settings with anchors and aliases"
     `&view_steps` names the step list defined for the first pipeline, and `*view_steps` reuses it in the second. Each pipeline draws its own random augmentations from the same settings.
