@@ -19,7 +19,9 @@ Workflow entrypoint functions, such as [`train_vae()`][benchrep.train_vae], acce
 
 The complete YAML-based example uses the original 32-dimensional latent space.
 
-[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/01_yaml_pipeline.py) · [View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/01_yaml_pipeline)
+[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/01_yaml_pipeline.py){ .md-button }
+[:material-file-cog-outline: View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/01_yaml_pipeline){ .md-button }
+{: .br-tutorial-resources }
 
 Copy the packaged training YAML to your working directory:
 
@@ -67,7 +69,9 @@ python -m benchrep.examples.usage.01_yaml_pipeline
 
 The Python-only example constructs all 3 workflow configs in full, using its original 32-dimensional latent space.
 
-[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/03_config_object_pipeline.py) · [View configs](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/03_config_object_pipeline.py#L79-L374)
+[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/03_config_object_pipeline.py){ .md-button }
+[:material-file-cog-outline: View configs](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/03_config_object_pipeline.py#L79-L374){ .md-button }
+{: .br-tutorial-resources }
 
 [`load_example_config()`][benchrep.examples.load_example_config] reads a packaged YAML into its workflow config class. Use [`update_config()`][benchrep.update_config] to replace individual fields and return a validated copy:
 
@@ -124,7 +128,9 @@ See [Configuration semantics](../../concepts/workflows/configuration.md) for fie
 
 The complete overrides example adapts the [MNIST](http://yann.lecun.com/exdb/mnist/) pipeline to [CIFAR-10](https://www.cs.toronto.edu/~kriz/cifar.html) by replacing the dataset and architecture sections.
 
-[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/02_yaml_override_pipeline.py) · [View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/01_yaml_pipeline)
+[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/02_yaml_override_pipeline.py){ .md-button }
+[:material-file-cog-outline: View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/01_yaml_pipeline){ .md-button }
+{: .br-tutorial-resources }
 
 To replace an entire section while keeping the base YAML, pass a workflow-specific overrides object:
 
@@ -158,7 +164,9 @@ python -m benchrep.examples.usage.02_yaml_override_pipeline
 
 The complete composite example configures the workflow chain through 3 wizard sessions. It uses a multi-input model and a custom dataset.
 
-[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/08B_dual_input_multitask_composite_vae_wizard.py) · [View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/08_dual_input_multitask_composite_vae_pipeline)
+[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/08B_dual_input_multitask_composite_vae_wizard.py){ .md-button }
+[:material-file-cog-outline: View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/08_dual_input_multitask_composite_vae_pipeline){ .md-button }
+{: .br-tutorial-resources }
 
 Launch the training wizard with the packaged YAML as a starting point:
 

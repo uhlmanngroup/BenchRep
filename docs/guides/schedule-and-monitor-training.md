@@ -4,7 +4,9 @@
 
 We use a single training script to fit a small VAE on [MNIST](http://yann.lecun.com/exdb/mnist/). The snippets show how to track the gradient contributions from reconstruction and regularization, gradually increase the KL-divergence weight, and lower the learning rate later in training. The script logs to CSV by default and can load an optional Weights & Biases logger config.
 
-[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/06_schedule_and_monitor_training.py) · [View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/06_schedule_and_monitor_training)
+[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/06_schedule_and_monitor_training.py){ .md-button }
+[:material-file-cog-outline: View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/06_schedule_and_monitor_training){ .md-button }
+{: .br-tutorial-resources }
 
 ## Run the example
 

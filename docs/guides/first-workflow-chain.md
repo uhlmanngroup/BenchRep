@@ -4,7 +4,9 @@
 
 One runnable example connects BenchRep’s 3 workflows, each configured through its own YAML. Training fits the model, prediction exports embeddings and reconstructions, and evaluation computes metrics and produces figures. The terminal command and the Python snippet run the same chain.
 
-[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/01_yaml_pipeline.py) · [View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/01_yaml_pipeline)
+[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/01_yaml_pipeline.py){ .md-button }
+[:material-file-cog-outline: View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/01_yaml_pipeline){ .md-button }
+{: .br-tutorial-resources }
 
 <strong class="highlight">Requirements.</strong> This example uses the `scverse` extra for UMAP. If you installed the full or development dependencies, you’re ready. Otherwise, run:
 

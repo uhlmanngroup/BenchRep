@@ -4,7 +4,9 @@
 
 The main script defines and registers the custom `EnrichedMNISTDataset` and a small fusion component, then calls [`train_composite()`][benchrep.train_composite], [`predict_composite()`][benchrep.predict_composite], and [`evaluate()`][benchrep.evaluate]. The walkthrough uses YAML to configure the model's connections and objectives. A [second script](#configure-the-same-model-interactively) uses those YAMLs as starting points in the browser wizard.
 
-[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/08A_dual_input_multitask_composite_vae_yaml.py) · [View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/08_dual_input_multitask_composite_vae_pipeline)
+[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/08A_dual_input_multitask_composite_vae_yaml.py){ .md-button }
+[:material-file-cog-outline: View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/08_dual_input_multitask_composite_vae_pipeline){ .md-button }
+{: .br-tutorial-resources }
 
 ## Run the example
 
@@ -338,7 +340,9 @@ Prediction saves both reconstruction pairs, configured to export 32 examples per
 
 The wizard example registers the same components and opens each workflow's wizard with the existing YAML as its starting point.
 
-[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/08B_dual_input_multitask_composite_vae_wizard.py) · [View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/08_dual_input_multitask_composite_vae_pipeline)
+[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/08B_dual_input_multitask_composite_vae_wizard.py){ .md-button }
+[:material-file-cog-outline: View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/08_dual_input_multitask_composite_vae_pipeline){ .md-button }
+{: .br-tutorial-resources }
 
 Install the `gui` extra, then run:
 

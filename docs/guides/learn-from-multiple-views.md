@@ -4,7 +4,9 @@
 
 The composite model uses a shared encoder and projection head. Two independently augmented views of each image form a positive pair, while views of other images in the batch serve as negatives, following the multiview contrastive approach used in [SimCLR](https://arxiv.org/abs/2002.05709).
 
-[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/07_learn_from_multiple_views.py) · [View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/07_learn_from_multiple_views)
+[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/07_learn_from_multiple_views.py){ .md-button }
+[:material-file-cog-outline: View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/07_learn_from_multiple_views){ .md-button }
+{: .br-tutorial-resources }
 
 ## Run the example
 

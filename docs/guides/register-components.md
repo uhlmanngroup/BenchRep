@@ -30,7 +30,9 @@ BenchRep datasets return each sample as a dictionary. The [canonical VAE](../con
 
 The dataset example subclasses [`BaseDataset`][benchrep.architecture.data.datasets.BaseDataset] to adapt [torchvision’s Fashion-MNIST](https://docs.pytorch.org/vision/stable/generated/torchvision.datasets.FashionMNIST.html). It puts each image under `x`, its class under `label`, and its index within the split under `sample_id`.
 
-[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/04_custom_dataset_pipeline.py) · [View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/04_custom_dataset_pipeline)
+[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/04_custom_dataset_pipeline.py){ .md-button }
+[:material-file-cog-outline: View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/04_custom_dataset_pipeline){ .md-button }
+{: .br-tutorial-resources }
 
 ```python
 from torchvision.datasets import FashionMNIST
@@ -91,7 +93,9 @@ python -m benchrep.examples.usage.04_custom_dataset_pipeline
 
 The loss example trains a canonical VAE on MNIST. It adds a reconstruction loss that compares neighboring-pixel differences and a custom objective that uses digit labels to supervise the latent representation.
 
-[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/05_custom_loss_pipeline.py) · [View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/05_custom_loss_pipeline)
+[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/05_custom_loss_pipeline.py){ .md-button }
+[:material-file-cog-outline: View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/05_custom_loss_pipeline){ .md-button }
+{: .br-tutorial-resources }
 
 ### Extend a loss role
 
@@ -236,7 +240,9 @@ python -m benchrep.examples.usage.05_custom_loss_pipeline
 
 The pretrained example wraps [torchvision’s ConvNeXt-Tiny](https://docs.pytorch.org/vision/stable/models/generated/torchvision.models.convnext_tiny.html) in a BenchRep encoder. Its constructor loads the weights specified in the config. The autoencoder fine-tunes the encoder alongside a newly initialized decoder on  [STL-10](https://cs.stanford.edu/~acoates/stl10/). For a built-in pretrained encoder, see the ResNet example in [Learn from multiple views](learn-from-multiple-views.md).
 
-[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/11_pretrained_encoder_pipeline.py) · [View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/11_pretrained_encoder_pipeline)
+[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/11_pretrained_encoder_pipeline.py){ .md-button }
+[:material-file-cog-outline: View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/11_pretrained_encoder_pipeline){ .md-button }
+{: .br-tutorial-resources }
 
 ### Adapt the encoder interface
 

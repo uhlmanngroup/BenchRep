@@ -52,7 +52,9 @@ From the directory where you want to keep your data and outputs, choose an examp
 
 `FashionMNISTDataModule` loads [torchvision’s Fashion-MNIST](https://docs.pytorch.org/vision/stable/generated/torchvision.datasets.FashionMNIST.html) directly and handles preprocessing, splits, and dataloaders. Because the script supplies both the datamodule and the model, they can use `(images, labels)` batches.
 
-[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/12_canonical_runtime_overrides.py) · [View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/12_canonical_runtime_overrides)
+[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/12_canonical_runtime_overrides.py){ .md-button }
+[:material-file-cog-outline: View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/12_canonical_runtime_overrides){ .md-button }
+{: .br-tutorial-resources }
 
 `FashionMNISTAutoencoder` inherits [`BenchRepAutoencoderModel`][benchrep.interfaces.models.BenchRepAutoencoderModel] and defines its own loss and optimizer. Its `predict_step()` returns an [`AutoencoderPredictionOutput`][benchrep.interfaces.contracts.AutoencoderPredictionOutput] for BenchRep’s standard exports. BenchRep checks the `predict_step()` return annotation before training and prediction. You can use your own dataclass if it declares the required fields with the expected types.
 
@@ -100,7 +102,9 @@ For prediction, the script passes the training manifest path and the returned mo
 
 [YOYO](../concepts/models/yoyo.md) runs `CIFAR10Classifier` as a complete `LightningModule`. The classifier defines its own training loss, optimizer, and prediction outputs. BenchRep builds the CIFAR-10 data pipeline from the YAML.
 
-[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/13_yoyo_classifier_pipeline.py) · [View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/13_yoyo_classifier_pipeline)
+[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/13_yoyo_classifier_pipeline.py){ .md-button }
+[:material-file-cog-outline: View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/13_yoyo_classifier_pipeline){ .md-button }
+{: .br-tutorial-resources }
 
 Pass the classifier class to [`train_yoyo()`][benchrep.train_yoyo].
 
@@ -136,7 +140,9 @@ Evaluation clusters and probes the feature vectors in `AnnData.X`. See [YOYO out
 
 The script removes the classification head from torchvision’s ImageNet-pretrained ViT-B/16 and wraps the backbone in `PretrainedViT` to export image embeddings. Its custom datamodule applies the weights’ preprocessing to the labeled STL-10 training split.
 
-[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/14_pretrained_yoyo_prediction.py) · [View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/14_pretrained_yoyo_prediction)
+[:material-script-text-outline: View script](https://github.com/uhlmanngroup/BenchRep/blob/main/src/benchrep/examples/usage/14_pretrained_yoyo_prediction.py){ .md-button }
+[:material-file-cog-outline: View configs](https://github.com/uhlmanngroup/BenchRep/tree/main/src/benchrep/examples/configs/14_pretrained_yoyo_prediction){ .md-button }
+{: .br-tutorial-resources }
 
 Pass both initialized instances to `predict_yoyo()` for standalone prediction.
 
